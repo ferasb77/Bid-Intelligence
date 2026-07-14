@@ -1,0 +1,7 @@
+streamlit
+anthropic
+pymupdf
+python-dotenv
+reportlab
+pdf2image
+openpyxl
