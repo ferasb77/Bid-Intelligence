@@ -749,7 +749,7 @@ def page_documents(bid_id):
             done=sum(1 for d in td if d["status"]=="Complete")
             st.markdown(f'<span style="font-size:.8rem;color:#C6A15B;font-weight:600">{dt.upper()} — {done}/{len(td)}</span>', unsafe_allow_html=True)
             hcols=st.columns([3,1.5,1.5,1.8,1.2,0.8])
-            for h,col in zip(["Document","Owner","Due","Status","",""],hcols):
+            for h,col in zip(["Document","Owner","Due","Status","Analyze","Edit"],hcols):
                 col.markdown(f'<span style="font-size:.7rem;color:#A9A69D;font-weight:600;text-transform:uppercase">{h}</span>', unsafe_allow_html=True)
             for d in td:
                 c1,c2,c3,c4,c5,c6=st.columns([3,1.5,1.5,1.8,1.2,0.8])
@@ -758,10 +758,10 @@ def page_documents(bid_id):
                 c2.markdown(f'<span style="font-size:.82rem">{d.get("owner") or "—"}</span>', unsafe_allow_html=True)
                 c3.markdown(f'<span style="font-size:.78rem;color:#A9A69D">{d.get("due_date") or "—"}</span>', unsafe_allow_html=True)
                 c4.markdown(status_badge(d["status"]), unsafe_allow_html=True)
-                # Analyze button — only for uploaded PDFs/docs
-                if d.get("file_path") and d["file_path"].lower().endswith((".pdf",".docx",".doc",".txt")):
-                    if c5.button("🔍 Analyze", key=f"ana_{d['id']}",
-                                  help="Extract requirements from this document and update the bid"):
+                # Analyze button — show for any uploaded file
+                if d.get("file_path"):
+                    if c5.button("🔍", key=f"ana_{d['id']}",
+                                  help="Analyze with Claude — extract requirements & changes"):
                         st.session_state["analyze_doc_id"] = d["id"]
                         st.rerun()
                 if c6.button("✏",key=f"ed_{d['id']}"): st.session_state["editing_doc"]=d["id"]; st.rerun()
@@ -783,22 +783,48 @@ def page_documents(bid_id):
             c1,c2 = st.columns([3,1])
             if c1.button("🔍 Run Analysis with Claude", use_container_width=True, type="primary"):
                 from analyst import analyze_addendum
-                import fitz, os
+                import fitz, os, base64, anthropic
                 with st.spinner(f"Analyzing {doc['name']}… 15–30 seconds"):
                     try:
-                        fp = doc["file_path"]
-                        if fp.lower().endswith(".pdf"):
-                            fitz_doc = fitz.open(fp)
-                            text = "\n".join(p.get_text() for p in fitz_doc)
+                        fp = doc.get("file_path","")
+                        name_lower = doc["name"].lower()
+                        text = ""
+
+                        if fp and os.path.exists(fp):
+                            # Read from disk
+                            if name_lower.endswith(".pdf"):
+                                fitz_doc = fitz.open(fp)
+                                text = "\n".join(p.get_text() for p in fitz_doc)
+                            else:
+                                with open(fp,"r",errors="ignore") as f_:
+                                    text = f_.read()
+                        elif fp and name_lower.endswith(".pdf"):
+                            # Try native PDF via Anthropic API (Streamlit Cloud)
+                            from config import get_api_key
+                            client = anthropic.Anthropic(api_key=get_api_key())
+                            with open(fp,"rb") as f_:
+                                b64 = base64.standard_b64encode(f_.read()).decode()
+                            resp = client.messages.create(
+                                model="claude-haiku-4-5-20251001",
+                                max_tokens=2000,
+                                messages=[{"role":"user","content":[
+                                    {"type":"document","source":{"type":"base64","media_type":"application/pdf","data":b64}},
+                                    {"type":"text","text":"Extract all text from this document as plain text."}
+                                ]}])
+                            text = resp.content[0].text
                         else:
-                            with open(fp,"r",errors="ignore") as f_:
-                                text = f_.read()
-                        reqs = get_requirements(bid_id)
-                        result = analyze_addendum(text, reqs, bid)
-                        st.session_state["addendum_result"] = result
-                        st.session_state["addendum_source"] = doc["name"]
-                        del st.session_state["analyze_doc_id"]
-                        st.rerun()
+                            st.error("File not accessible on disk. Re-upload the document to analyze it.")
+                            st.stop()
+
+                        if text.strip():
+                            reqs = get_requirements(bid_id)
+                            result = analyze_addendum(text, reqs, bid)
+                            st.session_state["addendum_result"] = result
+                            st.session_state["addendum_source"] = doc["name"]
+                            del st.session_state["analyze_doc_id"]
+                            st.rerun()
+                        else:
+                            st.error("Could not extract text from this document. Try re-uploading it.")
                     except Exception as e:
                         st.error(f"Analysis failed: {e}")
             if c2.button("Cancel", use_container_width=True):
