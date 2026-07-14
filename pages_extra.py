@@ -36,12 +36,47 @@ DEBRIEF_OUTCOMES= ["Won", "Lost", "No Bid", "Withdrawn", "Pending", "Cancelled"]
 def page_content_library(bid_id=None):
     st.markdown("# Content Library")
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
+
+    items = get_library_items(bid_id)
+
+    # ── Edit panel — rendered FIRST so it stays visible after rerun ───────────
+    eid = st.session_state.get("editing_lib")
+    if eid:
+        item = next((i for i in items if i["id"]==eid), None)
+        if item:
+            st.markdown(f"### ✏️ Editing — {item['title']}")
+            with st.form("edit_lib_form"):
+                title   = st.text_input("Title", value=item["title"])
+                cat     = st.selectbox("Category", LIB_CATEGORIES,
+                                       index=LIB_CATEGORIES.index(item["category"])
+                                       if item["category"] in LIB_CATEGORIES else 0)
+                content = st.text_area("Content", value=item.get("content",""), height=200)
+                c1,c2   = st.columns(2)
+                tags    = c1.text_input("Tags", value=item.get("tags",""))
+                src     = c2.text_input("Source", value=item.get("source",""))
+                appr    = st.checkbox("Approved for reuse", value=bool(item.get("approved")))
+                notes   = st.text_area("Notes", value=item.get("notes",""), height=60)
+                c1,c2,c3 = st.columns([2,1,1])
+                sv = c1.form_submit_button("Save", use_container_width=True)
+                dl = c2.form_submit_button("Delete", use_container_width=True)
+                cx = c3.form_submit_button("Cancel", use_container_width=True)
+            if sv:
+                upsert_library_item({"id":eid,"title":title,"category":cat,
+                    "content":content,"source":src,"bid_id":item.get("bid_id"),
+                    "tags":tags,"approved":1 if appr else 0,"notes":notes})
+                del st.session_state["editing_lib"]; st.rerun()
+            if dl:
+                delete_library_item(eid)
+                del st.session_state["editing_lib"]; st.rerun()
+            if cx:
+                del st.session_state["editing_lib"]; st.rerun()
+            st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+            return   # Don't render the list while editing
+
     st.markdown('<div class="info-box">Reusable content blocks extracted from past proposals — '
                 'coaching philosophies, methodologies, case studies, CVs, policy statements. '
                 'Each item can be pulled into the Section Drafter when writing this bid.</div>',
                 unsafe_allow_html=True)
-
-    items = get_library_items(bid_id)
 
     # ── Summary metrics ───────────────────────────────────────────────────────
     if items:
@@ -97,35 +132,7 @@ def page_content_library(bid_id=None):
                 if c3.button("🗑 Delete", key=f"dlib_{item['id']}"):
                     delete_library_item(item["id"]); st.rerun()
 
-    # ── Edit panel ────────────────────────────────────────────────────────────
-    eid = st.session_state.get("editing_lib")
-    if eid:
-        item = next((i for i in items if i["id"]==eid), None)
-        if item:
-            st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-            st.markdown(f"### Edit — {item['title']}")
-            with st.form("edit_lib"):
-                title = st.text_input("Title", value=item["title"])
-                cat   = st.selectbox("Category", LIB_CATEGORIES,
-                                     index=LIB_CATEGORIES.index(item["category"])
-                                     if item["category"] in LIB_CATEGORIES else 0)
-                content = st.text_area("Content", value=item.get("content",""), height=200)
-                c1,c2 = st.columns(2)
-                tags  = c1.text_input("Tags", value=item.get("tags",""))
-                src   = c2.text_input("Source", value=item.get("source",""))
-                appr  = st.checkbox("Approved for reuse", value=bool(item.get("approved")))
-                notes = st.text_area("Notes", value=item.get("notes",""), height=60)
-                c1,c2,c3 = st.columns([2,1,1])
-                sv = c1.form_submit_button("Save", use_container_width=True)
-                dl = c2.form_submit_button("Delete", use_container_width=True)
-                cx = c3.form_submit_button("Cancel", use_container_width=True)
-            if sv:
-                upsert_library_item({"id":eid,"title":title,"category":cat,
-                    "content":content,"source":src,"bid_id":item.get("bid_id"),
-                    "tags":tags,"approved":1 if appr else 0,"notes":notes})
-                del st.session_state["editing_lib"]; st.rerun()
-            if dl: delete_library_item(eid); del st.session_state["editing_lib"]; st.rerun()
-            if cx: del st.session_state["editing_lib"]; st.rerun()
+    # Edit panel now rendered at top of function
 
     # ── Add manually ──────────────────────────────────────────────────────────
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
