@@ -537,3 +537,77 @@ Perform a final pre-submission readiness check. Return ONLY valid JSON:
 
     raw = _call(READINESS_SYSTEM, prompt, max_tokens=2048)
     return _parse_json(raw)
+
+
+# ── 8. Addendum / Supplementary Document Analyzer ────────────────────────────
+ADDENDUM_SYSTEM = """You are an expert bid analyst reviewing a supplementary document — 
+an addendum, bulletin, amendment, or additional tender file — that modifies or supplements 
+the original RFP. Your job is to identify what has changed, what new requirements have been 
+added, and what existing requirements have been modified or clarified."""
+
+def analyze_addendum(text: str, existing_requirements: list, bid_info: dict) -> dict:
+    """
+    Analyze an addendum/supplementary document and return:
+    - New requirements to add to the compliance matrix
+    - Changes to existing requirements
+    - Deadline changes
+    - Key clarifications
+    """
+    existing_summary = "\n".join(
+        f"[{r.get('req_id','')}] {r.get('description','')[:100]}"
+        for r in existing_requirements[:30]
+    )
+
+    prompt = f"""BID: {bid_info.get('title','')} — {bid_info.get('client','')}
+Current submission deadline: {bid_info.get('submission_deadline','')}
+Current clarification deadline: {bid_info.get('clarification_deadline','')}
+
+EXISTING COMPLIANCE MATRIX (first 30 items):
+{existing_summary}
+
+ADDENDUM / SUPPLEMENTARY DOCUMENT TEXT:
+{text[:10000]}
+
+Analyze this document and identify all changes. Return ONLY valid JSON under 250 chars per string value:
+{{
+  "document_type": "Addendum|Bulletin|Amendment|Clarification|Other",
+  "document_number": "e.g. Addendum 1",
+  "summary": "What this document does in 1-2 sentences",
+  "deadline_changes": {{
+    "submission_deadline": "new YYYY-MM-DD date or null if unchanged",
+    "clarification_deadline": "new YYYY-MM-DD date or null if unchanged",
+    "other_dates": "any other date changes mentioned"
+  }},
+  "new_requirements": [
+    {{
+      "req_id": "A1-M1",
+      "category": "Mandatory|Rated|Financial|Supporting",
+      "description": "New requirement description",
+      "rfso_ref": "section reference",
+      "weight": null,
+      "evidence": "evidence required",
+      "owner": null,
+      "deadline": null,
+      "status": "Not Started",
+      "notes": "Added by addendum"
+    }}
+  ],
+  "modified_requirements": [
+    {{
+      "req_id": "M1",
+      "change_description": "What changed and how",
+      "new_text": "Updated requirement text if changed"
+    }}
+  ],
+  "clarifications": [
+    {{
+      "topic": "what was clarified",
+      "clarification": "the clarification text",
+      "affects_req_ids": ["M1","R3"]
+    }}
+  ],
+  "key_changes": ["Most important change 1", "Most important change 2"]
+}}"""
+
+    raw = _call(ADDENDUM_SYSTEM, prompt, max_tokens=4096)
+    return _parse_json(raw)

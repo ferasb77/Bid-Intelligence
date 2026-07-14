@@ -613,9 +613,15 @@ def page_tasks(bid_id):
 # ═════════════════════════════════════════════════════════════════════════════
 def page_documents(bid_id):
     docs=get_documents(bid_id)
+    bid=get_bid(bid_id)
     st.markdown("# Documents")
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
+
+    # ── Upload ────────────────────────────────────────────────────────────────
     st.markdown("### Upload File")
+    st.markdown('<div class="info-box">After uploading an addendum or supplementary document, ' 
+                'use <strong>🔍 Analyze & Update</strong> to extract new or changed requirements ' 
+                'and merge them into the compliance matrix.</div>', unsafe_allow_html=True)
     up=st.file_uploader("Drop file",type=["pdf","docx","xlsx","doc","pptx","txt"],key=f"dup_{bid_id}",label_visibility="collapsed")
     if up:
         _upload_key = f"uploaded_{bid_id}_{up.name}_{up.size}"
@@ -625,6 +631,115 @@ def page_documents(bid_id):
             st.success(f"Uploaded: {up.name}"); st.rerun()
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
+    # ── Addendum analysis result display ──────────────────────────────────────
+    if st.session_state.get("addendum_result"):
+        r    = st.session_state["addendum_result"]
+        src  = st.session_state.get("addendum_source","")
+        reqs = get_requirements(bid_id)
+
+        st.markdown(f"### 📋 Analysis: {r.get('document_number','Addendum')} — {r.get('document_type','')}")
+        st.markdown(f'<div class="info-box">{r.get("summary","")}</div>', unsafe_allow_html=True)
+
+        # Deadline changes
+        dl = r.get("deadline_changes",{})
+        if dl.get("submission_deadline") or dl.get("clarification_deadline"):
+            st.markdown("#### ⏰ Deadline Changes")
+            if dl.get("submission_deadline"):
+                st.markdown(f'<div class="warn-box">Submission deadline updated to <strong>{dl["submission_deadline"]}</strong></div>',
+                            unsafe_allow_html=True)
+            if dl.get("clarification_deadline"):
+                st.markdown(f'<div class="warn-box">Clarification deadline updated to <strong>{dl["clarification_deadline"]}</strong></div>',
+                            unsafe_allow_html=True)
+
+        # Key changes
+        if r.get("key_changes"):
+            st.markdown("#### Key Changes")
+            for ch in r["key_changes"]:
+                st.markdown(f'<span style="color:#C6A15B;font-size:.85rem">· {ch}</span>',
+                            unsafe_allow_html=True)
+
+        # New requirements preview
+        new_reqs = r.get("new_requirements",[])
+        mod_reqs = r.get("modified_requirements",[])
+        clars    = r.get("clarifications",[])
+
+        if new_reqs:
+            st.markdown(f"#### ➕ New Requirements ({len(new_reqs)})")
+            for req in new_reqs:
+                st.markdown(
+                    f'<div style="background:#131316;border:1px solid #2A2A2E;border-left:3px solid #C6A15B;' 
+                    f'border-radius:0 4px 4px 0;padding:.5rem .8rem;margin:.25rem 0;font-size:.82rem">' 
+                    f'<span style="color:#C6A15B;font-weight:700">{req.get("req_id","")}</span> ' 
+                    f'({req.get("category","")}) {req.get("description","")}</div>',
+                    unsafe_allow_html=True)
+
+        if mod_reqs:
+            st.markdown(f"#### ✏️ Modified Requirements ({len(mod_reqs)})")
+            for mod in mod_reqs:
+                st.markdown(
+                    f'<div style="background:#1A0F00;border:1px solid #3A2A00;border-left:3px solid #E67E22;' 
+                    f'border-radius:0 4px 4px 0;padding:.5rem .8rem;margin:.25rem 0;font-size:.82rem">' 
+                    f'<span style="color:#E67E22;font-weight:700">{mod.get("req_id","")}</span> — ' 
+                    f'{mod.get("change_description","")}</div>',
+                    unsafe_allow_html=True)
+
+        if clars:
+            st.markdown(f"#### 💬 Clarifications ({len(clars)})")
+            for cl in clars:
+                st.markdown(
+                    f'<div style="background:#0A1A0A;border-left:3px solid #27AE60;' 
+                    f'padding:.5rem .8rem;font-size:.82rem;margin:.25rem 0">' 
+                    f'<strong style="color:#27AE60">{cl.get("topic","")}</strong>: ' 
+                    f'{cl.get("clarification","")}</div>',
+                    unsafe_allow_html=True)
+
+        st.markdown("")
+        c1,c2,c3 = st.columns(3)
+
+        if c1.button("✅ Apply all changes to bid", use_container_width=True, type="primary"):
+            from database import upsert_requirement, update_bid
+            applied = 0
+            # Add new requirements
+            for req in new_reqs:
+                upsert_requirement({**req, "id":None, "bid_id":bid_id,
+                                    "notes": req.get("notes","") + f" | Source: {src}"})
+                applied += 1
+            # Update deadlines
+            if dl.get("submission_deadline") or dl.get("clarification_deadline"):
+                updated_bid = {
+                    "title":                  bid.get("title",""),
+                    "client":                 bid.get("client",""),
+                    "file_number":            bid.get("file_number",""),
+                    "stage":                  bid.get("stage",""),
+                    "sensitivity":            bid.get("sensitivity","Standard"),
+                    "owner":                  bid.get("owner",""),
+                    "value_cad":              bid.get("value_cad"),
+                    "submission_deadline":    dl.get("submission_deadline") or bid.get("submission_deadline"),
+                    "clarification_deadline": dl.get("clarification_deadline") or bid.get("clarification_deadline"),
+                    "notes":                  bid.get("notes",""),
+                }
+                update_bid(bid_id, updated_bid)
+            # Add clarifications as notes on linked requirements
+            reqs_now = get_requirements(bid_id)
+            for cl in clars:
+                for rid in (cl.get("affects_req_ids") or []):
+                    match = next((r for r in reqs_now if r.get("req_id")==rid), None)
+                    if match:
+                        updated_notes = (match.get("notes","") or "") + f" | Clarification ({src}): {cl.get('clarification','')[:100]}"
+                        upsert_requirement({**match, "notes": updated_notes})
+            del st.session_state["addendum_result"]
+            del st.session_state["addendum_source"]
+            st.success(f"Applied: {applied} new requirements added, deadlines updated, clarifications logged.")
+            st.rerun()
+
+        if c2.button("✕ Discard", use_container_width=True):
+            del st.session_state["addendum_result"]
+            del st.session_state["addendum_source"]
+            st.rerun()
+
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+
+    # ── Document list ──────────────────────────────────────────────────────────
     if not docs:
         st.markdown('<div class="empty-state">No documents yet.</div>', unsafe_allow_html=True)
     else:
@@ -633,19 +748,61 @@ def page_documents(bid_id):
             if not td: continue
             done=sum(1 for d in td if d["status"]=="Complete")
             st.markdown(f'<span style="font-size:.8rem;color:#C6A15B;font-weight:600">{dt.upper()} — {done}/{len(td)}</span>', unsafe_allow_html=True)
-            hcols=st.columns([3.5,1.5,1.5,1.8,1])
-            for h,col in zip(["Document","Owner","Due","Status",""],hcols):
+            hcols=st.columns([3,1.5,1.5,1.8,1.2,0.8])
+            for h,col in zip(["Document","Owner","Due","Status","",""],hcols):
                 col.markdown(f'<span style="font-size:.7rem;color:#A9A69D;font-weight:600;text-transform:uppercase">{h}</span>', unsafe_allow_html=True)
             for d in td:
-                c1,c2,c3,c4,c5=st.columns([3.5,1.5,1.5,1.8,1])
+                c1,c2,c3,c4,c5,c6=st.columns([3,1.5,1.5,1.8,1.2,0.8])
                 icon="📄" if d.get("file_path") else "☐"
                 c1.markdown(f'{icon} <span style="font-size:.85rem">{d["name"]}</span>', unsafe_allow_html=True)
                 c2.markdown(f'<span style="font-size:.82rem">{d.get("owner") or "—"}</span>', unsafe_allow_html=True)
                 c3.markdown(f'<span style="font-size:.78rem;color:#A9A69D">{d.get("due_date") or "—"}</span>', unsafe_allow_html=True)
                 c4.markdown(status_badge(d["status"]), unsafe_allow_html=True)
-                if c5.button("✏",key=f"ed_{d['id']}"): st.session_state["editing_doc"]=d["id"]; st.rerun()
+                # Analyze button — only for uploaded PDFs/docs
+                if d.get("file_path") and d["file_path"].lower().endswith((".pdf",".docx",".doc",".txt")):
+                    if c5.button("🔍 Analyze", key=f"ana_{d['id']}",
+                                  help="Extract requirements from this document and update the bid"):
+                        st.session_state["analyze_doc_id"] = d["id"]
+                        st.rerun()
+                if c6.button("✏",key=f"ed_{d['id']}"): st.session_state["editing_doc"]=d["id"]; st.rerun()
                 st.markdown('<hr class="section-divider" style="margin:.25rem 0">', unsafe_allow_html=True)
             st.markdown("")
+
+    # ── Document analysis trigger ──────────────────────────────────────────────
+    analyze_id = st.session_state.get("analyze_doc_id")
+    if analyze_id:
+        doc = next((d for d in docs if d["id"]==analyze_id), None)
+        if doc and doc.get("file_path"):
+            st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+            st.markdown(f"### 🔍 Analyze: {doc['name']}")
+            st.markdown('<div class="info-box">Claude will read this document and identify new requirements, ' 
+                        'deadline changes, modifications to existing requirements, and clarifications. ' 
+                        'You review the findings before anything is applied to the bid.</div>',
+                        unsafe_allow_html=True)
+
+            c1,c2 = st.columns([3,1])
+            if c1.button("🔍 Run Analysis with Claude", use_container_width=True, type="primary"):
+                from analyst import analyze_addendum
+                import fitz, os
+                with st.spinner(f"Analyzing {doc['name']}… 15–30 seconds"):
+                    try:
+                        fp = doc["file_path"]
+                        if fp.lower().endswith(".pdf"):
+                            fitz_doc = fitz.open(fp)
+                            text = "\n".join(p.get_text() for p in fitz_doc)
+                        else:
+                            with open(fp,"r",errors="ignore") as f_:
+                                text = f_.read()
+                        reqs = get_requirements(bid_id)
+                        result = analyze_addendum(text, reqs, bid)
+                        st.session_state["addendum_result"] = result
+                        st.session_state["addendum_source"] = doc["name"]
+                        del st.session_state["analyze_doc_id"]
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Analysis failed: {e}")
+            if c2.button("Cancel", use_container_width=True):
+                del st.session_state["analyze_doc_id"]; st.rerun()
 
     eid=st.session_state.get("editing_doc")
     if eid:
