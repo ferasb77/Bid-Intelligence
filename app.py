@@ -363,8 +363,11 @@ def page_bid_overview(bid_id):
         st.markdown('<div class="info-box">No RFP uploaded yet.</div>', unsafe_allow_html=True)
     up = st.file_uploader("Upload RFP", type=["pdf","docx","xlsx","doc"], key=f"up_{bid_id}", label_visibility="collapsed")
     if up:
-        save_upload(bid_id, up.name, up.read())
-        st.success(f"Uploaded: {up.name}"); st.rerun()
+        _upload_key = f"uploaded_{bid_id}_{up.name}_{up.size}"
+        if not st.session_state.get(_upload_key):
+            save_upload(bid_id, up.name, up.read())
+            st.session_state[_upload_key] = True
+            st.success(f"Uploaded: {up.name}"); st.rerun()
 
     if bid.get("notes"):
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
@@ -614,7 +617,12 @@ def page_documents(bid_id):
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
     st.markdown("### Upload File")
     up=st.file_uploader("Drop file",type=["pdf","docx","xlsx","doc","pptx","txt"],key=f"dup_{bid_id}",label_visibility="collapsed")
-    if up: save_upload(bid_id,up.name,up.read()); st.success(f"Uploaded: {up.name}"); st.rerun()
+    if up:
+        _upload_key = f"uploaded_{bid_id}_{up.name}_{up.size}"
+        if not st.session_state.get(_upload_key):
+            save_upload(bid_id,up.name,up.read())
+            st.session_state[_upload_key] = True
+            st.success(f"Uploaded: {up.name}"); st.rerun()
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
     if not docs:

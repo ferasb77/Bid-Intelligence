@@ -173,6 +173,8 @@ def page_proposal_analyzer(bid_id):
         fb = uploaded.read()
         st.markdown(f'<div class="info-box">📄 <strong>{uploaded.name}</strong> — '
                     f'{len(fb)//1024} KB ready to analyze.</div>', unsafe_allow_html=True)
+        # Store file in session so button click doesn't re-trigger upload loop
+        st.session_state["pa_pending_file"] = {"bytes": fb, "name": uploaded.name}
 
         if st.button("🔍 Analyze with Claude AI", use_container_width=True, type="primary"):
             with st.spinner("Reading past proposal and extracting reusable content… 20–40 seconds"):
@@ -185,9 +187,13 @@ def page_proposal_analyzer(bid_id):
                         text = fb.decode("utf-8", errors="ignore")
 
                     result = analyze_past_proposal(text, bid)
+                    pf = st.session_state.get("pa_pending_file", {})
                     st.session_state["pa_result"] = result
-                    st.session_state["pa_filename"] = uploaded.name
-                    save_upload(bid_id, uploaded.name, fb)
+                    st.session_state["pa_filename"] = pf.get("name", "")
+                    _up_key = f"uploaded_{bid_id}_{pf.get('name','')}_{len(pf.get('bytes',b''))}"
+                    if not st.session_state.get(_up_key):
+                        save_upload(bid_id, pf.get("name",""), pf.get("bytes", b""))
+                        st.session_state[_up_key] = True
                     st.rerun()
                 except Exception as e:
                     st.error(f"Analysis failed: {e}")
