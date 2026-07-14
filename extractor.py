@@ -63,7 +63,8 @@ Rules:
 - Use ISO date format YYYY-MM-DD for all dates. If a year is not stated assume 2026.
 - Keep all text values concise (under 200 characters) to avoid truncation.
 - If a field cannot be determined, use null.
-- Output ONLY the JSON object. Nothing else."""
+- Keep ALL string values concise — under 250 characters each.
+- Output ONLY the JSON object. No markdown, no explanation, nothing else."""
 
 
 def _clean_raw(raw: str) -> str:
@@ -128,24 +129,24 @@ def extract_rfp(file_bytes: bytes, filename: str, api_key: str) -> tuple:
 
     response = client.messages.create(
         model=model,
-        max_tokens=8096,          # raised from 4096
+        max_tokens=16000,         # large RFPs need more tokens
         messages=[{"role": "user", "content": content}],
     )
 
     raw = _clean_raw(response.content[0].text)
-
-    # Check if response was cut off
     stop_reason = response.stop_reason
     truncated   = (stop_reason == "max_tokens")
 
+    # Use the same robust parser as analyst.py
     try:
-        result = json.loads(raw)
-    except json.JSONDecodeError:
-        if truncated:
-            # Try to salvage the partial response
+        from analyst import _parse_json
+        result = _parse_json(raw)
+    except Exception:
+        # Absolute fallback — try the old repair function
+        try:
+            result = json.loads(raw)
+        except json.JSONDecodeError:
             result = _repair_json(raw)
-        else:
-            raise
 
     # Ensure all top-level keys exist
     result.setdefault("bid",          {})
