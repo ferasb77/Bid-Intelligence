@@ -723,57 +723,69 @@ def page_documents(bid_id):
             f'</span></div>',
             unsafe_allow_html=True)
 
-        # Column headers
-        hcols = st.columns([3, 1.5, 1.2, 1.5, 1.2, 0.6, 0.6, 0.6])
-        for h, hc in zip(["Document","Owner","Due","Status","Linked Reqs","Ver","",""], hcols):
+        # Column headers — 7 columns, buttons always visible
+        hcols = st.columns([3.5, 1.5, 0.7, 0.5, 0.5, 0.5, 0.5])
+        for h, hc in zip(["Document / Owner","Status","Ver","⬆","🔍","✏",""], hcols):
             hc.markdown(
                 f'<span style="font-size:.68rem;color:#6E6C66;font-weight:600;'
                 f'text-transform:uppercase">{h}</span>',
                 unsafe_allow_html=True)
 
         for d in type_docs:
-            st_col = STATUS_COL.get(d.get("status","Expected"), "#6E6C66")
-            icon = "⚠" if d["status"]=="Expected" else "📄" if d.get("file_path") else "☐"
-            mand_tag = ' <span style="color:#C0392B;font-size:.68rem">MANDATORY</span>'                        if d.get("mandatory") else ""
+            st_col  = STATUS_COL.get(d.get("status","Expected"), "#6E6C66")
+            icon    = "⚠" if d["status"]=="Expected" else "📄" if d.get("file_path") or d.get("storage_path") else "☐"
+            mand_tag= ' <span style="color:#C0392B;font-size:.68rem">★</span>' \
+                      if d.get("mandatory") else ""
+            has_file= bool(d.get("file_path") or d.get("storage_path"))
 
-            c1,c2,c3,c4,c5,c6,c7,c8 = st.columns([3,1.5,1.2,1.5,1.2,0.6,0.6,0.6])
+            c1,c2,c3,c4,c5,c6,c7 = st.columns([3.5,1.5,0.7,0.5,0.5,0.5,0.5])
 
+            # Name + owner + linked reqs
+            owner_str = f' <span style="color:#6E6C66;font-size:.75rem">· {d["owner"]}</span>' \
+                        if d.get("owner") else ""
             c1.markdown(
-                f'<span style="font-size:.85rem">{icon} {d["name"]}</span>{mand_tag}',
+                f'<span style="font-size:.85rem">{icon} <b>{d["name"]}</b></span>'
+                f'{mand_tag}{owner_str}',
                 unsafe_allow_html=True)
-            if d.get("notes"):
+            if d.get("linked_req_ids"):
                 c1.markdown(
-                    f'<span style="font-size:.7rem;color:#6E6C66">{d["notes"][:60]}</span>',
+                    f'<span style="font-size:.7rem;color:#C6A15B">'
+                    f'Reqs: {d["linked_req_ids"]}</span>',
                     unsafe_allow_html=True)
 
+            # Status badge
             c2.markdown(
-                f'<span style="font-size:.82rem">{d.get("owner") or "—"}</span>',
-                unsafe_allow_html=True)
-            c3.markdown(
-                f'<span style="font-size:.78rem;color:#A9A69D">'
-                f'{d.get("due_date") or "—"}</span>',
-                unsafe_allow_html=True)
-            c4.markdown(
-                f'<span style="background:{st_col}22;color:{st_col};padding:.1rem .4rem;'
+                f'<span style="background:{st_col}22;color:{st_col};padding:.15rem .5rem;'
                 f'border-radius:3px;font-size:.72rem;font-weight:600">'
                 f'{d.get("status","Expected")}</span>',
                 unsafe_allow_html=True)
-            c5.markdown(
-                f'<span style="font-size:.72rem;color:#C6A15B">'
-                f'{d.get("linked_req_ids") or "—"}</span>',
-                unsafe_allow_html=True)
-            c6.markdown(
-                f'<span style="font-size:.78rem;color:#6E6C66">'
+
+            # Version
+            c3.markdown(
+                f'<span style="font-size:.75rem;color:#6E6C66">'
                 f'v{d.get("version") or 1}</span>',
                 unsafe_allow_html=True)
 
-            # Upload new version button (for expected or existing docs)
-            if c7.button("⬆", key=f"upv_{d['id']}",
+            # ⬆ Upload / new version
+            if c4.button("⬆", key=f"upv_{d['id']}",
                          help="Upload / replace this document"):
                 st.session_state["upload_for_doc"] = d["id"]
                 st.rerun()
 
-            if c8.button("✏", key=f"edd_{d['id']}",
+            # 🔍 Analyze — active only when file is uploaded
+            if has_file:
+                if c5.button("🔍", key=f"ana_{d['id']}",
+                             help="Analyze with Claude — extract requirements & changes"):
+                    st.session_state["analyze_doc_id"] = d["id"]
+                    st.rerun()
+            else:
+                c5.markdown(
+                    '<span style="color:#2A2A2E;font-size:.9rem" '
+                    'title="Upload a file first">🔍</span>',
+                    unsafe_allow_html=True)
+
+            # ✏ Edit
+            if c6.button("✏", key=f"edd_{d['id']}",
                          help="Edit document details"):
                 st.session_state["editing_doc"] = d["id"]
                 st.rerun()
