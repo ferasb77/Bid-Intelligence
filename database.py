@@ -428,19 +428,24 @@ def get_library_items(bid_id=None, category=None):
 
 def upsert_library_item(data):
     conn = get_conn()
+    # Extract only the keys the SQL expects — ignore any extra fields
     if data.get("id"):
+        clean = {k: data.get(k) for k in
+                 ["id","title","category","content","source","bid_id","tags","approved","notes"]}
         conn.execute("""
             UPDATE content_library SET title=:title,category=:category,
             content=:content,source=:source,bid_id=:bid_id,
             tags=:tags,approved=:approved,notes=:notes
             WHERE id=:id
-        """, data)
+        """, clean)
     else:
+        clean = {k: data.get(k) for k in
+                 ["title","category","content","source","bid_id","tags","approved","notes"]}
         conn.execute("""
             INSERT INTO content_library
             (title,category,content,source,bid_id,tags,approved,notes)
             VALUES (:title,:category,:content,:source,:bid_id,:tags,:approved,:notes)
-        """, data)
+        """, clean)
     conn.commit(); conn.close()
 
 def delete_library_item(item_id):
@@ -456,8 +461,12 @@ def get_coaches():
     return [dict(r) for r in rows]
 
 def upsert_coach(data):
+    coach_keys = ["name","credentials","icf_level","sectors","languages",
+                  "location","availability","email","phone","cv_summary",
+                  "reference_contact","notes"]
     conn = get_conn()
     if data.get("id"):
+        clean = {k: data.get(k) for k in ["id"] + coach_keys}
         conn.execute("""
             UPDATE coaches SET name=:name,credentials=:credentials,
             icf_level=:icf_level,sectors=:sectors,languages=:languages,
@@ -465,15 +474,16 @@ def upsert_coach(data):
             email=:email,phone=:phone,cv_summary=:cv_summary,
             reference_contact=:reference_contact,notes=:notes
             WHERE id=:id
-        """, data)
+        """, clean)
     else:
+        clean = {k: data.get(k) for k in coach_keys}
         conn.execute("""
             INSERT INTO coaches
             (name,credentials,icf_level,sectors,languages,location,
              availability,email,phone,cv_summary,reference_contact,notes)
             VALUES (:name,:credentials,:icf_level,:sectors,:languages,:location,
                     :availability,:email,:phone,:cv_summary,:reference_contact,:notes)
-        """, data)
+        """, clean)
     conn.commit(); conn.close()
 
 def delete_coach(coach_id):
@@ -491,16 +501,20 @@ def get_clarifications(bid_id):
     return [dict(r) for r in rows]
 
 def upsert_clarification(data):
+    clar_keys = ["question_id","question","rationale","priority","linked_req_ids",
+                 "submitted_date","answer","answer_date","changes_matrix","status","notes"]
     conn = get_conn()
     if data.get("id"):
+        clean = {k: data.get(k) for k in ["id"] + clar_keys}
         conn.execute("""
             UPDATE clarifications SET question_id=:question_id,question=:question,
             rationale=:rationale,priority=:priority,linked_req_ids=:linked_req_ids,
             submitted_date=:submitted_date,answer=:answer,answer_date=:answer_date,
             changes_matrix=:changes_matrix,status=:status,notes=:notes
             WHERE id=:id
-        """, data)
+        """, clean)
     else:
+        clean = {k: data.get(k) for k in ["bid_id"] + clar_keys}
         conn.execute("""
             INSERT INTO clarifications
             (bid_id,question_id,question,rationale,priority,linked_req_ids,
@@ -508,7 +522,7 @@ def upsert_clarification(data):
             VALUES (:bid_id,:question_id,:question,:rationale,:priority,
                     :linked_req_ids,:submitted_date,:answer,:answer_date,
                     :changes_matrix,:status,:notes)
-        """, data)
+        """, clean)
     conn.commit(); conn.close()
 
 def delete_clarification(clar_id):
