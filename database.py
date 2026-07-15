@@ -166,248 +166,92 @@ def init_db():
         status      TEXT DEFAULT 'Not Started',
         notes       TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS content_library (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        title       TEXT NOT NULL,
+        category    TEXT DEFAULT 'Methodology',
+        content     TEXT NOT NULL,
+        source      TEXT,
+        bid_id      INTEGER REFERENCES bids(id) ON DELETE SET NULL,
+        tags        TEXT,
+        approved    INTEGER DEFAULT 0,
+        notes       TEXT,
+        created_at  TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS coaches (
+        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        name               TEXT NOT NULL,
+        credentials        TEXT,
+        icf_level          TEXT,
+        sectors            TEXT,
+        languages          TEXT,
+        location           TEXT,
+        availability       TEXT DEFAULT 'Available',
+        email              TEXT,
+        phone              TEXT,
+        cv_summary         TEXT,
+        reference_contact  TEXT,
+        notes              TEXT,
+        created_at         TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS clarifications (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        bid_id          INTEGER NOT NULL REFERENCES bids(id) ON DELETE CASCADE,
+        question_id     TEXT,
+        question        TEXT NOT NULL,
+        rationale       TEXT,
+        priority        TEXT DEFAULT 'Medium',
+        linked_req_ids  TEXT,
+        submitted_date  TEXT,
+        answer          TEXT,
+        answer_date     TEXT,
+        changes_matrix  INTEGER DEFAULT 0,
+        status          TEXT DEFAULT 'Draft',
+        notes           TEXT,
+        created_at      TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS debriefs (
+        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        bid_id             INTEGER NOT NULL REFERENCES bids(id) ON DELETE CASCADE,
+        outcome            TEXT DEFAULT 'Pending',
+        score_technical    REAL,
+        score_financial    REAL,
+        score_total        REAL,
+        rank               INTEGER,
+        competitors        TEXT,
+        evaluator_feedback TEXT,
+        win_factors        TEXT,
+        loss_factors       TEXT,
+        lessons            TEXT,
+        notes              TEXT,
+        created_at         TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS deliverables (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        bid_id         INTEGER NOT NULL REFERENCES bids(id) ON DELETE CASCADE,
+        sort_order     INTEGER DEFAULT 0,
+        service_id     TEXT,
+        title          TEXT NOT NULL,
+        description    TEXT,
+        category       TEXT DEFAULT 'Core Service',
+        duration       TEXT,
+        volume         TEXT,
+        unit           TEXT,
+        price_ai       REAL,
+        price_non_ai   REAL,
+        optional       INTEGER DEFAULT 0,
+        linked_req_ids TEXT,
+        notes          TEXT,
+        created_at     TEXT DEFAULT (datetime('now'))
+    );
     """)
     conn.commit()
     conn.close()
-
-# ── Bids ──────────────────────────────────────────────
-def get_all_bids():
-    conn = get_conn()
-    rows = conn.execute("""
-        SELECT b.*,
-               COUNT(DISTINCT r.id) as req_count,
-               SUM(CASE WHEN r.status='Complete' THEN 1 ELSE 0 END) as req_done,
-               COUNT(DISTINCT t.id) as task_count,
-               SUM(CASE WHEN t.status='Complete' THEN 1 ELSE 0 END) as task_done
-        FROM bids b
-        LEFT JOIN requirements r ON r.bid_id = b.id
-        LEFT JOIN tasks t ON t.bid_id = b.id
-        GROUP BY b.id
-        ORDER BY b.submission_deadline ASC NULLS LAST
-    """).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
-def get_bid(bid_id):
-    conn = get_conn()
-    row = conn.execute("SELECT * FROM bids WHERE id=?", (bid_id,)).fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-def create_bid(data):
-    conn = get_conn()
-    c = conn.execute("""
-        INSERT INTO bids (title,client,file_number,stage,sensitivity,owner,
-                          value_cad,submission_deadline,clarification_deadline,notes)
-        VALUES (:title,:client,:file_number,:stage,:sensitivity,:owner,
-                :value_cad,:submission_deadline,:clarification_deadline,:notes)
-    """, data)
-    bid_id = c.lastrowid
-    conn.commit(); conn.close()
-    return bid_id
-
-def update_bid(bid_id, data):
-    data['id'] = bid_id
-    data['updated_at'] = datetime.now().isoformat()
-    conn = get_conn()
-    conn.execute("""
-        UPDATE bids SET title=:title,client=:client,file_number=:file_number,
-        stage=:stage,sensitivity=:sensitivity,owner=:owner,value_cad=:value_cad,
-        submission_deadline=:submission_deadline,
-        clarification_deadline=:clarification_deadline,
-        notes=:notes,updated_at=:updated_at WHERE id=:id
-    """, data)
-    conn.commit(); conn.close()
-
-def delete_bid(bid_id):
-    conn = get_conn()
-    conn.execute("DELETE FROM bids WHERE id=?", (bid_id,))
-    conn.commit(); conn.close()
-
-# ── Requirements ──────────────────────────────────────
-def get_requirements(bid_id):
-    conn = get_conn()
-    rows = conn.execute(
-        "SELECT * FROM requirements WHERE bid_id=? ORDER BY category,req_id",
-        (bid_id,)).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
-def upsert_requirement(data):
-    conn = get_conn()
-    if data.get('id'):
-        conn.execute("""
-            UPDATE requirements SET req_id=:req_id,category=:category,
-            description=:description,rfso_ref=:rfso_ref,weight=:weight,
-            evidence=:evidence,owner=:owner,deadline=:deadline,
-            status=:status,notes=:notes WHERE id=:id
-        """, data)
-    else:
-        conn.execute("""
-            INSERT INTO requirements
-            (bid_id,req_id,category,description,rfso_ref,weight,evidence,owner,deadline,status,notes)
-            VALUES (:bid_id,:req_id,:category,:description,:rfso_ref,:weight,
-                    :evidence,:owner,:deadline,:status,:notes)
-        """, data)
-    conn.commit(); conn.close()
-
-def delete_requirement(req_id):
-    conn = get_conn()
-    conn.execute("DELETE FROM requirements WHERE id=?", (req_id,))
-    conn.commit(); conn.close()
-
-# ── Tasks ─────────────────────────────────────────────
-def get_tasks(bid_id):
-    conn = get_conn()
-    rows = conn.execute(
-        "SELECT * FROM tasks WHERE bid_id=? ORDER BY due_date,priority",
-        (bid_id,)).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
-def upsert_task(data):
-    conn = get_conn()
-    if data.get('id'):
-        conn.execute("""
-            UPDATE tasks SET title=:title,description=:description,owner=:owner,
-            due_date=:due_date,priority=:priority,status=:status WHERE id=:id
-        """, data)
-    else:
-        conn.execute("""
-            INSERT INTO tasks (bid_id,title,description,owner,due_date,priority,status)
-            VALUES (:bid_id,:title,:description,:owner,:due_date,:priority,:status)
-        """, data)
-    conn.commit(); conn.close()
-
-def delete_task(task_id):
-    conn = get_conn()
-    conn.execute("DELETE FROM tasks WHERE id=?", (task_id,))
-    conn.commit(); conn.close()
-
-# ── Documents ─────────────────────────────────────────
-def get_documents(bid_id):
-    conn = get_conn()
-    rows = conn.execute(
-        "SELECT * FROM documents WHERE bid_id=? ORDER BY doc_type,name",
-        (bid_id,)).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
-def upsert_document(data):
-    conn = get_conn()
-    if data.get('id'):
-        conn.execute("""
-            UPDATE documents SET name=:name,doc_type=:doc_type,owner=:owner,
-            due_date=:due_date,status=:status,notes=:notes WHERE id=:id
-        """, data)
-    else:
-        conn.execute("""
-            INSERT INTO documents (bid_id,name,doc_type,file_path,owner,due_date,status,notes)
-            VALUES (:bid_id,:name,:doc_type,:file_path,:owner,:due_date,:status,:notes)
-        """, data)
-    conn.commit(); conn.close()
-
-def save_upload(bid_id, filename, file_bytes):
-    upload_dir = os.path.join(os.path.dirname(__file__), "uploads", str(bid_id))
-    os.makedirs(upload_dir, exist_ok=True)
-    path = os.path.join(upload_dir, filename)
-    with open(path, "wb") as f:
-        f.write(file_bytes)
-    conn = get_conn()
-    conn.execute("""
-        INSERT INTO documents (bid_id,name,doc_type,file_path,status)
-        VALUES (?,?,?,?,'Complete')
-    """, (bid_id, filename, "RFP / Source", path))
-    conn.commit(); conn.close()
-    return path
-
-def delete_document(doc_id):
-    conn = get_conn()
-    conn.execute("DELETE FROM documents WHERE id=?", (doc_id,))
-    conn.commit(); conn.close()
-
-# ── Outline ───────────────────────────────────────────
-def get_outline(bid_id):
-    conn = get_conn()
-    rows = conn.execute(
-        "SELECT * FROM outline_sections WHERE bid_id=? ORDER BY sort_order",
-        (bid_id,)).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
-def upsert_section(data):
-    conn = get_conn()
-    if data.get('id'):
-        conn.execute("""
-            UPDATE outline_sections SET sort_order=:sort_order,section_num=:section_num,
-            title=:title,owner=:owner,word_limit=:word_limit,
-            status=:status,notes=:notes WHERE id=:id
-        """, data)
-    else:
-        conn.execute("""
-            INSERT INTO outline_sections
-            (bid_id,sort_order,section_num,title,owner,word_limit,status,notes)
-            VALUES (:bid_id,:sort_order,:section_num,:title,:owner,:word_limit,:status,:notes)
-        """, data)
-    conn.commit(); conn.close()
-
-def delete_section(sec_id):
-    conn = get_conn()
-    conn.execute("DELETE FROM outline_sections WHERE id=?", (sec_id,))
-    conn.commit(); conn.close()
-
-# ── Readiness calculation ─────────────────────────────
-def get_readiness(bid_id):
-    conn = get_conn()
-    r = conn.execute("""
-        SELECT
-          (SELECT COUNT(*) FROM requirements WHERE bid_id=? AND category='Mandatory') as m_total,
-          (SELECT COUNT(*) FROM requirements WHERE bid_id=? AND category='Mandatory' AND status='Complete') as m_done,
-          (SELECT COUNT(*) FROM requirements WHERE bid_id=? AND category!='Mandatory') as r_total,
-          (SELECT COUNT(*) FROM requirements WHERE bid_id=? AND category!='Mandatory' AND status='Complete') as r_done,
-          (SELECT COUNT(*) FROM tasks WHERE bid_id=?) as t_total,
-          (SELECT COUNT(*) FROM tasks WHERE bid_id=? AND status='Complete') as t_done,
-          (SELECT COUNT(*) FROM documents WHERE bid_id=? AND doc_type='Submission') as d_total,
-          (SELECT COUNT(*) FROM documents WHERE bid_id=? AND doc_type='Submission' AND status='Complete') as d_done
-    """, (bid_id,)*8).fetchone()
-    conn.close()
-    return dict(r)
-
-# ── Deliverables (Services Register) ─────────────────────────────────────────
-def get_deliverables(bid_id):
-    conn = get_conn()
-    rows = conn.execute(
-        "SELECT * FROM deliverables WHERE bid_id=? ORDER BY sort_order, category",
-        (bid_id,)).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
-def upsert_deliverable(data):
-    conn = get_conn()
-    if data.get("id"):
-        conn.execute("""
-            UPDATE deliverables SET sort_order=:sort_order,service_id=:service_id,
-            title=:title,description=:description,category=:category,
-            duration=:duration,volume=:volume,unit=:unit,
-            price_ai=:price_ai,price_non_ai=:price_non_ai,
-            optional=:optional,linked_req_ids=:linked_req_ids,notes=:notes
-            WHERE id=:id
-        """, data)
-    else:
-        conn.execute("""
-            INSERT INTO deliverables
-            (bid_id,sort_order,service_id,title,description,category,
-             duration,volume,unit,price_ai,price_non_ai,optional,linked_req_ids,notes)
-            VALUES (:bid_id,:sort_order,:service_id,:title,:description,:category,
-                    :duration,:volume,:unit,:price_ai,:price_non_ai,
-                    :optional,:linked_req_ids,:notes)
-        """, data)
-    conn.commit(); conn.close()
-
-def delete_deliverable(del_id):
-    conn = get_conn()
-    conn.execute("DELETE FROM deliverables WHERE id=?", (del_id,))
-    conn.commit(); conn.close()
 
 # ── Content Library ───────────────────────────────────────────────────────────
 def get_library_items(bid_id=None, category=None):
