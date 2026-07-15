@@ -175,13 +175,18 @@ def days_until(deadline_str):
     try:
         d = date.fromisoformat(deadline_str)
         return (d - date.today()).days
-    except:
+    except Exception:
         return None
 
 def days_label(n):
-    if n is None: return "—"
-    if n < 0:    return f"<span style='color:#C0392B'>OVERDUE {abs(n)}d</span>"
-    if n == 0:   return "<span style='color:#C0392B'>DUE TODAY</span>"
-    if n <= 3:   return f"<span style='color:#E67E22'>{n}d left</span>"
-    if n <= 7:   return f"<span style='color:#C6A15B'>{n}d left</span>"
+    if n is None:
+        return "—"
+    if n < 0:
+        return f"<span style='color:#C0392B'>OVERDUE {abs(n)}d</span>"
+    if n == 0:
+        return "<span style='color:#C0392B'>DUE TODAY</span>"
+    if n <= 3:
+        return f"<span style='color:#E67E22'>{n}d left</span>"
+    if n <= 7:
+        return f"<span style='color:#C6A15B'>{n}d left</span>"
     return f"<span style='color:#A9A69D'>{n}d left</span>"

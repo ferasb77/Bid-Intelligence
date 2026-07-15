@@ -1,5 +1,6 @@
-import json, re, base64
-import fitz  # pymupdf
+import json
+import re
+import base64
 import anthropic
 
 EXTRACTION_PROMPT = """You are an expert bid analyst. Read the RFP/tender document and extract structured information.

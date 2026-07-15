@@ -3,7 +3,7 @@ Shared McKinsey-style PDF design system.
 White background, Inter typography, colour used only as signal.
 """
 import os
-from reportlab.lib.colors import HexColor, white, black
+from reportlab.lib.colors import HexColor
 from reportlab.lib.units import mm
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle
@@ -144,7 +144,8 @@ def pp(text, style="cell"):
     return Paragraph(str(text) if text else "—", st)
 
 def safe(v, n=250):
-    if not v: return "—"
+    if not v:
+        return "—"
     s = str(v)
     return s[:n] + "…" if len(s) > n else s
 
@@ -194,7 +195,7 @@ def make_footer(left_text, landscape_mode=True):
 # ── Cover header builder ──────────────────────────────────────────────────────
 def cover_header(story, bid, doc_type_label):
     """Append McKinsey-style page header to story list."""
-    from reportlab.platypus import Paragraph, Spacer, HRFlowable
+    from reportlab.platypus import Spacer, HRFlowable
     from datetime import date
 
     story.append(pp("Enable My Growth  ·  Bid Intelligence Platform", "firm"))
@@ -211,10 +212,14 @@ def cover_header(story, bid, doc_type_label):
     story.append(Spacer(1, 2*mm))
 
     parts = []
-    if bid.get("file_number"):            parts.append(f"File #{bid['file_number']}")
-    if bid.get("submission_deadline"):    parts.append(f"Submission  {bid['submission_deadline']}")
-    if bid.get("clarification_deadline"): parts.append(f"Clarifications  {bid['clarification_deadline']}")
-    if bid.get("owner"):                  parts.append(f"Proposal Lead  {bid['owner']}")
+    if bid.get("file_number"):
+        parts.append(f"File #{bid['file_number']}")
+    if bid.get("submission_deadline"):
+        parts.append(f"Submission  {bid['submission_deadline']}")
+    if bid.get("clarification_deadline"):
+        parts.append(f"Clarifications  {bid['clarification_deadline']}")
+    if bid.get("owner"):
+        parts.append(f"Proposal Lead  {bid['owner']}")
     parts.append(f"Generated  {date.today().strftime('%B %d, %Y')}")
     story.append(pp("     |     ".join(parts), "meta"))
     story.append(Spacer(1, 1.5*mm))
@@ -235,12 +240,11 @@ def generate_clarifications_pdf(bid: dict, questions: list, include_rationale: b
     from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
                                      Table, TableStyle, HRFlowable, KeepTogether)
     from reportlab.lib.styles import ParagraphStyle
-    from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER
 
     # Colours
     C_NAVY   = HexColor("#002060")
     C_BLUE   = HexColor("#1F5C99")
-    C_BLUE_L = HexColor("#EBF2FA")
     C_GREY_1 = HexColor("#595959")
     C_GREY_2 = HexColor("#8C8C8C")
     C_GREY_3 = HexColor("#D9D9D9")
@@ -249,15 +253,8 @@ def generate_clarifications_pdf(bid: dict, questions: list, include_rationale: b
     C_BLACK  = HexColor("#1A1A1A")
     C_RED    = HexColor("#C00000")
     C_AMBER  = HexColor("#E26B0A")
-    C_GREEN  = HexColor("#375623")
-    C_PURPLE = HexColor("#7030A0")
 
     PRI_COLOUR = {"Critical": C_RED, "High": C_AMBER, "Medium": C_BLUE, "Low": C_GREY_2}
-    CAT_COLOUR = {
-        "Eligibility": C_RED,   "Scope": C_BLUE,      "Pricing": C_GREEN,
-        "Process":     C_NAVY,  "References": C_PURPLE,"Insurance": C_AMBER,
-        "Other":       C_GREY_1,
-    }
 
     fn_r  = _font("regular")
     fn_m  = _font("medium")
@@ -292,9 +289,11 @@ def generate_clarifications_pdf(bid: dict, questions: list, include_rationale: b
     cw = PW - ML - MR
     def footer(canvas, doc):
         canvas.saveState()
-        canvas.setStrokeColor(C_GREY_3); canvas.setLineWidth(0.5)
+        canvas.setStrokeColor(C_GREY_3)
+        canvas.setLineWidth(0.5)
         canvas.line(ML, MB, PW-MR, MB)
-        canvas.setFont(fn_r, 7); canvas.setFillColor(C_GREY_2)
+        canvas.setFont(fn_r, 7)
+        canvas.setFillColor(C_GREY_2)
         canvas.drawString(ML, MB-4*mm,
             f"{bid.get('client','')}  ·  {bid.get('title','')}  ·  {doc_label}")
         canvas.drawRightString(PW-MR, MB-4*mm, f"Page {doc.page}")
@@ -319,9 +318,12 @@ def generate_clarifications_pdf(bid: dict, questions: list, include_rationale: b
 
     # Meta line
     parts = []
-    if bid.get("file_number"):            parts.append(f"File #{bid['file_number']}")
-    if bid.get("clarification_deadline"): parts.append(f"Enquiry Deadline  {bid['clarification_deadline']}  14:00 Ottawa")
-    if bid.get("submission_deadline"):    parts.append(f"Submission  {bid['submission_deadline']}")
+    if bid.get("file_number"):
+        parts.append(f"File #{bid['file_number']}")
+    if bid.get("clarification_deadline"):
+        parts.append(f"Enquiry Deadline  {bid['clarification_deadline']}  14:00 Ottawa")
+    if bid.get("submission_deadline"):
+        parts.append(f"Submission  {bid['submission_deadline']}")
     parts.append(f"Generated  {date.today().strftime('%B %d, %Y')}")
     story.append(pp("     |     ".join(parts), 8, fn_r, C_GREY_2))
     story.append(Spacer(1, 1.5*mm))
@@ -393,11 +395,12 @@ def generate_clarifications_pdf(bid: dict, questions: list, include_rationale: b
         pri     = q.get("priority","Medium")
         pri_col = PRI_COLOUR.get(pri, C_GREY_1)
         cat     = q.get("category","")
-        cat_col = CAT_COLOUR.get(cat, C_GREY_1)
         qid     = q.get("id") or q.get("question_id") or str(i+1)
         relates = q.get("relates_to") or []
-        if isinstance(relates, list): relates_str = ", ".join(relates)
-        else: relates_str = str(relates)
+        if isinstance(relates, list):
+            relates_str = ", ".join(relates)
+        else:
+            relates_str = str(relates)
 
         elems = []
 
@@ -438,8 +441,10 @@ def generate_clarifications_pdf(bid: dict, questions: list, include_rationale: b
 
         # Tags line
         tags = []
-        if cat:      tags.append(cat)
-        if relates_str: tags.append(f"Ref: {relates_str}")
+        if cat:
+            tags.append(cat)
+        if relates_str:
+            tags.append(f"Ref: {relates_str}")
         if tags:
             elems.append(Spacer(1, 1*mm))
             elems.append(pp("  ·  ".join(tags), 7, fn_r, C_GREY_2))
@@ -489,7 +494,7 @@ def generate_clarifications_pdf(bid: dict, questions: list, include_rationale: b
         story.append(pp("Submission Instructions", 11, fn_b, C_NAVY))
         story.append(Spacer(1, 2*mm))
         instructions = [
-            ("Submit to", f"contracts@cda-amc.ca"),
+            ("Submit to", "contracts@cda-amc.ca"),
             ("Deadline", f"{bid.get('clarification_deadline','')} — 14:00 Ottawa local time (21:00 Beirut)"),
             ("Reference", f"File #{bid.get('file_number','')} in subject line"),
             ("Note", "All questions and responses will be shared with all invited organizations (§2.6)"),

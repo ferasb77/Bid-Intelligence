@@ -7,16 +7,13 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.units import mm
 from reportlab.lib.colors import HexColor
 from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
-                                 TableStyle, HRFlowable, KeepTogether)
+                                 TableStyle, KeepTogether)
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
 
 from pdf_styles import (
     pp, safe, pct, status_para, cover_header, make_footer,
-    content_w, STYLES, CAT_ACCENT, STATUS_COLOUR,
-    C_NAVY, C_BLUE, C_BLUE_L, C_WHITE, C_BLACK,
-    C_GREY_1, C_GREY_2, C_GREY_3, C_GREY_4,
-    C_RED, PW_L, PH_L, ML, MR, MT, MB,
+    content_w, STYLES, CAT_ACCENT, C_NAVY, C_BLUE, C_BLUE_L, C_WHITE, C_GREY_3, C_GREY_4,
+    C_RED, ML, MR, MT, MB,
     _font,
 )
 

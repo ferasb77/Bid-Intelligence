@@ -1,6 +1,5 @@
 import streamlit as st
-import base64, json, re
-from datetime import date, datetime
+from datetime import date
 from database import (init_db, get_all_bids, get_bid, create_bid, update_bid, delete_bid,
                       get_deliverables, upsert_deliverable, delete_deliverable,
                       get_requirements, upsert_requirement, delete_requirement,
@@ -9,13 +8,12 @@ from database import (init_db, get_all_bids, get_bid, create_bid, update_bid, de
                       get_document_versions, create_expected_document,
                       get_outline, upsert_section, delete_section,
                       get_readiness)
-from config import get_api_key, api_key_configured
+from config import api_key_configured
 from pages_extra import (page_content_library, page_proposal_analyzer,
     page_coach_roster, page_clarifications, page_section_drafter,
     page_submission_assembler, page_debrief, page_exec_dashboard)
 from pdf_export import generate_compliance_pdf
-from components.ui import (inject_css, stage_badge, status_badge, priority_badge,
-                            readiness_bar, days_until, days_label, metric_card,
+from components.ui import (inject_css, stage_badge, status_badge, readiness_bar, days_until, days_label, metric_card,
                             STAGES, STATUSES, PRIORITIES, CATEGORIES, SENSITIVITY,
                             DOC_TYPES, STAGE_COLOURS, PRIORITY_COLOURS)
 
@@ -25,8 +23,10 @@ init_db()
 inject_css()
 
 # ── session defaults ──────────────────────────────────────────────────────────
-if "page" not in st.session_state:       st.session_state.page = "dashboard"
-if "active_bid" not in st.session_state: st.session_state.active_bid = None
+if "page" not in st.session_state:
+    st.session_state.page = "dashboard"
+if "active_bid" not in st.session_state:
+    st.session_state.active_bid = None
 
 def go(page, bid_id=None):
     st.session_state.page = page
@@ -121,13 +121,15 @@ def page_dashboard():
             c1.markdown(f"**{b['client']}** — {b['title']}")
             c2.markdown(days_label(days_until(b.get("submission_deadline"))), unsafe_allow_html=True)
             c3.markdown(readiness_bar(pct), unsafe_allow_html=True)
-            if c4.button("Open", key=f"urg_{b['id']}"): go("bid_overview", b["id"])
+            if c4.button("Open", key=f"urg_{b['id']}"):
+                go("bid_overview", b["id"])
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
     st.markdown("### Pipeline")
     for stage in STAGES:
         sb = [b for b in bids if b["stage"] == stage]
-        if not sb: continue
+        if not sb:
+            continue
         col = STAGE_COLOURS.get(stage, "#6E6C66")
         st.markdown(f'<span style="color:{col};font-weight:600;font-size:.85rem">{stage.upper()} ({len(sb)})</span>', unsafe_allow_html=True)
         for b in sb:
@@ -137,7 +139,8 @@ def page_dashboard():
             c2.markdown(f'<span style="color:#A9A69D;font-size:.8rem">{b.get("owner") or "—"}</span>', unsafe_allow_html=True)
             c3.markdown(days_label(days_until(b.get("submission_deadline"))), unsafe_allow_html=True)
             c4.markdown(readiness_bar(pct) if b["req_count"] else '<span style="color:#6E6C66;font-size:.75rem">No requirements</span>', unsafe_allow_html=True)
-            if c5.button("Open", key=f"dash_{b['id']}"): go("bid_overview", b["id"])
+            if c5.button("Open", key=f"dash_{b['id']}"):
+                go("bid_overview", b["id"])
         st.markdown("")
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -159,7 +162,8 @@ def page_all_bids():
         c3.markdown(days_label(days_until(b.get("submission_deadline"))), unsafe_allow_html=True)
         c3.markdown(f'<span style="color:#6E6C66;font-size:.72rem">{b.get("submission_deadline") or "—"}</span>', unsafe_allow_html=True)
         c4.markdown(readiness_bar(pct) if b["req_count"] else '<span style="color:#6E6C66;font-size:.75rem">No requirements</span>', unsafe_allow_html=True)
-        if c5.button("Open →", key=f"all_{b['id']}"): go("bid_overview", b["id"])
+        if c5.button("Open →", key=f"all_{b['id']}"):
+            go("bid_overview", b["id"])
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -215,9 +219,11 @@ def page_new_bid():
     with st.expander("✏️ Create bid manually instead"):
         with st.form("manual_bid"):
             c1,c2 = st.columns(2)
-            title  = c1.text_input("Title *"); client = c2.text_input("Client *")
+            title  = c1.text_input("Title *")
+            client = c2.text_input("Client *")
             c1,c2 = st.columns(2)
-            file_no = c1.text_input("File Number"); owner = c2.text_input("Proposal Lead")
+            file_no = c1.text_input("File Number")
+            owner = c2.text_input("Proposal Lead")
             c1,c2,c3 = st.columns(3)
             stage = c1.selectbox("Stage", STAGES, index=1)
             sens  = c2.selectbox("Sensitivity", SENSITIVITY)
@@ -268,7 +274,8 @@ def _render_extraction_review():
     st.markdown(f"### Compliance Matrix — {len(reqs)} requirements extracted")
     for cat in ["Mandatory","Rated","Financial","Supporting"]:
         cr = [r for r in reqs if r.get("category")==cat]
-        if not cr: continue
+        if not cr:
+            continue
         st.markdown(f'<span style="font-size:.78rem;color:#C6A15B;font-weight:600">{cat.upper()} ({len(cr)})</span>', unsafe_allow_html=True)
         for r in cr:
             w = f" · {r['weight']*100:.0f}%" if r.get("weight") else ""
@@ -319,7 +326,9 @@ def _render_extraction_review():
 # ═════════════════════════════════════════════════════════════════════════════
 def page_bid_overview(bid_id):
     bid = get_bid(bid_id)
-    if not bid: st.error("Bid not found."); return
+    if not bid:
+        st.error("Bid not found.")
+        return
     c1,c2 = st.columns([4,1])
     c1.markdown(f"# {bid['client']}")
     c1.markdown(f'<span style="color:#A9A69D">{bid["title"]}</span>', unsafe_allow_html=True)
@@ -368,7 +377,8 @@ def page_bid_overview(bid_id):
         if not st.session_state.get(_upload_key):
             save_upload(bid_id, up.name, up.read())
             st.session_state[_upload_key] = True
-            st.success(f"Uploaded: {up.name}"); st.rerun()
+            st.success(f"Uploaded: {up.name}")
+            st.rerun()
 
     if bid.get("notes"):
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
@@ -376,8 +386,10 @@ def page_bid_overview(bid_id):
         st.markdown(f'<div class="info-box">{bid["notes"]}</div>', unsafe_allow_html=True)
 
     def _parse_date(s):
-        try: return date.fromisoformat(s)
-        except: return None
+        try:
+            return date.fromisoformat(s)
+        except Exception:
+            return None
 
     with st.expander("✏️ Edit Bid Details"):
         with st.form("edit_bid"):
@@ -403,7 +415,8 @@ def page_bid_overview(bid_id):
                 "sensitivity":sens,"owner":owner,"value_cad":val or None,
                 "submission_deadline":str(sub_dl) if sub_dl else None,
                 "clarification_deadline":str(clar_dl) if clar_dl else None,"notes":notes})
-            st.success("Saved."); st.rerun()
+            st.success("Saved.")
+            st.rerun()
         if dell:
             delete_bid(bid_id)
             st.session_state.active_bid = None
@@ -435,13 +448,17 @@ def page_compliance(bid_id):
                 st.error(f"PDF error: {e}")
 
     if reqs:
-        total=len(reqs); done=sum(1 for r in reqs if r["status"]=="Complete")
+        total=len(reqs)
+        done=sum(1 for r in reqs if r["status"]=="Complete")
         blocked=sum(1 for r in reqs if r["status"]=="Blocked")
         mfail=sum(1 for r in reqs if r["category"]=="Mandatory" and r["status"] not in ("Complete","N/A"))
         c1,c2,c3,c4=st.columns(4)
-        c1.metric("Total",total); c2.metric("Complete",done)
-        c3.metric("Blocked",blocked); c4.metric("Mandatory Outstanding",mfail)
-        if mfail: st.markdown('<div class="warn-box">⚠ Outstanding mandatory requirements — submission may be disqualified.</div>', unsafe_allow_html=True)
+        c1.metric("Total",total)
+        c2.metric("Complete",done)
+        c3.metric("Blocked",blocked)
+        c4.metric("Mandatory Outstanding",mfail)
+        if mfail:
+            st.markdown('<div class="warn-box">⚠ Outstanding mandatory requirements — submission may be disqualified.</div>', unsafe_allow_html=True)
         st.markdown("")
 
     for cat in ["Mandatory","Rated","Financial","Supporting"]:
@@ -462,13 +479,15 @@ def page_compliance(bid_id):
                 c1.markdown(f'<span style="font-size:.82rem;color:#A9A69D">{req["req_id"] or "—"}</span>', unsafe_allow_html=True)
                 c2.markdown(f'<span style="font-size:.78rem;color:#6E6C66">{req["rfso_ref"] or "—"}</span>', unsafe_allow_html=True)
                 c3.markdown(f'<span style="font-size:.82rem">{req["description"]}</span>', unsafe_allow_html=True)
-                if req.get("weight"): c3.markdown(f'<span style="font-size:.72rem;color:#C6A15B">{req["weight"]*100:.0f}% weight</span>', unsafe_allow_html=True)
+                if req.get("weight"):
+                    c3.markdown(f'<span style="font-size:.72rem;color:#C6A15B">{req["weight"]*100:.0f}% weight</span>', unsafe_allow_html=True)
                 c4.markdown(f'<span style="font-size:.78rem;color:#A9A69D">{req["evidence"] or "—"}</span>', unsafe_allow_html=True)
                 c5.markdown(f'<span style="font-size:.82rem">{req["owner"] or "—"}</span>', unsafe_allow_html=True)
                 c6.markdown(f'<span style="font-size:.78rem;color:#A9A69D">{req["deadline"] or "—"}</span>', unsafe_allow_html=True)
                 c7.markdown(status_badge(req["status"]), unsafe_allow_html=True)
                 if c8.button("✏", key=f"er_{req['id']}"):
-                    st.session_state["editing_req"]=req["id"]; st.rerun()
+                    st.session_state["editing_req"]=req["id"]
+                    st.rerun()
                 st.markdown('<hr class="section-divider" style="margin:.3rem 0">', unsafe_allow_html=True)
         st.markdown("")
 
@@ -500,9 +519,15 @@ def page_compliance(bid_id):
                 upsert_requirement({"id":eid,"bid_id":bid_id,"req_id":rid,"category":cat,
                     "description":desc,"rfso_ref":ref,"weight":wt/100 if wt else None,
                     "evidence":ev,"owner":own,"deadline":dl,"status":st_,"notes":notes})
-                del st.session_state["editing_req"]; st.rerun()
-            if dl_: delete_requirement(eid); del st.session_state["editing_req"]; st.rerun()
-            if cx:  del st.session_state["editing_req"]; st.rerun()
+                del st.session_state["editing_req"]
+                st.rerun()
+            if dl_:
+                delete_requirement(eid)
+                del st.session_state["editing_req"]
+                st.rerun()
+            if cx:
+                del st.session_state["editing_req"]
+                st.rerun()
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
     with st.expander("➕ Add Requirement"):
@@ -513,7 +538,9 @@ def page_compliance(bid_id):
             ref=c3.text_input("RFSO Ref")
             desc=st.text_area("Description *",height=70)
             c1,c2,c3=st.columns(3)
-            ev=c1.text_input("Evidence"); own=c2.text_input("Owner"); dl=c3.text_input("Deadline")
+            ev=c1.text_input("Evidence")
+            own=c2.text_input("Owner")
+            dl=c3.text_input("Deadline")
             c1,c2=st.columns(2)
             wt=c1.number_input("Weight (%)",min_value=0.0,max_value=100.0,step=0.5)
             st_=c2.selectbox("Status",STATUSES)
@@ -533,28 +560,35 @@ def page_tasks(bid_id):
     st.markdown("# Tasks")
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
     if tasks:
-        total=len(tasks); done=sum(1 for t in tasks if t["status"]=="Complete")
+        total=len(tasks)
+        done=sum(1 for t in tasks if t["status"]=="Complete")
         blocked=sum(1 for t in tasks if t["status"]=="Blocked")
         overdue=sum(1 for t in tasks if (days_until(t.get("due_date")) or 1)<0 and t["status"]!="Complete")
         c1,c2,c3,c4=st.columns(4)
-        c1.metric("Total",total); c2.metric("Complete",done)
-        c3.metric("Blocked",blocked); c4.metric("Overdue",overdue)
+        c1.metric("Total",total)
+        c2.metric("Complete",done)
+        c3.metric("Blocked",blocked)
+        c4.metric("Overdue",overdue)
         st.markdown("")
 
     for pri in PRIORITIES:
         pt = [t for t in tasks if t["priority"]==pri and t["status"]!="Complete"]
-        if not pt: continue
+        if not pt:
+            continue
         col=PRIORITY_COLOURS.get(pri,"#6E6C66")
         st.markdown(f'<span style="font-size:.8rem;color:{col};font-weight:600">{pri.upper()} ({len(pt)})</span>', unsafe_allow_html=True)
         for t in pt:
             d=days_until(t.get("due_date"))
             c1,c2,c3,c4,c5=st.columns([3.5,1.5,1.5,1.8,1])
             c1.markdown(f"**{t['title']}**")
-            if t.get("description"): c1.markdown(f'<span style="font-size:.78rem;color:#A9A69D">{t["description"]}</span>', unsafe_allow_html=True)
+            if t.get("description"):
+                c1.markdown(f'<span style="font-size:.78rem;color:#A9A69D">{t["description"]}</span>', unsafe_allow_html=True)
             c2.markdown(f'<span style="font-size:.82rem">{t.get("owner") or "—"}</span>', unsafe_allow_html=True)
             c3.markdown(days_label(d) if d is not None else '<span style="color:#6E6C66">—</span>', unsafe_allow_html=True)
             c4.markdown(status_badge(t["status"]), unsafe_allow_html=True)
-            if c5.button("✏",key=f"et_{t['id']}"): st.session_state["editing_task"]=t["id"]; st.rerun()
+            if c5.button("✏",key=f"et_{t['id']}"):
+                st.session_state["editing_task"]=t["id"]
+                st.rerun()
             st.markdown('<hr class="section-divider" style="margin:.25rem 0">', unsafe_allow_html=True)
         st.markdown("")
 
@@ -565,9 +599,12 @@ def page_tasks(bid_id):
                 c1,c2,c3=st.columns([4,2,1])
                 c1.markdown(f'<span style="color:#6E6C66;text-decoration:line-through">{t["title"]}</span>', unsafe_allow_html=True)
                 c2.markdown(f'<span style="font-size:.78rem;color:#6E6C66">{t.get("owner") or "—"}</span>', unsafe_allow_html=True)
-                if c3.button("✏",key=f"edt_{t['id']}"): st.session_state["editing_task"]=t["id"]; st.rerun()
+                if c3.button("✏",key=f"edt_{t['id']}"):
+                    st.session_state["editing_task"]=t["id"]
+                    st.rerun()
 
-    if not tasks: st.markdown('<div class="empty-state">No tasks yet.</div>', unsafe_allow_html=True)
+    if not tasks:
+        st.markdown('<div class="empty-state">No tasks yet.</div>', unsafe_allow_html=True)
 
     eid=st.session_state.get("editing_task")
     if eid:
@@ -590,9 +627,15 @@ def page_tasks(bid_id):
             if sv:
                 upsert_task({"id":eid,"bid_id":bid_id,"title":title,"description":desc,
                     "owner":own,"due_date":dd,"priority":pri,"status":st_})
-                del st.session_state["editing_task"]; st.rerun()
-            if dl: delete_task(eid); del st.session_state["editing_task"]; st.rerun()
-            if cx: del st.session_state["editing_task"]; st.rerun()
+                del st.session_state["editing_task"]
+                st.rerun()
+            if dl:
+                delete_task(eid)
+                del st.session_state["editing_task"]
+                st.rerun()
+            if cx:
+                del st.session_state["editing_task"]
+                st.rerun()
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
     with st.expander("➕ Add Task"):
@@ -600,7 +643,8 @@ def page_tasks(bid_id):
             title=st.text_input("Title *")
             desc=st.text_area("Description",height=60)
             c1,c2,c3=st.columns(3)
-            own=c1.text_input("Owner"); dd=c2.text_input("Due Date",placeholder="2026-07-25")
+            own=c1.text_input("Owner")
+            dd=c2.text_input("Due Date",placeholder="2026-07-25")
             pri=c3.selectbox("Priority",PRIORITIES,index=1)
             st_=st.selectbox("Status",STATUSES)
             if st.form_submit_button("Add Task",use_container_width=True):
@@ -613,7 +657,6 @@ def page_tasks(bid_id):
 # PAGE: DOCUMENTS
 # ═════════════════════════════════════════════════════════════════════════════
 def page_documents(bid_id):
-    from database import get_document_versions, create_expected_document
     bid  = get_bid(bid_id)
     docs = get_documents(bid_id)
     reqs = get_requirements(bid_id)
@@ -706,7 +749,8 @@ def page_documents(bid_id):
 
     for label, doc_type in TYPE_ORDER:
         type_docs = [d for d in docs if d["doc_type"]==doc_type]
-        if not type_docs: continue
+        if not type_docs:
+            continue
 
         done    = sum(1 for d in type_docs if d["status"] in ("Uploaded","Approved","Submitted","Complete"))
         missing = sum(1 for d in type_docs if d["status"]=="Expected")
@@ -813,9 +857,9 @@ def page_documents(bid_id):
                 key=f"upfile_{upload_doc_id}")
             uploader_name = st.text_input("Uploaded by", placeholder="Your name",
                                           key=f"upby_{upload_doc_id}")
-            up_notes = st.text_input("Version notes (optional)",
-                                     placeholder="e.g. Final version after legal review",
-                                     key=f"upnotes_{upload_doc_id}")
+            st.text_input("Version notes (optional)",
+                          placeholder="e.g. Final version after legal review",
+                          key=f"upnotes_{upload_doc_id}")
 
             c1,c2 = st.columns([2,1])
             if c1.button("✅ Confirm Upload", use_container_width=True, type="primary"):
@@ -829,12 +873,13 @@ def page_documents(bid_id):
                                     doc_id=upload_doc_id)
                         st.session_state[_key] = True
                     del st.session_state["upload_for_doc"]
-                    st.success(f"✅ Uploaded successfully.")
+                    st.success("✅ Uploaded successfully.")
                     st.rerun()
                 else:
                     st.error("Please select a file first.")
             if c2.button("Cancel", use_container_width=True):
-                del st.session_state["upload_for_doc"]; st.rerun()
+                del st.session_state["upload_for_doc"]
+                st.rerun()
 
     # ── Edit document details ──────────────────────────────────────────────────
     eid = st.session_state.get("editing_doc")
@@ -890,12 +935,15 @@ def page_documents(bid_id):
                     "owner":owner,"due_date":due,"status":st_,
                     "linked_req_ids":linked,"mandatory":1 if mand else 0,
                     "notes":notes,"file_path":None,"file_size":None,"version":None})
-                del st.session_state["editing_doc"]; st.rerun()
+                del st.session_state["editing_doc"]
+                st.rerun()
             if dl:
                 delete_document(eid)
-                del st.session_state["editing_doc"]; st.rerun()
+                del st.session_state["editing_doc"]
+                st.rerun()
             if cx:
-                del st.session_state["editing_doc"]; st.rerun()
+                del st.session_state["editing_doc"]
+                st.rerun()
 
     # ── Add new document / upload ──────────────────────────────────────────────
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
@@ -953,15 +1001,182 @@ def page_documents(bid_id):
                 else:
                     st.error("Document name required.")
 
+    # ── Document analysis trigger ──────────────────────────────────────────────
+    analyze_id = st.session_state.get("analyze_doc_id")
+    if analyze_id:
+        doc = next((d for d in docs if d["id"] == analyze_id), None)
+        if doc:
+            st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+            st.markdown(f"### 🔍 Analyze: {doc['name']}")
+            st.markdown(
+                '<div class="info-box">Claude will read this document and identify '
+                'new requirements, deadline changes, modifications to existing requirements, '
+                'and clarifications. You review the findings before anything is applied.</div>',
+                unsafe_allow_html=True)
+
+            c1, c2 = st.columns([3, 1])
+            if c1.button("🔍 Run Analysis with Claude", use_container_width=True, type="primary",
+                         key="run_analysis_btn"):
+                from analyst import analyze_addendum
+                from database import download_file
+                import fitz
+
+                with st.spinner(f"Analyzing {doc['name']}… 20–40 seconds"):
+                    try:
+                        sp   = doc.get("storage_path") or ""
+                        fp   = doc.get("file_path") or ""
+                        name_lower = doc["name"].lower()
+                        file_bytes = None
+                        text = ""
+
+                        # 1. Try Supabase Storage first
+                        if sp:
+                            file_bytes = download_file(sp)
+
+                        # 2. Fallback: local disk
+                        if not file_bytes and fp and not fp.startswith("supabase://"):
+                            import os as _os
+                            if _os.path.exists(fp):
+                                with open(fp, "rb") as f_:
+                                    file_bytes = f_.read()
+
+                        # 3. Extract text
+                        if file_bytes:
+                            if name_lower.endswith(".pdf"):
+                                fitz_doc = fitz.open(stream=file_bytes, filetype="pdf")
+                                text = "\n".join(p.get_text() for p in fitz_doc)
+                            else:
+                                text = file_bytes.decode("utf-8", errors="ignore")
+                        else:
+                            st.error("Could not retrieve file. Try re-uploading the document.")
+                            st.stop()
+
+                        if text.strip():
+                            reqs   = get_requirements(bid_id)
+                            result = analyze_addendum(text, reqs, bid)
+                            st.session_state["addendum_result"] = result
+                            st.session_state["addendum_source"] = doc["name"]
+                            del st.session_state["analyze_doc_id"]
+                            st.rerun()
+                        else:
+                            st.error("Could not extract text from this document.")
+                    except Exception as e:
+                        st.error(f"Analysis failed: {e}")
+
+            if c2.button("Cancel", use_container_width=True, key="cancel_analysis_btn"):
+                del st.session_state["analyze_doc_id"]
+                st.rerun()
+
+    # ── Addendum analysis result display ──────────────────────────────────────
+    if st.session_state.get("addendum_result"):
+        from database import update_bid
+        r   = st.session_state["addendum_result"]
+        src = st.session_state.get("addendum_source", "")
+
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        st.markdown(f"### 📋 Analysis: {r.get('document_number','Document')} — {r.get('document_type','')}")
+        st.markdown(f'<div class="info-box">{r.get("summary","")}</div>', unsafe_allow_html=True)
+
+        # Deadline changes
+        dl = r.get("deadline_changes", {}) or {}
+        if dl.get("submission_deadline") or dl.get("clarification_deadline"):
+            st.markdown("#### ⏰ Deadline Changes")
+            if dl.get("submission_deadline"):
+                st.markdown(f'<div class="warn-box">Submission deadline → <strong>{dl["submission_deadline"]}</strong></div>',
+                            unsafe_allow_html=True)
+            if dl.get("clarification_deadline"):
+                st.markdown(f'<div class="warn-box">Clarification deadline → <strong>{dl["clarification_deadline"]}</strong></div>',
+                            unsafe_allow_html=True)
+
+        # Key changes
+        if r.get("key_changes"):
+            st.markdown("#### Key Changes")
+            for ch in r["key_changes"]:
+                st.markdown(f'<span style="color:#C6A15B;font-size:.85rem">· {ch}</span>',
+                            unsafe_allow_html=True)
+
+        # New requirements
+        new_reqs = r.get("new_requirements", []) or []
+        mod_reqs = r.get("modified_requirements", []) or []
+        clars    = r.get("clarifications", []) or []
+
+        if new_reqs:
+            st.markdown(f"#### ➕ New Requirements ({len(new_reqs)})")
+            for req in new_reqs:
+                st.markdown(
+                    f'<div style="background:#131316;border-left:3px solid #C6A15B;'
+                    f'padding:.5rem .8rem;margin:.25rem 0;font-size:.82rem">'
+                    f'<span style="color:#C6A15B;font-weight:700">{req.get("req_id","")}</span> '
+                    f'({req.get("category","")}) {req.get("description","")}</div>',
+                    unsafe_allow_html=True)
+
+        if mod_reqs:
+            st.markdown(f"#### ✏️ Modified Requirements ({len(mod_reqs)})")
+            for mod in mod_reqs:
+                st.markdown(
+                    f'<div style="background:#1A0F00;border-left:3px solid #E67E22;'
+                    f'padding:.5rem .8rem;margin:.25rem 0;font-size:.82rem">'
+                    f'<span style="color:#E67E22;font-weight:700">{mod.get("req_id","")}</span> — '
+                    f'{mod.get("change_description","")}</div>',
+                    unsafe_allow_html=True)
+
+        if clars:
+            st.markdown(f"#### 💬 Clarifications ({len(clars)})")
+            for cl in clars:
+                st.markdown(
+                    f'<div style="background:#0A1A0A;border-left:3px solid #27AE60;'
+                    f'padding:.5rem .8rem;font-size:.82rem;margin:.25rem 0">'
+                    f'<strong style="color:#27AE60">{cl.get("topic","")}</strong>: '
+                    f'{cl.get("clarification","")}</div>',
+                    unsafe_allow_html=True)
+
+        st.markdown("")
+        c1, c2 = st.columns([2, 1])
+
+        if c1.button("✅ Apply all changes to bid", use_container_width=True,
+                     type="primary", key="apply_changes_btn"):
+            applied = 0
+            for req in new_reqs:
+                upsert_requirement({**req, "id": None, "bid_id": bid_id,
+                                    "notes": (req.get("notes","") or "") + f" | Source: {src}"})
+                applied += 1
+            # Update deadlines if changed
+            if dl.get("submission_deadline") or dl.get("clarification_deadline"):
+                update_bid(bid_id, {
+                    **bid,
+                    "submission_deadline":    dl.get("submission_deadline") or bid.get("submission_deadline"),
+                    "clarification_deadline": dl.get("clarification_deadline") or bid.get("clarification_deadline"),
+                })
+            # Log clarifications as notes on linked requirements
+            all_reqs = get_requirements(bid_id)
+            for cl in clars:
+                for rid in (cl.get("affects_req_ids") or []):
+                    match = next((r2 for r2 in all_reqs if r2.get("req_id")==rid), None)
+                    if match:
+                        upsert_requirement({**match,
+                            "notes": (match.get("notes","") or "") +
+                                     f" | Clarification ({src}): {cl.get('clarification','')[:120]}"})
+            del st.session_state["addendum_result"]
+            st.session_state.pop("addendum_source", None)
+            st.success(f"Applied: {applied} new requirements added. Deadlines and clarifications updated.")
+            st.rerun()
+
+        if c2.button("✕ Discard", use_container_width=True, key="discard_changes_btn"):
+            del st.session_state["addendum_result"]
+            st.session_state.pop("addendum_source", None)
+            st.rerun()
+
 
 def page_outline(bid_id):
     sections=get_outline(bid_id)
     st.markdown("# Proposal Outline")
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
     if sections:
-        total=len(sections); done=sum(1 for s in sections if s["status"]=="Complete")
+        total=len(sections)
+        done=sum(1 for s in sections if s["status"]=="Complete")
         c1,c2,c3=st.columns(3)
-        c1.metric("Sections",total); c2.metric("Complete",done)
+        c1.metric("Sections",total)
+        c2.metric("Complete",done)
         c3.metric("In Progress",sum(1 for s in sections if s["status"]=="In Progress"))
         st.markdown(readiness_bar(done/total*100 if total else 0), unsafe_allow_html=True)
         st.markdown("")
@@ -973,11 +1188,14 @@ def page_outline(bid_id):
             c1.markdown(f'<span style="font-size:.78rem;color:#6E6C66">{i}</span>', unsafe_allow_html=True)
             c2.markdown(f'<span style="font-size:.82rem;color:#C6A15B">{sec.get("section_num") or ""}</span>', unsafe_allow_html=True)
             c3.markdown(f'<span style="font-size:.85rem;font-weight:500">{sec["title"]}</span>', unsafe_allow_html=True)
-            if sec.get("notes"): c3.markdown(f'<span style="font-size:.74rem;color:#6E6C66">{sec["notes"]}</span>', unsafe_allow_html=True)
+            if sec.get("notes"):
+                c3.markdown(f'<span style="font-size:.74rem;color:#6E6C66">{sec["notes"]}</span>', unsafe_allow_html=True)
             c4.markdown(f'<span style="font-size:.82rem">{sec.get("owner") or "—"}</span>', unsafe_allow_html=True)
             c5.markdown(f'<span style="font-size:.78rem;color:#A9A69D">{sec.get("word_limit") or "—"}</span>', unsafe_allow_html=True)
             c6.markdown(status_badge(sec["status"]), unsafe_allow_html=True)
-            if c7.button("✏",key=f"es_{sec['id']}"): st.session_state["editing_sec"]=sec["id"]; st.rerun()
+            if c7.button("✏",key=f"es_{sec['id']}"):
+                st.session_state["editing_sec"]=sec["id"]
+                st.rerun()
             st.markdown('<hr class="section-divider" style="margin:.25rem 0">', unsafe_allow_html=True)
     else:
         st.markdown('<div class="empty-state">No sections yet.</div>', unsafe_allow_html=True)
@@ -1040,17 +1258,25 @@ def page_outline(bid_id):
             if sv:
                 upsert_section({"id":eid,"bid_id":bid_id,"title":title,"section_num":n,
                     "sort_order":so,"owner":own,"word_limit":wl or None,"status":st_,"notes":notes})
-                del st.session_state["editing_sec"]; st.rerun()
-            if dl: delete_section(eid); del st.session_state["editing_sec"]; st.rerun()
-            if cx: del st.session_state["editing_sec"]; st.rerun()
+                del st.session_state["editing_sec"]
+                st.rerun()
+            if dl:
+                delete_section(eid)
+                del st.session_state["editing_sec"]
+                st.rerun()
+            if cx:
+                del st.session_state["editing_sec"]
+                st.rerun()
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
     with st.expander("➕ Add Section"):
         with st.form("add_sec",clear_on_submit=True):
             title=st.text_input("Title *")
             c1,c2,c3,c4=st.columns(4)
-            n=c1.text_input("Number"); so=c2.number_input("Order",value=len(sections),step=1)
-            own=c3.text_input("Owner"); wl=c4.number_input("Word Limit",value=0,step=50)
+            n=c1.text_input("Number")
+            so=c2.number_input("Order",value=len(sections),step=1)
+            own=c3.text_input("Owner")
+            wl=c4.number_input("Word Limit",value=0,step=50)
             notes=st.text_area("Notes",height=50)
             if st.form_submit_button("Add",use_container_width=True):
                 if title:
@@ -1063,8 +1289,10 @@ def page_outline(bid_id):
 # PAGE: AI ANALYST
 # ═════════════════════════════════════════════════════════════════════════════
 def _score_colour(score):
-    if score>=75: return "#27AE60"
-    if score>=50: return "#E67E22"
+    if score>=75:
+        return "#27AE60"
+    if score>=50:
+        return "#E67E22"
     return "#C0392B"
 
 def _dim_bar(score):
@@ -1083,14 +1311,17 @@ def _rec_badge(rec):
 def page_ai_analyst(bid_id):
     from analyst import (compliance_review, missing_evidence,
                          generate_clarification_questions, bid_no_bid_score)
-    bid=get_bid(bid_id); reqs=get_requirements(bid_id)
+    bid=get_bid(bid_id)
+    reqs=get_requirements(bid_id)
     st.markdown("# AI Compliance Assistant")
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
 
     if not api_key_configured() and not st.session_state.get("anthropic_api_key"):
         st.markdown('<div class="warn-box">No Anthropic API key. Add <code>ANTHROPIC_API_KEY=sk-ant-…</code> to your <code>.env</code> file.</div>', unsafe_allow_html=True)
         key=st.text_input("Or paste key for this session",type="password",placeholder="sk-ant-…")
-        if st.button("Save") and key: st.session_state["anthropic_api_key"]=key; st.rerun()
+        if st.button("Save") and key:
+            st.session_state["anthropic_api_key"]=key
+            st.rerun()
         st.stop()
 
     if not reqs:
@@ -1109,11 +1340,14 @@ def page_ai_analyst(bid_id):
         c2.markdown(f'<div style="padding-top:1.8rem;color:#A9A69D;font-size:.82rem">{len(filtered)} requirements selected</div>', unsafe_allow_html=True)
         draft=st.text_area("Paste draft text",height=200,placeholder="Paste any proposal section here…",key="cr_draft")
         if st.button("🔍 Review against requirements",key="cr_run",use_container_width=True,type="primary"):
-            if not draft.strip(): st.error("Paste some draft text first.")
+            if not draft.strip():
+                st.error("Paste some draft text first.")
             else:
                 with st.spinner("Reviewing…"):
-                    try: st.session_state["cr_result"]=compliance_review(draft,filtered)
-                    except Exception as e: st.error(f"Review failed: {e}")
+                    try:
+                        st.session_state["cr_result"]=compliance_review(draft,filtered)
+                    except Exception as e:
+                        st.error(f"Review failed: {e}")
         if "cr_result" in st.session_state:
             r=st.session_state["cr_result"]
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
@@ -1124,7 +1358,8 @@ def page_ai_analyst(bid_id):
                         f'<div style="font-size:.72rem;color:#A9A69D;text-transform:uppercase">Compliance Score</div></div>', unsafe_allow_html=True)
             c2.markdown(f'<div class="info-box">{r.get("summary","")}</div>', unsafe_allow_html=True)
             if r.get("critical_gaps"):
-                for g in r["critical_gaps"]: c2.markdown(f'<span style="color:#C0392B">⚠ {g}</span>', unsafe_allow_html=True)
+                for g in r["critical_gaps"]:
+                    c2.markdown(f'<span style="color:#C0392B">⚠ {g}</span>', unsafe_allow_html=True)
             st.markdown("")
             c1,c2,c3=st.columns(3)
             with c1:
@@ -1150,8 +1385,10 @@ def page_ai_analyst(bid_id):
         st.markdown('<div class="info-box">Scans the entire compliance matrix and surfaces unassigned owners, missing evidence, approaching deadlines, and blocked items.</div>', unsafe_allow_html=True)
         if st.button("⚠️ Scan for at-risk items",key="me_run",use_container_width=True,type="primary"):
             with st.spinner("Scanning…"):
-                try: st.session_state["me_result"]=missing_evidence(reqs,bid)
-                except Exception as e: st.error(f"Scan failed: {e}")
+                try:
+                    st.session_state["me_result"]=missing_evidence(reqs,bid)
+                except Exception as e:
+                    st.error(f"Scan failed: {e}")
         if "me_result" in st.session_state:
             r=st.session_state["me_result"]
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
@@ -1189,8 +1426,10 @@ def page_ai_analyst(bid_id):
         extra=st.text_area("Additional context (optional)",height=80,placeholder="Ambiguities, assumptions to confirm…",key="cq_extra")
         if st.button("❓ Generate clarification questions",key="cq_run",use_container_width=True,type="primary"):
             with st.spinner("Generating…"):
-                try: st.session_state["cq_result"]=generate_clarification_questions(bid,reqs,extra)
-                except Exception as e: st.error(f"Generation failed: {e}")
+                try:
+                    st.session_state["cq_result"]=generate_clarification_questions(bid,reqs,extra)
+                except Exception as e:
+                    st.error(f"Generation failed: {e}")
         if "cq_result" in st.session_state:
             r=st.session_state["cq_result"]
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
@@ -1220,8 +1459,10 @@ def page_ai_analyst(bid_id):
             placeholder="e.g. Phoenix Consulting International is the authorised Hogan distributor for the GCC…",key="bn_context")
         if st.button("🎯 Generate bid/no-bid assessment",key="bn_run",use_container_width=True,type="primary"):
             with st.spinner("Scoring opportunity…"):
-                try: st.session_state["bn_result"]=bid_no_bid_score(bid,reqs,fc)
-                except Exception as e: st.error(f"Assessment failed: {e}")
+                try:
+                    st.session_state["bn_result"]=bid_no_bid_score(bid,reqs,fc)
+                except Exception as e:
+                    st.error(f"Assessment failed: {e}")
         if "bn_result" in st.session_state:
             r=st.session_state["bn_result"]
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
@@ -1234,25 +1475,30 @@ def page_ai_analyst(bid_id):
                             f'<div style="margin-top:.5rem;font-size:.75rem;color:#6E6C66">Confidence: {r.get("confidence","?")}</div></div>', unsafe_allow_html=True)
             with c2:
                 st.markdown(f'<div class="info-box">{r.get("summary","")}</div>', unsafe_allow_html=True)
-                for cond in r.get("conditions",[]): st.markdown(f'<span style="color:#E67E22;font-size:.82rem">⚡ {cond}</span>', unsafe_allow_html=True)
+                for cond in r.get("conditions",[]):
+                    st.markdown(f'<span style="color:#E67E22;font-size:.82rem">⚡ {cond}</span>', unsafe_allow_html=True)
             st.markdown("#### Dimension Scores")
             dims=r.get("dimensions",{})
             for key,label in [("strategic_fit","Strategic Fit"),("capability_fit","Capability Fit"),
                                ("competitive_position","Competitive Position"),
                                ("resource_availability","Resource Availability"),("risk","Risk")]:
-                d=dims.get(key,{}); score=d.get("score",0)
+                d=dims.get(key,{})
+                score=d.get("score",0)
                 with st.expander(f"{label}  {_dim_bar(score)}",expanded=False):
                     st.markdown(f'**Rationale:** {d.get("rationale","")}')
-                    if d.get("evidence"): st.markdown(f'*{d.get("evidence","")}*')
+                    if d.get("evidence"):
+                        st.markdown(f'*{d.get("evidence","")}*')
             c1,c2=st.columns(2)
             with c1:
                 if r.get("win_themes"):
                     st.markdown("#### Win Themes")
-                    for t in r["win_themes"]: st.markdown(f'<span style="color:#27AE60">✓ {t}</span>', unsafe_allow_html=True)
+                    for t in r["win_themes"]:
+                        st.markdown(f'<span style="color:#27AE60">✓ {t}</span>', unsafe_allow_html=True)
             with c2:
                 if r.get("red_flags"):
                     st.markdown("#### Red Flags")
-                    for f_ in r["red_flags"]: st.markdown(f'<span style="color:#C0392B">⚠ {f_}</span>', unsafe_allow_html=True)
+                    for f_ in r["red_flags"]:
+                        st.markdown(f'<span style="color:#C0392B">⚠ {f_}</span>', unsafe_allow_html=True)
 
 
 
@@ -1449,12 +1695,15 @@ def page_deliverables(bid_id):
                     "price_ai":pai or None,"price_non_ai":pna or None,
                     "optional":1 if opt else 0,"sort_order":so,
                     "linked_req_ids":linked,"notes":notes})
-                del st.session_state["editing_svc"]; st.rerun()
+                del st.session_state["editing_svc"]
+                st.rerun()
             if dl:
                 delete_deliverable(eid)
-                del st.session_state["editing_svc"]; st.rerun()
+                del st.session_state["editing_svc"]
+                st.rerun()
             if cx:
-                del st.session_state["editing_svc"]; st.rerun()
+                del st.session_state["editing_svc"]
+                st.rerun()
 
     # ── Add service ───────────────────────────────────────────────────────────
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
@@ -1585,15 +1834,14 @@ def _services_pdf(bid, dels):
     from reportlab.lib.units import mm
     from reportlab.lib.colors import HexColor
     from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
-                                     Table, TableStyle, HRFlowable, KeepTogether)
+                                     Table, TableStyle, KeepTogether)
     from reportlab.lib.styles import ParagraphStyle
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
     from pdf_styles import (
-        pp, safe, fmt_cad, status_para, cover_header, make_footer,
+        pp, safe, fmt_cad, cover_header, make_footer,
         content_w, STYLES, CAT_ACCENT,
         C_NAVY, C_BLUE, C_BLUE_L, C_WHITE, C_BLACK,
         C_GREY_1, C_GREY_2, C_GREY_3, C_GREY_4,
-        PW_L, ML, MR, MT, MB, _font,
+        ML, MR, MT, MB, _font,
     )
 
     CAT_ORDER = ["Core Service", "Call-up Mechanic", "Optional Service", "Reporting"]
@@ -1664,7 +1912,6 @@ def _services_pdf(bid, dels):
             continue
 
         accent = CAT_ACCENT.get(cat, C_BLUE)
-        done   = sum(1 for d in cat_dels if d.get("status") == "Complete")
 
         hdr_bar = Table([[Paragraph(
             f'<font name="{_font("bold")}" color="#FFFFFF">{cat.upper()}</font>',
@@ -1684,7 +1931,8 @@ def _services_pdf(bid, dels):
 
         for d in cat_dels:
             vol_str = d.get("volume") or "—"
-            if d.get("unit"): vol_str += f"\n{d['unit']}"
+            if d.get("unit"):
+                vol_str += f"\n{d['unit']}"
             opt_tag = ('  <font name="' + _font("regular") + '" size="6" color="#7030A0">optional</font>') if d.get("optional") else ""
             title_para = Paragraph(
                 f'<font name="{_font("semibold")}">{safe(d["title"],70)}</font>{opt_tag}',
@@ -1695,7 +1943,6 @@ def _services_pdf(bid, dels):
                 ParagraphStyle("rp", fontName=_font("regular"), fontSize=6.5,
                                leading=9, textColor=C_GREY_2)) if d.get("linked_req_ids") else Paragraph("", STYLES["cell"])
 
-            from reportlab.platypus import KeepInFrame
             title_cell = [title_para, ref_para]
 
             tdata.append([
@@ -1741,24 +1988,43 @@ def _services_pdf(bid, dels):
 page  = st.session_state.page
 bid_id = st.session_state.active_bid
 
-if   page == "dashboard":    page_dashboard()
-elif page == "content_library": page_content_library()
-elif page == "coach_roster":    page_coach_roster()
-elif page == "exec_dashboard":  page_exec_dashboard()
-elif page == "all_bids":     page_all_bids()
-elif page == "new_bid":      page_new_bid()
+if   page == "dashboard":
+    page_dashboard()
+elif page == "content_library":
+    page_content_library()
+elif page == "coach_roster":
+    page_coach_roster()
+elif page == "exec_dashboard":
+    page_exec_dashboard()
+elif page == "all_bids":
+    page_all_bids()
+elif page == "new_bid":
+    page_new_bid()
 elif bid_id is None:
     go("dashboard")
-elif page == "bid_overview": page_bid_overview(bid_id)
-elif page == "compliance":   page_compliance(bid_id)
-elif page == "tasks":        page_tasks(bid_id)
-elif page == "documents":    page_documents(bid_id)
-elif page == "outline":      page_outline(bid_id)
-elif page == "ai_analyst":   page_ai_analyst(bid_id)
-elif page == "deliverables":       page_deliverables(bid_id)
-elif page == "clarifications":     page_clarifications(bid_id)
-elif page == "section_drafter":    page_section_drafter(bid_id)
-elif page == "proposal_analyzer":  page_proposal_analyzer(bid_id)
-elif page == "submission_assembler": page_submission_assembler(bid_id)
-elif page == "debrief":            page_debrief(bid_id)
-else: go("dashboard")
+elif page == "bid_overview":
+    page_bid_overview(bid_id)
+elif page == "compliance":
+    page_compliance(bid_id)
+elif page == "tasks":
+    page_tasks(bid_id)
+elif page == "documents":
+    page_documents(bid_id)
+elif page == "outline":
+    page_outline(bid_id)
+elif page == "ai_analyst":
+    page_ai_analyst(bid_id)
+elif page == "deliverables":
+    page_deliverables(bid_id)
+elif page == "clarifications":
+    page_clarifications(bid_id)
+elif page == "section_drafter":
+    page_section_drafter(bid_id)
+elif page == "proposal_analyzer":
+    page_proposal_analyzer(bid_id)
+elif page == "submission_assembler":
+    page_submission_assembler(bid_id)
+elif page == "debrief":
+    page_debrief(bid_id)
+else:
+    go("dashboard")

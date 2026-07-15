@@ -162,7 +162,7 @@ def save_upload(bid_id, filename, file_bytes, doc_type="RFP / Source",
         storage_path = unique_name
         # Get public/signed URL as file_path proxy
         file_path = f"supabase://{BUCKET}/{unique_name}"
-    except Exception as e:
+    except Exception:
         # Fallback: save locally if storage fails
         upload_dir = os.path.join(os.path.dirname(__file__), "uploads", str(bid_id))
         os.makedirs(upload_dir, exist_ok=True)

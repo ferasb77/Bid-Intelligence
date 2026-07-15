@@ -6,7 +6,7 @@ Four capabilities:
   3. clarification_qs    — generate strategic clarification questions
   4. bid_no_bid          — scored bid/no-bid recommendation
 """
-import json, re
+import json
 import anthropic
 from config import get_api_key
 
@@ -46,18 +46,27 @@ def _parse_json(raw: str) -> dict | list:
             return None
         depth, in_str, esc = 0, False, False
         for i, ch in enumerate(text[start:], start):
-            if esc:           esc = False; continue
-            if ch == "\\":  esc = True;  continue
+            if esc:
+                esc = False
+                continue
+            if ch == "\\":
+                esc = True
+                continue
             if ch == "\"" and not esc:
-                in_str = not in_str; continue
-            if in_str:        continue
-            if ch == open_ch:  depth += 1
+                in_str = not in_str
+                continue
+            if in_str:
+                continue
+            if ch == open_ch:
+                depth += 1
             elif ch == close_ch:
                 depth -= 1
                 if depth == 0:
                     candidate = text[start:i + 1]
-                    try:    return json.loads(candidate)
-                    except: return None
+                    try:
+                        return json.loads(candidate)
+                    except json.JSONDecodeError:
+                        return None
         return None
 
     for open_ch, close_ch in [('{', '}'), ('[', ']')]:

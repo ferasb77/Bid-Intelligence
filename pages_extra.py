@@ -3,18 +3,16 @@ Phase 3 pages — all new features.
 Imported and called from app.py.
 """
 import streamlit as st
-import base64
 from database import (
     get_bid, get_requirements, get_documents, get_outline,
     get_library_items, upsert_library_item, delete_library_item,
-    get_coaches, upsert_coach, delete_coach,
-    get_clarifications, upsert_clarification, delete_clarification,
-    get_deliverables, upsert_debrief, get_debriefs, save_upload,
+    get_coaches, upsert_coach, get_clarifications, upsert_clarification, delete_clarification,
+    upsert_debrief, get_debriefs, save_upload,
 )
 from pdf_styles import generate_clarifications_pdf
-from components.ui import (status_badge, readiness_bar, days_until,
-                            days_label, STATUSES, PRIORITY_COLOURS)
-from config import get_api_key, api_key_configured
+from components.ui import (days_until,
+                            days_label)
+from config import api_key_configured
 
 LIB_CATEGORIES = [
     "Coaching Philosophy", "Methodology", "Case Study",
@@ -64,12 +62,15 @@ def page_content_library(bid_id=None):
                 upsert_library_item({"id":eid,"title":title,"category":cat,
                     "content":content,"source":src,"bid_id":item.get("bid_id"),
                     "tags":tags,"approved":1 if appr else 0,"notes":notes})
-                del st.session_state["editing_lib"]; st.rerun()
+                del st.session_state["editing_lib"]
+                st.rerun()
             if dl:
                 delete_library_item(eid)
-                del st.session_state["editing_lib"]; st.rerun()
+                del st.session_state["editing_lib"]
+                st.rerun()
             if cx:
-                del st.session_state["editing_lib"]; st.rerun()
+                del st.session_state["editing_lib"]
+                st.rerun()
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
             return   # Don't render the list while editing
 
@@ -95,10 +96,13 @@ def page_content_library(bid_id=None):
     appr_filter = c3.checkbox("Approved only", key="lib_appr")
 
     filtered = items
-    if cat_filter != "All":   filtered = [i for i in filtered if i["category"]==cat_filter]
-    if search:                filtered = [i for i in filtered if search.lower() in
+    if cat_filter != "All":
+        filtered = [i for i in filtered if i["category"]==cat_filter]
+    if search:
+        filtered = [i for i in filtered if search.lower() in
                                            (i.get("content","") + i.get("title","")).lower()]
-    if appr_filter:           filtered = [i for i in filtered if i.get("approved")]
+    if appr_filter:
+        filtered = [i for i in filtered if i.get("approved")]
 
     st.markdown(f'<span style="font-size:.78rem;color:#A9A69D">{len(filtered)} items</span>',
                 unsafe_allow_html=True)
@@ -124,13 +128,15 @@ def page_content_library(bid_id=None):
                                 unsafe_allow_html=True)
                 c1,c2,c3,c4 = st.columns(4)
                 if c1.button("✏ Edit", key=f"elib_{item['id']}"):
-                    st.session_state["editing_lib"] = item["id"]; st.rerun()
+                    st.session_state["editing_lib"] = item["id"]
+                    st.rerun()
                 appr_label = "✅ Approved" if item.get("approved") else "☐ Mark Approved"
                 if c2.button(appr_label, key=f"alib_{item['id']}"):
                     upsert_library_item({**item, "approved": 0 if item.get("approved") else 1})
                     st.rerun()
                 if c3.button("🗑 Delete", key=f"dlib_{item['id']}"):
-                    delete_library_item(item["id"]); st.rerun()
+                    delete_library_item(item["id"])
+                    st.rerun()
 
     # Edit panel now rendered at top of function
 
@@ -151,7 +157,8 @@ def page_content_library(bid_id=None):
                         "source":src,"bid_id":bid_id,"tags":tags,
                         "approved":1 if appr else 0,"notes":""})
                     st.rerun()
-                else: st.error("Title and Content required.")
+                else:
+                    st.error("Title and Content required.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -308,7 +315,7 @@ def page_coach_roster():
         langs = set()
         for c in coaches:
             if c.get("languages"):
-                langs.update(l.strip() for l in c["languages"].split(","))
+                langs.update(lang.strip() for lang in c["languages"].split(","))
         c1,c2,c3 = st.columns(3)
         c1.metric("Total Coaches", len(coaches))
         c2.metric("Available", avail)
@@ -339,7 +346,8 @@ def page_coach_roster():
                                 f'Reference: {coach["reference_contact"]}</span>',
                                 unsafe_allow_html=True)
                 if st.button("✏ Edit", key=f"ec_{coach['id']}"):
-                    st.session_state["editing_coach"] = coach["id"]; st.rerun()
+                    st.session_state["editing_coach"] = coach["id"]
+                    st.rerun()
     else:
         st.markdown('<div class="empty-state">No coaches yet. Run the Proposal Analyzer on past '
                     'proposals to auto-populate, or add manually below.</div>',
@@ -382,11 +390,16 @@ def page_coach_roster():
                     "languages":langs,"location":loc,"availability":avail,
                     "email":email,"phone":phone,"cv_summary":cv_sum,
                     "reference_contact":ref_con,"notes":notes})
-                del st.session_state["editing_coach"]; st.rerun()
+                del st.session_state["editing_coach"]
+                st.rerun()
             if dl:
                 from database import delete_coach
-                delete_coach(eid); del st.session_state["editing_coach"]; st.rerun()
-            if cx: del st.session_state["editing_coach"]; st.rerun()
+                delete_coach(eid)
+                del st.session_state["editing_coach"]
+                st.rerun()
+            if cx:
+                del st.session_state["editing_coach"]
+                st.rerun()
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
     with st.expander("➕ Add Coach"):
@@ -414,7 +427,8 @@ def page_coach_roster():
                         "availability":avail,"email":email,"phone":phone,
                         "cv_summary":cv_sum,"reference_contact":ref_con,"notes":""})
                     st.rerun()
-                else: st.error("Name required.")
+                else:
+                    st.error("Name required.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -431,7 +445,6 @@ def page_clarifications(bid_id):
 
     # ── Deadline banner ───────────────────────────────────────────────────────
     clar_dl = days_until(bid.get("clarification_deadline"))
-    sub_dl  = days_until(bid.get("submission_deadline"))
     if clar_dl is not None:
         col = "#C0392B" if clar_dl <= 3 else "#E67E22" if clar_dl <= 7 else "#2471A3"
         st.markdown(
@@ -492,7 +505,7 @@ def page_clarifications(bid_id):
             key="cq_firm_ctx")
 
         col1, col2 = st.columns([2,1])
-        regenerate = col2.checkbox("Replace existing questions", value=not bool(clars))
+        col2.checkbox("Replace existing questions", value=not bool(clars))
 
         if col1.button("🔍 Generate Clarification Questions with Claude",
                        use_container_width=True, type="primary"):
@@ -630,7 +643,8 @@ def page_clarifications(bid_id):
             file_name=f"clarification_questions_{bid.get('file_number','bid')}.txt",
             mime="text/plain", use_container_width=True)
         if c2_2.button("✕ Discard", use_container_width=True):
-            del st.session_state["cq_generated"]; st.rerun()
+            del st.session_state["cq_generated"]
+            st.rerun()
 
     # ── Saved questions tracker ───────────────────────────────────────────────
     if clars:
@@ -645,13 +659,13 @@ def page_clarifications(bid_id):
             ("Closed",   "CLOSED",    "#6E6C66"),
         ]:
             grp = [q for q in clars if q.get("status")==grp_status]
-            if not grp: continue
+            if not grp:
+                continue
             st.markdown(f'<span style="font-size:.78rem;color:{grp_col};font-weight:700;'
                         f'letter-spacing:.05em">{grp_label} ({len(grp)})</span>',
                         unsafe_allow_html=True)
 
             for q in grp:
-                pri_c = PRIORITY_COLOURS.get(q.get("priority","Medium"),"#6E6C66")
                 with st.expander(
                     f"{q.get('question_id','')}. {q.get('question','')[:90]}"
                     f"{'…' if len(q.get('question',''))>90 else ''}",
@@ -676,7 +690,8 @@ def page_clarifications(bid_id):
                                         'review and update before submission.</div>',
                                         unsafe_allow_html=True)
                     if st.button("✏ Edit / Record Answer", key=f"eq_{q['id']}"):
-                        st.session_state["editing_clar"] = q["id"]; st.rerun()
+                        st.session_state["editing_clar"] = q["id"]
+                        st.rerun()
             st.markdown("")
 
     # ── Edit panel ────────────────────────────────────────────────────────────
@@ -717,9 +732,15 @@ def page_clarifications(bid_id):
                     "linked_req_ids":linked,"submitted_date":sub_d,
                     "answer":answer,"answer_date":ans_d,
                     "changes_matrix":1 if changes else 0,"status":stat,"notes":notes})
-                del st.session_state["editing_clar"]; st.rerun()
-            if dl: delete_clarification(eid); del st.session_state["editing_clar"]; st.rerun()
-            if cx: del st.session_state["editing_clar"]; st.rerun()
+                del st.session_state["editing_clar"]
+                st.rerun()
+            if dl:
+                delete_clarification(eid)
+                del st.session_state["editing_clar"]
+                st.rerun()
+            if cx:
+                del st.session_state["editing_clar"]
+                st.rerun()
 
     # ── Export saved questions ────────────────────────────────────────────────
     if clars:
@@ -802,7 +823,8 @@ def page_clarifications(bid_id):
                         "answer":None,"answer_date":None,
                         "changes_matrix":0,"status":"Draft","notes":""})
                     st.rerun()
-                else: st.error("Question required.")
+                else:
+                    st.error("Question required.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -827,7 +849,6 @@ def page_section_drafter(bid_id):
         st.stop()
 
     lib_items = get_library_items(bid_id)
-    approved  = [i for i in lib_items if i.get("approved")]
     if not lib_items:
         st.markdown('<div class="warn-box">No library content yet. Run the Proposal Analyzer '
                     'on past proposals first to build reusable content.</div>',
@@ -928,7 +949,8 @@ def page_section_drafter(bid_id):
                 mime="text/plain", use_container_width=True):
             pass
         if c2.button("🔄 Redraft (discard edits)", use_container_width=True):
-            del st.session_state["dr_result"]; st.rerun()
+            del st.session_state["dr_result"]
+            st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1057,7 +1079,6 @@ def page_submission_assembler(bid_id):
 # WIN/LOSS DEBRIEF
 # ═══════════════════════════════════════════════════════════════════════════════
 def page_debrief(bid_id):
-    bid     = get_bid(bid_id)
     debriefs= get_debriefs(bid_id)
 
     st.markdown("# Win / Loss Debrief")
@@ -1152,7 +1173,8 @@ def page_debrief(bid_id):
                     "lessons":lessons,"notes":notes})
                 if "editing_debrief" in st.session_state:
                     del st.session_state["editing_debrief"]
-                st.success("Debrief saved."); st.rerun()
+                st.success("Debrief saved.")
+                st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1160,9 +1182,8 @@ def page_debrief(bid_id):
 # ═══════════════════════════════════════════════════════════════════════════════
 def page_exec_dashboard():
     from database import (get_all_bids, get_requirements, get_tasks,
-                          get_clarifications, get_debriefs, get_coaches,
-                          get_documents)
-    from datetime import date, datetime
+                          get_clarifications, get_debriefs, get_coaches)
+    from datetime import date
 
     st.markdown("# Executive Dashboard")
     st.markdown(
@@ -1186,7 +1207,6 @@ def page_exec_dashboard():
         tasks = get_tasks(b["id"])
         clars = get_clarifications(b["id"])
         debs  = get_debriefs(b["id"])
-        docs  = get_documents(b["id"])
 
         m_total  = len([r for r in reqs if r["category"]=="Mandatory"])
         m_done   = len([r for r in reqs if r["category"]=="Mandatory" and r["status"]=="Complete"])
@@ -1230,7 +1250,6 @@ def page_exec_dashboard():
 
     # ── KPI strip ─────────────────────────────────────────────────────────────
     active    = [b for b in enriched if b["stage"] in ("Qualifying","In Progress","Review")]
-    submitted = [b for b in enriched if b["stage"]=="Submitted"]
     won       = [b for b in enriched if b["stage"]=="Won"]
     lost      = [b for b in enriched if b["stage"]=="Lost"]
     at_risk   = [b for b in active    if b["risk"]=="High"]
@@ -1338,8 +1357,8 @@ def page_exec_dashboard():
             c3.markdown('<span style="color:#6E6C66;font-size:.8rem">—</span>',
                         unsafe_allow_html=True)
         elif d < 0:
-            c3.markdown(f'<span style="color:#C0392B;font-size:.8rem;font-weight:700">'
-                        f'OVERDUE</span>', unsafe_allow_html=True)
+            c3.markdown('<span style="color:#C0392B;font-size:.8rem;font-weight:700">'
+                        'OVERDUE</span>', unsafe_allow_html=True)
         elif d == 0:
             c3.markdown('<span style="color:#C0392B;font-size:.8rem;font-weight:700">'
                         'TODAY</span>', unsafe_allow_html=True)
@@ -1511,17 +1530,16 @@ def _exec_dashboard_pdf(bids, coaches, alerts):
     from reportlab.lib.units import mm
     from reportlab.lib.colors import HexColor
     from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
-                                     Table, TableStyle, HRFlowable, KeepTogether)
+                                     Table, TableStyle, HRFlowable)
     from reportlab.lib.styles import ParagraphStyle
-    from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER
     from pdf_styles import (_font, C_NAVY, C_BLUE, C_BLUE_L, C_WHITE, C_BLACK,
                              C_GREY_1, C_GREY_2, C_GREY_3, C_GREY_4,
-                             C_RED, C_GREEN, C_GREEN_L, content_w)
+                             C_RED, C_GREEN)
 
     C_AMBER = HexColor("#E26B0A")
 
     fn_r  = _font("regular")
-    fn_m  = _font("medium")
     fn_sb = _font("semibold")
     fn_b  = _font("bold")
 
@@ -1545,9 +1563,11 @@ def _exec_dashboard_pdf(bids, coaches, alerts):
 
     def footer(canvas, doc):
         canvas.saveState()
-        canvas.setStrokeColor(C_GREY_3); canvas.setLineWidth(0.5)
+        canvas.setStrokeColor(C_GREY_3)
+        canvas.setLineWidth(0.5)
         canvas.line(ML, 14*mm, PW-MR, 14*mm)
-        canvas.setFont(fn_r, 7); canvas.setFillColor(C_GREY_2)
+        canvas.setFont(fn_r, 7)
+        canvas.setFillColor(C_GREY_2)
         canvas.drawString(ML, 10*mm,
             "Phoenix Consulting International  ·  Bid Intelligence Platform  ·  Executive Report")
         canvas.drawRightString(PW-MR, 10*mm, f"Page {doc.page}")
@@ -1572,12 +1592,10 @@ def _exec_dashboard_pdf(bids, coaches, alerts):
 
     # KPI scorecard
     active    = [b for b in bids if b["stage"] in ("Qualifying","In Progress","Review")]
-    submitted = [b for b in bids if b["stage"]=="Submitted"]
     won       = [b for b in bids if b["stage"]=="Won"]
     lost      = [b for b in bids if b["stage"]=="Lost"]
     at_risk   = [b for b in active if b.get("risk")=="High"]
     pipeline_val = sum(b.get("value_cad") or 0 for b in active)
-    won_val      = sum(b.get("value_cad") or 0 for b in won)
     wr = f"{round(len(won)/(len(won)+len(lost))*100)}%" if (won or lost) else "N/A"
 
     kpi_data = [
@@ -1634,7 +1652,8 @@ def _exec_dashboard_pdf(bids, coaches, alerts):
     RISK_COL_PDF = {"High": C_RED, "Medium": C_AMBER, "Low": C_GREEN}
 
     col_w = [r*mm for r in [55, 22, 18, 18, 22, 20]]
-    scale = CW / sum(col_w); col_w = [w*scale for w in col_w]
+    scale = CW / sum(col_w)
+    col_w = [w*scale for w in col_w]
     hdr   = ["Client / Opportunity","Stage","Deadline","Readiness",
              "Mandatory","Risk"]
     hdr_row = [pp(h, 7.5, fn_sb, C_WHITE) for h in hdr]
