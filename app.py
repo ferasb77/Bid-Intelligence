@@ -6,6 +6,7 @@ from database import (init_db, get_all_bids, get_bid, create_bid, update_bid, de
                       get_requirements, upsert_requirement, delete_requirement,
                       get_tasks, upsert_task, delete_task,
                       get_documents, upsert_document, delete_document, save_upload,
+                      get_document_versions, create_expected_document,
                       get_outline, upsert_section, delete_section,
                       get_readiness)
 from config import get_api_key, api_key_configured
@@ -612,268 +613,335 @@ def page_tasks(bid_id):
 # PAGE: DOCUMENTS
 # ═════════════════════════════════════════════════════════════════════════════
 def page_documents(bid_id):
-    docs=get_documents(bid_id)
-    bid=get_bid(bid_id)
-    st.markdown("# Documents")
+    from database import get_document_versions, create_expected_document
+    bid  = get_bid(bid_id)
+    docs = get_documents(bid_id)
+    reqs = get_requirements(bid_id)
+
+    st.markdown("# Document Registry")
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
 
-    # ── Upload ────────────────────────────────────────────────────────────────
-    st.markdown("### Upload File")
-    st.markdown('<div class="info-box">After uploading an addendum or supplementary document, ' 
-                'use <strong>🔍 Analyze & Update</strong> to extract new or changed requirements ' 
-                'and merge them into the compliance matrix.</div>', unsafe_allow_html=True)
-    up=st.file_uploader("Drop file",type=["pdf","docx","xlsx","doc","pptx","txt"],key=f"dup_{bid_id}",label_visibility="collapsed")
-    if up:
-        _upload_key = f"uploaded_{bid_id}_{up.name}_{up.size}"
-        if not st.session_state.get(_upload_key):
-            save_upload(bid_id,up.name,up.read())
-            st.session_state[_upload_key] = True
-            st.success(f"Uploaded: {up.name}"); st.rerun()
-    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+    # ── Status summary ────────────────────────────────────────────────────────
+    if docs:
+        expected  = sum(1 for d in docs if d["status"]=="Expected")
+        uploaded  = sum(1 for d in docs if d["status"] in ("Uploaded","In Review","Approved"))
+        submitted = sum(1 for d in docs if d["status"]=="Submitted")
+        mandatory_missing = sum(1 for d in docs
+                                if d.get("mandatory") and d["status"]=="Expected")
 
-    # ── Addendum analysis result display ──────────────────────────────────────
-    if st.session_state.get("addendum_result"):
-        r    = st.session_state["addendum_result"]
-        src  = st.session_state.get("addendum_source","")
-        reqs = get_requirements(bid_id)
+        c1,c2,c3,c4 = st.columns(4)
+        c1.metric("Total Documents", len(docs))
+        c2.metric("Expected / Missing", expected,
+                  delta=f"⚠ {mandatory_missing} mandatory" if mandatory_missing else None,
+                  delta_color="inverse")
+        c3.metric("Uploaded / Ready", uploaded)
+        c4.metric("Submitted", submitted)
 
-        st.markdown(f"### 📋 Analysis: {r.get('document_number','Addendum')} — {r.get('document_type','')}")
-        st.markdown(f'<div class="info-box">{r.get("summary","")}</div>', unsafe_allow_html=True)
-
-        # Deadline changes
-        dl = r.get("deadline_changes",{})
-        if dl.get("submission_deadline") or dl.get("clarification_deadline"):
-            st.markdown("#### ⏰ Deadline Changes")
-            if dl.get("submission_deadline"):
-                st.markdown(f'<div class="warn-box">Submission deadline updated to <strong>{dl["submission_deadline"]}</strong></div>',
-                            unsafe_allow_html=True)
-            if dl.get("clarification_deadline"):
-                st.markdown(f'<div class="warn-box">Clarification deadline updated to <strong>{dl["clarification_deadline"]}</strong></div>',
-                            unsafe_allow_html=True)
-
-        # Key changes
-        if r.get("key_changes"):
-            st.markdown("#### Key Changes")
-            for ch in r["key_changes"]:
-                st.markdown(f'<span style="color:#C6A15B;font-size:.85rem">· {ch}</span>',
-                            unsafe_allow_html=True)
-
-        # New requirements preview
-        new_reqs = r.get("new_requirements",[])
-        mod_reqs = r.get("modified_requirements",[])
-        clars    = r.get("clarifications",[])
-
-        if new_reqs:
-            st.markdown(f"#### ➕ New Requirements ({len(new_reqs)})")
-            for req in new_reqs:
-                st.markdown(
-                    f'<div style="background:#131316;border:1px solid #2A2A2E;border-left:3px solid #C6A15B;' 
-                    f'border-radius:0 4px 4px 0;padding:.5rem .8rem;margin:.25rem 0;font-size:.82rem">' 
-                    f'<span style="color:#C6A15B;font-weight:700">{req.get("req_id","")}</span> ' 
-                    f'({req.get("category","")}) {req.get("description","")}</div>',
-                    unsafe_allow_html=True)
-
-        if mod_reqs:
-            st.markdown(f"#### ✏️ Modified Requirements ({len(mod_reqs)})")
-            for mod in mod_reqs:
-                st.markdown(
-                    f'<div style="background:#1A0F00;border:1px solid #3A2A00;border-left:3px solid #E67E22;' 
-                    f'border-radius:0 4px 4px 0;padding:.5rem .8rem;margin:.25rem 0;font-size:.82rem">' 
-                    f'<span style="color:#E67E22;font-weight:700">{mod.get("req_id","")}</span> — ' 
-                    f'{mod.get("change_description","")}</div>',
-                    unsafe_allow_html=True)
-
-        if clars:
-            st.markdown(f"#### 💬 Clarifications ({len(clars)})")
-            for cl in clars:
-                st.markdown(
-                    f'<div style="background:#0A1A0A;border-left:3px solid #27AE60;' 
-                    f'padding:.5rem .8rem;font-size:.82rem;margin:.25rem 0">' 
-                    f'<strong style="color:#27AE60">{cl.get("topic","")}</strong>: ' 
-                    f'{cl.get("clarification","")}</div>',
-                    unsafe_allow_html=True)
-
+        if mandatory_missing:
+            st.markdown(
+                f'<div class="warn-box">⚠ {mandatory_missing} mandatory document(s) '
+                f'not yet uploaded — submission may be at risk.</div>',
+                unsafe_allow_html=True)
         st.markdown("")
-        c1,c2,c3 = st.columns(3)
 
-        if c1.button("✅ Apply all changes to bid", use_container_width=True, type="primary"):
-            from database import upsert_requirement, update_bid
-            applied = 0
-            # Add new requirements
-            for req in new_reqs:
-                upsert_requirement({**req, "id":None, "bid_id":bid_id,
-                                    "notes": req.get("notes","") + f" | Source: {src}"})
-                applied += 1
-            # Update deadlines
-            if dl.get("submission_deadline") or dl.get("clarification_deadline"):
-                updated_bid = {
-                    "title":                  bid.get("title",""),
-                    "client":                 bid.get("client",""),
-                    "file_number":            bid.get("file_number",""),
-                    "stage":                  bid.get("stage",""),
-                    "sensitivity":            bid.get("sensitivity","Standard"),
-                    "owner":                  bid.get("owner",""),
-                    "value_cad":              bid.get("value_cad"),
-                    "submission_deadline":    dl.get("submission_deadline") or bid.get("submission_deadline"),
-                    "clarification_deadline": dl.get("clarification_deadline") or bid.get("clarification_deadline"),
-                    "notes":                  bid.get("notes",""),
-                }
-                update_bid(bid_id, updated_bid)
-            # Add clarifications as notes on linked requirements
-            reqs_now = get_requirements(bid_id)
-            for cl in clars:
-                for rid in (cl.get("affects_req_ids") or []):
-                    match = next((r for r in reqs_now if r.get("req_id")==rid), None)
-                    if match:
-                        updated_notes = (match.get("notes","") or "") + f" | Clarification ({src}): {cl.get('clarification','')[:100]}"
-                        upsert_requirement({**match, "notes": updated_notes})
-            del st.session_state["addendum_result"]
-            del st.session_state["addendum_source"]
-            st.success(f"Applied: {applied} new requirements added, deadlines updated, clarifications logged.")
+    # ── Auto-generate expected documents from matrix ───────────────────────────
+    existing_names = {d["name"].lower() for d in docs}
+    auto_candidates = [r for r in reqs
+                       if r.get("evidence") and r.get("category") in ("Mandatory","Financial")]
+    new_expected = [r for r in auto_candidates
+                    if r.get("evidence","").lower() not in existing_names
+                    and r.get("req_id","").lower() not in existing_names]
+
+    if new_expected:
+        st.markdown(
+            f'<div class="info-box">📋 {len(new_expected)} expected document(s) identified '
+            f'from the compliance matrix but not yet in the registry. '
+            f'Click to add them as placeholders.</div>',
+            unsafe_allow_html=True)
+        if st.button(f"➕ Add {len(new_expected)} expected document(s) from matrix",
+                     use_container_width=False):
+            for r in new_expected:
+                create_expected_document(
+                    bid_id=bid_id,
+                    name=r.get("evidence",""),
+                    doc_type="Submission" if r["category"]=="Mandatory" else "Financial",
+                    owner=r.get("owner"),
+                    due_date=r.get("deadline"),
+                    linked_req_ids=r.get("req_id",""),
+                    mandatory=1 if r["category"]=="Mandatory" else 0,
+                    notes=f"Required for {r.get('req_id','')} — {r.get('description','')[:80]}"
+                )
+            st.success(f"Added {len(new_expected)} expected documents.")
             st.rerun()
+        st.markdown("")
 
-        if c2.button("✕ Discard", use_container_width=True):
-            del st.session_state["addendum_result"]
-            del st.session_state["addendum_source"]
-            st.rerun()
+    # ── Document type tabs ────────────────────────────────────────────────────
+    TYPE_ORDER = [
+        ("📄 RFP / Source",    "RFP / Source"),
+        ("📋 Submission",      "Submission"),
+        ("💰 Financial",       "Financial"),
+        ("👤 Supporting",      "Supporting"),
+        ("📚 Reference",       "Reference"),
+        ("🗂 Internal",        "Internal"),
+    ]
 
-        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+    STATUS_COL = {
+        "Expected":  "#C0392B",
+        "Uploaded":  "#2471A3",
+        "In Review": "#E67E22",
+        "Approved":  "#27AE60",
+        "Submitted": "#1E8449",
+        "Not Started":"#6E6C66",
+        "Complete":  "#27AE60",
+        "Blocked":   "#C0392B",
+        "N/A":       "#6E6C66",
+    }
 
-    # ── Document list ──────────────────────────────────────────────────────────
-    if not docs:
-        st.markdown('<div class="empty-state">No documents yet.</div>', unsafe_allow_html=True)
-    else:
-        for dt in DOC_TYPES:
-            td=[d for d in docs if d["doc_type"]==dt]
-            if not td: continue
-            done=sum(1 for d in td if d["status"]=="Complete")
-            st.markdown(f'<span style="font-size:.8rem;color:#C6A15B;font-weight:600">{dt.upper()} — {done}/{len(td)}</span>', unsafe_allow_html=True)
-            hcols=st.columns([3,1.5,1.5,1.8,1.2,0.8])
-            for h,col in zip(["Document","Owner","Due","Status","Analyze","Edit"],hcols):
-                col.markdown(f'<span style="font-size:.7rem;color:#A9A69D;font-weight:600;text-transform:uppercase">{h}</span>', unsafe_allow_html=True)
-            for d in td:
-                c1,c2,c3,c4,c5,c6=st.columns([3,1.5,1.5,1.8,1.2,0.8])
-                icon="📄" if d.get("file_path") else "☐"
-                c1.markdown(f'{icon} <span style="font-size:.85rem">{d["name"]}</span>', unsafe_allow_html=True)
-                c2.markdown(f'<span style="font-size:.82rem">{d.get("owner") or "—"}</span>', unsafe_allow_html=True)
-                c3.markdown(f'<span style="font-size:.78rem;color:#A9A69D">{d.get("due_date") or "—"}</span>', unsafe_allow_html=True)
-                c4.markdown(status_badge(d["status"]), unsafe_allow_html=True)
-                # Analyze button — show for any uploaded file
-                if d.get("file_path"):
-                    if c5.button("🔍", key=f"ana_{d['id']}",
-                                  help="Analyze with Claude — extract requirements & changes"):
-                        st.session_state["analyze_doc_id"] = d["id"]
-                        st.rerun()
-                if c6.button("✏",key=f"ed_{d['id']}"): st.session_state["editing_doc"]=d["id"]; st.rerun()
-                st.markdown('<hr class="section-divider" style="margin:.25rem 0">', unsafe_allow_html=True)
-            st.markdown("")
+    has_any = any(any(d["doc_type"]==dt for d in docs) for _,dt in TYPE_ORDER)
 
-    # ── Document analysis trigger ──────────────────────────────────────────────
-    analyze_id = st.session_state.get("analyze_doc_id")
-    if analyze_id:
-        doc = next((d for d in docs if d["id"]==analyze_id), None)
-        if doc and doc.get("file_path"):
+    if not docs and not has_any:
+        st.markdown('<div class="empty-state">No documents yet. Upload below or '
+                    'auto-generate expected documents from the compliance matrix.</div>',
+                    unsafe_allow_html=True)
+
+    for label, doc_type in TYPE_ORDER:
+        type_docs = [d for d in docs if d["doc_type"]==doc_type]
+        if not type_docs: continue
+
+        done    = sum(1 for d in type_docs if d["status"] in ("Uploaded","Approved","Submitted","Complete"))
+        missing = sum(1 for d in type_docs if d["status"]=="Expected")
+        hdr_col = "#C0392B" if missing else "#C6A15B"
+
+        st.markdown(
+            f'<div style="background:#131316;border-left:3px solid {hdr_col};'
+            f'padding:.4rem .8rem;margin:.5rem 0;border-radius:0 4px 4px 0">'
+            f'<span style="color:{hdr_col};font-weight:700;font-size:.82rem">'
+            f'{label}</span>'
+            f'<span style="color:#6E6C66;font-size:.75rem;margin-left:.8rem">'
+            f'{done}/{len(type_docs)} ready'
+            f'{f"  ·  <span style=color:#C0392B>{missing} missing</span>" if missing else ""}'
+            f'</span></div>',
+            unsafe_allow_html=True)
+
+        # Column headers
+        hcols = st.columns([3, 1.5, 1.2, 1.5, 1.2, 0.6, 0.6, 0.6])
+        for h, hc in zip(["Document","Owner","Due","Status","Linked Reqs","Ver","",""], hcols):
+            hc.markdown(
+                f'<span style="font-size:.68rem;color:#6E6C66;font-weight:600;'
+                f'text-transform:uppercase">{h}</span>',
+                unsafe_allow_html=True)
+
+        for d in type_docs:
+            st_col = STATUS_COL.get(d.get("status","Expected"), "#6E6C66")
+            icon = "⚠" if d["status"]=="Expected" else "📄" if d.get("file_path") else "☐"
+            mand_tag = ' <span style="color:#C0392B;font-size:.68rem">MANDATORY</span>'                        if d.get("mandatory") else ""
+
+            c1,c2,c3,c4,c5,c6,c7,c8 = st.columns([3,1.5,1.2,1.5,1.2,0.6,0.6,0.6])
+
+            c1.markdown(
+                f'<span style="font-size:.85rem">{icon} {d["name"]}</span>{mand_tag}',
+                unsafe_allow_html=True)
+            if d.get("notes"):
+                c1.markdown(
+                    f'<span style="font-size:.7rem;color:#6E6C66">{d["notes"][:60]}</span>',
+                    unsafe_allow_html=True)
+
+            c2.markdown(
+                f'<span style="font-size:.82rem">{d.get("owner") or "—"}</span>',
+                unsafe_allow_html=True)
+            c3.markdown(
+                f'<span style="font-size:.78rem;color:#A9A69D">'
+                f'{d.get("due_date") or "—"}</span>',
+                unsafe_allow_html=True)
+            c4.markdown(
+                f'<span style="background:{st_col}22;color:{st_col};padding:.1rem .4rem;'
+                f'border-radius:3px;font-size:.72rem;font-weight:600">'
+                f'{d.get("status","Expected")}</span>',
+                unsafe_allow_html=True)
+            c5.markdown(
+                f'<span style="font-size:.72rem;color:#C6A15B">'
+                f'{d.get("linked_req_ids") or "—"}</span>',
+                unsafe_allow_html=True)
+            c6.markdown(
+                f'<span style="font-size:.78rem;color:#6E6C66">'
+                f'v{d.get("version") or 1}</span>',
+                unsafe_allow_html=True)
+
+            # Upload new version button (for expected or existing docs)
+            if c7.button("⬆", key=f"upv_{d['id']}",
+                         help="Upload / replace this document"):
+                st.session_state["upload_for_doc"] = d["id"]
+                st.rerun()
+
+            if c8.button("✏", key=f"edd_{d['id']}",
+                         help="Edit document details"):
+                st.session_state["editing_doc"] = d["id"]
+                st.rerun()
+
+            st.markdown(
+                '<hr class="section-divider" style="margin:.2rem 0">',
+                unsafe_allow_html=True)
+        st.markdown("")
+
+    # ── Upload against a specific document ────────────────────────────────────
+    upload_doc_id = st.session_state.get("upload_for_doc")
+    if upload_doc_id:
+        target = next((d for d in docs if d["id"]==upload_doc_id), None)
+        if target:
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-            st.markdown(f"### 🔍 Analyze: {doc['name']}")
-            st.markdown('<div class="info-box">Claude will read this document and identify new requirements, ' 
-                        'deadline changes, modifications to existing requirements, and clarifications. ' 
-                        'You review the findings before anything is applied to the bid.</div>',
-                        unsafe_allow_html=True)
+            st.markdown(f"### ⬆ Upload: {target['name']}")
+            if target.get("version",1) > 1:
+                st.markdown(
+                    f'<div class="info-box">Current version: v{target["version"]}. '
+                    f'Uploading will create v{target["version"]+1} and archive the previous version.</div>',
+                    unsafe_allow_html=True)
+            up = st.file_uploader(
+                f"Select file for {target['name']}",
+                type=["pdf","docx","xlsx","doc","pptx","txt","png","jpg"],
+                key=f"upfile_{upload_doc_id}")
+            uploader_name = st.text_input("Uploaded by", placeholder="Your name",
+                                          key=f"upby_{upload_doc_id}")
+            up_notes = st.text_input("Version notes (optional)",
+                                     placeholder="e.g. Final version after legal review",
+                                     key=f"upnotes_{upload_doc_id}")
 
-            c1,c2 = st.columns([3,1])
-            if c1.button("🔍 Run Analysis with Claude", use_container_width=True, type="primary"):
-                from analyst import analyze_addendum
-                import fitz, os, base64, anthropic
-                with st.spinner(f"Analyzing {doc['name']}… 15–30 seconds"):
-                    try:
-                        fp = doc.get("file_path","")
-                        name_lower = doc["name"].lower()
-                        text = ""
-
-                        if fp and os.path.exists(fp):
-                            # Read from disk
-                            if name_lower.endswith(".pdf"):
-                                fitz_doc = fitz.open(fp)
-                                text = "\n".join(p.get_text() for p in fitz_doc)
-                            else:
-                                with open(fp,"r",errors="ignore") as f_:
-                                    text = f_.read()
-                        elif fp and name_lower.endswith(".pdf"):
-                            # Try native PDF via Anthropic API (Streamlit Cloud)
-                            from config import get_api_key
-                            client = anthropic.Anthropic(api_key=get_api_key())
-                            with open(fp,"rb") as f_:
-                                b64 = base64.standard_b64encode(f_.read()).decode()
-                            resp = client.messages.create(
-                                model="claude-haiku-4-5-20251001",
-                                max_tokens=2000,
-                                messages=[{"role":"user","content":[
-                                    {"type":"document","source":{"type":"base64","media_type":"application/pdf","data":b64}},
-                                    {"type":"text","text":"Extract all text from this document as plain text."}
-                                ]}])
-                            text = resp.content[0].text
-                        else:
-                            st.error("File not accessible on disk. Re-upload the document to analyze it.")
-                            st.stop()
-
-                        if text.strip():
-                            reqs = get_requirements(bid_id)
-                            result = analyze_addendum(text, reqs, bid)
-                            st.session_state["addendum_result"] = result
-                            st.session_state["addendum_source"] = doc["name"]
-                            del st.session_state["analyze_doc_id"]
-                            st.rerun()
-                        else:
-                            st.error("Could not extract text from this document. Try re-uploading it.")
-                    except Exception as e:
-                        st.error(f"Analysis failed: {e}")
+            c1,c2 = st.columns([2,1])
+            if c1.button("✅ Confirm Upload", use_container_width=True, type="primary"):
+                if up:
+                    _key = f"uploaded_{bid_id}_{upload_doc_id}_{up.name}_{up.size}"
+                    if not st.session_state.get(_key):
+                        fb = up.read()
+                        save_upload(bid_id, up.name, fb,
+                                    doc_type=target["doc_type"],
+                                    owner=uploader_name or target.get("owner"),
+                                    doc_id=upload_doc_id)
+                        st.session_state[_key] = True
+                    del st.session_state["upload_for_doc"]
+                    st.success(f"✅ Uploaded successfully.")
+                    st.rerun()
+                else:
+                    st.error("Please select a file first.")
             if c2.button("Cancel", use_container_width=True):
-                del st.session_state["analyze_doc_id"]; st.rerun()
+                del st.session_state["upload_for_doc"]; st.rerun()
 
-    eid=st.session_state.get("editing_doc")
+    # ── Edit document details ──────────────────────────────────────────────────
+    eid = st.session_state.get("editing_doc")
     if eid:
-        doc=next((d for d in docs if d["id"]==eid),None)
+        doc = next((d for d in docs if d["id"]==eid), None)
         if doc:
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-            st.markdown(f"### Edit — {doc['name']}")
-            with st.form("edit_doc"):
-                name=st.text_input("Name",value=doc["name"])
-                c1,c2=st.columns(2)
-                dt=c1.selectbox("Type",DOC_TYPES,index=DOC_TYPES.index(doc["doc_type"]) if doc["doc_type"] in DOC_TYPES else 1)
-                own=c2.text_input("Owner",value=doc.get("owner") or "")
-                c1,c2=st.columns(2)
-                dd=c1.text_input("Due Date",value=doc.get("due_date") or "")
-                st_=c2.selectbox("Status",STATUSES,index=STATUSES.index(doc["status"]) if doc["status"] in STATUSES else 0)
-                notes=st.text_area("Notes",value=doc.get("notes") or "",height=60)
-                c1,c2,c3=st.columns([2,1,1])
-                sv=c1.form_submit_button("Save",use_container_width=True)
-                dl=c2.form_submit_button("Delete",use_container_width=True)
-                cx=c3.form_submit_button("Cancel",use_container_width=True)
+            st.markdown(f"### ✏ Edit — {doc['name']}")
+
+            # Show version history
+            versions = get_document_versions(eid)
+            if versions:
+                with st.expander(f"📂 Version History ({len(versions)} previous versions)"):
+                    for v in versions:
+                        st.markdown(
+                            f'v{v["version"]} — {v.get("created_at","")[:10]} — '
+                            f'{v.get("uploaded_by") or "unknown"} — '
+                            f'{v.get("file_path","").split("/")[-1] if v.get("file_path") else "—"}',
+                            unsafe_allow_html=True)
+
+            with st.form("edit_doc_form"):
+                name = st.text_input("Document Name", value=doc["name"])
+                c1,c2 = st.columns(2)
+                dt   = c1.selectbox("Type", DOC_TYPES,
+                                    index=DOC_TYPES.index(doc["doc_type"])
+                                    if doc["doc_type"] in DOC_TYPES else 0)
+                owner= c2.text_input("Owner", value=doc.get("owner") or "")
+                c1,c2,c3 = st.columns(3)
+                due  = c1.text_input("Due Date", value=doc.get("due_date") or "",
+                                     placeholder="2026-08-03")
+                st_  = c2.selectbox("Status",
+                                    ["Expected","Uploaded","In Review","Approved",
+                                     "Submitted","Blocked","N/A"],
+                                    index=["Expected","Uploaded","In Review","Approved",
+                                           "Submitted","Blocked","N/A"].index(
+                                               doc.get("status","Expected"))
+                                    if doc.get("status") in ["Expected","Uploaded",
+                                                              "In Review","Approved",
+                                                              "Submitted","Blocked","N/A"]
+                                    else 0)
+                linked = c3.text_input("Linked Req IDs",
+                                       value=doc.get("linked_req_ids") or "",
+                                       placeholder="M1, R3…")
+                mand = st.checkbox("Mandatory submission item",
+                                   value=bool(doc.get("mandatory")))
+                notes = st.text_area("Notes", value=doc.get("notes") or "", height=60)
+                c1,c2,c3 = st.columns([2,1,1])
+                sv = c1.form_submit_button("Save", use_container_width=True)
+                dl = c2.form_submit_button("Delete", use_container_width=True)
+                cx = c3.form_submit_button("Cancel", use_container_width=True)
             if sv:
                 upsert_document({"id":eid,"bid_id":bid_id,"name":name,"doc_type":dt,
-                    "owner":own,"due_date":dd,"status":st_,"notes":notes})
+                    "owner":owner,"due_date":due,"status":st_,
+                    "linked_req_ids":linked,"mandatory":1 if mand else 0,
+                    "notes":notes,"file_path":None,"file_size":None,"version":None})
                 del st.session_state["editing_doc"]; st.rerun()
-            if dl: delete_document(eid); del st.session_state["editing_doc"]; st.rerun()
-            if cx: del st.session_state["editing_doc"]; st.rerun()
+            if dl:
+                delete_document(eid)
+                del st.session_state["editing_doc"]; st.rerun()
+            if cx:
+                del st.session_state["editing_doc"]; st.rerun()
 
+    # ── Add new document / upload ──────────────────────────────────────────────
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-    with st.expander("➕ Add Document / Checklist Item"):
-        with st.form("add_doc",clear_on_submit=True):
-            name=st.text_input("Name *",placeholder="e.g. Supplement A — Submission Form")
-            c1,c2=st.columns(2)
-            dt=c1.selectbox("Type",DOC_TYPES,index=1); own=c2.text_input("Owner")
-            c1,c2=st.columns(2)
-            dd=c1.text_input("Due Date",placeholder="2026-08-03"); st_=c2.selectbox("Status",STATUSES)
-            notes=st.text_area("Notes",height=50)
-            if st.form_submit_button("Add",use_container_width=True):
-                if name:
-                    upsert_document({"id":None,"bid_id":bid_id,"name":name,"doc_type":dt,
-                        "file_path":None,"owner":own,"due_date":dd,"status":st_,"notes":notes})
-                    st.rerun()
+    st.markdown("### Add Document")
+    tab1, tab2 = st.tabs(["⬆ Upload New File", "📋 Add Expected Document (no file yet)"])
 
-# ═════════════════════════════════════════════════════════════════════════════
-# PAGE: OUTLINE
-# ═════════════════════════════════════════════════════════════════════════════
+    with tab1:
+        c1,c2 = st.columns([2,1])
+        up_type = c1.selectbox("Document Type", DOC_TYPES, key="new_up_type")
+        up_owner= c2.text_input("Uploaded by", key="new_up_owner")
+        up = st.file_uploader("Select file",
+                              type=["pdf","docx","xlsx","doc","pptx","txt","png","jpg"],
+                              key="new_up_file")
+        linked_new = st.text_input("Linked requirement IDs (optional)",
+                                   placeholder="M1, R3…", key="new_up_linked")
+        mand_new = st.checkbox("Mandatory submission item", key="new_up_mand")
+        if up and st.button("⬆ Upload", use_container_width=True, type="primary",
+                            key="new_up_btn"):
+            _key = f"uploaded_{bid_id}_{up.name}_{up.size}"
+            if not st.session_state.get(_key):
+                fb = up.read()
+                save_upload(bid_id, up.name, fb, doc_type=up_type,
+                            owner=up_owner or None)
+                # Update linked/mandatory if set
+                new_docs = get_documents(bid_id)
+                latest = next((d for d in reversed(new_docs)
+                               if d["name"]==up.name), None)
+                if latest and (linked_new or mand_new):
+                    upsert_document({**latest, "linked_req_ids":linked_new,
+                                     "mandatory":1 if mand_new else 0})
+                st.session_state[_key] = True
+                st.success(f"Uploaded: {up.name}")
+                st.rerun()
+
+    with tab2:
+        with st.form("add_expected", clear_on_submit=True):
+            name_e = st.text_input("Document Name *",
+                                   placeholder="e.g. Supplement A — Submission Form")
+            c1,c2  = st.columns(2)
+            dt_e   = c1.selectbox("Type", DOC_TYPES)
+            own_e  = c2.text_input("Assigned To / Owner")
+            c1,c2,c3 = st.columns(3)
+            due_e   = c1.text_input("Due Date", placeholder="2026-08-03")
+            linked_e= c2.text_input("Linked Req IDs", placeholder="M1, F1…")
+            mand_e  = c3.checkbox("Mandatory")
+            notes_e = st.text_area("Notes / Instructions", height=60)
+            if st.form_submit_button("Add to Registry", use_container_width=True):
+                if name_e:
+                    create_expected_document(
+                        bid_id=bid_id, name=name_e, doc_type=dt_e,
+                        owner=own_e or None, due_date=due_e or None,
+                        linked_req_ids=linked_e or None,
+                        mandatory=1 if mand_e else 0, notes=notes_e)
+                    st.rerun()
+                else:
+                    st.error("Document name required.")
+
+
 def page_outline(bid_id):
     sections=get_outline(bid_id)
     st.markdown("# Proposal Outline")
