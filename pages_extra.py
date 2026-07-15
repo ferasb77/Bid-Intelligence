@@ -207,12 +207,21 @@ def page_proposal_analyzer(bid_id):
 
     # ── Results ───────────────────────────────────────────────────────────────
     if "pa_result" in st.session_state:
-        r       = st.session_state["pa_result"]
+        r = st.session_state["pa_result"]
+
+        # Guard: if AI returned a list or non-dict, wrap it
+        if isinstance(r, list):
+            r = {"library_items": r, "proposal_summary": {}, "coaches_found": [], "gaps": []}
+        elif not isinstance(r, dict):
+            st.error("Analysis returned an unexpected format. Please try again.")
+            del st.session_state["pa_result"]
+            st.rerun()
+
         fname   = st.session_state.get("pa_filename","")
-        summary = r.get("proposal_summary",{})
-        items   = r.get("library_items",[])
-        coaches = r.get("coaches_found",[])
-        gaps    = r.get("gaps",[])
+        summary = r.get("proposal_summary",{}) if isinstance(r.get("proposal_summary"), dict) else {}
+        items   = r.get("library_items",[]) if isinstance(r.get("library_items"), list) else []
+        coaches = r.get("coaches_found",[]) if isinstance(r.get("coaches_found"), list) else []
+        gaps    = r.get("gaps",[]) if isinstance(r.get("gaps"), list) else []
 
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         c1,c2,c3,c4 = st.columns(4)

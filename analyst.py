@@ -423,7 +423,24 @@ Extract all reusable content. Return ONLY valid JSON:
 Extract as many library_items as possible — be thorough. Minimum 5 items if content allows."""
 
     raw = _call(PROPOSAL_ANALYZER_SYSTEM, prompt, max_tokens=4096)
-    return _parse_json(raw)
+    result = _parse_json(raw)
+
+    # Ensure result is always a dict with expected keys
+    if not isinstance(result, dict):
+        result = {}
+    result.setdefault("proposal_summary", {})
+    result.setdefault("library_items", [])
+    result.setdefault("coaches_found", [])
+    result.setdefault("gaps", [])
+
+    # Ensure library_items is a list of dicts
+    if not isinstance(result["library_items"], list):
+        result["library_items"] = []
+    result["library_items"] = [
+        i for i in result["library_items"] if isinstance(i, dict)
+    ]
+
+    return result
 
 
 # ── 6. Proposal Section Drafter ───────────────────────────────────────────────
