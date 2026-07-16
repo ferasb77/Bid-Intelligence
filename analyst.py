@@ -646,7 +646,9 @@ Analyze this document and identify all changes. Return ONLY valid JSON under 250
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PROPOSAL REVIEW — full proposal vs RFP alignment analysis
+# PROPOSAL REVIEW — two-call approach to avoid token limit truncation
+# Call 1: score + findings + strengths + next_steps  (~3000 token response)
+# Call 2: per-requirement coverage table             (~2000 token response)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def analyze_proposal_alignment(
@@ -656,156 +658,120 @@ def analyze_proposal_alignment(
     bid_info: dict,
 ) -> dict:
     """
-    Analyze a final proposal PDF against the RFP requirements and compliance
-    matrix. Returns a structured report with:
-      - overall alignment score (0–100)
-      - per-severity findings (Critical / High / Medium / Low)
-      - per-requirement coverage assessment
-      - executive summary and recommended next steps
+    Analyze a final proposal PDF against RFP requirements and compliance matrix.
+    Split into two API calls so neither exceeds Haiku's output token limit.
     """
 
-    # Build compact requirements summary — keep short to leave room for response
+    # ── Shared input blocks ──────────────────────────────────────────────────
+    rfp_snippet   = (rfp_text      or "")[:3000]
+    proposal_snip = (proposal_text or "")[:7000]
+
     req_lines = []
     for r in requirements:
         cat  = r.get("category", "")
         rid  = r.get("req_id", "")
-        desc = (r.get("description") or "")[:150]
+        desc = (r.get("description") or "")[:120]
         wt   = f"{r['weight']*100:.0f}%" if r.get("weight") else ""
-        ev   = (r.get("evidence") or "")[:80]
-        req_lines.append(f"[{cat}] {rid} {wt}: {desc}  |  Evidence: {ev}")
-    req_block = "\n".join(req_lines) if req_lines else "No requirements extracted yet."
+        ev   = (r.get("evidence") or "")[:60]
+        req_lines.append(f"[{cat}] {rid} {wt}: {desc} | Ev: {ev}")
+    req_block = "\n".join(req_lines) if req_lines else "No requirements loaded."
 
-    # Truncate inputs — tight budget so 8192-token response has room
-    rfp_snippet   = (rfp_text      or "")[:4000]
-    proposal_snip = (proposal_text or "")[:8000]
+    bid_header = f"BID: {bid_info.get('title','')} | CLIENT: {bid_info.get('client','')}"
 
-    SYSTEM = """\
-You are a senior proposal review expert specialising in government RFP compliance.
-You review proposals against RFP requirements and compliance matrices, identify gaps,
-weaknesses, and misalignments, then provide actionable recommendations.
-Always respond with valid JSON only — no markdown, no preamble."""
+    SYSTEM = (
+        "You are a senior proposal reviewer specialising in government RFP compliance. "
+        "Respond with valid JSON only — no markdown fences, no preamble, no trailing text."
+    )
 
-    prompt = f"""
-Review this proposal against the RFP requirements and generate a structured analysis report.
+    # ── Call 1: Score, findings, strengths, next steps ───────────────────────
+    prompt1 = f"""
+{bid_header}
 
-BID: {bid_info.get('title','')} | CLIENT: {bid_info.get('client','')}
-
-=== RFP / RFSO CONTEXT (first 6000 chars) ===
+=== RFP CONTEXT ===
 {rfp_snippet}
 
-=== COMPLIANCE MATRIX REQUIREMENTS ===
+=== COMPLIANCE MATRIX ===
 {req_block}
 
-=== PROPOSAL TEXT (first 10000 chars) ===
+=== PROPOSAL TEXT ===
 {proposal_snip}
 
-Analyze the proposal and return this exact JSON structure:
-
+Return ONLY this JSON — no markdown, no extra text:
 {{
-  "overall_score": <integer 0-100>,
-  "score_rationale": "<2-3 sentence explanation of the score>",
+  "overall_score": <0-100>,
+  "score_rationale": "<2 sentences>",
   "recommendation": "SUBMIT AS-IS|REVISE BEFORE SUBMITTING|MAJOR REVISION NEEDED",
-  "executive_summary": "<3-5 sentence overall assessment>",
+  "executive_summary": "<3-4 sentences>",
+  "strengths": ["<s1>", "<s2>", "<s3>"],
   "findings": [
     {{
       "severity": "Critical|High|Medium|Low",
-      "category": "Mandatory|Rated|Financial|Supporting|Structure|Compliance",
-      "req_id": "<requirement ID if applicable, else null>",
-      "title": "<short finding title>",
-      "issue": "<clear description of the gap or weakness>",
-      "recommendation": "<specific actionable change to make>",
-      "proposal_location": "<where in proposal this relates to, e.g. Section 3, Executive Summary>",
+      "category": "<category>",
+      "req_id": "<req_id or null>",
+      "title": "<short title>",
+      "issue": "<gap description>",
+      "recommendation": "<specific fix>",
+      "proposal_location": "<where in proposal>",
       "effort": "Minor edit|Moderate rewrite|Major addition"
     }}
   ],
+  "next_steps": [
+    {{"priority": 1, "action": "<action>", "rationale": "<why>"}}
+  ]
+}}
+
+Severity: Critical=disqualification risk, High=major score loss, Medium=evaluators notice, Low=polish.
+Score: 90-100 comprehensive, 75-89 solid, 60-74 adequate gaps, 45-59 significant gaps, <45 critical.
+Limit findings to the 8 most important. Limit next_steps to 5.
+"""
+
+    raw1 = _call(SYSTEM, prompt1, max_tokens=4096)
+    result = _parse_json(raw1)
+    if not isinstance(result, dict):
+        raise ValueError(
+            f"Call 1 failed to parse. First 300 chars: {raw1[:300]}"
+        )
+
+    # ── Call 2: Per-requirement coverage ─────────────────────────────────────
+    # Build a shorter req list for coverage (just id + short description)
+    cov_lines = []
+    for r in requirements:
+        rid  = r.get("req_id", "")
+        cat  = r.get("category", "")
+        desc = (r.get("description") or "")[:80]
+        cov_lines.append(f"{rid} [{cat}]: {desc}")
+    cov_block = "\n".join(cov_lines) if cov_lines else "No requirements."
+
+    prompt2 = f"""
+{bid_header}
+
+=== REQUIREMENTS TO ASSESS ===
+{cov_block}
+
+=== PROPOSAL TEXT ===
+{proposal_snip}
+
+For each requirement, assess whether the proposal addresses it.
+Return ONLY this JSON — no markdown, no extra text:
+{{
   "requirement_coverage": [
     {{
       "req_id": "<req_id>",
       "category": "<category>",
-      "description": "<short description>",
+      "description": "<15 word max description>",
       "coverage": "Fully Addressed|Partially Addressed|Not Addressed|Cannot Assess",
       "confidence": "High|Medium|Low",
-      "notes": "<brief note on what is present or missing>"
-    }}
-  ],
-  "strengths": ["<strength 1>", "<strength 2>", "<strength 3>"],
-  "next_steps": [
-    {{
-      "priority": 1,
-      "action": "<specific action>",
-      "rationale": "<why this matters>"
+      "notes": "<one sentence>"
     }}
   ]
 }}
-
-Severity definitions:
-- Critical: Mandatory requirement not addressed — disqualification risk
-- High: Rated requirement significantly underaddressed — major score loss
-- Medium: Weakness that evaluators will notice — moderate score impact
-- Low: Polish/clarity issue — minor improvement opportunity
-
-Score guide:
-- 90-100: Proposal comprehensively addresses all requirements with strong evidence
-- 75-89:  Solid proposal with minor gaps
-- 60-74:  Adequate but meaningful gaps in rated criteria
-- 45-59:  Significant weaknesses across multiple requirements
-- Below 45: Critical gaps; submission risk without major revision
 """
 
-    raw = _call(SYSTEM, prompt, max_tokens=8192)
+    raw2 = _call(SYSTEM, prompt2, max_tokens=3000)
+    coverage_result = _parse_json(raw2)
+    if isinstance(coverage_result, dict):
+        result["requirement_coverage"] = coverage_result.get("requirement_coverage", [])
+    else:
+        result["requirement_coverage"] = []
 
-    # Primary parse
-    result = _parse_json(raw)
-    if isinstance(result, dict):
-        return result
-
-    # Truncation recovery: the response was cut before the final closing braces.
-    # Try to salvage whatever fields were fully serialised by closing the JSON
-    # at the last cleanly-closed top-level value.
-    import re as _re
-    # Strip markdown fences
-    cleaned = _re.sub(r"^```(?:json)?\s*", "", raw.strip())
-    cleaned = _re.sub(r"\s*```$", "", cleaned).strip()
-
-    # Walk backwards looking for the last complete top-level value boundary
-    for end_ch in ("}", "]"):
-        pos = len(cleaned)
-        while pos >= 0:
-            pos = cleaned.rfind(end_ch, 0, pos)
-            if pos == -1:
-                break
-            candidate = cleaned[:pos + 1]
-            # Count open vs close to check balance
-            depth = 0
-            in_str = False
-            esc = False
-            for ch in candidate:
-                if esc:
-                    esc = False
-                    continue
-                if ch == "\\" and in_str:
-                    esc = True
-                    continue
-                if ch == '"' and not esc:
-                    in_str = not in_str
-                    continue
-                if in_str:
-                    continue
-                if ch in ("{", "["):
-                    depth += 1
-                elif ch in ("}", "]"):
-                    depth -= 1
-            if depth == 0:
-                try:
-                    partial = __import__("json").loads(candidate)
-                    if isinstance(partial, dict):
-                        partial["_truncated"] = True
-                        return partial
-                except Exception:
-                    pass
-            pos -= 1
-
-    raise ValueError(
-        f"Could not parse model response as JSON after all repair attempts. "
-        f"First 300 chars: {raw[:300]}"
-    )
+    return result
