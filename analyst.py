@@ -659,17 +659,11 @@ def analyze_proposal_alignment(
 ) -> dict:
     """
     Analyze a final proposal against RFP requirements and compliance matrix.
-
-    Two API calls to stay within token limits:
-      Call 1 — Score, findings, strengths, next steps
-      Call 2 — Per-requirement coverage table
-
-    All stage classification is derived entirely from the RFP documents
-    provided. No jurisdiction-specific rules are hardcoded.
+    Two API calls to stay within token limits.
+    All stage classification derived from the tender documents provided.
     """
 
-    # ── Build shared context blocks ──────────────────────────────────────────
-    # Keep inputs tight to leave room for the response
+    # ── Shared context blocks ────────────────────────────────────────────────
     rfp_snippet   = (rfp_text      or "")[:4000]
     proposal_snip = (proposal_text or "")[:8000]
 
@@ -688,102 +682,131 @@ def analyze_proposal_alignment(
     SYSTEM = (
         "You are a senior proposal reviewer with deep expertise in competitive "
         "procurement across multiple sectors and jurisdictions. "
-        "Your role is to assess how well a proposal responds to its specific RFP. "
-        "You derive all conclusions from the documents provided — you never apply "
-        "assumptions from other bids, jurisdictions, or standard templates. "
+        "Your role is to assess how well a proposal responds to its specific tender. "
+        "You derive ALL conclusions from the tender documents and proposal provided. "
+        "You NEVER assume requirements that are not explicitly stated in those documents. "
         "Respond with valid JSON only — no markdown fences, no preamble, no trailing text."
     )
 
-    # ── Call 1: Score, findings, strengths, next steps ───────────────────────
     prompt1 = f"""
 {bid_header}
 
-=== RFP / TENDER DOCUMENTS (extracted text) ===
+=== TENDER DOCUMENTS (extracted text) ===
 {rfp_snippet}
 
-=== COMPLIANCE MATRIX (extracted requirements) ===
+=== COMPLIANCE MATRIX ===
 {req_block}
 
-=== PROPOSAL TEXT ===
+=== PROPOSAL TEXT (may be truncated) ===
 {proposal_snip}
 
 ## YOUR TASK
 
-Review the proposal against this specific RFP and compliance matrix.
-Base every finding on what these documents actually say — not on assumptions
-about what similar bids typically require.
+Review the proposal against this specific tender and score alignment.
 
-## STEP 1 — READ THE RFP DOCUMENTS FIRST
+---
 
-Before assessing the proposal, identify from the RFP text above:
+## STEP 1 — IDENTIFY WHAT IS ACTUALLY REQUIRED AND WHEN
 
-A) SUBMISSION-STAGE items: documents, forms, or content the RFP explicitly
-   requires to be INCLUDED WITH the proposal at submission. Look for sections
-   titled "Submission Requirements", "Instructions to Proponents", "Mandatory
-   Submission", "Evaluation Criteria", or equivalent. Only items explicitly
-   listed there are submission-stage requirements.
+Read the tender documents above and identify:
 
-B) POST-AWARD / PRE-CONTRACT items: documents the RFP says must be provided
-   BEFORE signing the agreement or contract — typically listed in a "Conditions
-   for Award", "Conditions for Signing", or equivalent section. These are NOT
-   submission requirements.
+**A. Proposal Submission Requirements**
+Look for sections explicitly titled (or equivalent to):
+"Submission Requirements", "Submissions with Proposal", "Instructions to Proponents",
+"Mandatory Submission", "Required Documents at Submission", or similar.
+ONLY items explicitly listed there are submission-stage requirements.
+Common examples: submission/declaration forms, pricing forms, technical content,
+consortium/multi-party forms, social procurement questionnaires, method statements.
 
-C) CONTRACTUAL OBLIGATIONS: duties that arise AFTER award, typically found in
-   General Conditions, Special Conditions clauses, or the draft agreement. These
-   are performance obligations, not proposal documents.
+**B. Post-Award / Pre-Contract Requirements**
+Look for sections titled (or equivalent to):
+"Conditions for Award", "Conditions for Signing", "Conditions Precedent",
+"Required Before Execution", or similar.
+These items are NOT required at proposal submission — only if selected.
+Common examples: insurance certificates, registration proof, performance bonds,
+professional licences (unless the ITP explicitly requires them at submission).
 
-D) POST-SHORTLIST items: things only required from the preferred/shortlisted
-   proponent (e.g. detailed cost breakdowns, presentations, clarifications).
+**C. Evaluated Criteria**
+Look for evaluation/scoring sections. Items listed there affect the SCORE but are
+not necessarily pass/fail submission requirements. A weak response scores low;
+an absent response may score zero but is not always disqualifying.
 
-## STEP 2 — ASSESS THE PROPOSAL
+**D. Post-Shortlist Requirements**
+Items explicitly stated as required only from the preferred or highest-rated proponent.
+Common examples: detailed cost breakdowns, reference verification, presentations.
 
-For each finding, assign the correct stage based solely on what the RFP says:
+**E. Contractual Obligations**
+Duties that arise after contract award. Found in General Conditions, Special Conditions,
+or draft agreement clauses. These are performance obligations, not proposal documents.
+Common examples: privacy compliance, confidentiality, IP assignment, insurance maintenance.
 
-- "Proposal Submission"      — explicitly required WITH the proposal
+---
+
+## STEP 2 — ASSESS THE PROPOSAL CAREFULLY
+
+**Critical reading rules:**
+- The proposal text may be truncated. If a section is not visible in the extract,
+  do NOT assume it is absent from the actual proposal — note the uncertainty.
+- Only flag something as missing if the tender EXPLICITLY requires it and there is
+  NO evidence of it in the proposal text provided.
+- Do not invent requirements from General Conditions or contract clauses that do
+  not appear in the submission checklist.
+- Do not flag contractual obligations (privacy, confidentiality, IP, compliance
+  statements) as proposal deficiencies unless the tender explicitly requires a
+  standalone declaration form to be submitted with the proposal.
+- If the tender requires a consortium/multi-party form and the proposal is from
+  a consortium, flag its absence if not evident in the proposal.
+- If the tender requires a social procurement questionnaire or similar form,
+  flag its absence if not evident.
+
+---
+
+## STEP 3 — CLASSIFY EACH FINDING BY PROCUREMENT STAGE
+
+Assign the stage based solely on what the tender documents say:
+
+- "Proposal Submission"      — explicitly required WITH the proposal at submission
 - "Negotiation / Shortlist"  — required only if shortlisted or selected
-- "Contract Execution"       — required before contract signing, not at proposal
-- "Contractual Obligation"   — ongoing performance duty under the contract
+- "Contract Execution"       — required before contract signing, not at proposal stage
+- "Contractual Obligation"   — ongoing performance duty, not a proposal document
 
-## STEP 3 — ASSIGN SEVERITY
+---
 
-Severity must reflect BOTH importance AND stage:
+## STEP 4 — ASSIGN SEVERITY
 
-- Critical : A Proposal Submission item that is completely missing and would
-             cause disqualification or prevent evaluation. NEVER assign Critical
-             to a Contract Execution or Contractual Obligation item regardless
-             of how important it sounds.
+- Critical : A Proposal Submission item completely missing and likely disqualifying.
+             NEVER assign Critical to Contract Execution or Contractual Obligation items.
+             NEVER assign Critical to something you are uncertain about due to truncation.
 
-- High     : A Proposal Submission item that is present but seriously deficient,
-             OR a heavily-weighted evaluation criterion that is substantially
-             underaddressed in the proposal text.
+- High     : A Proposal Submission item seriously deficient, OR a high-weight evaluated
+             criterion substantially underaddressed.
 
-- Medium   : A Proposal Submission item with a minor gap; OR a Negotiation /
-             Shortlist item worth flagging; OR a Contract Execution item the team
-             should be aware of and prepare for.
+- Medium   : Minor proposal gap; OR a Negotiation/Shortlist item to prepare for;
+             OR a Contract Execution item the team should plan for.
 
-- Low      : Polish or clarity issues; Contractual Obligations the team should
-             note but that do not affect proposal evaluation.
+- Low      : Polish issues; Contractual Obligations worth noting for awareness only.
 
-## SCORING
+---
 
-Score 0-100 based ONLY on how well the proposal addresses the proposal-stage
-submission and evaluation requirements. Do not deduct points for absent
-Contract Execution or Contractual Obligation items.
+## STEP 5 — SCORE
+
+Score 0-100 based ONLY on proposal-stage submission and evaluation requirements.
+Do NOT deduct points for absent Contract Execution or Contractual Obligation items.
 
 90-100: Comprehensively addresses all submission and evaluation requirements
-75-89:  Solid response with minor gaps in evaluated criteria
-60-74:  Adequate but with meaningful gaps in scored criteria
-45-59:  Significant weaknesses across multiple evaluation areas  
-Below 45: Critical submission gaps or proposal fundamentally incomplete
+75-89:  Solid with minor gaps in evaluated criteria
+60-74:  Adequate but meaningful gaps in scored criteria
+45-59:  Significant weaknesses across multiple evaluation areas
+Below 45: Critical submission gaps; proposal functionally incomplete
 
-## OUTPUT FORMAT
+---
 
-Return ONLY this JSON — no markdown, no extra text:
+Return ONLY this JSON - no markdown, no extra text:
 {{
   "overall_score": <0-100>,
-  "score_rationale": "<2 sentences explaining score based on submission and evaluation criteria only>",
+  "score_rationale": "<2 sentences — based on submission and evaluation criteria only>",
   "recommendation": "SUBMIT AS-IS|REVISE BEFORE SUBMITTING|MAJOR REVISION NEEDED",
-  "executive_summary": "<3-4 sentences overall assessment>",
+  "executive_summary": "<3-4 sentences>",
   "strengths": ["<strength 1>", "<strength 2>", "<strength 3>"],
   "findings": [
     {{
@@ -792,8 +815,8 @@ Return ONLY this JSON — no markdown, no extra text:
       "category": "<category>",
       "req_id": "<req_id or null>",
       "title": "<short title>",
-      "issue": "<what is missing or weak, citing the specific RFP section or requirement>",
-      "recommendation": "<specific actionable fix, including WHEN to act if not at submission>",
+      "issue": "<what is missing or weak - cite the specific tender section or requirement. If uncertain due to truncation, say so>",
+      "recommendation": "<specific actionable fix, including WHEN to act>",
       "proposal_location": "<section of proposal where this relates, or N/A>",
       "effort": "Minor edit|Moderate rewrite|Major addition|Post-submission action"
     }}
@@ -802,7 +825,7 @@ Return ONLY this JSON — no markdown, no extra text:
     {{
       "priority": 1,
       "action": "<specific action>",
-      "rationale": "<why this matters, citing the RFP>",
+      "rationale": "<why, citing the tender>",
       "when": "Before submission|If shortlisted|Before contract execution|Upon contract award"
     }}
   ]
@@ -830,16 +853,17 @@ Limit findings to the 10 most important. Limit next_steps to 6.
     prompt2 = f"""
 {bid_header}
 
-=== RFP REQUIREMENTS TO ASSESS ===
+=== REQUIREMENTS TO ASSESS ===
 {cov_block}
 
-=== PROPOSAL TEXT ===
+=== PROPOSAL TEXT (may be truncated) ===
 {proposal_snip}
 
-For each requirement listed above, assess how well the proposal addresses it.
-Base your assessment only on the proposal text provided.
+For each requirement listed, assess how well the proposal addresses it.
+If the proposal text is truncated and you cannot verify, use "Cannot Assess" with a note.
+Base your assessment only on what is visible in the proposal text above.
 
-Return ONLY this JSON — no markdown, no extra text:
+Return ONLY this JSON - no markdown, no extra text:
 {{
   "requirement_coverage": [
     {{
@@ -848,7 +872,7 @@ Return ONLY this JSON — no markdown, no extra text:
       "description": "<15 word max description>",
       "coverage": "Fully Addressed|Partially Addressed|Not Addressed|Cannot Assess",
       "confidence": "High|Medium|Low",
-      "notes": "<one sentence on what is present or missing>"
+      "notes": "<one sentence - note if uncertain due to truncation>"
     }}
   ]
 }}
