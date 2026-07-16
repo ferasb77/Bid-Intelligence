@@ -5,7 +5,8 @@ STATUSES   = ["Not Started", "In Progress", "Draft", "In Review", "Complete", "B
 PRIORITIES = ["Critical", "High", "Medium", "Low"]
 CATEGORIES = ["Mandatory", "Rated", "Financial", "Supporting"]
 SENSITIVITY= ["Standard", "Sensitive"]
-DOC_TYPES  = ["RFP / Source", "Submission", "Supporting", "Reference", "Internal"]
+DOC_TYPES  = ["RFP / Source", "Submission", "Supporting", "Reference",
+              "Past Proposal", "Financial", "Internal"]
 
 STAGE_COLOURS = {
     "Identified":  "#6E6C66",

@@ -726,6 +726,49 @@ def page_documents(bid_id):
             st.rerun()
         st.markdown("")
 
+    # ── Bulk reclassify panel ─────────────────────────────────────────────────
+    # Allows quick correction of mis-typed documents (e.g. past proposals
+    # that were saved as "RFP / Source") without editing one by one.
+    with st.expander("🔀 Bulk Reclassify Documents", expanded=False):
+        st.markdown('<span style="font-size:.82rem;color:#A9A69D">Select documents and '
+                    'assign a new type. Use this to move past proposals, submissions, or '
+                    'other mis-classified files to the correct category.</span>',
+                    unsafe_allow_html=True)
+        if docs:
+            doc_options = {f"{d['name']} [{d.get('doc_type','')}]": d["id"] for d in docs}
+            selected_labels = st.multiselect(
+                "Select documents to reclassify",
+                options=list(doc_options.keys()),
+                key="bulk_reclassify_sel"
+            )
+            new_type = st.selectbox(
+                "Reclassify to",
+                DOC_TYPES,
+                key="bulk_reclassify_type"
+            )
+            if st.button("✅ Apply Reclassification", key="bulk_reclassify_btn",
+                         use_container_width=True):
+                selected_ids = [doc_options[lbl] for lbl in selected_labels]
+                for did in selected_ids:
+                    doc = next((d for d in docs if d["id"] == did), None)
+                    if doc:
+                        upsert_document({
+                            "id": did, "bid_id": bid_id,
+                            "name": doc["name"],
+                            "doc_type": new_type,
+                            "owner": doc.get("owner"),
+                            "due_date": doc.get("due_date"),
+                            "status": doc.get("status", "Uploaded"),
+                            "linked_req_ids": doc.get("linked_req_ids"),
+                            "mandatory": doc.get("mandatory", 0),
+                            "notes": doc.get("notes"),
+                            "file_path": None, "file_size": None, "version": None,
+                        })
+                st.success(f"Reclassified {len(selected_ids)} document(s) → {new_type}")
+                st.rerun()
+        else:
+            st.markdown("No documents to reclassify.")
+
     # ── Document type tabs ────────────────────────────────────────────────────
     TYPE_ORDER = [
         ("📄 RFP / Source",    "RFP / Source"),
@@ -733,6 +776,7 @@ def page_documents(bid_id):
         ("💰 Financial",       "Financial"),
         ("👤 Supporting",      "Supporting"),
         ("📚 Reference",       "Reference"),
+        ("📁 Past Proposals",  "Past Proposal"),
         ("🗂 Internal",        "Internal"),
     ]
 
