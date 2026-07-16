@@ -837,3 +837,375 @@ def generate_proposal_review_pdf(bid: dict, result: dict, proposal_filename: str
 
     doc.build(story, onFirstPage=footer, onLaterPages=footer)
     return buf.getvalue()
+
+
+# ── Proposal Review PDF ───────────────────────────────────────────────────────
+def generate_proposal_review_pdf(bid: dict, result: dict, proposal_filename: str = "") -> bytes:
+    """
+    McKinsey-style A4 portrait PDF of the proposal alignment analysis report.
+    Sections: cover header → score panel → executive summary → strengths →
+              findings by severity → requirement coverage → next steps.
+    """
+    import io
+    from datetime import date
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, HRFlowable, Table, TableStyle,
+        KeepTogether,
+    )
+    from reportlab.lib import colors
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=ML, rightMargin=MR,
+        topMargin=MT, bottomMargin=MB + 8*mm,
+    )
+
+    fn_r  = _font("regular")
+    CW    = content_w(landscape_mode=False)
+
+    # ── Style helpers ─────────────────────────────────────────────────────────
+    def _p(text, size=8, weight="regular", color=C_BLACK, align=TA_LEFT, leading=None):
+        fn = _font(weight)
+        st = ParagraphStyle(
+            f"pr_{size}_{weight}", fontName=fn, fontSize=size,
+            leading=leading or max(size * 1.35, size + 3),
+            textColor=color, alignment=align,
+        )
+        from reportlab.platypus import Paragraph as _Para
+        return _Para(str(text) if text else "—", st)
+
+    SEV_COLOUR = {
+        "Critical": C_RED,
+        "High":     C_AMBER,
+        "Medium":   HexColor("#7F6000"),
+        "Low":      C_GREY_2,
+    }
+    SEV_BG = {
+        "Critical": HexColor("#FFF0F0"),
+        "High":     HexColor("#FFF8F0"),
+        "Medium":   HexColor("#FDFAF0"),
+        "Low":      C_GREY_4,
+    }
+    COV_COLOUR = {
+        "Fully Addressed":     C_GREEN,
+        "Partially Addressed": C_AMBER,
+        "Not Addressed":       C_RED,
+        "Cannot Assess":       C_GREY_2,
+    }
+    EFFORT_COL = {
+        "Minor edit":       C_GREEN,
+        "Moderate rewrite": C_AMBER,
+        "Major addition":   C_RED,
+    }
+    REC_COLOUR = {
+        "SUBMIT AS-IS":             C_GREEN,
+        "REVISE BEFORE SUBMITTING": C_AMBER,
+        "MAJOR REVISION NEEDED":    C_RED,
+    }
+
+    story = []
+
+    # ── Footer ────────────────────────────────────────────────────────────────
+    footer_label = f"{bid.get('client','')}  ·  Proposal Review Report  ·  {date.today().strftime('%B %d, %Y')}"
+    footer = make_footer(footer_label, landscape_mode=False)
+
+    # ── Cover header ──────────────────────────────────────────────────────────
+    cover_header(story, bid, "Proposal Review — RFP Alignment Analysis")
+    if proposal_filename:
+        story.append(_p(f"Reviewed file: {proposal_filename}", 7.5, color=C_GREY_2))
+        story.append(Spacer(1, 3*mm))
+
+    # ── Score panel ───────────────────────────────────────────────────────────
+    score     = result.get("overall_score", 0)
+    rec       = result.get("recommendation", "")
+    rec_col   = REC_COLOUR.get(rec, C_GREY_1)
+    score_col = C_GREEN if score >= 75 else C_AMBER if score >= 55 else C_RED
+
+    score_tbl = Table(
+        [[
+            _p(str(score), 32, "bold", score_col, TA_CENTER),
+            Table(
+                [[_p("RECOMMENDATION", 6.5, "semibold", C_GREY_2)],
+                 [_p(rec, 9, "bold", rec_col)],
+                 [Spacer(1, 2*mm)],
+                 [_p(result.get("score_rationale", ""), 7.5, color=C_GREY_1)]],
+                colWidths=[CW * 0.72],
+                style=TableStyle([("VALIGN", (0,0), (-1,-1), "TOP"),
+                                  ("LEFTPADDING", (0,0), (-1,-1), 0),
+                                  ("RIGHTPADDING", (0,0), (-1,-1), 0)])
+            ),
+        ]],
+        colWidths=[CW * 0.18, CW * 0.82],
+    )
+    score_tbl.setStyle(TableStyle([
+        ("BOX",        (0,0), (-1,-1), 0.75, C_GREY_3),
+        ("LINEAFTER",  (0,0), (0,-1),  0.5,  C_GREY_3),
+        ("VALIGN",     (0,0), (-1,-1), "MIDDLE"),
+        ("LEFTPADDING",(0,0), (-1,-1), 6),
+        ("TOPPADDING", (0,0), (-1,-1), 6),
+        ("BOTTOMPADDING",(0,0),(-1,-1), 6),
+        ("BACKGROUND", (0,0), (0,-1),  C_GREY_4),
+    ]))
+    story.append(score_tbl)
+    story.append(Spacer(1, 5*mm))
+
+    # ── Executive summary ─────────────────────────────────────────────────────
+    story.append(_p("EXECUTIVE SUMMARY", 7.5, "semibold", C_NAVY))
+    story.append(Spacer(1, 1*mm))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=C_GREY_3, spaceAfter=2*mm))
+    story.append(_p(result.get("executive_summary", ""), 8.5, color=C_GREY_1, leading=13))
+    story.append(Spacer(1, 5*mm))
+
+    # ── Strengths ─────────────────────────────────────────────────────────────
+    strengths = result.get("strengths", [])
+    if strengths:
+        story.append(_p("STRENGTHS", 7.5, "semibold", C_NAVY))
+        story.append(Spacer(1, 1*mm))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=C_GREY_3, spaceAfter=2*mm))
+        for s in strengths:
+            row = Table(
+                [[_p("✓", 8, "semibold", C_GREEN), _p(s, 8, color=C_GREY_1)]],
+                colWidths=[6*mm, CW - 6*mm],
+            )
+            row.setStyle(TableStyle([
+                ("VALIGN",       (0,0),(-1,-1),"TOP"),
+                ("LEFTPADDING",  (0,0),(-1,-1), 0),
+                ("RIGHTPADDING", (0,0),(-1,-1), 0),
+                ("TOPPADDING",   (0,0),(-1,-1), 1),
+                ("BOTTOMPADDING",(0,0),(-1,-1), 1),
+            ]))
+            story.append(row)
+        story.append(Spacer(1, 5*mm))
+
+    # ── Findings ──────────────────────────────────────────────────────────────
+    findings = result.get("findings", [])
+    if findings:
+        story.append(_p("FINDINGS BY SEVERITY", 7.5, "semibold", C_NAVY))
+        story.append(Spacer(1, 1*mm))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=C_GREY_3, spaceAfter=3*mm))
+
+        # Severity summary strip
+        sev_counts = {}
+        for f in findings:
+            sev_counts[f.get("severity","")] = sev_counts.get(f.get("severity",""), 0) + 1
+        sev_cells = []
+        for sev in ("Critical", "High", "Medium", "Low"):
+            cnt = sev_counts.get(sev, 0)
+            if cnt:
+                sc = SEV_COLOUR[sev]
+                sev_cells.append([
+                    _p(sev, 7, "semibold", sc, TA_CENTER),
+                    _p(str(cnt), 12, "bold", sc, TA_CENTER),
+                ])
+        if sev_cells:
+            # Transpose: one row per col
+            strip_data = [[c[0] for c in sev_cells], [c[1] for c in sev_cells]]
+            col_w = CW / len(sev_cells)
+            strip = Table(strip_data, colWidths=[col_w] * len(sev_cells))
+            strip.setStyle(TableStyle([
+                ("BOX",          (0,0),(-1,-1), 0.5, C_GREY_3),
+                ("INNERGRID",    (0,0),(-1,-1), 0.5, C_GREY_3),
+                ("TOPPADDING",   (0,0),(-1,-1), 3),
+                ("BOTTOMPADDING",(0,0),(-1,-1), 3),
+                ("BACKGROUND",   (0,0),(-1,-1), C_GREY_4),
+            ]))
+            story.append(strip)
+            story.append(Spacer(1, 4*mm))
+
+        for sev in ("Critical", "High", "Medium", "Low"):
+            sev_findings = [f for f in findings if f.get("severity") == sev]
+            if not sev_findings:
+                continue
+            sc = SEV_COLOUR[sev]
+            bg = SEV_BG[sev]
+
+            # Severity group header
+            hdr = Table(
+                [[_p(f"  {sev.upper()}  ({len(sev_findings)})", 7.5, "semibold", C_WHITE)]],
+                colWidths=[CW],
+            )
+            hdr.setStyle(TableStyle([
+                ("BACKGROUND",   (0,0),(-1,-1), sc),
+                ("TOPPADDING",   (0,0),(-1,-1), 3),
+                ("BOTTOMPADDING",(0,0),(-1,-1), 3),
+                ("LEFTPADDING",  (0,0),(-1,-1), 4),
+            ]))
+            story.append(hdr)
+            story.append(Spacer(1, 1*mm))
+
+            for idx, f in enumerate(sev_findings):
+                title    = f.get("title", "")
+                req_id   = f.get("req_id") or ""
+                cat      = f.get("category", "")
+                issue    = f.get("issue", "")
+                rec_text = f.get("recommendation", "")
+                location = f.get("proposal_location", "")
+                effort   = f.get("effort", "")
+                ec       = EFFORT_COL.get(effort, C_GREY_2)
+
+                tag_parts = [p for p in [cat, f"Req {req_id}" if req_id else "", location] if p]
+                tags_str  = "  ·  ".join(tag_parts)
+
+                finding_block = Table(
+                    [
+                        [_p(f"{sev[0]}{idx+1}  {title}", 8.5, "semibold", C_BLACK)],
+                        [_p(tags_str, 7, color=C_GREY_2)] if tags_str else [Spacer(1, 1)],
+                        [Spacer(1, 1*mm)],
+                        [_p(f"Issue: {issue}", 8, color=C_GREY_1)],
+                        [Spacer(1, 1*mm)],
+                        [_p(f"Recommendation: {rec_text}", 8, "semibold", C_BLACK)],
+                        [_p(f"Effort: {effort}", 7, color=ec)],
+                    ],
+                    colWidths=[CW - 6*mm],
+                )
+                finding_block.setStyle(TableStyle([
+                    ("LEFTPADDING",  (0,0),(-1,-1), 4),
+                    ("RIGHTPADDING", (0,0),(-1,-1), 4),
+                    ("TOPPADDING",   (0,0),(-1,-1), 1),
+                    ("BOTTOMPADDING",(0,0),(-1,-1), 1),
+                    ("BACKGROUND",   (0,0),(-1,-1), bg),
+                ]))
+
+                # Left border stripe via wrapper table
+                wrapper = Table(
+                    [[Table([[_p("", 1)]], colWidths=[4*mm],
+                             style=TableStyle([("BACKGROUND",(0,0),(-1,-1), sc),
+                                               ("LEFTPADDING",(0,0),(-1,-1),0),
+                                               ("RIGHTPADDING",(0,0),(-1,-1),0)])),
+                      finding_block]],
+                    colWidths=[4*mm, CW - 4*mm],
+                )
+                wrapper.setStyle(TableStyle([
+                    ("LEFTPADDING",  (0,0),(-1,-1), 0),
+                    ("RIGHTPADDING", (0,0),(-1,-1), 0),
+                    ("TOPPADDING",   (0,0),(-1,-1), 0),
+                    ("BOTTOMPADDING",(0,0),(-1,-1), 0),
+                    ("BOX",          (0,0),(-1,-1), 0.5, C_GREY_3),
+                ]))
+                story.append(KeepTogether(wrapper))
+                story.append(Spacer(1, 2*mm))
+
+        story.append(Spacer(1, 3*mm))
+
+    # ── Requirement coverage ──────────────────────────────────────────────────
+    coverage = result.get("requirement_coverage", [])
+    if coverage:
+        story.append(_p("REQUIREMENT COVERAGE", 7.5, "semibold", C_NAVY))
+        story.append(Spacer(1, 1*mm))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=C_GREY_3, spaceAfter=2*mm))
+
+        # Coverage summary strip
+        cov_counts = {}
+        for c in coverage:
+            k = c.get("coverage", "")
+            cov_counts[k] = cov_counts.get(k, 0) + 1
+        cov_order = ["Fully Addressed","Partially Addressed","Not Addressed","Cannot Assess"]
+        cov_strip_data = [[],[]]
+        for k in cov_order:
+            if cov_counts.get(k):
+                cc = COV_COLOUR[k]
+                cov_strip_data[0].append(_p(k, 6.5, "semibold", cc, TA_CENTER))
+                cov_strip_data[1].append(_p(str(cov_counts[k]), 11, "bold", cc, TA_CENTER))
+        if cov_strip_data[0]:
+            n = len(cov_strip_data[0])
+            cs = Table(cov_strip_data, colWidths=[CW/n]*n)
+            cs.setStyle(TableStyle([
+                ("BOX",          (0,0),(-1,-1), 0.5, C_GREY_3),
+                ("INNERGRID",    (0,0),(-1,-1), 0.5, C_GREY_3),
+                ("TOPPADDING",   (0,0),(-1,-1), 3),
+                ("BOTTOMPADDING",(0,0),(-1,-1), 3),
+                ("BACKGROUND",   (0,0),(-1,-1), C_GREY_4),
+            ]))
+            story.append(cs)
+            story.append(Spacer(1, 3*mm))
+
+        # Table header
+        col_w = [14*mm, 22*mm, 60*mm, 42*mm, 20*mm]
+        scale = CW / sum(col_w)
+        col_w = [w * scale for w in col_w]
+        hdr_data = [[
+            _p("Req ID",     7, "semibold", C_WHITE),
+            _p("Category",   7, "semibold", C_WHITE),
+            _p("Description",7, "semibold", C_WHITE),
+            _p("Coverage",   7, "semibold", C_WHITE),
+            _p("Confidence", 7, "semibold", C_WHITE),
+        ]]
+        hdr_tbl = Table(hdr_data, colWidths=col_w)
+        hdr_tbl.setStyle(TableStyle([
+            ("BACKGROUND",   (0,0),(-1,-1), C_NAVY),
+            ("TOPPADDING",   (0,0),(-1,-1), 3),
+            ("BOTTOMPADDING",(0,0),(-1,-1), 3),
+            ("LEFTPADDING",  (0,0),(-1,-1), 4),
+        ]))
+        story.append(hdr_tbl)
+
+        for row_i, cov in enumerate(coverage):
+            cov_status = cov.get("coverage", "")
+            cc = COV_COLOUR.get(cov_status, C_GREY_2)
+            bg = C_GREY_4 if row_i % 2 == 0 else C_WHITE
+            notes = cov.get("notes", "")
+            desc  = cov.get("description", "")
+            desc_cell = f"{desc}<br/><font name='{fn_r}' size='6.5' color='#8C8C8C'>{notes}</font>" if notes else desc
+
+            row_data = [[
+                _p(cov.get("req_id",""),    7.5, "semibold", C_NAVY),
+                _p(cov.get("category",""),  7.5, color=C_GREY_1),
+                Paragraph(desc_cell, ParagraphStyle("dc", fontName=fn_r, fontSize=7.5,
+                          leading=10, textColor=C_BLACK)),
+                _p(cov_status, 7.5, "semibold", cc),
+                _p(cov.get("confidence",""), 7.5, color=C_GREY_2),
+            ]]
+            row_tbl = Table(row_data, colWidths=col_w)
+            row_tbl.setStyle(TableStyle([
+                ("BACKGROUND",   (0,0),(-1,-1), bg),
+                ("TOPPADDING",   (0,0),(-1,-1), 3),
+                ("BOTTOMPADDING",(0,0),(-1,-1), 3),
+                ("LEFTPADDING",  (0,0),(-1,-1), 4),
+                ("LINEBELOW",    (0,0),(-1,-1), 0.25, C_GREY_3),
+                ("VALIGN",       (0,0),(-1,-1), "TOP"),
+            ]))
+            story.append(row_tbl)
+
+        story.append(Spacer(1, 5*mm))
+
+    # ── Next steps ────────────────────────────────────────────────────────────
+    next_steps = result.get("next_steps", [])
+    if next_steps:
+        story.append(_p("RECOMMENDED NEXT STEPS", 7.5, "semibold", C_NAVY))
+        story.append(Spacer(1, 1*mm))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=C_GREY_3, spaceAfter=2*mm))
+        for step in sorted(next_steps, key=lambda x: x.get("priority", 99)):
+            pri = step.get("priority", "")
+            action = step.get("action", "")
+            rationale = step.get("rationale", "")
+            ns_row = Table(
+                [[
+                    _p(f"#{pri}", 9, "bold", C_NAVY, TA_CENTER),
+                    Table(
+                        [[_p(action, 8.5, "semibold", C_BLACK)],
+                         [_p(rationale, 7.5, color=C_GREY_1)]],
+                        colWidths=[CW - 14*mm],
+                        style=TableStyle([("LEFTPADDING",(0,0),(-1,-1),0),
+                                          ("RIGHTPADDING",(0,0),(-1,-1),0),
+                                          ("TOPPADDING",(0,0),(-1,-1),1),
+                                          ("BOTTOMPADDING",(0,0),(-1,-1),1)])
+                    ),
+                ]],
+                colWidths=[12*mm, CW - 12*mm],
+            )
+            ns_row.setStyle(TableStyle([
+                ("BOX",          (0,0),(-1,-1), 0.5, C_GREY_3),
+                ("LINEAFTER",    (0,0),(0,-1),  0.5, C_GREY_3),
+                ("BACKGROUND",   (0,0),(0,-1),  C_GREY_4),
+                ("VALIGN",       (0,0),(-1,-1), "TOP"),
+                ("LEFTPADDING",  (0,0),(-1,-1), 4),
+                ("TOPPADDING",   (0,0),(-1,-1), 4),
+                ("BOTTOMPADDING",(0,0),(-1,-1), 4),
+            ]))
+            story.append(KeepTogether(ns_row))
+            story.append(Spacer(1, 2*mm))
+
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    return buf.getvalue()

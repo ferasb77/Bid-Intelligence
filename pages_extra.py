@@ -1183,241 +1183,243 @@ def page_submission_assembler(bid_id):
                 st.markdown('<div style="text-align:center;padding:3rem 0;color:#6E6C66;'
                             'font-size:.9rem">Upload your proposal PDF above to run the analysis.'
                             '</div>', unsafe_allow_html=True)
-            st.stop()
-
-        fname = st.session_state.get(f"pr_filename_{bid_id}", "proposal")
-        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-
-        if result.get("_truncated"):
-            st.markdown('<div class="warn-box">⚠ The model response was truncated — '
-                        'coverage table or next steps may be incomplete. '
-                        'Results shown are partial but findings and score are intact. '
-                        'Re-run if needed.</div>', unsafe_allow_html=True)
-
-        # ── PDF export ────────────────────────────────────────────────────────
-        try:
-            from pdf_styles import generate_proposal_review_pdf
-            pdf_bytes = generate_proposal_review_pdf(bid, result, fname)
-            safe_name = (bid.get("client") or "proposal").replace(" ", "_")
-            st.download_button(
-                label="📄 Export Report as PDF",
-                data=pdf_bytes,
-                file_name=f"{safe_name}_proposal_review.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-            )
-        except Exception as pdf_err:
-            st.warning(f"PDF export unavailable: {pdf_err}")
-
-        # ── Score header ──────────────────────────────────────────────────────
-        score     = result.get("overall_score", 0)
-        rec       = result.get("recommendation", "")
-        rec_col   = {
-            "SUBMIT AS-IS":             "#27AE60",
-            "REVISE BEFORE SUBMITTING": "#E67E22",
-            "MAJOR REVISION NEEDED":    "#C0392B",
-        }.get(rec, "#6E6C66")
-
-        def _score_ring(s):
-            s_col = "#27AE60" if s >= 75 else "#E67E22" if s >= 55 else "#C0392B"
-            return (f'<div style="text-align:center;background:#131316;border:2px solid {s_col};'
-                    f'border-radius:8px;padding:1.2rem .8rem">'
-                    f'<div style="font-size:2.4rem;font-weight:800;color:{s_col}">{s}</div>'
-                    f'<div style="font-size:.7rem;color:#A9A69D;text-transform:uppercase;'
-                    f'letter-spacing:.06em">Alignment Score</div></div>')
-
-        c1, c2 = st.columns([1, 4])
-        c1.markdown(_score_ring(score), unsafe_allow_html=True)
-        with c2:
-            st.markdown(f'<div style="background:{rec_col}22;border:1px solid {rec_col}55;'
-                        f'border-radius:6px;padding:.6rem 1rem;margin-bottom:.5rem">'
-                        f'<span style="font-weight:700;color:{rec_col}">{rec}</span></div>',
-                        unsafe_allow_html=True)
-            st.markdown(f'<div class="info-box">{result.get("executive_summary","")}</div>',
-                        unsafe_allow_html=True)
-            st.markdown(f'<span style="font-size:.74rem;color:#6E6C66">Analyzed: '
-                        f'<em>{fname}</em> · {len(reqs)} requirements in matrix</span>',
-                        unsafe_allow_html=True)
-
-        st.markdown("")
-
-        # ── Strengths ─────────────────────────────────────────────────────────
-        strengths = result.get("strengths", [])
-        if strengths:
-            with st.expander("✅ Strengths", expanded=False):
-                for s in strengths:
-                    st.markdown(f'<span style="color:#27AE60;font-size:.85rem">✓ {s}</span>',
-                                unsafe_allow_html=True)
-
-        # ── Findings by severity ──────────────────────────────────────────────
-        findings = result.get("findings", [])
-        SEV_ORDER  = ["Critical", "High", "Medium", "Low"]
-        SEV_COLOUR = {
-            "Critical": "#C0392B",
-            "High":     "#E67E22",
-            "Medium":   "#C6A15B",
-            "Low":      "#6E6C66",
-        }
-        SEV_BG = {
-            "Critical": "#1A0000",
-            "High":     "#1A0A00",
-            "Medium":   "#1A1500",
-            "Low":      "#131316",
-        }
-        EFFORT_COL = {
-            "Minor edit":      "#27AE60",
-            "Moderate rewrite":"#E67E22",
-            "Major addition":  "#C0392B",
-        }
-
-        if findings:
-            st.markdown("### Findings")
-
-            # Summary strip
-            for sev in SEV_ORDER:
-                count = sum(1 for f in findings if f.get("severity") == sev)
-                if count:
-                    sc = SEV_COLOUR[sev]
-                    st.markdown(
-                        f'<span style="background:{sc}22;border:1px solid {sc}44;'
-                        f'border-radius:4px;padding:.15rem .5rem;margin-right:.4rem;'
-                        f'font-size:.78rem;color:{sc};font-weight:600">'
-                        f'{sev}: {count}</span>',
-                        unsafe_allow_html=True
-                    )
-            st.markdown("")
-
-            for sev in SEV_ORDER:
-                sev_findings = [f for f in findings if f.get("severity") == sev]
-                if not sev_findings:
-                    continue
-                sc = SEV_COLOUR[sev]
-                bg = SEV_BG[sev]
-                st.markdown(
-                    f'<div style="margin:.8rem 0 .3rem 0;font-size:.78rem;'
-                    f'color:{sc};font-weight:700;letter-spacing:.06em;'
-                    f'text-transform:uppercase">{sev} ({len(sev_findings)})</div>',
-                    unsafe_allow_html=True
-                )
-                for idx, finding in enumerate(sev_findings):
-                    title    = finding.get("title", "Finding")
-                    issue    = finding.get("issue", "")
-                    rec_text = finding.get("recommendation", "")
-                    location = finding.get("proposal_location", "")
-                    effort   = finding.get("effort", "")
-                    req_id   = finding.get("req_id", "")
-                    cat      = finding.get("category", "")
-                    ec       = EFFORT_COL.get(effort, "#6E6C66")
-
-                    label = f"{sev[0]}{idx+1}  {title}"
-                    if req_id:
-                        label += f"  [{req_id}]"
-
-                    with st.expander(label, expanded=(sev == "Critical")):
-                        st.markdown(
-                            f'<div style="background:{bg};border:1px solid {sc}33;'
-                            f'border-left:3px solid {sc};border-radius:0 6px 6px 0;'
-                            f'padding:.8rem 1rem">'
-                            f'<div style="font-size:.78rem;color:#A9A69D;margin-bottom:.4rem">'
-                            f'<span style="color:{sc}">{sev}</span>'
-                            f'{" · "+cat if cat else ""}'
-                            f'{" · Req "+req_id if req_id else ""}'
-                            f'{" · "+location if location else ""}'
-                            f'</div>'
-                            f'<div style="font-size:.88rem;color:#EDEAE2;margin-bottom:.6rem">'
-                            f'<strong>Issue:</strong> {issue}</div>'
-                            f'<div style="font-size:.85rem;color:#C6A15B;margin-bottom:.4rem">'
-                            f'<strong>Recommendation:</strong> {rec_text}</div>'
-                            f'<div style="font-size:.75rem;color:{ec}">'
-                            f'Effort: {effort}</div>'
-                            f'</div>',
-                            unsafe_allow_html=True
-                        )
         else:
-            st.markdown('<div class="info-box">No findings returned — analysis may have '
-                        'encountered a parsing issue. Try re-running.</div>',
-                        unsafe_allow_html=True)
+            fname = st.session_state.get(f"pr_filename_{bid_id}", "proposal")
+            st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
-        # ── Requirement coverage table ────────────────────────────────────────
-        coverage = result.get("requirement_coverage", [])
-        if coverage:
-            st.markdown("### Requirement Coverage")
+            if result.get("_truncated"):
+                st.markdown('<div class="warn-box">⚠ The model response was truncated — '
+                            'coverage table or next steps may be incomplete. '
+                            'Results shown are partial but findings and score are intact. '
+                            'Re-run if needed.</div>', unsafe_allow_html=True)
 
-            COV_COL = {
-                "Fully Addressed":     "#27AE60",
-                "Partially Addressed": "#E67E22",
-                "Not Addressed":       "#C0392B",
-                "Cannot Assess":       "#6E6C66",
-            }
+            # ── Score header ──────────────────────────────────────────────────────
+            score     = result.get("overall_score", 0)
+            rec       = result.get("recommendation", "")
+            rec_col   = {
+                "SUBMIT AS-IS":             "#27AE60",
+                "REVISE BEFORE SUBMITTING": "#E67E22",
+                "MAJOR REVISION NEEDED":    "#C0392B",
+            }.get(rec, "#6E6C66")
 
-            # Summary counts
-            for status in ["Fully Addressed","Partially Addressed","Not Addressed","Cannot Assess"]:
-                count = sum(1 for c in coverage if c.get("coverage") == status)
-                if count:
-                    sc = COV_COL[status]
-                    st.markdown(
-                        f'<span style="background:{sc}22;border:1px solid {sc}44;'
-                        f'border-radius:4px;padding:.15rem .5rem;margin-right:.4rem;'
-                        f'font-size:.78rem;color:{sc}">{status}: {count}</span>',
-                        unsafe_allow_html=True
-                    )
-            st.markdown("")
+            def _score_ring(s):
+                s_col = "#27AE60" if s >= 75 else "#E67E22" if s >= 55 else "#C0392B"
+                return (f'<div style="text-align:center;background:#131316;border:2px solid {s_col};'
+                        f'border-radius:8px;padding:1.2rem .8rem">'
+                        f'<div style="font-size:2.4rem;font-weight:800;color:{s_col}">{s}</div>'
+                        f'<div style="font-size:.7rem;color:#A9A69D;text-transform:uppercase;'
+                        f'letter-spacing:.06em">Alignment Score</div></div>')
 
-            # Coverage rows
-            hdr = st.columns([1, 1.5, 3, 2.5, 1.5])
-            for col_w, label in zip(hdr, ["Req ID","Category","Description","Coverage","Confidence"]):
-                col_w.markdown(f'<span style="font-size:.72rem;color:#6E6C66;'
-                               f'text-transform:uppercase;font-weight:600">{label}</span>',
-                               unsafe_allow_html=True)
-            st.markdown('<hr class="section-divider" style="margin:.2rem 0">', unsafe_allow_html=True)
-
-            for cov in coverage:
-                cov_status = cov.get("coverage","")
-                cc = COV_COL.get(cov_status,"#6E6C66")
-                conf = cov.get("confidence","")
-                notes = cov.get("notes","")
-                row = st.columns([1, 1.5, 3, 2.5, 1.5])
-                row[0].markdown(f'<span style="font-size:.8rem;color:#C6A15B">'
-                                f'{cov.get("req_id","")}</span>', unsafe_allow_html=True)
-                row[1].markdown(f'<span style="font-size:.78rem;color:#A9A69D">'
-                                f'{cov.get("category","")}</span>', unsafe_allow_html=True)
-                row[2].markdown(f'<span style="font-size:.8rem">{cov.get("description","")}'
-                                f'{"<br><span style=font-size:.72rem;color:#6E6C66>"+notes+"</span>" if notes else ""}'
-                                f'</span>', unsafe_allow_html=True)
-                row[3].markdown(f'<span style="color:{cc};font-size:.8rem">{cov_status}</span>',
-                                unsafe_allow_html=True)
-                row[4].markdown(f'<span style="font-size:.78rem;color:#A9A69D">{conf}</span>',
-                                unsafe_allow_html=True)
-                st.markdown('<hr class="section-divider" style="margin:.15rem 0">',
+            c1, c2 = st.columns([1, 4])
+            c1.markdown(_score_ring(score), unsafe_allow_html=True)
+            with c2:
+                st.markdown(f'<div style="background:{rec_col}22;border:1px solid {rec_col}55;'
+                            f'border-radius:6px;padding:.6rem 1rem;margin-bottom:.5rem">'
+                            f'<span style="font-weight:700;color:{rec_col}">{rec}</span></div>',
+                            unsafe_allow_html=True)
+                st.markdown(f'<div class="info-box">{result.get("executive_summary","")}</div>',
+                            unsafe_allow_html=True)
+                st.markdown(f'<span style="font-size:.74rem;color:#6E6C66">Analyzed: '
+                            f'<em>{fname}</em> · {len(reqs)} requirements in matrix</span>',
                             unsafe_allow_html=True)
 
-        # ── Next steps ────────────────────────────────────────────────────────
-        next_steps = result.get("next_steps", [])
-        if next_steps:
-            st.markdown("### Recommended Next Steps")
-            for step in sorted(next_steps, key=lambda x: x.get("priority", 99)):
-                pri = step.get("priority", "")
-                st.markdown(
-                    f'<div style="background:#131316;border:1px solid #2A2A2E;'
-                    f'border-left:3px solid #C6A15B;border-radius:0 4px 4px 0;'
-                    f'padding:.6rem 1rem;margin:.3rem 0">'
-                    f'<span style="color:#C6A15B;font-weight:700;font-size:.8rem">#{pri}</span> '
-                    f'<span style="font-size:.88rem;color:#EDEAE2">{step.get("action","")}</span>'
-                    f'<br><span style="font-size:.78rem;color:#A9A69D">{step.get("rationale","")}</span>'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
+            st.markdown("")
 
-        # ── Re-run / clear ────────────────────────────────────────────────────
-        st.markdown("")
-        c1, c2 = st.columns(2)
-        if c1.button("🔄 Re-run analysis", use_container_width=True, key=f"pr_rerun_{bid_id}"):
-            st.session_state.pop(f"pr_result_{bid_id}", None)
-            st.rerun()
-        if c2.button("🗑 Clear results", use_container_width=True, key=f"pr_del_{bid_id}"):
-            st.session_state.pop(f"pr_result_{bid_id}", None)
-            st.session_state.pop(f"pr_pending_{bid_id}", None)
-            st.rerun()
+            # ── PDF export button ─────────────────────────────────────────────────
+            try:
+                from pdf_styles import generate_proposal_review_pdf
+                pdf_bytes = generate_proposal_review_pdf(bid, result, fname)
+                safe_name = (bid.get("client") or "proposal").replace(" ", "_")
+                st.download_button(
+                    label="📄 Export Report as PDF",
+                    data=pdf_bytes,
+                    file_name=f"{safe_name}_proposal_review.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                    key=f"pr_pdf_{bid_id}",
+                )
+            except Exception as pdf_err:
+                st.warning(f"PDF export unavailable: {pdf_err}")
+
+            st.markdown("")
+
+            # ── Strengths ─────────────────────────────────────────────────────────
+            strengths = result.get("strengths", [])
+            if strengths:
+                with st.expander("✅ Strengths", expanded=False):
+                    for s in strengths:
+                        st.markdown(f'<span style="color:#27AE60;font-size:.85rem">✓ {s}</span>',
+                                    unsafe_allow_html=True)
+
+            # ── Findings by severity ──────────────────────────────────────────────
+            findings = result.get("findings", [])
+            SEV_ORDER  = ["Critical", "High", "Medium", "Low"]
+            SEV_COLOUR = {
+                "Critical": "#C0392B",
+                "High":     "#E67E22",
+                "Medium":   "#C6A15B",
+                "Low":      "#6E6C66",
+            }
+            SEV_BG = {
+                "Critical": "#1A0000",
+                "High":     "#1A0A00",
+                "Medium":   "#1A1500",
+                "Low":      "#131316",
+            }
+            EFFORT_COL = {
+                "Minor edit":      "#27AE60",
+                "Moderate rewrite":"#E67E22",
+                "Major addition":  "#C0392B",
+            }
+
+            if findings:
+                st.markdown("### Findings")
+
+                # Summary strip
+                for sev in SEV_ORDER:
+                    count = sum(1 for f in findings if f.get("severity") == sev)
+                    if count:
+                        sc = SEV_COLOUR[sev]
+                        st.markdown(
+                            f'<span style="background:{sc}22;border:1px solid {sc}44;'
+                            f'border-radius:4px;padding:.15rem .5rem;margin-right:.4rem;'
+                            f'font-size:.78rem;color:{sc};font-weight:600">'
+                            f'{sev}: {count}</span>',
+                            unsafe_allow_html=True
+                        )
+                st.markdown("")
+
+                for sev in SEV_ORDER:
+                    sev_findings = [f for f in findings if f.get("severity") == sev]
+                    if not sev_findings:
+                        continue
+                    sc = SEV_COLOUR[sev]
+                    bg = SEV_BG[sev]
+                    st.markdown(
+                        f'<div style="margin:.8rem 0 .3rem 0;font-size:.78rem;'
+                        f'color:{sc};font-weight:700;letter-spacing:.06em;'
+                        f'text-transform:uppercase">{sev} ({len(sev_findings)})</div>',
+                        unsafe_allow_html=True
+                    )
+                    for idx, finding in enumerate(sev_findings):
+                        title    = finding.get("title", "Finding")
+                        issue    = finding.get("issue", "")
+                        rec_text = finding.get("recommendation", "")
+                        location = finding.get("proposal_location", "")
+                        effort   = finding.get("effort", "")
+                        req_id   = finding.get("req_id", "")
+                        cat      = finding.get("category", "")
+                        ec       = EFFORT_COL.get(effort, "#6E6C66")
+
+                        label = f"{sev[0]}{idx+1}  {title}"
+                        if req_id:
+                            label += f"  [{req_id}]"
+
+                        with st.expander(label, expanded=(sev == "Critical")):
+                            st.markdown(
+                                f'<div style="background:{bg};border:1px solid {sc}33;'
+                                f'border-left:3px solid {sc};border-radius:0 6px 6px 0;'
+                                f'padding:.8rem 1rem">'
+                                f'<div style="font-size:.78rem;color:#A9A69D;margin-bottom:.4rem">'
+                                f'<span style="color:{sc}">{sev}</span>'
+                                f'{" · "+cat if cat else ""}'
+                                f'{" · Req "+req_id if req_id else ""}'
+                                f'{" · "+location if location else ""}'
+                                f'</div>'
+                                f'<div style="font-size:.88rem;color:#EDEAE2;margin-bottom:.6rem">'
+                                f'<strong>Issue:</strong> {issue}</div>'
+                                f'<div style="font-size:.85rem;color:#C6A15B;margin-bottom:.4rem">'
+                                f'<strong>Recommendation:</strong> {rec_text}</div>'
+                                f'<div style="font-size:.75rem;color:{ec}">'
+                                f'Effort: {effort}</div>'
+                                f'</div>',
+                                unsafe_allow_html=True
+                            )
+            else:
+                st.markdown('<div class="info-box">No findings returned — analysis may have '
+                            'encountered a parsing issue. Try re-running.</div>',
+                            unsafe_allow_html=True)
+
+            # ── Requirement coverage table ────────────────────────────────────────
+            coverage = result.get("requirement_coverage", [])
+            if coverage:
+                st.markdown("### Requirement Coverage")
+
+                COV_COL = {
+                    "Fully Addressed":     "#27AE60",
+                    "Partially Addressed": "#E67E22",
+                    "Not Addressed":       "#C0392B",
+                    "Cannot Assess":       "#6E6C66",
+                }
+
+                # Summary counts
+                for status in ["Fully Addressed","Partially Addressed","Not Addressed","Cannot Assess"]:
+                    count = sum(1 for c in coverage if c.get("coverage") == status)
+                    if count:
+                        sc = COV_COL[status]
+                        st.markdown(
+                            f'<span style="background:{sc}22;border:1px solid {sc}44;'
+                            f'border-radius:4px;padding:.15rem .5rem;margin-right:.4rem;'
+                            f'font-size:.78rem;color:{sc}">{status}: {count}</span>',
+                            unsafe_allow_html=True
+                        )
+                st.markdown("")
+
+                # Coverage rows
+                hdr = st.columns([1, 1.5, 3, 2.5, 1.5])
+                for col_w, label in zip(hdr, ["Req ID","Category","Description","Coverage","Confidence"]):
+                    col_w.markdown(f'<span style="font-size:.72rem;color:#6E6C66;'
+                                   f'text-transform:uppercase;font-weight:600">{label}</span>',
+                                   unsafe_allow_html=True)
+                st.markdown('<hr class="section-divider" style="margin:.2rem 0">', unsafe_allow_html=True)
+
+                for cov in coverage:
+                    cov_status = cov.get("coverage","")
+                    cc = COV_COL.get(cov_status,"#6E6C66")
+                    conf = cov.get("confidence","")
+                    notes = cov.get("notes","")
+                    row = st.columns([1, 1.5, 3, 2.5, 1.5])
+                    row[0].markdown(f'<span style="font-size:.8rem;color:#C6A15B">'
+                                    f'{cov.get("req_id","")}</span>', unsafe_allow_html=True)
+                    row[1].markdown(f'<span style="font-size:.78rem;color:#A9A69D">'
+                                    f'{cov.get("category","")}</span>', unsafe_allow_html=True)
+                    row[2].markdown(f'<span style="font-size:.8rem">{cov.get("description","")}'
+                                    f'{"<br><span style=font-size:.72rem;color:#6E6C66>"+notes+"</span>" if notes else ""}'
+                                    f'</span>', unsafe_allow_html=True)
+                    row[3].markdown(f'<span style="color:{cc};font-size:.8rem">{cov_status}</span>',
+                                    unsafe_allow_html=True)
+                    row[4].markdown(f'<span style="font-size:.78rem;color:#A9A69D">{conf}</span>',
+                                    unsafe_allow_html=True)
+                    st.markdown('<hr class="section-divider" style="margin:.15rem 0">',
+                                unsafe_allow_html=True)
+
+            # ── Next steps ────────────────────────────────────────────────────────
+            next_steps = result.get("next_steps", [])
+            if next_steps:
+                st.markdown("### Recommended Next Steps")
+                for step in sorted(next_steps, key=lambda x: x.get("priority", 99)):
+                    pri = step.get("priority", "")
+                    st.markdown(
+                        f'<div style="background:#131316;border:1px solid #2A2A2E;'
+                        f'border-left:3px solid #C6A15B;border-radius:0 4px 4px 0;'
+                        f'padding:.6rem 1rem;margin:.3rem 0">'
+                        f'<span style="color:#C6A15B;font-weight:700;font-size:.8rem">#{pri}</span> '
+                        f'<span style="font-size:.88rem;color:#EDEAE2">{step.get("action","")}</span>'
+                        f'<br><span style="font-size:.78rem;color:#A9A69D">{step.get("rationale","")}</span>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+
+            # ── Re-run / clear ────────────────────────────────────────────────────
+            st.markdown("")
+            c1, c2 = st.columns(2)
+            if c1.button("🔄 Re-run analysis", use_container_width=True, key=f"pr_rerun_{bid_id}"):
+                st.session_state.pop(f"pr_result_{bid_id}", None)
+                st.rerun()
+            if c2.button("🗑 Clear results", use_container_width=True, key=f"pr_del_{bid_id}"):
+                st.session_state.pop(f"pr_result_{bid_id}", None)
+                st.session_state.pop(f"pr_pending_{bid_id}", None)
+                st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
