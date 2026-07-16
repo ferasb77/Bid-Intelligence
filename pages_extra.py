@@ -1188,6 +1188,12 @@ def page_submission_assembler(bid_id):
         fname = st.session_state.get(f"pr_filename_{bid_id}", "proposal")
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
+        if result.get("_truncated"):
+            st.markdown('<div class="warn-box">⚠ The model response was truncated — '
+                        'coverage table or next steps may be incomplete. '
+                        'Results shown are partial but findings and score are intact. '
+                        'Re-run if needed.</div>', unsafe_allow_html=True)
+
         # ── Score header ──────────────────────────────────────────────────────
         score     = result.get("overall_score", 0)
         rec       = result.get("recommendation", "")

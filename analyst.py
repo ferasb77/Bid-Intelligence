@@ -658,20 +658,20 @@ def analyze_proposal_alignment(
       - executive summary and recommended next steps
     """
 
-    # Build a compact requirements summary for the prompt
+    # Build compact requirements summary — keep short to leave room for response
     req_lines = []
     for r in requirements:
-        cat   = r.get("category", "")
-        rid   = r.get("req_id", "")
-        desc  = (r.get("description") or "")[:300]
-        wt    = f"{r['weight']*100:.0f}%" if r.get("weight") else ""
-        ev    = r.get("evidence") or ""
-        req_lines.append(f"[{cat}] {rid} {wt}: {desc}  |  Evidence required: {ev}")
+        cat  = r.get("category", "")
+        rid  = r.get("req_id", "")
+        desc = (r.get("description") or "")[:150]
+        wt   = f"{r['weight']*100:.0f}%" if r.get("weight") else ""
+        ev   = (r.get("evidence") or "")[:80]
+        req_lines.append(f"[{cat}] {rid} {wt}: {desc}  |  Evidence: {ev}")
     req_block = "\n".join(req_lines) if req_lines else "No requirements extracted yet."
 
-    # Truncate texts to stay within context limits
-    rfp_snippet    = (rfp_text   or "")[:6000]
-    proposal_snip  = (proposal_text or "")[:10000]
+    # Truncate inputs — tight budget so 8192-token response has room
+    rfp_snippet   = (rfp_text      or "")[:4000]
+    proposal_snip = (proposal_text or "")[:8000]
 
     SYSTEM = """\
 You are a senior proposal review expert specialising in government RFP compliance.
@@ -746,5 +746,60 @@ Score guide:
 - Below 45: Critical gaps; submission risk without major revision
 """
 
-    raw = _call(SYSTEM, prompt, max_tokens=4096)
-    return _parse_json(raw)
+    raw = _call(SYSTEM, prompt, max_tokens=8192)
+
+    # Primary parse
+    result = _parse_json(raw)
+    if isinstance(result, dict):
+        return result
+
+    # Truncation recovery: the response was cut before the final closing braces.
+    # Try to salvage whatever fields were fully serialised by closing the JSON
+    # at the last cleanly-closed top-level value.
+    import re as _re
+    # Strip markdown fences
+    cleaned = _re.sub(r"^```(?:json)?\s*", "", raw.strip())
+    cleaned = _re.sub(r"\s*```$", "", cleaned).strip()
+
+    # Walk backwards looking for the last complete top-level value boundary
+    for end_ch in ("}", "]"):
+        pos = len(cleaned)
+        while pos >= 0:
+            pos = cleaned.rfind(end_ch, 0, pos)
+            if pos == -1:
+                break
+            candidate = cleaned[:pos + 1]
+            # Count open vs close to check balance
+            depth = 0
+            in_str = False
+            esc = False
+            for ch in candidate:
+                if esc:
+                    esc = False
+                    continue
+                if ch == "\\" and in_str:
+                    esc = True
+                    continue
+                if ch == '"' and not esc:
+                    in_str = not in_str
+                    continue
+                if in_str:
+                    continue
+                if ch in ("{", "["):
+                    depth += 1
+                elif ch in ("}", "]"):
+                    depth -= 1
+            if depth == 0:
+                try:
+                    partial = __import__("json").loads(candidate)
+                    if isinstance(partial, dict):
+                        partial["_truncated"] = True
+                        return partial
+                except Exception:
+                    pass
+            pos -= 1
+
+    raise ValueError(
+        f"Could not parse model response as JSON after all repair attempts. "
+        f"First 300 chars: {raw[:300]}"
+    )
