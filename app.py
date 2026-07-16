@@ -669,11 +669,14 @@ def page_documents(bid_id):
 
     # ── Status summary ────────────────────────────────────────────────────────
     if docs:
-        expected  = sum(1 for d in docs if d["status"]=="Expected")
-        uploaded  = sum(1 for d in docs if d["status"] in ("Uploaded","In Review","Approved"))
+        expected  = sum(1 for d in docs if d["status"]=="Expected"
+                        and d.get("doc_type") != "Past Proposal")
+        uploaded  = sum(1 for d in docs if d["status"] in ("Uploaded","In Review","Approved")
+                        and d.get("doc_type") != "Past Proposal")
         submitted = sum(1 for d in docs if d["status"]=="Submitted")
         mandatory_missing = sum(1 for d in docs
-                                if d.get("mandatory") and d["status"]=="Expected")
+                                if d.get("mandatory") and d["status"]=="Expected"
+                                and d.get("doc_type") != "Past Proposal")
 
         c1,c2,c3,c4 = st.columns(4)
         c1.metric("Total Documents", len(docs))
@@ -686,7 +689,9 @@ def page_documents(bid_id):
         if mandatory_missing:
             st.markdown(
                 f'<div class="warn-box">⚠ {mandatory_missing} mandatory document(s) '
-                f'not yet uploaded — submission may be at risk.</div>',
+                f'not yet uploaded. Note: some may be post-award obligations (insurance, '
+                f'WCB, registration) rather than proposal submission requirements — '
+                f'review the compliance matrix to confirm which are needed at submission.</div>',
                 unsafe_allow_html=True)
         st.markdown("")
 

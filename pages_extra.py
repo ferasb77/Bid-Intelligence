@@ -206,7 +206,8 @@ def page_proposal_analyzer(bid_id):
                     st.session_state["pa_filename"] = pf.get("name", "")
                     _up_key = f"uploaded_{bid_id}_{pf.get('name','')}_{len(pf.get('bytes',b''))}"
                     if not st.session_state.get(_up_key):
-                        save_upload(bid_id, pf.get("name",""), pf.get("bytes", b""))
+                        save_upload(bid_id, pf.get("name",""), pf.get("bytes", b""),
+                                    doc_type="Past Proposal")
                         st.session_state[_up_key] = True
                     st.rerun()
                 except Exception as e:
@@ -1100,16 +1101,28 @@ def page_submission_assembler(bid_id):
                         unsafe_allow_html=True)
             st.stop()
 
-        # ── Pull tender document text from ALL uploaded documents ─────────────
-        # Pull from every document in the registry — RFP, addenda, Q&A logs,
-        # specifications, general conditions — so the model has full context
-        # to determine what is a submission requirement vs post-award obligation.
-        tender_docs = [d for d in docs if d.get("storage_path")]
+        # ── Pull tender document text from uploaded RFP/source documents only ──
+        # Explicitly exclude past proposals, the proposal being reviewed, and any
+        # other-bid content — only load documents that are part of this tender's
+        # source package (RFP, addenda, Q&A logs, specifications, etc.)
+        TENDER_DOC_TYPES = {
+            "RFP / Source", "RFP", "RFSO", "Addendum", "RFP Document",
+            "Specification", "General Conditions", "Q&A", "QA Log",
+            "Supporting", "Tender", "ITT", "ITB", "RFQ",
+        }
+        EXCLUDED_DOC_TYPES = {"Past Proposal", "Submission", "Financial", "Invoice"}
+
+        tender_docs = [
+            d for d in docs
+            if d.get("storage_path")
+            and d.get("doc_type", "") in TENDER_DOC_TYPES
+            and d.get("doc_type", "") not in EXCLUDED_DOC_TYPES
+        ]
         rfp_text_combined = ""
         loaded_names = []
         if tender_docs:
             from database import download_file as _dl
-            char_budget = 5000  # total chars across all docs fed to model
+            char_budget = 5000
             for td in tender_docs:
                 if len(rfp_text_combined) >= char_budget:
                     break
@@ -1133,16 +1146,16 @@ def page_submission_assembler(bid_id):
             st.markdown(
                 f'<span style="font-size:.78rem;color:#A9A69D">ℹ Tender context loaded '
                 f'from {len(loaded_names)} document(s): '
-                f'{", ".join(loaded_names[:5])}{"…" if len(loaded_names) > 5 else ""}'
+                f'{", ".join(loaded_names[:5])}{"..." if len(loaded_names) > 5 else ""}'
                 f'</span>',
                 unsafe_allow_html=True
             )
         else:
             st.markdown(
                 '<div class="warn-box">No tender documents found in the Document Registry. '
-                'Upload the RFP, addenda, Q&A logs, and any supporting documents first — '
-                'the more context the model has, the more accurate the stage '
-                'classification and scoring will be.</div>',
+                'Upload the RFP, addenda, Q&A logs, and specifications with doc type '
+                '"RFP / Source" — the model needs these to classify findings by '
+                'procurement stage accurately.</div>',
                 unsafe_allow_html=True
             )
 
