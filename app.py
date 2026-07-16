@@ -1,5 +1,6 @@
 import streamlit as st
-from datetime import date
+import base64, json, re
+from datetime import date, datetime
 from database import (init_db, get_all_bids, get_bid, create_bid, update_bid, delete_bid,
                       get_deliverables, upsert_deliverable, delete_deliverable,
                       get_requirements, upsert_requirement, delete_requirement,
@@ -8,12 +9,13 @@ from database import (init_db, get_all_bids, get_bid, create_bid, update_bid, de
                       get_document_versions, create_expected_document,
                       get_outline, upsert_section, delete_section,
                       get_readiness)
-from config import api_key_configured
+from config import get_api_key, api_key_configured
 from pages_extra import (page_content_library, page_proposal_analyzer,
     page_coach_roster, page_clarifications, page_section_drafter,
     page_submission_assembler, page_debrief, page_exec_dashboard)
 from pdf_export import generate_compliance_pdf
-from components.ui import (inject_css, stage_badge, status_badge, readiness_bar, days_until, days_label, metric_card,
+from components.ui import (inject_css, stage_badge, status_badge, priority_badge,
+                            readiness_bar, days_until, days_label, metric_card,
                             STAGES, STATUSES, PRIORITIES, CATEGORIES, SENSITIVITY,
                             DOC_TYPES, STAGE_COLOURS, PRIORITY_COLOURS)
 
@@ -657,6 +659,7 @@ def page_tasks(bid_id):
 # PAGE: DOCUMENTS
 # ═════════════════════════════════════════════════════════════════════════════
 def page_documents(bid_id):
+    from database import get_document_versions, create_expected_document
     bid  = get_bid(bid_id)
     docs = get_documents(bid_id)
     reqs = get_requirements(bid_id)
@@ -873,7 +876,7 @@ def page_documents(bid_id):
                                     doc_id=upload_doc_id)
                         st.session_state[_key] = True
                     del st.session_state["upload_for_doc"]
-                    st.success("✅ Uploaded successfully.")
+                    st.success(f"✅ Uploaded successfully.")
                     st.rerun()
                 else:
                     st.error("Please select a file first.")
@@ -1019,7 +1022,7 @@ def page_documents(bid_id):
                          key="run_analysis_btn"):
                 from analyst import analyze_addendum
                 from database import download_file
-                import fitz
+                import fitz, base64, anthropic as _ant
 
                 with st.spinner(f"Analyzing {doc['name']}… 20–40 seconds"):
                     try:
@@ -1834,14 +1837,15 @@ def _services_pdf(bid, dels):
     from reportlab.lib.units import mm
     from reportlab.lib.colors import HexColor
     from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
-                                     Table, TableStyle, KeepTogether)
+                                     Table, TableStyle, HRFlowable, KeepTogether)
     from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
     from pdf_styles import (
-        pp, safe, fmt_cad, cover_header, make_footer,
+        pp, safe, fmt_cad, status_para, cover_header, make_footer,
         content_w, STYLES, CAT_ACCENT,
         C_NAVY, C_BLUE, C_BLUE_L, C_WHITE, C_BLACK,
         C_GREY_1, C_GREY_2, C_GREY_3, C_GREY_4,
-        ML, MR, MT, MB, _font,
+        PW_L, ML, MR, MT, MB, _font,
     )
 
     CAT_ORDER = ["Core Service", "Call-up Mechanic", "Optional Service", "Reporting"]
@@ -1943,6 +1947,7 @@ def _services_pdf(bid, dels):
                 ParagraphStyle("rp", fontName=_font("regular"), fontSize=6.5,
                                leading=9, textColor=C_GREY_2)) if d.get("linked_req_ids") else Paragraph("", STYLES["cell"])
 
+            from reportlab.platypus import KeepInFrame
             title_cell = [title_para, ref_para]
 
             tdata.append([

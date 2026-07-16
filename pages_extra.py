@@ -11,7 +11,7 @@ from database import (
 )
 from pdf_styles import generate_clarifications_pdf
 from components.ui import (days_until,
-                            days_label)
+                            days_label, PRIORITY_COLOURS)
 from config import api_key_configured
 
 LIB_CATEGORIES = [
@@ -957,7 +957,9 @@ def page_section_drafter(bid_id):
 # SUBMISSION ASSEMBLER
 # ═══════════════════════════════════════════════════════════════════════════════
 def page_submission_assembler(bid_id):
-    from analyst import submission_readiness_check
+    from analyst import submission_readiness_check, analyze_proposal_alignment
+    import fitz
+
     bid     = get_bid(bid_id)
     reqs    = get_requirements(bid_id)
     docs    = get_documents(bid_id)
@@ -978,101 +980,423 @@ def page_submission_assembler(bid_id):
                     f'{bid.get("submission_deadline","")} 14:00 Ottawa (21:00 Beirut)</span></div>',
                     unsafe_allow_html=True)
 
-    # ── AI Readiness Check ────────────────────────────────────────────────────
-    if api_key_configured() or st.session_state.get("anthropic_api_key"):
-        if st.button("🎯 Run AI Readiness Check", use_container_width=True, type="primary"):
-            with st.spinner("Checking submission readiness…"):
-                try:
-                    result = submission_readiness_check(bid, reqs, docs, outline)
-                    st.session_state["sub_check"] = result
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Check failed: {e}")
+    tab1, tab2 = st.tabs(["📋 Readiness & Checklist", "🔍 Proposal Review"])
 
-    if "sub_check" in st.session_state:
-        r = st.session_state["sub_check"]
-        gng = r.get("go_no_go","?")
-        gng_col = {"GO":"#27AE60","NO GO":"#C0392B","CONDITIONAL GO":"#E67E22"}.get(gng,"#6E6C66")
-        score = r.get("readiness_score",0)
+    # ══════════════════════════════════════════════════════════════════════════
+    # TAB 1 — existing readiness check + manual checklist
+    # ══════════════════════════════════════════════════════════════════════════
+    with tab1:
+        # ── AI Readiness Check ────────────────────────────────────────────────
+        if api_key_configured() or st.session_state.get("anthropic_api_key"):
+            if st.button("🎯 Run AI Readiness Check", use_container_width=True, type="primary"):
+                with st.spinner("Checking submission readiness…"):
+                    try:
+                        result = submission_readiness_check(bid, reqs, docs, outline)
+                        st.session_state["sub_check"] = result
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Check failed: {e}")
+
+        if "sub_check" in st.session_state:
+            r = st.session_state["sub_check"]
+            gng = r.get("go_no_go","?")
+            gng_col = {"GO":"#27AE60","NO GO":"#C0392B","CONDITIONAL GO":"#E67E22"}.get(gng,"#6E6C66")
+            score = r.get("readiness_score",0)
+
+            st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+            c1,c2 = st.columns([1,4])
+            c1.markdown(f'<div style="text-align:center;background:#131316;border:2px solid {gng_col};'
+                        f'border-radius:6px;padding:1rem">'
+                        f'<div style="font-size:1.2rem;font-weight:700;color:{gng_col}">{gng}</div>'
+                        f'<div style="font-size:1.8rem;font-weight:700;color:#EDEAE2">{score}</div>'
+                        f'<div style="font-size:.7rem;color:#A9A69D">Readiness Score</div>'
+                        f'</div>', unsafe_allow_html=True)
+            c2.markdown(f'<div class="info-box">{r.get("summary","")}</div>',
+                        unsafe_allow_html=True)
+            if r.get("recommended_submission_time"):
+                c2.markdown(f'<div style="background:#1B2A41;border-left:3px solid #C6A15B;'
+                            f'padding:.6rem 1rem;border-radius:0 4px 4px 0;font-size:.85rem;margin-top:.5rem">'
+                            f'<strong>Recommended submission time:</strong> '
+                            f'{r["recommended_submission_time"]}</div>', unsafe_allow_html=True)
+
+            if r.get("blockers"):
+                st.markdown("#### Blockers")
+                for b in r["blockers"]:
+                    sev_col = {"Critical":"#C0392B","High":"#E67E22","Medium":"#C6A15B"}.get(b.get("severity",""),"#6E6C66")
+                    st.markdown(f'<div style="background:#1A0000;border:1px solid #3A0000;'
+                                f'border-left:3px solid {sev_col};border-radius:0 4px 4px 0;'
+                                f'padding:.6rem .8rem;margin:.3rem 0">'
+                                f'<span style="color:{sev_col};font-weight:700">{b.get("severity","")}</span> — '
+                                f'{b.get("item","")}'
+                                f'<br><span style="color:#E57373;font-size:.8rem">Action: {b.get("action","")}</span>'
+                                f'{"<br><span style=color:#A9A69D;font-size:.75rem>By: "+b.get("by_when","")+"</span>" if b.get("by_when") else ""}'
+                                f'</div>', unsafe_allow_html=True)
+
+            if r.get("warnings"):
+                st.markdown("#### Warnings")
+                for w in r["warnings"]:
+                    st.markdown(f'<span style="color:#E67E22;font-size:.82rem">⚠ {w}</span>',
+                                unsafe_allow_html=True)
+
+            st.markdown("")
 
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-        c1,c2 = st.columns([1,4])
-        c1.markdown(f'<div style="text-align:center;background:#131316;border:2px solid {gng_col};'
-                    f'border-radius:6px;padding:1rem">'
-                    f'<div style="font-size:1.2rem;font-weight:700;color:{gng_col}">{gng}</div>'
-                    f'<div style="font-size:1.8rem;font-weight:700;color:#EDEAE2">{score}</div>'
-                    f'<div style="font-size:.7rem;color:#A9A69D">Readiness Score</div>'
-                    f'</div>', unsafe_allow_html=True)
-        c2.markdown(f'<div class="info-box">{r.get("summary","")}</div>',
+
+        # ── Manual checklist ──────────────────────────────────────────────────
+        st.markdown("### Submission Package Checklist")
+        CHECKLIST = [
+            ("Technical Proposal", "Separate searchable PDF", "technical"),
+            ("Financial Proposal", "Separate searchable PDF (Appendix B both options)", "financial"),
+            ("Supplement A", "Submission Form — signed by authorized signatory", "form"),
+            ("Schedule A — AI Disclosure", "Completed and signed; aligned with methodology and pricing", "form"),
+            ("Insurance confirmations", "Liability $2M + E&O $2M", "form"),
+            ("Three references", "Contact details; max 1 CDA-AMC internal (pre-approved)", "supporting"),
+            ("Coach CVs", "All proposed coaches with credentials", "supporting"),
+            ("Case study / testimonial", "With measurable behaviour change outcomes", "supporting"),
+            ("AI/Non-AI pricing alignment", "Technical methodology ↔ Financial pricing ↔ AI Disclosure all consistent", "qa"),
+            ("File size check", "Total email ≤ 20 MB including all attachments", "qa"),
+            ("Submission email", "To contracts@cda-amc.ca or MERX upload — before 14:00 Ottawa", "qa"),
+        ]
+        sub_docs = {d["name"]: d["status"] for d in docs if d.get("doc_type")=="Submission"}
+
+        for item, detail, _ in CHECKLIST:
+            matched_status = next((v for k,v in sub_docs.items()
+                                   if item.lower()[:12] in k.lower()), None)
+            icon = "✅" if matched_status=="Complete" else "⬜"
+            col  = "#27AE60" if matched_status=="Complete" else "#EDEAE2"
+            st.markdown(f'<div style="padding:.3rem 0;border-bottom:1px solid #1E1E22">'
+                        f'<span style="color:{col}">{icon} <strong>{item}</strong></span> '
+                        f'<span style="font-size:.78rem;color:#A9A69D">— {detail}</span></div>',
+                        unsafe_allow_html=True)
+
+        # Clarification answers check
+        st.markdown("")
+        unanswered = [c for c in clars if c.get("status")=="Submitted"]
+        if unanswered:
+            st.markdown(f'<div class="warn-box">⚠ {len(unanswered)} clarification question(s) '
+                        f'submitted but not yet answered — check for CDA-AMC bulletins by July 28.</div>',
+                        unsafe_allow_html=True)
+        needs_matrix = [c for c in clars if c.get("changes_matrix") and c.get("status")=="Answered"]
+        if needs_matrix:
+            st.markdown(f'<div class="warn-box">⚠ {len(needs_matrix)} answered question(s) '
+                        f'require compliance matrix updates — review before finalizing.</div>',
+                        unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # TAB 2 — Proposal Review: upload final PDF → AI alignment analysis
+    # ══════════════════════════════════════════════════════════════════════════
+    with tab2:
+        st.markdown("### Proposal Review — RFP Alignment Analysis")
+        st.markdown('<div class="info-box">Upload your final proposal PDF. Claude reads it against '
+                    'all RFP documents in the system and the compliance matrix, then produces a '
+                    'scored alignment report with prioritised recommendations.</div>',
                     unsafe_allow_html=True)
-        if r.get("recommended_submission_time"):
-            c2.markdown(f'<div style="background:#1B2A41;border-left:3px solid #C6A15B;'
-                        f'padding:.6rem 1rem;border-radius:0 4px 4px 0;font-size:.85rem;margin-top:.5rem">'
-                        f'<strong>Recommended submission time:</strong> '
-                        f'{r["recommended_submission_time"]}</div>', unsafe_allow_html=True)
 
-        if r.get("blockers"):
-            st.markdown("#### Blockers")
-            for b in r["blockers"]:
-                sev_col = {"Critical":"#C0392B","High":"#E67E22","Medium":"#C6A15B"}.get(b.get("severity",""),"#6E6C66")
-                st.markdown(f'<div style="background:#1A0000;border:1px solid #3A0000;'
-                            f'border-left:3px solid {sev_col};border-radius:0 4px 4px 0;'
-                            f'padding:.6rem .8rem;margin:.3rem 0">'
-                            f'<span style="color:{sev_col};font-weight:700">{b.get("severity","")}</span> — '
-                            f'{b.get("item","")}'
-                            f'<br><span style="color:#E57373;font-size:.8rem">Action: {b.get("action","")}</span>'
-                            f'{"<br><span style=color:#A9A69D;font-size:.75rem>By: "+b.get("by_when","")+"</span>" if b.get("by_when") else ""}'
-                            f'</div>', unsafe_allow_html=True)
+        if not (api_key_configured() or st.session_state.get("anthropic_api_key")):
+            st.markdown('<div class="warn-box">No API key configured.</div>',
+                        unsafe_allow_html=True)
+            st.stop()
 
-        if r.get("warnings"):
-            st.markdown("#### Warnings")
-            for w in r["warnings"]:
-                st.markdown(f'<span style="color:#E67E22;font-size:.82rem">⚠ {w}</span>',
-                            unsafe_allow_html=True)
+        # ── Pull RFP text from uploaded documents ─────────────────────────────
+        rfp_docs = [d for d in docs if d.get("doc_type") in
+                    ("RFP", "RFSO", "Addendum", "RFP Document", "Supporting")]
+        rfp_text_combined = ""
+        if rfp_docs:
+            from database import download_file as _dl
+            for rd in rfp_docs[:3]:   # cap at 3 RFP docs to stay within context
+                sp = rd.get("storage_path")
+                if not sp:
+                    continue
+                try:
+                    fb = _dl(sp)
+                    if rd.get("name","").lower().endswith(".pdf"):
+                        pdoc = fitz.open(stream=fb, filetype="pdf")
+                        rfp_text_combined += "\n".join(pg.get_text() for pg in pdoc)[:4000]
+                    else:
+                        rfp_text_combined += fb.decode("utf-8", errors="ignore")[:4000]
+                except Exception:
+                    pass
+
+        if rfp_docs:
+            st.markdown(f'<span style="font-size:.78rem;color:#A9A69D">ℹ RFP context pulled from '
+                        f'{len(rfp_docs)} document(s) in registry: '
+                        f'{", ".join(d["name"] for d in rfp_docs[:3])}</span>',
+                        unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="warn-box">No RFP documents found in the Document Registry. '
+                        'Upload the RFSO/RFP first for a more accurate analysis.</div>',
+                        unsafe_allow_html=True)
+
+        # ── Upload proposal ───────────────────────────────────────────────────
+        uploaded = st.file_uploader(
+            "Upload final proposal PDF",
+            type=["pdf", "docx", "txt"],
+            key=f"pr_upload_{bid_id}"
+        )
+
+        if uploaded:
+            fb = uploaded.read()
+            size_kb = len(fb) // 1024
+            st.markdown(f'<div class="info-box">📄 <strong>{uploaded.name}</strong> — '
+                        f'{size_kb} KB ready for analysis.</div>', unsafe_allow_html=True)
+            st.session_state[f"pr_pending_{bid_id}"] = {"bytes": fb, "name": uploaded.name}
+
+        pending = st.session_state.get(f"pr_pending_{bid_id}")
+
+        if pending:
+            col1, col2 = st.columns([3, 1])
+            if col1.button("🔍 Analyze Proposal with Claude",
+                           use_container_width=True, type="primary",
+                           key=f"pr_run_{bid_id}"):
+                with st.spinner("Reading proposal and running alignment analysis… 30–60 seconds"):
+                    try:
+                        fb = pending["bytes"]
+                        name = pending["name"]
+                        # Extract text
+                        if name.lower().endswith(".pdf"):
+                            pdoc = fitz.open(stream=fb, filetype="pdf")
+                            proposal_text = "\n".join(pg.get_text() for pg in pdoc)
+                        else:
+                            proposal_text = fb.decode("utf-8", errors="ignore")
+
+                        result = analyze_proposal_alignment(
+                            proposal_text  = proposal_text,
+                            requirements   = reqs,
+                            rfp_text       = rfp_text_combined,
+                            bid_info       = bid,
+                        )
+                        st.session_state[f"pr_result_{bid_id}"] = result
+                        st.session_state[f"pr_filename_{bid_id}"] = name
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Analysis failed: {e}")
+
+            if col2.button("✕ Clear", use_container_width=True, key=f"pr_clear_{bid_id}"):
+                st.session_state.pop(f"pr_pending_{bid_id}", None)
+                st.session_state.pop(f"pr_result_{bid_id}", None)
+                st.rerun()
+
+        # ── Results ───────────────────────────────────────────────────────────
+        result = st.session_state.get(f"pr_result_{bid_id}")
+        if not result:
+            if not pending:
+                st.markdown('<div style="text-align:center;padding:3rem 0;color:#6E6C66;'
+                            'font-size:.9rem">Upload your proposal PDF above to run the analysis.'
+                            '</div>', unsafe_allow_html=True)
+            st.stop()
+
+        fname = st.session_state.get(f"pr_filename_{bid_id}", "proposal")
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+
+        # ── Score header ──────────────────────────────────────────────────────
+        score     = result.get("overall_score", 0)
+        rec       = result.get("recommendation", "")
+        rec_col   = {
+            "SUBMIT AS-IS":             "#27AE60",
+            "REVISE BEFORE SUBMITTING": "#E67E22",
+            "MAJOR REVISION NEEDED":    "#C0392B",
+        }.get(rec, "#6E6C66")
+
+        def _score_ring(s):
+            s_col = "#27AE60" if s >= 75 else "#E67E22" if s >= 55 else "#C0392B"
+            return (f'<div style="text-align:center;background:#131316;border:2px solid {s_col};'
+                    f'border-radius:8px;padding:1.2rem .8rem">'
+                    f'<div style="font-size:2.4rem;font-weight:800;color:{s_col}">{s}</div>'
+                    f'<div style="font-size:.7rem;color:#A9A69D;text-transform:uppercase;'
+                    f'letter-spacing:.06em">Alignment Score</div></div>')
+
+        c1, c2 = st.columns([1, 4])
+        c1.markdown(_score_ring(score), unsafe_allow_html=True)
+        with c2:
+            st.markdown(f'<div style="background:{rec_col}22;border:1px solid {rec_col}55;'
+                        f'border-radius:6px;padding:.6rem 1rem;margin-bottom:.5rem">'
+                        f'<span style="font-weight:700;color:{rec_col}">{rec}</span></div>',
+                        unsafe_allow_html=True)
+            st.markdown(f'<div class="info-box">{result.get("executive_summary","")}</div>',
+                        unsafe_allow_html=True)
+            st.markdown(f'<span style="font-size:.74rem;color:#6E6C66">Analyzed: '
+                        f'<em>{fname}</em> · {len(reqs)} requirements in matrix</span>',
+                        unsafe_allow_html=True)
 
         st.markdown("")
 
-    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        # ── Strengths ─────────────────────────────────────────────────────────
+        strengths = result.get("strengths", [])
+        if strengths:
+            with st.expander("✅ Strengths", expanded=False):
+                for s in strengths:
+                    st.markdown(f'<span style="color:#27AE60;font-size:.85rem">✓ {s}</span>',
+                                unsafe_allow_html=True)
 
-    # ── Manual checklist ──────────────────────────────────────────────────────
-    st.markdown("### Submission Package Checklist")
-    CHECKLIST = [
-        ("Technical Proposal", "Separate searchable PDF", "technical"),
-        ("Financial Proposal", "Separate searchable PDF (Appendix B both options)", "financial"),
-        ("Supplement A", "Submission Form — signed by authorized signatory", "form"),
-        ("Schedule A — AI Disclosure", "Completed and signed; aligned with methodology and pricing", "form"),
-        ("Insurance confirmations", "Liability $2M + E&O $2M", "form"),
-        ("Three references", "Contact details; max 1 CDA-AMC internal (pre-approved)", "supporting"),
-        ("Coach CVs", "All proposed coaches with credentials", "supporting"),
-        ("Case study / testimonial", "With measurable behaviour change outcomes", "supporting"),
-        ("AI/Non-AI pricing alignment", "Technical methodology ↔ Financial pricing ↔ AI Disclosure all consistent", "qa"),
-        ("File size check", "Total email ≤ 20 MB including all attachments", "qa"),
-        ("Submission email", "To contracts@cda-amc.ca or MERX upload — before 14:00 Ottawa", "qa"),
-    ]
-    sub_docs = {d["name"]: d["status"] for d in docs if d.get("doc_type")=="Submission"}
+        # ── Findings by severity ──────────────────────────────────────────────
+        findings = result.get("findings", [])
+        SEV_ORDER  = ["Critical", "High", "Medium", "Low"]
+        SEV_COLOUR = {
+            "Critical": "#C0392B",
+            "High":     "#E67E22",
+            "Medium":   "#C6A15B",
+            "Low":      "#6E6C66",
+        }
+        SEV_BG = {
+            "Critical": "#1A0000",
+            "High":     "#1A0A00",
+            "Medium":   "#1A1500",
+            "Low":      "#131316",
+        }
+        EFFORT_COL = {
+            "Minor edit":      "#27AE60",
+            "Moderate rewrite":"#E67E22",
+            "Major addition":  "#C0392B",
+        }
 
-    for item, detail, cat in CHECKLIST:
-        matched_status = next((v for k,v in sub_docs.items()
-                               if item.lower()[:12] in k.lower()), None)
-        icon = "✅" if matched_status=="Complete" else "⬜"
-        col = "#27AE60" if matched_status=="Complete" else "#EDEAE2"
-        st.markdown(f'<div style="padding:.3rem 0;border-bottom:1px solid #1E1E22">'
-                    f'<span style="color:{col}">{icon} <strong>{item}</strong></span> '
-                    f'<span style="font-size:.78rem;color:#A9A69D">— {detail}</span></div>',
-                    unsafe_allow_html=True)
+        if findings:
+            st.markdown("### Findings")
 
-    # Clarification answers check
-    st.markdown("")
-    unanswered = [c for c in clars if c.get("status")=="Submitted"]
-    if unanswered:
-        st.markdown(f'<div class="warn-box">⚠ {len(unanswered)} clarification question(s) '
-                    f'submitted but not yet answered — check for CDA-AMC bulletins by July 28.</div>',
-                    unsafe_allow_html=True)
-    needs_matrix = [c for c in clars if c.get("changes_matrix") and c.get("status")=="Answered"]
-    if needs_matrix:
-        st.markdown(f'<div class="warn-box">⚠ {len(needs_matrix)} answered question(s) '
-                    f'require compliance matrix updates — review before finalizing.</div>',
-                    unsafe_allow_html=True)
+            # Summary strip
+            for sev in SEV_ORDER:
+                count = sum(1 for f in findings if f.get("severity") == sev)
+                if count:
+                    sc = SEV_COLOUR[sev]
+                    st.markdown(
+                        f'<span style="background:{sc}22;border:1px solid {sc}44;'
+                        f'border-radius:4px;padding:.15rem .5rem;margin-right:.4rem;'
+                        f'font-size:.78rem;color:{sc};font-weight:600">'
+                        f'{sev}: {count}</span>',
+                        unsafe_allow_html=True
+                    )
+            st.markdown("")
+
+            for sev in SEV_ORDER:
+                sev_findings = [f for f in findings if f.get("severity") == sev]
+                if not sev_findings:
+                    continue
+                sc = SEV_COLOUR[sev]
+                bg = SEV_BG[sev]
+                st.markdown(
+                    f'<div style="margin:.8rem 0 .3rem 0;font-size:.78rem;'
+                    f'color:{sc};font-weight:700;letter-spacing:.06em;'
+                    f'text-transform:uppercase">{sev} ({len(sev_findings)})</div>',
+                    unsafe_allow_html=True
+                )
+                for idx, finding in enumerate(sev_findings):
+                    title    = finding.get("title", "Finding")
+                    issue    = finding.get("issue", "")
+                    rec_text = finding.get("recommendation", "")
+                    location = finding.get("proposal_location", "")
+                    effort   = finding.get("effort", "")
+                    req_id   = finding.get("req_id", "")
+                    cat      = finding.get("category", "")
+                    ec       = EFFORT_COL.get(effort, "#6E6C66")
+
+                    label = f"{sev[0]}{idx+1}  {title}"
+                    if req_id:
+                        label += f"  [{req_id}]"
+
+                    with st.expander(label, expanded=(sev == "Critical")):
+                        st.markdown(
+                            f'<div style="background:{bg};border:1px solid {sc}33;'
+                            f'border-left:3px solid {sc};border-radius:0 6px 6px 0;'
+                            f'padding:.8rem 1rem">'
+                            f'<div style="font-size:.78rem;color:#A9A69D;margin-bottom:.4rem">'
+                            f'<span style="color:{sc}">{sev}</span>'
+                            f'{" · "+cat if cat else ""}'
+                            f'{" · Req "+req_id if req_id else ""}'
+                            f'{" · "+location if location else ""}'
+                            f'</div>'
+                            f'<div style="font-size:.88rem;color:#EDEAE2;margin-bottom:.6rem">'
+                            f'<strong>Issue:</strong> {issue}</div>'
+                            f'<div style="font-size:.85rem;color:#C6A15B;margin-bottom:.4rem">'
+                            f'<strong>Recommendation:</strong> {rec_text}</div>'
+                            f'<div style="font-size:.75rem;color:{ec}">'
+                            f'Effort: {effort}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True
+                        )
+        else:
+            st.markdown('<div class="info-box">No findings returned — analysis may have '
+                        'encountered a parsing issue. Try re-running.</div>',
+                        unsafe_allow_html=True)
+
+        # ── Requirement coverage table ────────────────────────────────────────
+        coverage = result.get("requirement_coverage", [])
+        if coverage:
+            st.markdown("### Requirement Coverage")
+
+            COV_COL = {
+                "Fully Addressed":     "#27AE60",
+                "Partially Addressed": "#E67E22",
+                "Not Addressed":       "#C0392B",
+                "Cannot Assess":       "#6E6C66",
+            }
+
+            # Summary counts
+            for status in ["Fully Addressed","Partially Addressed","Not Addressed","Cannot Assess"]:
+                count = sum(1 for c in coverage if c.get("coverage") == status)
+                if count:
+                    sc = COV_COL[status]
+                    st.markdown(
+                        f'<span style="background:{sc}22;border:1px solid {sc}44;'
+                        f'border-radius:4px;padding:.15rem .5rem;margin-right:.4rem;'
+                        f'font-size:.78rem;color:{sc}">{status}: {count}</span>',
+                        unsafe_allow_html=True
+                    )
+            st.markdown("")
+
+            # Coverage rows
+            hdr = st.columns([1, 1.5, 3, 2.5, 1.5])
+            for col_w, label in zip(hdr, ["Req ID","Category","Description","Coverage","Confidence"]):
+                col_w.markdown(f'<span style="font-size:.72rem;color:#6E6C66;'
+                               f'text-transform:uppercase;font-weight:600">{label}</span>',
+                               unsafe_allow_html=True)
+            st.markdown('<hr class="section-divider" style="margin:.2rem 0">', unsafe_allow_html=True)
+
+            for cov in coverage:
+                cov_status = cov.get("coverage","")
+                cc = COV_COL.get(cov_status,"#6E6C66")
+                conf = cov.get("confidence","")
+                notes = cov.get("notes","")
+                row = st.columns([1, 1.5, 3, 2.5, 1.5])
+                row[0].markdown(f'<span style="font-size:.8rem;color:#C6A15B">'
+                                f'{cov.get("req_id","")}</span>', unsafe_allow_html=True)
+                row[1].markdown(f'<span style="font-size:.78rem;color:#A9A69D">'
+                                f'{cov.get("category","")}</span>', unsafe_allow_html=True)
+                row[2].markdown(f'<span style="font-size:.8rem">{cov.get("description","")}'
+                                f'{"<br><span style=font-size:.72rem;color:#6E6C66>"+notes+"</span>" if notes else ""}'
+                                f'</span>', unsafe_allow_html=True)
+                row[3].markdown(f'<span style="color:{cc};font-size:.8rem">{cov_status}</span>',
+                                unsafe_allow_html=True)
+                row[4].markdown(f'<span style="font-size:.78rem;color:#A9A69D">{conf}</span>',
+                                unsafe_allow_html=True)
+                st.markdown('<hr class="section-divider" style="margin:.15rem 0">',
+                            unsafe_allow_html=True)
+
+        # ── Next steps ────────────────────────────────────────────────────────
+        next_steps = result.get("next_steps", [])
+        if next_steps:
+            st.markdown("### Recommended Next Steps")
+            for step in sorted(next_steps, key=lambda x: x.get("priority", 99)):
+                pri = step.get("priority", "")
+                st.markdown(
+                    f'<div style="background:#131316;border:1px solid #2A2A2E;'
+                    f'border-left:3px solid #C6A15B;border-radius:0 4px 4px 0;'
+                    f'padding:.6rem 1rem;margin:.3rem 0">'
+                    f'<span style="color:#C6A15B;font-weight:700;font-size:.8rem">#{pri}</span> '
+                    f'<span style="font-size:.88rem;color:#EDEAE2">{step.get("action","")}</span>'
+                    f'<br><span style="font-size:.78rem;color:#A9A69D">{step.get("rationale","")}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+
+        # ── Re-run / clear ────────────────────────────────────────────────────
+        st.markdown("")
+        c1, c2 = st.columns(2)
+        if c1.button("🔄 Re-run analysis", use_container_width=True, key=f"pr_rerun_{bid_id}"):
+            st.session_state.pop(f"pr_result_{bid_id}", None)
+            st.rerun()
+        if c2.button("🗑 Clear results", use_container_width=True, key=f"pr_del_{bid_id}"):
+            st.session_state.pop(f"pr_result_{bid_id}", None)
+            st.session_state.pop(f"pr_pending_{bid_id}", None)
+            st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1182,7 +1506,8 @@ def page_debrief(bid_id):
 # ═══════════════════════════════════════════════════════════════════════════════
 def page_exec_dashboard():
     from database import (get_all_bids, get_requirements, get_tasks,
-                          get_clarifications, get_debriefs, get_coaches)
+                          get_clarifications, get_debriefs, get_coaches,
+                          get_documents)
     from datetime import date
 
     st.markdown("# Executive Dashboard")

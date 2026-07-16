@@ -3,7 +3,7 @@ Shared McKinsey-style PDF design system.
 White background, Inter typography, colour used only as signal.
 """
 import os
-from reportlab.lib.colors import HexColor
+from reportlab.lib.colors import HexColor, white, black
 from reportlab.lib.units import mm
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle
@@ -195,7 +195,7 @@ def make_footer(left_text, landscape_mode=True):
 # ── Cover header builder ──────────────────────────────────────────────────────
 def cover_header(story, bid, doc_type_label):
     """Append McKinsey-style page header to story list."""
-    from reportlab.platypus import Spacer, HRFlowable
+    from reportlab.platypus import Paragraph, Spacer, HRFlowable
     from datetime import date
 
     story.append(pp("Enable My Growth  ·  Bid Intelligence Platform", "firm"))
@@ -240,7 +240,7 @@ def generate_clarifications_pdf(bid: dict, questions: list, include_rationale: b
     from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
                                      Table, TableStyle, HRFlowable, KeepTogether)
     from reportlab.lib.styles import ParagraphStyle
-    from reportlab.lib.enums import TA_LEFT, TA_CENTER
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
 
     # Colours
     C_NAVY   = HexColor("#002060")
@@ -494,7 +494,7 @@ def generate_clarifications_pdf(bid: dict, questions: list, include_rationale: b
         story.append(pp("Submission Instructions", 11, fn_b, C_NAVY))
         story.append(Spacer(1, 2*mm))
         instructions = [
-            ("Submit to", "contracts@cda-amc.ca"),
+            ("Submit to", f"contracts@cda-amc.ca"),
             ("Deadline", f"{bid.get('clarification_deadline','')} — 14:00 Ottawa local time (21:00 Beirut)"),
             ("Reference", f"File #{bid.get('file_number','')} in subject line"),
             ("Note", "All questions and responses will be shared with all invited organizations (§2.6)"),
