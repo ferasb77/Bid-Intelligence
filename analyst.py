@@ -637,3 +637,114 @@ Analyze this document and identify all changes. Return ONLY valid JSON under 250
 
     raw = _call(ADDENDUM_SYSTEM, prompt, max_tokens=4096)
     return _parse_json(raw)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PROPOSAL REVIEW — full proposal vs RFP alignment analysis
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def analyze_proposal_alignment(
+    proposal_text: str,
+    requirements: list[dict],
+    rfp_text: str,
+    bid_info: dict,
+) -> dict:
+    """
+    Analyze a final proposal PDF against the RFP requirements and compliance
+    matrix. Returns a structured report with:
+      - overall alignment score (0–100)
+      - per-severity findings (Critical / High / Medium / Low)
+      - per-requirement coverage assessment
+      - executive summary and recommended next steps
+    """
+
+    # Build a compact requirements summary for the prompt
+    req_lines = []
+    for r in requirements:
+        cat   = r.get("category", "")
+        rid   = r.get("req_id", "")
+        desc  = (r.get("description") or "")[:300]
+        wt    = f"{r['weight']*100:.0f}%" if r.get("weight") else ""
+        ev    = r.get("evidence") or ""
+        req_lines.append(f"[{cat}] {rid} {wt}: {desc}  |  Evidence required: {ev}")
+    req_block = "\n".join(req_lines) if req_lines else "No requirements extracted yet."
+
+    # Truncate texts to stay within context limits
+    rfp_snippet    = (rfp_text   or "")[:6000]
+    proposal_snip  = (proposal_text or "")[:10000]
+
+    SYSTEM = """\
+You are a senior proposal review expert specialising in government RFP compliance.
+You review proposals against RFP requirements and compliance matrices, identify gaps,
+weaknesses, and misalignments, then provide actionable recommendations.
+Always respond with valid JSON only — no markdown, no preamble."""
+
+    prompt = f"""
+Review this proposal against the RFP requirements and generate a structured analysis report.
+
+BID: {bid_info.get('title','')} | CLIENT: {bid_info.get('client','')}
+
+=== RFP / RFSO CONTEXT (first 6000 chars) ===
+{rfp_snippet}
+
+=== COMPLIANCE MATRIX REQUIREMENTS ===
+{req_block}
+
+=== PROPOSAL TEXT (first 10000 chars) ===
+{proposal_snip}
+
+Analyze the proposal and return this exact JSON structure:
+
+{{
+  "overall_score": <integer 0-100>,
+  "score_rationale": "<2-3 sentence explanation of the score>",
+  "recommendation": "SUBMIT AS-IS|REVISE BEFORE SUBMITTING|MAJOR REVISION NEEDED",
+  "executive_summary": "<3-5 sentence overall assessment>",
+  "findings": [
+    {{
+      "severity": "Critical|High|Medium|Low",
+      "category": "Mandatory|Rated|Financial|Supporting|Structure|Compliance",
+      "req_id": "<requirement ID if applicable, else null>",
+      "title": "<short finding title>",
+      "issue": "<clear description of the gap or weakness>",
+      "recommendation": "<specific actionable change to make>",
+      "proposal_location": "<where in proposal this relates to, e.g. Section 3, Executive Summary>",
+      "effort": "Minor edit|Moderate rewrite|Major addition"
+    }}
+  ],
+  "requirement_coverage": [
+    {{
+      "req_id": "<req_id>",
+      "category": "<category>",
+      "description": "<short description>",
+      "coverage": "Fully Addressed|Partially Addressed|Not Addressed|Cannot Assess",
+      "confidence": "High|Medium|Low",
+      "notes": "<brief note on what is present or missing>"
+    }}
+  ],
+  "strengths": ["<strength 1>", "<strength 2>", "<strength 3>"],
+  "next_steps": [
+    {{
+      "priority": 1,
+      "action": "<specific action>",
+      "rationale": "<why this matters>"
+    }}
+  ]
+}}
+
+Severity definitions:
+- Critical: Mandatory requirement not addressed — disqualification risk
+- High: Rated requirement significantly underaddressed — major score loss
+- Medium: Weakness that evaluators will notice — moderate score impact
+- Low: Polish/clarity issue — minor improvement opportunity
+
+Score guide:
+- 90-100: Proposal comprehensively addresses all requirements with strong evidence
+- 75-89:  Solid proposal with minor gaps
+- 60-74:  Adequate but meaningful gaps in rated criteria
+- 45-59:  Significant weaknesses across multiple requirements
+- Below 45: Critical gaps; submission risk without major revision
+"""
+
+    raw = _call(SYSTEM, prompt, max_tokens=4096)
+    return _parse_json(raw)
