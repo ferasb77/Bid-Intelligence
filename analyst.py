@@ -658,13 +658,20 @@ def analyze_proposal_alignment(
     bid_info: dict,
 ) -> dict:
     """
-    Analyze a final proposal PDF against RFP requirements and compliance matrix.
-    Split into two API calls so neither exceeds Haiku's output token limit.
+    Analyze a final proposal against RFP requirements and compliance matrix.
+
+    Two API calls to stay within token limits:
+      Call 1 — Score, findings, strengths, next steps
+      Call 2 — Per-requirement coverage table
+
+    All stage classification is derived entirely from the RFP documents
+    provided. No jurisdiction-specific rules are hardcoded.
     """
 
-    # ── Shared input blocks ──────────────────────────────────────────────────
-    rfp_snippet   = (rfp_text      or "")[:3000]
-    proposal_snip = (proposal_text or "")[:7000]
+    # ── Build shared context blocks ──────────────────────────────────────────
+    # Keep inputs tight to leave room for the response
+    rfp_snippet   = (rfp_text      or "")[:4000]
+    proposal_snip = (proposal_text or "")[:8000]
 
     req_lines = []
     for r in requirements:
@@ -673,13 +680,17 @@ def analyze_proposal_alignment(
         desc = (r.get("description") or "")[:120]
         wt   = f"{r['weight']*100:.0f}%" if r.get("weight") else ""
         ev   = (r.get("evidence") or "")[:60]
-        req_lines.append(f"[{cat}] {rid} {wt}: {desc} | Ev: {ev}")
+        req_lines.append(f"[{cat}] {rid} {wt}: {desc} | Evidence: {ev}")
     req_block = "\n".join(req_lines) if req_lines else "No requirements loaded."
 
     bid_header = f"BID: {bid_info.get('title','')} | CLIENT: {bid_info.get('client','')}"
 
     SYSTEM = (
-        "You are a senior proposal reviewer specialising in government RFP compliance. "
+        "You are a senior proposal reviewer with deep expertise in competitive "
+        "procurement across multiple sectors and jurisdictions. "
+        "Your role is to assess how well a proposal responds to its specific RFP. "
+        "You derive all conclusions from the documents provided — you never apply "
+        "assumptions from other bids, jurisdictions, or standard templates. "
         "Respond with valid JSON only — no markdown fences, no preamble, no trailing text."
     )
 
@@ -687,69 +698,93 @@ def analyze_proposal_alignment(
     prompt1 = f"""
 {bid_header}
 
-=== RFP CONTEXT ===
+=== RFP / TENDER DOCUMENTS (extracted text) ===
 {rfp_snippet}
 
-=== COMPLIANCE MATRIX ===
+=== COMPLIANCE MATRIX (extracted requirements) ===
 {req_block}
 
 === PROPOSAL TEXT ===
 {proposal_snip}
 
-## CRITICAL INSTRUCTION — PROCUREMENT STAGE CLASSIFICATION
+## YOUR TASK
 
-Public-sector procurements have THREE distinct stages. You MUST classify every finding
-by the stage at which that item is actually required — NOT just whether it appears in
-the contract documents.
+Review the proposal against this specific RFP and compliance matrix.
+Base every finding on what these documents actually say — not on assumptions
+about what similar bids typically require.
 
-Stage definitions:
-- "Proposal Submission" : Must be included IN the proposal package submitted today.
-  Examples: technical narrative, completed price form, mandatory forms explicitly
-  requested by the Instructions to Proponents, team CVs, references.
+## STEP 1 — READ THE RFP DOCUMENTS FIRST
 
-- "Negotiation / Shortlist" : Only required IF the proponent is shortlisted or enters
-  negotiations. Examples: detailed cost breakdowns requested only from highest-ranked
-  proponent, staffing confirmations, revised pricing.
+Before assessing the proposal, identify from the RFP text above:
 
-- "Contract Execution" : Required BEFORE signing the agreement, NOT at proposal stage.
-  Examples: insurance certificates, WCB certificates, provincial business registration
-  proof (unless ITP explicitly requires it with the proposal), performance bonds,
-  agreement letters, scope and fee schedules.
+A) SUBMISSION-STAGE items: documents, forms, or content the RFP explicitly
+   requires to be INCLUDED WITH the proposal at submission. Look for sections
+   titled "Submission Requirements", "Instructions to Proponents", "Mandatory
+   Submission", "Evaluation Criteria", or equivalent. Only items explicitly
+   listed there are submission-stage requirements.
 
-- "Contractual Obligation" : An ongoing duty under the contract, not a proposal document.
-  Examples: POPA/privacy compliance, ATIA compliance, confidentiality obligations,
-  conflict of interest ongoing disclosure (unless a mandatory COI form is required WITH
-  the proposal by the ITP).
+B) POST-AWARD / PRE-CONTRACT items: documents the RFP says must be provided
+   BEFORE signing the agreement or contract — typically listed in a "Conditions
+   for Award", "Conditions for Signing", or equivalent section. These are NOT
+   submission requirements.
 
-## SEVERITY RULES — READ CAREFULLY
+C) CONTRACTUAL OBLIGATIONS: duties that arise AFTER award, typically found in
+   General Conditions, Special Conditions clauses, or the draft agreement. These
+   are performance obligations, not proposal documents.
 
-Severity MUST reflect BOTH the importance of the gap AND the stage at which it applies:
+D) POST-SHORTLIST items: things only required from the preferred/shortlisted
+   proponent (e.g. detailed cost breakdowns, presentations, clarifications).
 
-- Critical : A "Proposal Submission" item that is MISSING and would cause disqualification
-  (e.g. mandatory form explicitly required by ITP, blank price form, missing required
-  schedule). NEVER assign Critical to a Contract Execution or Contractual Obligation item.
+## STEP 2 — ASSESS THE PROPOSAL
 
-- High    : A "Proposal Submission" item that is present but significantly weak, OR a
-  scored criterion that is substantially underaddressed in the proposal text.
+For each finding, assign the correct stage based solely on what the RFP says:
 
-- Medium  : A "Proposal Submission" item with a minor gap, OR a "Negotiation/Shortlist"
-  item the evaluator may ask about. "Contract Execution" items may appear here with a
-  clear stage label so the team knows when to act.
+- "Proposal Submission"      — explicitly required WITH the proposal
+- "Negotiation / Shortlist"  — required only if shortlisted or selected
+- "Contract Execution"       — required before contract signing, not at proposal
+- "Contractual Obligation"   — ongoing performance duty under the contract
 
-- Low     : Polish, clarity, or minor improvements. Also use for "Contractual Obligation"
-  items to flag awareness without overstating urgency.
+## STEP 3 — ASSIGN SEVERITY
 
-The stage label in each finding tells the user WHEN to act — not just THAT it exists.
-Do not inflate a Contract Execution item to Critical just because it is mentioned in the
-General Conditions. General Conditions are not Instructions to Proponents.
+Severity must reflect BOTH importance AND stage:
+
+- Critical : A Proposal Submission item that is completely missing and would
+             cause disqualification or prevent evaluation. NEVER assign Critical
+             to a Contract Execution or Contractual Obligation item regardless
+             of how important it sounds.
+
+- High     : A Proposal Submission item that is present but seriously deficient,
+             OR a heavily-weighted evaluation criterion that is substantially
+             underaddressed in the proposal text.
+
+- Medium   : A Proposal Submission item with a minor gap; OR a Negotiation /
+             Shortlist item worth flagging; OR a Contract Execution item the team
+             should be aware of and prepare for.
+
+- Low      : Polish or clarity issues; Contractual Obligations the team should
+             note but that do not affect proposal evaluation.
+
+## SCORING
+
+Score 0-100 based ONLY on how well the proposal addresses the proposal-stage
+submission and evaluation requirements. Do not deduct points for absent
+Contract Execution or Contractual Obligation items.
+
+90-100: Comprehensively addresses all submission and evaluation requirements
+75-89:  Solid response with minor gaps in evaluated criteria
+60-74:  Adequate but with meaningful gaps in scored criteria
+45-59:  Significant weaknesses across multiple evaluation areas  
+Below 45: Critical submission gaps or proposal fundamentally incomplete
+
+## OUTPUT FORMAT
 
 Return ONLY this JSON — no markdown, no extra text:
 {{
   "overall_score": <0-100>,
-  "score_rationale": "<2 sentences — score only proposal-stage items>",
+  "score_rationale": "<2 sentences explaining score based on submission and evaluation criteria only>",
   "recommendation": "SUBMIT AS-IS|REVISE BEFORE SUBMITTING|MAJOR REVISION NEEDED",
-  "executive_summary": "<3-4 sentences>",
-  "strengths": ["<s1>", "<s2>", "<s3>"],
+  "executive_summary": "<3-4 sentences overall assessment>",
+  "strengths": ["<strength 1>", "<strength 2>", "<strength 3>"],
   "findings": [
     {{
       "severity": "Critical|High|Medium|Low",
@@ -757,19 +792,23 @@ Return ONLY this JSON — no markdown, no extra text:
       "category": "<category>",
       "req_id": "<req_id or null>",
       "title": "<short title>",
-      "issue": "<gap description>",
-      "recommendation": "<specific fix — include WHEN to act if not at submission>",
-      "proposal_location": "<where in proposal, or N/A>",
+      "issue": "<what is missing or weak, citing the specific RFP section or requirement>",
+      "recommendation": "<specific actionable fix, including WHEN to act if not at submission>",
+      "proposal_location": "<section of proposal where this relates, or N/A>",
       "effort": "Minor edit|Moderate rewrite|Major addition|Post-submission action"
     }}
   ],
   "next_steps": [
-    {{"priority": 1, "action": "<action>", "rationale": "<why>", "when": "Before submission|If shortlisted|Before contract execution"}}
+    {{
+      "priority": 1,
+      "action": "<specific action>",
+      "rationale": "<why this matters, citing the RFP>",
+      "when": "Before submission|If shortlisted|Before contract execution|Upon contract award"
+    }}
   ]
 }}
 
-Score only against proposal-stage requirements. Do not penalise the score for absent
-contract-execution documents. Limit findings to the 10 most important. Limit next_steps to 6.
+Limit findings to the 10 most important. Limit next_steps to 6.
 """
 
     raw1 = _call(SYSTEM, prompt1, max_tokens=4096)
@@ -780,7 +819,6 @@ contract-execution documents. Limit findings to the 10 most important. Limit nex
         )
 
     # ── Call 2: Per-requirement coverage ─────────────────────────────────────
-    # Build a shorter req list for coverage (just id + short description)
     cov_lines = []
     for r in requirements:
         rid  = r.get("req_id", "")
@@ -792,13 +830,15 @@ contract-execution documents. Limit findings to the 10 most important. Limit nex
     prompt2 = f"""
 {bid_header}
 
-=== REQUIREMENTS TO ASSESS ===
+=== RFP REQUIREMENTS TO ASSESS ===
 {cov_block}
 
 === PROPOSAL TEXT ===
 {proposal_snip}
 
-For each requirement, assess whether the proposal addresses it.
+For each requirement listed above, assess how well the proposal addresses it.
+Base your assessment only on the proposal text provided.
+
 Return ONLY this JSON — no markdown, no extra text:
 {{
   "requirement_coverage": [
@@ -808,7 +848,7 @@ Return ONLY this JSON — no markdown, no extra text:
       "description": "<15 word max description>",
       "coverage": "Fully Addressed|Partially Addressed|Not Addressed|Cannot Assess",
       "confidence": "High|Medium|Low",
-      "notes": "<one sentence>"
+      "notes": "<one sentence on what is present or missing>"
     }}
   ]
 }}

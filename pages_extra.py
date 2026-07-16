@@ -1086,10 +1086,13 @@ def page_submission_assembler(bid_id):
     # TAB 2 — Proposal Review: upload final PDF → AI alignment analysis
     # ══════════════════════════════════════════════════════════════════════════
     with tab2:
-        st.markdown("### Proposal Review — RFP Alignment Analysis")
-        st.markdown('<div class="info-box">Upload your final proposal PDF. Claude reads it against '
-                    'all RFP documents in the system and the compliance matrix, then produces a '
-                    'scored alignment report with prioritised recommendations.</div>',
+        st.markdown("### Proposal Review — Tender Alignment Analysis")
+        st.markdown('<div class="info-box">Upload your final proposal. Claude reads all '
+                    'tender documents in the registry (RFP, addenda, Q&A logs, specifications) '
+                    'and your compliance matrix, then determines what is actually required '
+                    'at each procurement stage — submission, shortlist, pre-contract, or '
+                    'contractual obligation — based solely on what those documents say. '
+                    'Findings are scored and prioritised accordingly.</div>',
                     unsafe_allow_html=True)
 
         if not (api_key_configured() or st.session_state.get("anthropic_api_key")):
@@ -1097,35 +1100,51 @@ def page_submission_assembler(bid_id):
                         unsafe_allow_html=True)
             st.stop()
 
-        # ── Pull RFP text from uploaded documents ─────────────────────────────
-        rfp_docs = [d for d in docs if d.get("doc_type") in
-                    ("RFP", "RFSO", "Addendum", "RFP Document", "Supporting")]
+        # ── Pull tender document text from ALL uploaded documents ─────────────
+        # Pull from every document in the registry — RFP, addenda, Q&A logs,
+        # specifications, general conditions — so the model has full context
+        # to determine what is a submission requirement vs post-award obligation.
+        tender_docs = [d for d in docs if d.get("storage_path")]
         rfp_text_combined = ""
-        if rfp_docs:
+        loaded_names = []
+        if tender_docs:
             from database import download_file as _dl
-            for rd in rfp_docs[:3]:   # cap at 3 RFP docs to stay within context
-                sp = rd.get("storage_path")
-                if not sp:
-                    continue
+            char_budget = 5000  # total chars across all docs fed to model
+            for td in tender_docs:
+                if len(rfp_text_combined) >= char_budget:
+                    break
+                sp = td.get("storage_path")
                 try:
                     fb = _dl(sp)
-                    if rd.get("name","").lower().endswith(".pdf"):
+                    remaining = char_budget - len(rfp_text_combined)
+                    name = td.get("name", "")
+                    if name.lower().endswith(".pdf"):
                         pdoc = fitz.open(stream=fb, filetype="pdf")
-                        rfp_text_combined += "\n".join(pg.get_text() for pg in pdoc)[:4000]
+                        chunk = "\n".join(pg.get_text() for pg in pdoc)[:remaining]
                     else:
-                        rfp_text_combined += fb.decode("utf-8", errors="ignore")[:4000]
+                        chunk = fb.decode("utf-8", errors="ignore")[:remaining]
+                    if chunk.strip():
+                        rfp_text_combined += f"\n\n--- {name} ---\n{chunk}"
+                        loaded_names.append(name)
                 except Exception:
                     pass
 
-        if rfp_docs:
-            st.markdown(f'<span style="font-size:.78rem;color:#A9A69D">ℹ RFP context pulled from '
-                        f'{len(rfp_docs)} document(s) in registry: '
-                        f'{", ".join(d["name"] for d in rfp_docs[:3])}</span>',
-                        unsafe_allow_html=True)
+        if loaded_names:
+            st.markdown(
+                f'<span style="font-size:.78rem;color:#A9A69D">ℹ Tender context loaded '
+                f'from {len(loaded_names)} document(s): '
+                f'{", ".join(loaded_names[:5])}{"…" if len(loaded_names) > 5 else ""}'
+                f'</span>',
+                unsafe_allow_html=True
+            )
         else:
-            st.markdown('<div class="warn-box">No RFP documents found in the Document Registry. '
-                        'Upload the RFSO/RFP first for a more accurate analysis.</div>',
-                        unsafe_allow_html=True)
+            st.markdown(
+                '<div class="warn-box">No tender documents found in the Document Registry. '
+                'Upload the RFP, addenda, Q&A logs, and any supporting documents first — '
+                'the more context the model has, the more accurate the stage '
+                'classification and scoring will be.</div>',
+                unsafe_allow_html=True
+            )
 
         # ── Upload proposal ───────────────────────────────────────────────────
         uploaded = st.file_uploader(
