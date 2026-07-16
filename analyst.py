@@ -25,34 +25,37 @@ def _call(system: str, user: str, max_tokens: int = 2048) -> str:
 def _parse_json(raw: str) -> dict | list:
     """
     Robustly parse JSON from a model response.
-    Handles: markdown fences, trailing commentary, truncated output.
+    Handles: markdown fences (complete OR truncated), trailing commentary,
+    and JSON cut mid-stream before closing braces.
     """
     import re as _re
 
-    # 1. Strip markdown fences
-    raw = _re.sub(r"^```(?:json)?\s*", "", raw.strip())
-    raw = _re.sub(r"\s*```$", "", raw).strip()
+    # 1. Aggressive fence removal — works even when closing fence is absent
+    text = raw.strip()
+    text = _re.sub(r"^```[a-z]*\s*\n?", "", text, flags=_re.IGNORECASE)
+    text = _re.sub(r"\n?```\s*$", "", text)
+    text = text.strip()
 
-    # 2. Direct parse (clean response)
+    # 2. Direct parse
     try:
-        return json.loads(raw)
+        return json.loads(text)
     except json.JSONDecodeError:
         pass
 
-    # 3. Extract first complete JSON object or array by bracket matching
-    def extract_first(text, open_ch, close_ch):
-        start = text.find(open_ch)
+    # 3. Bracket-match: find first { or [ and scan for balanced close
+    def _scan(src, open_ch, close_ch):
+        start = src.find(open_ch)
         if start == -1:
             return None
         depth, in_str, esc = 0, False, False
-        for i, ch in enumerate(text[start:], start):
+        for i, ch in enumerate(src[start:], start):
             if esc:
                 esc = False
                 continue
-            if ch == "\\":
+            if ch == "\\" and in_str:
                 esc = True
                 continue
-            if ch == "\"" and not esc:
+            if ch == '"' and not esc:
                 in_str = not in_str
                 continue
             if in_str:
@@ -62,53 +65,56 @@ def _parse_json(raw: str) -> dict | list:
             elif ch == close_ch:
                 depth -= 1
                 if depth == 0:
-                    candidate = text[start:i + 1]
                     try:
-                        return json.loads(candidate)
+                        return json.loads(src[start:i + 1])
                     except json.JSONDecodeError:
                         return None
         return None
 
-    for open_ch, close_ch in [('{', '}'), ('[', ']')]:
-        result = extract_first(raw, open_ch, close_ch)
+    for oc, cc in [('{', '}'), ('[', ']')]:
+        result = _scan(text, oc, cc)
         if result is not None:
             return result
 
-    # 4. Repair truncated JSON: walk backward from end to find last valid object close
-    # Try progressively shorter slices ending at } or ]
-    for end_char in ('}', ']'):
-        pos = len(raw) - 1
-        while pos >= 0:
-            pos = raw.rfind(end_char, 0, pos + 1)
-            if pos == -1:
-                break
-            candidate = raw[:pos + 1]
-            # Count opens vs closes — only try if balanced-ish
-            for oc, cc in [('{', '}'), ('[', ']')]:
-                opens = candidate.count(oc) - candidate.count(cc)
-                candidate += cc * max(opens, 0)
+    # 4. Truncation repair: JSON cut before model finished writing it.
+    #    Find the JSON start, then walk backward closing brackets until parseable.
+    start_idx = text.find('{')
+    if start_idx == -1:
+        start_idx = text.find('[')
+    if start_idx != -1:
+        fragment = text[start_idx:]
+        for end_pos in range(len(fragment) - 1, 0, -1):
+            if fragment[end_pos] not in ('}', ']', '"', '0123456789'):
+                continue
+            chunk = fragment[:end_pos + 1]
+            # Close any unclosed brackets
+            for oc2, cc2 in [('{', '}'), ('[', ']')]:
+                diff = chunk.count(oc2) - chunk.count(cc2)
+                chunk += cc2 * max(diff, 0)
             try:
-                return json.loads(candidate)
+                result = json.loads(chunk)
+                if isinstance(result, (dict, list)):
+                    if isinstance(result, dict):
+                        result["_truncated"] = True
+                    return result
             except json.JSONDecodeError:
-                pos -= 1
+                continue
 
-    # 5. Nuclear option: find last complete inner object and wrap it
-    # Walk back finding any parseable sub-object
-    inner = _re.findall(r'\{[^{}]+\}', raw)
-    if inner:
-        try:
-            # Reassemble as a questions array from whatever objects we got
-            objects = [json.loads(o) for o in inner if _re.search(r'"question"', o)]
-            if objects:
-                return {"questions": objects, "submission_notes": "",
-                        "critical_count": 0, "deadline_note": ""}
-        except Exception:
-            pass
+    # 5. Nuclear: recover scalar key/value pairs as a flat dict
+    pairs = _re.findall(r'"([^"]+)"\s*:\s*"([^"]*)"', text)
+    numbers = _re.findall(r'"([^"]+)"\s*:\s*(-?\d+(?:\\.\d+)?)', text)
+    if pairs or numbers:
+        recovered = dict(pairs)
+        recovered.update({k: float(v) if '.' in v else int(v) for k, v in numbers})
+        recovered["_truncated"] = True
+        return recovered
 
     raise ValueError(
         f"Could not parse model response as JSON after all repair attempts.\n"
         f"First 300 chars: {raw[:300]}"
     )
+
+
 
 
 # ── 1. Compliance Review ──────────────────────────────────────────────────────
