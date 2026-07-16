@@ -1194,6 +1194,21 @@ def page_submission_assembler(bid_id):
                         'Results shown are partial but findings and score are intact. '
                         'Re-run if needed.</div>', unsafe_allow_html=True)
 
+        # ── PDF export ────────────────────────────────────────────────────────
+        try:
+            from pdf_styles import generate_proposal_review_pdf
+            pdf_bytes = generate_proposal_review_pdf(bid, result, fname)
+            safe_name = (bid.get("client") or "proposal").replace(" ", "_")
+            st.download_button(
+                label="📄 Export Report as PDF",
+                data=pdf_bytes,
+                file_name=f"{safe_name}_proposal_review.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
+        except Exception as pdf_err:
+            st.warning(f"PDF export unavailable: {pdf_err}")
+
         # ── Score header ──────────────────────────────────────────────────────
         score     = result.get("overall_score", 0)
         rec       = result.get("recommendation", "")

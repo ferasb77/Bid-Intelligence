@@ -513,3 +513,327 @@ def generate_clarifications_pdf(bid: dict, questions: list, include_rationale: b
 
     doc.build(story, onFirstPage=footer, onLaterPages=footer)
     return buf.getvalue()
+
+
+# ── Proposal Review PDF ───────────────────────────────────────────────────────
+def generate_proposal_review_pdf(bid: dict, result: dict, proposal_filename: str = "") -> bytes:
+    """
+    McKinsey-style A4 portrait PDF for the proposal alignment review report.
+    Sections: cover header → score card → executive summary → findings by
+    severity → requirement coverage table → next steps.
+    """
+    import io
+    from datetime import date
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, HRFlowable, Table, TableStyle,
+        KeepTogether,
+    )
+    from reportlab.lib.colors import HexColor
+    from reportlab.lib import colors
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=ML, rightMargin=MR,
+        topMargin=MT, bottomMargin=MB + 8*mm,
+        title=f"Proposal Review — {bid.get('client','')}",
+    )
+
+    CW = PW_P - ML - MR
+    fn_r  = _font("regular")
+    fn_sb = _font("semibold")
+
+    # Local colour shortcuts
+    C_CRIT   = HexColor("#C00000")
+    C_HIGH   = HexColor("#E26B0A")
+    C_MED    = HexColor("#7F6000")
+    C_LOW    = C_GREY_2
+    C_FULL   = HexColor("#375623")
+    C_PART   = HexColor("#E26B0A")
+    C_NONE   = C_CRIT
+
+    SEV_COL  = {"Critical": C_CRIT, "High": C_HIGH, "Medium": C_MED, "Low": C_LOW}
+    COV_COL  = {
+        "Fully Addressed":     C_FULL,
+        "Partially Addressed": C_PART,
+        "Not Addressed":       C_NONE,
+        "Cannot Assess":       C_GREY_2,
+    }
+    REC_COL  = {
+        "SUBMIT AS-IS":             HexColor("#375623"),
+        "REVISE BEFORE SUBMITTING": HexColor("#E26B0A"),
+        "MAJOR REVISION NEEDED":    HexColor("#C00000"),
+    }
+
+    def _p(text, size=9, weight="regular", color=None, align=TA_LEFT, leading=None):
+        from reportlab.platypus import Paragraph as _Para
+        st = ParagraphStyle(
+            "x", fontName=_font(weight), fontSize=size,
+            leading=leading or max(size*1.3, size+3),
+            textColor=color or C_BLACK, alignment=align,
+        )
+        return _Para(str(text) if text else "—", st)
+
+    def _hr(thickness=0.5, color=C_GREY_3, space=3*mm):
+        return HRFlowable(width="100%", thickness=thickness,
+                          color=color, spaceAfter=space, spaceBefore=space)
+
+    def _section_bar(label):
+        """Full-width navy bar with white label — matches other PDFs."""
+        tbl = Table([[_p(label, 8, "semibold", C_WHITE)]], colWidths=[CW])
+        tbl.setStyle(TableStyle([
+            ("BACKGROUND",    (0,0), (-1,-1), C_NAVY),
+            ("TOPPADDING",    (0,0), (-1,-1), 3*mm),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 3*mm),
+            ("LEFTPADDING",   (0,0), (-1,-1), 4*mm),
+        ]))
+        return tbl
+
+    story = []
+
+    # ── Footer ────────────────────────────────────────────────────────────────
+    footer_left = (f"{bid.get('client','')}  ·  Proposal Review  ·  "
+                   f"Generated {date.today().strftime('%B %d, %Y')}")
+    def footer(canvas, doc):
+        canvas.saveState()
+        canvas.setStrokeColor(C_GREY_3)
+        canvas.setLineWidth(0.5)
+        canvas.line(ML, MB, PW_P - MR, MB)
+        canvas.setFont(fn_r, 7)
+        canvas.setFillColor(C_GREY_2)
+        canvas.drawString(ML, MB - 4*mm, footer_left)
+        canvas.drawRightString(PW_P - MR, MB - 4*mm, f"Page {doc.page}")
+        canvas.restoreState()
+
+    # ── Cover header ──────────────────────────────────────────────────────────
+    cover_header(story, bid, "Proposal Alignment Review")
+    if proposal_filename:
+        story.append(_p(f"Analyzed file: {proposal_filename}", 7.5,
+                        color=C_GREY_1))
+        story.append(Spacer(1, 3*mm))
+
+    # ── Score card ────────────────────────────────────────────────────────────
+    score = result.get("overall_score", 0)
+    rec   = result.get("recommendation", "")
+    rec_c = REC_COL.get(rec, C_GREY_2)
+
+    score_col = C_CRIT if score < 55 else (C_HIGH if score < 75 else C_FULL)
+
+    score_tbl = Table(
+        [[
+            _p(str(score), 36, "bold", score_col, TA_CENTER),
+            Table([
+                [_p(rec, 9, "semibold", rec_c)],
+                [_p(result.get("score_rationale", ""), 8, color=C_GREY_1)],
+            ], colWidths=[CW * 0.72]),
+        ]],
+        colWidths=[CW * 0.18, CW * 0.82],
+    )
+    score_tbl.setStyle(TableStyle([
+        ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+        ("LEFTPADDING",   (0,0), (-1,-1), 0),
+        ("RIGHTPADDING",  (0,0), (-1,-1), 0),
+        ("TOPPADDING",    (0,0), (-1,-1), 2*mm),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 2*mm),
+        ("LINEBELOW",     (0,0), (-1,-1), 0.5, C_GREY_3),
+    ]))
+    story.append(score_tbl)
+    story.append(Spacer(1, 4*mm))
+
+    # ── Executive summary ─────────────────────────────────────────────────────
+    story.append(_section_bar("EXECUTIVE SUMMARY"))
+    story.append(Spacer(1, 2*mm))
+    story.append(_p(result.get("executive_summary", ""), 8.5, color=C_GREY_1))
+
+    # Strengths inline
+    strengths = result.get("strengths", [])
+    if strengths:
+        story.append(Spacer(1, 3*mm))
+        story.append(_p("Key Strengths", 8, "semibold", C_FULL))
+        for s in strengths:
+            story.append(_p(f"✓  {s}", 8, color=C_FULL))
+    story.append(Spacer(1, 5*mm))
+
+    # ── Findings ──────────────────────────────────────────────────────────────
+    findings = result.get("findings", [])
+    SEV_ORDER = ["Critical", "High", "Medium", "Low"]
+
+    if findings:
+        story.append(_section_bar("FINDINGS BY SEVERITY"))
+        story.append(Spacer(1, 2*mm))
+
+        # Summary count strip
+        summary_cells = []
+        for sev in SEV_ORDER:
+            count = sum(1 for f in findings if f.get("severity") == sev)
+            sc = SEV_COL.get(sev, C_GREY_2)
+            summary_cells.append(
+                Table([[
+                    _p(str(count), 16, "bold", sc, TA_CENTER),
+                    _p(sev, 7, color=C_GREY_1, align=TA_CENTER),
+                ]], colWidths=[CW/4*0.35, CW/4*0.65])
+            )
+        strip = Table([summary_cells], colWidths=[CW/4]*4)
+        strip.setStyle(TableStyle([
+            ("LINEAFTER",     (0,0), (-3,-1), 0.5, C_GREY_3),
+            ("ALIGN",         (0,0), (-1,-1), "CENTER"),
+            ("TOPPADDING",    (0,0), (-1,-1), 1*mm),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 2*mm),
+        ]))
+        story.append(strip)
+        story.append(_hr())
+
+        for sev in SEV_ORDER:
+            sev_findings = [f for f in findings if f.get("severity") == sev]
+            if not sev_findings:
+                continue
+            sc = SEV_COL.get(sev, C_GREY_2)
+
+            # Severity group label
+            story.append(_p(f"{sev.upper()}  ({len(sev_findings)})",
+                            7.5, "semibold", sc))
+            story.append(Spacer(1, 1*mm))
+
+            for idx, finding in enumerate(sev_findings):
+                title    = finding.get("title", "")
+                issue    = finding.get("issue", "")
+                rec_text = finding.get("recommendation", "")
+                location = finding.get("proposal_location", "")
+                effort   = finding.get("effort", "")
+                req_id   = finding.get("req_id") or ""
+                cat      = finding.get("category", "")
+
+                meta_parts = [x for x in [cat, f"Req {req_id}" if req_id else "", location] if x]
+                meta_str   = "  ·  ".join(meta_parts)
+
+                effort_col = {
+                    "Minor edit":       C_FULL,
+                    "Moderate rewrite": C_HIGH,
+                    "Major addition":   C_CRIT,
+                }.get(effort, C_GREY_2)
+
+                finding_block = Table(
+                    [[
+                        # Left accent stripe (3mm wide)
+                        Spacer(3*mm, 1),
+                        Table([
+                            [_p(f"{sev[0]}{idx+1}  {title}", 8.5, "semibold")],
+                            [_p(meta_str, 7, color=C_GREY_2)],
+                            [_p(f"Issue: {issue}", 8, color=C_GREY_1)],
+                            [_p(f"Recommendation: {rec_text}", 8, "semibold")],
+                            [_p(f"Effort: {effort}", 7, color=effort_col)],
+                        ], colWidths=[CW - 3*mm - 4*mm]),
+                    ]],
+                    colWidths=[3*mm, CW - 3*mm],
+                )
+                finding_block.setStyle(TableStyle([
+                    ("BACKGROUND",    (0,0), (0,-1), sc),
+                    ("BACKGROUND",    (1,0), (1,-1), C_GREY_4),
+                    ("TOPPADDING",    (0,0), (-1,-1), 2.5*mm),
+                    ("BOTTOMPADDING", (0,0), (-1,-1), 2.5*mm),
+                    ("LEFTPADDING",   (1,0), (1,-1), 3*mm),
+                    ("RIGHTPADDING",  (1,0), (1,-1), 3*mm),
+                    ("LEFTPADDING",   (0,0), (0,-1), 0),
+                    ("RIGHTPADDING",  (0,0), (0,-1), 0),
+                    ("LINEBELOW",     (0,0), (-1,-1), 0.5, C_GREY_3),
+                ]))
+                story.append(KeepTogether(finding_block))
+                story.append(Spacer(1, 1.5*mm))
+
+            story.append(Spacer(1, 3*mm))
+
+    # ── Requirement coverage ──────────────────────────────────────────────────
+    coverage = result.get("requirement_coverage", [])
+    if coverage:
+        story.append(_section_bar("REQUIREMENT COVERAGE"))
+        story.append(Spacer(1, 2*mm))
+
+        # Column widths: ID | Cat | Description | Coverage | Confidence
+        col_w = [c*mm for c in [18, 25, 90, 40, 22]]
+        scale = CW / sum(col_w)
+        col_w = [w * scale for w in col_w]
+
+        hdr_row = [
+            _p(h, 7, "semibold", C_WHITE)
+            for h in ["Req ID", "Category", "Description", "Coverage", "Conf."]
+        ]
+        rows = [hdr_row]
+
+        for cov in coverage:
+            cov_status = cov.get("coverage", "")
+            cc = COV_COL.get(cov_status, C_GREY_2)
+            hex_cc = cc.hexval()[2:]
+            fn_sb_name = fn_sb
+
+            rows.append([
+                _p(cov.get("req_id", ""), 7.5, "bold", C_NAVY),
+                _p(cov.get("category", ""), 7, color=C_GREY_1),
+                Table([
+                    [_p(cov.get("description", ""), 7.5)],
+                    [_p(cov.get("notes", ""), 7, color=C_GREY_2)],
+                ], colWidths=[col_w[2]]),
+                _p(
+                    f'<font name="{fn_sb_name}" color="#{hex_cc}">{cov_status}</font>',
+                    7.5
+                ),
+                _p(cov.get("confidence", ""), 7, color=C_GREY_1, align=TA_CENTER),
+            ])
+
+        cov_tbl = Table(rows, colWidths=col_w, repeatRows=1)
+        cov_tbl.setStyle(TableStyle([
+            # Header row
+            ("BACKGROUND",    (0,0), (-1,0), C_NAVY),
+            ("TOPPADDING",    (0,0), (-1,0), 2.5*mm),
+            ("BOTTOMPADDING", (0,0), (-1,0), 2.5*mm),
+            ("LEFTPADDING",   (0,0), (-1,-1), 2*mm),
+            ("RIGHTPADDING",  (0,0), (-1,-1), 2*mm),
+            # Data rows
+            ("TOPPADDING",    (0,1), (-1,-1), 2*mm),
+            ("BOTTOMPADDING", (0,1), (-1,-1), 2*mm),
+            ("VALIGN",        (0,0), (-1,-1), "TOP"),
+            ("ROWBACKGROUNDS",(0,1), (-1,-1), [C_WHITE, C_GREY_4]),
+            ("LINEBELOW",     (0,0), (-1,-1), 0.4, C_GREY_3),
+        ]))
+        story.append(cov_tbl)
+        story.append(Spacer(1, 5*mm))
+
+    # ── Next steps ────────────────────────────────────────────────────────────
+    next_steps = result.get("next_steps", [])
+    if next_steps:
+        story.append(_section_bar("RECOMMENDED NEXT STEPS"))
+        story.append(Spacer(1, 2*mm))
+
+        for step in sorted(next_steps, key=lambda x: x.get("priority", 99)):
+            pri    = step.get("priority", "")
+            action = step.get("action", "")
+            rat    = step.get("rationale", "")
+
+            step_block = Table([[
+                _p(f"#{pri}", 9, "bold", C_NAVY, TA_CENTER),
+                Table([
+                    [_p(action, 8.5, "semibold")],
+                    [_p(rat, 8, color=C_GREY_1)],
+                ], colWidths=[CW - 16*mm]),
+            ]], colWidths=[16*mm, CW - 16*mm])
+            step_block.setStyle(TableStyle([
+                ("VALIGN",        (0,0), (-1,-1), "TOP"),
+                ("LINEBELOW",     (0,0), (-1,-1), 0.4, C_GREY_3),
+                ("TOPPADDING",    (0,0), (-1,-1), 2*mm),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 2.5*mm),
+                ("LEFTPADDING",   (0,0), (-1,-1), 0),
+                ("RIGHTPADDING",  (0,0), (-1,-1), 0),
+            ]))
+            story.append(KeepTogether(step_block))
+
+    # ── Truncation note ───────────────────────────────────────────────────────
+    if result.get("_truncated"):
+        story.append(Spacer(1, 5*mm))
+        story.append(_p(
+            "Note: AI response was partially truncated. Coverage table or "
+            "next steps may be incomplete. Re-run analysis for full output.",
+            7.5, color=C_AMBER,
+        ))
+
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    return buf.getvalue()
