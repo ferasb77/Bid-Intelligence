@@ -1289,6 +1289,25 @@ def page_submission_assembler(bid_id):
                         )
                 st.markdown("")
 
+                # Stage colour legend
+                STAGE_COL = {
+                    "Proposal Submission":       "#C0392B",
+                    "Negotiation / Shortlist":   "#E67E22",
+                    "Contract Execution":        "#2471A3",
+                    "Contractual Obligation":    "#6E6C66",
+                }
+                for stage_label, sc2 in STAGE_COL.items():
+                    stage_count = sum(1 for f in findings if f.get("stage") == stage_label)
+                    if stage_count:
+                        st.markdown(
+                            f'<span style="background:{sc2}22;border:1px solid {sc2}55;'
+                            f'border-radius:4px;padding:.15rem .55rem;margin-right:.4rem;'
+                            f'font-size:.75rem;color:{sc2}">'
+                            f'{stage_label}: {stage_count}</span>',
+                            unsafe_allow_html=True
+                        )
+                st.markdown("")
+
                 for sev in SEV_ORDER:
                     sev_findings = [f for f in findings if f.get("severity") == sev]
                     if not sev_findings:
@@ -1309,6 +1328,8 @@ def page_submission_assembler(bid_id):
                         effort   = finding.get("effort", "")
                         req_id   = finding.get("req_id", "")
                         cat      = finding.get("category", "")
+                        stage    = finding.get("stage", "")
+                        stage_c  = STAGE_COL.get(stage, "#6E6C66")
                         ec       = EFFORT_COL.get(effort, "#6E6C66")
 
                         label = f"{sev[0]}{idx+1}  {title}"
@@ -1320,12 +1341,13 @@ def page_submission_assembler(bid_id):
                                 f'<div style="background:{bg};border:1px solid {sc}33;'
                                 f'border-left:3px solid {sc};border-radius:0 6px 6px 0;'
                                 f'padding:.8rem 1rem">'
-                                f'<div style="font-size:.78rem;color:#A9A69D;margin-bottom:.4rem">'
-                                f'<span style="color:{sc}">{sev}</span>'
+                                f'<div style="font-size:.78rem;color:#A9A69D;margin-bottom:.5rem">'
+                                f'<span style="color:{sc};font-weight:600">{sev}</span>'
                                 f'{" · "+cat if cat else ""}'
                                 f'{" · Req "+req_id if req_id else ""}'
-                                f'{" · "+location if location else ""}'
+                                f'{" · "+location if location and location != "N/A" else ""}'
                                 f'</div>'
+                                f'{"<div style=background:"+stage_c+"22;border:1px solid "+stage_c+"44;border-radius:4px;padding:.2rem .6rem;display:inline-block;font-size:.72rem;color:"+stage_c+";font-weight:600;margin-bottom:.5rem>⏱ "+stage+"</div>" if stage else ""}'
                                 f'<div style="font-size:.88rem;color:#EDEAE2;margin-bottom:.6rem">'
                                 f'<strong>Issue:</strong> {issue}</div>'
                                 f'<div style="font-size:.85rem;color:#C6A15B;margin-bottom:.4rem">'
@@ -1397,14 +1419,28 @@ def page_submission_assembler(bid_id):
             next_steps = result.get("next_steps", [])
             if next_steps:
                 st.markdown("### Recommended Next Steps")
+                WHEN_COL = {
+                    "Before submission":        "#C0392B",
+                    "If shortlisted":           "#E67E22",
+                    "Before contract execution":"#2471A3",
+                }
                 for step in sorted(next_steps, key=lambda x: x.get("priority", 99)):
-                    pri = step.get("priority", "")
+                    pri  = step.get("priority", "")
+                    when = step.get("when", "")
+                    wc   = WHEN_COL.get(when, "#6E6C66")
+                    when_badge = (
+                        f'<span style="background:{wc}22;border:1px solid {wc}44;'
+                        f'border-radius:3px;padding:.1rem .4rem;font-size:.7rem;'
+                        f'color:{wc};font-weight:600;margin-left:.5rem">{when}</span>'
+                        if when else ""
+                    )
                     st.markdown(
                         f'<div style="background:#131316;border:1px solid #2A2A2E;'
                         f'border-left:3px solid #C6A15B;border-radius:0 4px 4px 0;'
                         f'padding:.6rem 1rem;margin:.3rem 0">'
                         f'<span style="color:#C6A15B;font-weight:700;font-size:.8rem">#{pri}</span> '
                         f'<span style="font-size:.88rem;color:#EDEAE2">{step.get("action","")}</span>'
+                        f'{when_badge}'
                         f'<br><span style="font-size:.78rem;color:#A9A69D">{step.get("rationale","")}</span>'
                         f'</div>',
                         unsafe_allow_html=True

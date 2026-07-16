@@ -696,33 +696,80 @@ def analyze_proposal_alignment(
 === PROPOSAL TEXT ===
 {proposal_snip}
 
+## CRITICAL INSTRUCTION — PROCUREMENT STAGE CLASSIFICATION
+
+Public-sector procurements have THREE distinct stages. You MUST classify every finding
+by the stage at which that item is actually required — NOT just whether it appears in
+the contract documents.
+
+Stage definitions:
+- "Proposal Submission" : Must be included IN the proposal package submitted today.
+  Examples: technical narrative, completed price form, mandatory forms explicitly
+  requested by the Instructions to Proponents, team CVs, references.
+
+- "Negotiation / Shortlist" : Only required IF the proponent is shortlisted or enters
+  negotiations. Examples: detailed cost breakdowns requested only from highest-ranked
+  proponent, staffing confirmations, revised pricing.
+
+- "Contract Execution" : Required BEFORE signing the agreement, NOT at proposal stage.
+  Examples: insurance certificates, WCB certificates, provincial business registration
+  proof (unless ITP explicitly requires it with the proposal), performance bonds,
+  agreement letters, scope and fee schedules.
+
+- "Contractual Obligation" : An ongoing duty under the contract, not a proposal document.
+  Examples: POPA/privacy compliance, ATIA compliance, confidentiality obligations,
+  conflict of interest ongoing disclosure (unless a mandatory COI form is required WITH
+  the proposal by the ITP).
+
+## SEVERITY RULES — READ CAREFULLY
+
+Severity MUST reflect BOTH the importance of the gap AND the stage at which it applies:
+
+- Critical : A "Proposal Submission" item that is MISSING and would cause disqualification
+  (e.g. mandatory form explicitly required by ITP, blank price form, missing required
+  schedule). NEVER assign Critical to a Contract Execution or Contractual Obligation item.
+
+- High    : A "Proposal Submission" item that is present but significantly weak, OR a
+  scored criterion that is substantially underaddressed in the proposal text.
+
+- Medium  : A "Proposal Submission" item with a minor gap, OR a "Negotiation/Shortlist"
+  item the evaluator may ask about. "Contract Execution" items may appear here with a
+  clear stage label so the team knows when to act.
+
+- Low     : Polish, clarity, or minor improvements. Also use for "Contractual Obligation"
+  items to flag awareness without overstating urgency.
+
+The stage label in each finding tells the user WHEN to act — not just THAT it exists.
+Do not inflate a Contract Execution item to Critical just because it is mentioned in the
+General Conditions. General Conditions are not Instructions to Proponents.
+
 Return ONLY this JSON — no markdown, no extra text:
 {{
   "overall_score": <0-100>,
-  "score_rationale": "<2 sentences>",
+  "score_rationale": "<2 sentences — score only proposal-stage items>",
   "recommendation": "SUBMIT AS-IS|REVISE BEFORE SUBMITTING|MAJOR REVISION NEEDED",
   "executive_summary": "<3-4 sentences>",
   "strengths": ["<s1>", "<s2>", "<s3>"],
   "findings": [
     {{
       "severity": "Critical|High|Medium|Low",
+      "stage": "Proposal Submission|Negotiation / Shortlist|Contract Execution|Contractual Obligation",
       "category": "<category>",
       "req_id": "<req_id or null>",
       "title": "<short title>",
       "issue": "<gap description>",
-      "recommendation": "<specific fix>",
-      "proposal_location": "<where in proposal>",
-      "effort": "Minor edit|Moderate rewrite|Major addition"
+      "recommendation": "<specific fix — include WHEN to act if not at submission>",
+      "proposal_location": "<where in proposal, or N/A>",
+      "effort": "Minor edit|Moderate rewrite|Major addition|Post-submission action"
     }}
   ],
   "next_steps": [
-    {{"priority": 1, "action": "<action>", "rationale": "<why>"}}
+    {{"priority": 1, "action": "<action>", "rationale": "<why>", "when": "Before submission|If shortlisted|Before contract execution"}}
   ]
 }}
 
-Severity: Critical=disqualification risk, High=major score loss, Medium=evaluators notice, Low=polish.
-Score: 90-100 comprehensive, 75-89 solid, 60-74 adequate gaps, 45-59 significant gaps, <45 critical.
-Limit findings to the 8 most important. Limit next_steps to 5.
+Score only against proposal-stage requirements. Do not penalise the score for absent
+contract-execution documents. Limit findings to the 10 most important. Limit next_steps to 6.
 """
 
     raw1 = _call(SYSTEM, prompt1, max_tokens=4096)

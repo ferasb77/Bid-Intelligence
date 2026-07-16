@@ -695,6 +695,13 @@ def generate_proposal_review_pdf(bid: dict, result: dict, proposal_filename: str
                             7.5, "semibold", sc))
             story.append(Spacer(1, 1*mm))
 
+            STAGE_COL_PDF = {
+                "Proposal Submission":       HexColor("#C00000"),
+                "Negotiation / Shortlist":   HexColor("#E26B0A"),
+                "Contract Execution":        HexColor("#1F5C99"),
+                "Contractual Obligation":    C_GREY_2,
+            }
+
             for idx, finding in enumerate(sev_findings):
                 title    = finding.get("title", "")
                 issue    = finding.get("issue", "")
@@ -703,27 +710,39 @@ def generate_proposal_review_pdf(bid: dict, result: dict, proposal_filename: str
                 effort   = finding.get("effort", "")
                 req_id   = finding.get("req_id") or ""
                 cat      = finding.get("category", "")
+                stage    = finding.get("stage", "")
+                stage_c  = STAGE_COL_PDF.get(stage, C_GREY_2)
 
-                meta_parts = [x for x in [cat, f"Req {req_id}" if req_id else "", location] if x]
+                meta_parts = [x for x in [cat, f"Req {req_id}" if req_id else "",
+                              location if location and location != "N/A" else ""] if x]
                 meta_str   = "  ·  ".join(meta_parts)
 
                 effort_col = {
-                    "Minor edit":       C_FULL,
-                    "Moderate rewrite": C_HIGH,
-                    "Major addition":   C_CRIT,
+                    "Minor edit":             C_FULL,
+                    "Moderate rewrite":       C_HIGH,
+                    "Major addition":         C_CRIT,
+                    "Post-submission action": HexColor("#1F5C99"),
                 }.get(effort, C_GREY_2)
+
+                inner_rows = [
+                    [_p(f"{sev[0]}{idx+1}  {title}", 8.5, "semibold")],
+                    [_p(meta_str, 7, color=C_GREY_2)],
+                ]
+                if stage:
+                    hex_sc = stage_c.hexval()[2:]
+                    inner_rows.append([_p(
+                        f'<font name="{fn_sb}" color="#{hex_sc}">\u23f1 {stage}</font>', 7
+                    )])
+                inner_rows += [
+                    [_p(f"Issue: {issue}", 8, color=C_GREY_1)],
+                    [_p(f"Recommendation: {rec_text}", 8, "semibold")],
+                    [_p(f"Effort: {effort}", 7, color=effort_col)],
+                ]
 
                 finding_block = Table(
                     [[
-                        # Left accent stripe (3mm wide)
                         Spacer(3*mm, 1),
-                        Table([
-                            [_p(f"{sev[0]}{idx+1}  {title}", 8.5, "semibold")],
-                            [_p(meta_str, 7, color=C_GREY_2)],
-                            [_p(f"Issue: {issue}", 8, color=C_GREY_1)],
-                            [_p(f"Recommendation: {rec_text}", 8, "semibold")],
-                            [_p(f"Effort: {effort}", 7, color=effort_col)],
-                        ], colWidths=[CW - 3*mm - 4*mm]),
+                        Table(inner_rows, colWidths=[CW - 3*mm - 4*mm]),
                     ]],
                     colWidths=[3*mm, CW - 3*mm],
                 )
@@ -808,12 +827,13 @@ def generate_proposal_review_pdf(bid: dict, result: dict, proposal_filename: str
             pri    = step.get("priority", "")
             action = step.get("action", "")
             rat    = step.get("rationale", "")
+            when   = step.get("when", "")
 
             step_block = Table([[
                 _p(f"#{pri}", 9, "bold", C_NAVY, TA_CENTER),
                 Table([
                     [_p(action, 8.5, "semibold")],
-                    [_p(rat, 8, color=C_GREY_1)],
+                    [_p(f"When: {when}  ·  {rat}" if when else rat, 8, color=C_GREY_1)],
                 ], colWidths=[CW - 16*mm]),
             ]], colWidths=[16*mm, CW - 16*mm])
             step_block.setStyle(TableStyle([
