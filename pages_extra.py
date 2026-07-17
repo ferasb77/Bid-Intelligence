@@ -1877,9 +1877,14 @@ def page_exec_dashboard():
             f'{b["stage"]}</span>',
             unsafe_allow_html=True)
 
-        # Deadline
-        d = b["days"]
-        if d is None:
+        # Deadline — suppress countdown for closed stages
+        d     = b["days"]
+        stage = b.get("stage", "")
+        if stage in ("Submitted", "Won", "Lost"):
+            _sc = {"Won": "#27AE60", "Lost": "#C0392B"}.get(stage, "#2471A3")
+            c3.markdown(f'<span style="color:{_sc};font-size:.8rem;font-weight:700">'
+                        f'✓ {stage}</span>', unsafe_allow_html=True)
+        elif d is None:
             c3.markdown('<span style="color:#6E6C66;font-size:.8rem">—</span>',
                         unsafe_allow_html=True)
         elif d < 0:
@@ -1966,7 +1971,7 @@ def page_exec_dashboard():
                 f'align-items:center;margin-bottom:.2rem">'
                 f'<span style="font-size:.82rem;font-weight:600">{b["client"]}</span>'
                 f'<span style="font-size:.78rem;color:{col};font-weight:700">'
-                f'{"OVERDUE" if d<0 else f"{d} days — {label}"}</span></div>'
+                f'{b["stage"] if b.get("stage") in ("Submitted","Won","Lost") else ("OVERDUE" if d<0 else f"{d} days — {label}")}</span></div>'
                 f'<div style="background:#1A1A1E;border-radius:3px;height:5px">'
                 f'<div style="background:{col};width:{pct}%;height:5px;'
                 f'border-radius:3px;opacity:.7"></div></div></div>',
@@ -2194,7 +2199,9 @@ def _exec_dashboard_pdf(bids, coaches, alerts):
         r     = b.get("readiness", 0)
         rc    = RISK_COL_PDF.get(b.get("risk","Low"), C_GREEN)
         stage_text = b["stage"]
-        deadline_text = (f"{d}d" if d is not None and d >= 0 else
+        _stage_closed = b.get("stage","") in ("Submitted","Won","Lost")
+        deadline_text = (b.get("stage","") if _stage_closed else
+                         f"{d}d" if d is not None and d >= 0 else
                          "OVERDUE" if d is not None else "—")
 
         rows.append([
