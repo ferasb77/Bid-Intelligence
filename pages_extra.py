@@ -82,12 +82,83 @@ def page_content_library(bid_id=None):
     # ── Summary metrics ───────────────────────────────────────────────────────
     if items:
         approved = sum(1 for i in items if i.get("approved"))
-        cats = list(set(i["category"] for i in items))
-        c1,c2,c3 = st.columns(3)
+        cats     = list(set(i["category"] for i in items))
+        embedded = sum(1 for i in items if i.get("embedding"))
+        c1, c2, c3, c4 = st.columns(4)
         c1.metric("Total Items", len(items))
         c2.metric("Approved for Reuse", approved)
         c3.metric("Categories", len(cats))
+        c4.metric("Embedded", f"{embedded}/{len(items)}")
         st.markdown("")
+
+        # ── Embed All button ──────────────────────────────────────────────────
+        try:
+            from embeddings import voyage_configured, library_item_text, embed_text
+            import json as _json
+
+            if voyage_configured():
+                needs_embedding = [i for i in items if not i.get("embedding")]
+                col1, col2 = st.columns([3, 1])
+                if needs_embedding:
+                    col1.markdown(
+                        f'<span style="font-size:.82rem;color:#A9A69D">'
+                        f'{len(needs_embedding)} item(s) not yet embedded — '
+                        f'click to generate semantic search vectors.</span>',
+                        unsafe_allow_html=True)
+                    if col2.button("✦ Embed All", use_container_width=True,
+                                   key="embed_all_btn"):
+                        progress = st.progress(0, text="Generating embeddings…")
+                        failed   = 0
+                        for idx, item in enumerate(needs_embedding):
+                            text = library_item_text(item)
+                            vec  = embed_text(text)
+                            if vec:
+                                upsert_library_item({**item,
+                                    "embedding": _json.dumps(vec)})
+                            else:
+                                failed += 1
+                            progress.progress(
+                                (idx + 1) / len(needs_embedding),
+                                text=f"Embedding {idx+1}/{len(needs_embedding)}…")
+                        progress.empty()
+                        if failed:
+                            st.warning(f"Embedded {len(needs_embedding)-failed} items. "
+                                       f"{failed} failed — check Voyage API key.")
+                        else:
+                            st.success(f"✦ All {len(needs_embedding)} items embedded. "
+                                       f"Semantic search is now active in Section Drafter.")
+                        st.rerun()
+                else:
+                    col1.markdown(
+                        '<span style="font-size:.82rem;color:#27AE60">'
+                        '✦ All items embedded — semantic search active.</span>',
+                        unsafe_allow_html=True)
+                    if col2.button("↺ Re-embed All", use_container_width=True,
+                                   key="re_embed_all_btn"):
+                        progress = st.progress(0, text="Re-generating embeddings…")
+                        failed   = 0
+                        for idx, item in enumerate(items):
+                            text = library_item_text(item)
+                            vec  = embed_text(text)
+                            if vec:
+                                upsert_library_item({**item,
+                                    "embedding": _json.dumps(vec)})
+                            else:
+                                failed += 1
+                            progress.progress(
+                                (idx + 1) / len(items),
+                                text=f"Re-embedding {idx+1}/{len(items)}…")
+                        progress.empty()
+                        st.success(f"↺ Re-embedded {len(items)-failed} items.")
+                        st.rerun()
+            else:
+                st.markdown(
+                    '<span style="font-size:.78rem;color:#6E6C66">'
+                    'Add <code>VOYAGE_API_KEY</code> to Streamlit secrets to enable '
+                    'semantic search (✦ Embed All).</span>',
+                    unsafe_allow_html=True)
+        except ImportError:
+            pass
 
     # ── Filter bar ────────────────────────────────────────────────────────────
     c1,c2,c3 = st.columns([2,2,1])
