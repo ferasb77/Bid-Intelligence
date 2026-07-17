@@ -294,11 +294,9 @@ def get_library_items(bid_id=None, category=None):
 
 def upsert_library_item(data: dict) -> None:
     """Save a library item. Generates and stores an embedding if Voyage is configured."""
-    sb   = get_client()
-    keys = ["title", "category", "content", "source", "bid_id",
-            "tags", "approved", "notes", "embedding"]
+    sb = get_client()
 
-    # Generate embedding if content changed and key is available
+    # Generate embedding if content/title present and Voyage is configured
     if data.get("content") or data.get("title"):
         try:
             from embeddings import embed_library_item, voyage_configured
@@ -309,12 +307,28 @@ def upsert_library_item(data: dict) -> None:
         except Exception:
             pass  # embedding failure is non-fatal
 
-    if data.get("id"):
-        sb.table("content_library").update(
-            {k: data.get(k) for k in keys}).eq("id", data["id"]).execute()
-    else:
-        sb.table("content_library").insert(
-            {k: data.get(k) for k in keys}).execute()
+    # Try saving with embedding column first; fall back without it if column missing
+    keys_with_emb    = ["title", "category", "content", "source", "bid_id",
+                         "tags", "approved", "notes", "embedding"]
+    keys_without_emb = ["title", "category", "content", "source", "bid_id",
+                         "tags", "approved", "notes"]
+
+    def _do_upsert(keys):
+        row = {k: data.get(k) for k in keys}
+        if data.get("id"):
+            sb.table("content_library").update(row).eq("id", data["id"]).execute()
+        else:
+            sb.table("content_library").insert(row).execute()
+
+    try:
+        _do_upsert(keys_with_emb)
+    except Exception as e:
+        err = str(e).lower()
+        # Column doesn't exist yet — retry without embedding field
+        if "embedding" in err or "column" in err or "schema" in err or "apierror" in err:
+            _do_upsert(keys_without_emb)
+        else:
+            raise
 
 
 def semantic_library_search(
