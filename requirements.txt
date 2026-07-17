@@ -6,3 +6,4 @@ reportlab
 pdf2image
 openpyxl
 supabase
+voyageai

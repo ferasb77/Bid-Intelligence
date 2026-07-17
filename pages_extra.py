@@ -833,6 +833,7 @@ def page_clarifications(bid_id):
 # ═══════════════════════════════════════════════════════════════════════════════
 def page_section_drafter(bid_id):
     from analyst import draft_proposal_section
+    from database import semantic_library_search
     bid     = get_bid(bid_id)
     reqs    = get_requirements(bid_id)
     sections= get_outline(bid_id)
@@ -840,9 +841,9 @@ def page_section_drafter(bid_id):
 
     st.markdown("# Proposal Section Drafter")
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="info-box">Select a proposal section, choose which requirements '
-                'it must address, pick relevant library content, and Claude drafts a first-pass '
-                'section using Phoenix\'s actual past proposal language.</div>',
+    st.markdown('<div class="info-box">Select a proposal section and requirements. '
+                'The platform automatically retrieves the most relevant library content '
+                'using semantic search — or pick manually from the full list.</div>',
                 unsafe_allow_html=True)
 
     if not api_key_configured() and not st.session_state.get("anthropic_api_key"):
@@ -855,12 +856,11 @@ def page_section_drafter(bid_id):
                     'on past proposals first to build reusable content.</div>',
                     unsafe_allow_html=True)
 
-    c1,c2 = st.columns(2)
+    c1, c2 = st.columns(2)
 
-    # Section selector
     if sections:
-        sec_opts = {f"[{s.get('section_num','')}] {s['title']}": s for s in sections}
-        sel_sec  = c1.selectbox("Select proposal section", list(sec_opts.keys()), key="dr_sec")
+        sec_opts   = {f"[{s.get('section_num','')}] {s['title']}": s for s in sections}
+        sel_sec    = c1.selectbox("Select proposal section", list(sec_opts.keys()), key="dr_sec")
         chosen_sec = sec_opts[sel_sec]
         word_limit = chosen_sec.get("word_limit") or 500
     else:
@@ -870,29 +870,68 @@ def page_section_drafter(bid_id):
 
     word_limit = c2.number_input("Target word count", value=int(word_limit), step=50, min_value=100)
 
-    # Requirements filter
     st.markdown("**Requirements this section addresses:**")
-    req_opts = {f"[{r['req_id']}] {r['description'][:70]}": r for r in reqs}
-    sel_reqs = st.multiselect("Select requirements", list(req_opts.keys()), key="dr_reqs")
+    req_opts    = {f"[{r['req_id']}] {r['description'][:70]}": r for r in reqs}
+    sel_reqs    = st.multiselect("Select requirements", list(req_opts.keys()), key="dr_reqs")
     chosen_reqs = [req_opts[k] for k in sel_reqs]
 
-    # Library content picker
-    st.markdown("**Relevant library content to draw from:**")
+    st.markdown("**Relevant library content:**")
     if lib_items:
-        lib_opts = {f"[{i['category']}] {i['title']}": i for i in lib_items}
-        sel_lib  = st.multiselect("Select content blocks",
-                                   list(lib_opts.keys()),
-                                   default=[k for k in list(lib_opts.keys())[:3]],
-                                   key="dr_lib")
+        sec_title = chosen_sec.get("title", "")
+        auto_ids  = set()
+        used_semantic = False
+        if sec_title or chosen_reqs:
+            try:
+                from embeddings import build_section_query, voyage_configured
+                query = build_section_query(sec_title, chosen_reqs, bid or {})
+                auto_results, used_semantic = semantic_library_search(
+                    query, bid_id=bid_id, top_k=5)
+                auto_ids = {item["id"] for item in auto_results}
+                if used_semantic:
+                    st.markdown(
+                        '<span style="font-size:.75rem;color:#27AE60">✦ Semantic search '
+                        'active — showing most relevant content for this section</span>',
+                        unsafe_allow_html=True)
+                elif voyage_configured():
+                    st.markdown(
+                        '<span style="font-size:.75rem;color:#A9A69D">Save library items '
+                        'to generate embeddings and activate semantic search</span>',
+                        unsafe_allow_html=True)
+                else:
+                    st.markdown(
+                        '<span style="font-size:.75rem;color:#A9A69D">Add VOYAGE_API_KEY '
+                        'to Streamlit secrets to enable semantic search</span>',
+                        unsafe_allow_html=True)
+            except Exception:
+                pass
+
+        lib_opts     = {f"[{i['category']}] {i['title']}": i for i in lib_items}
+        pre_selected = [k for k, v in lib_opts.items() if v["id"] in auto_ids]
+        sel_lib      = st.multiselect(
+            "Content blocks (auto-selected = semantic matches)",
+            list(lib_opts.keys()),
+            default=pre_selected if pre_selected else list(lib_opts.keys())[:3],
+            key="dr_lib")
         chosen_lib = [lib_opts[k] for k in sel_lib]
+
+        if used_semantic and chosen_lib:
+            score_map = {item["id"]: item.get("similarity_score")
+                         for item in auto_results if item.get("similarity_score")}
+            for item in chosen_lib:
+                score = score_map.get(item["id"])
+                if score:
+                    st.markdown(
+                        f'<span style="font-size:.72rem;color:#A9A69D">'
+                        f'  {item["title"]} — similarity {score:.2f}</span>',
+                        unsafe_allow_html=True)
     else:
         chosen_lib = []
         st.markdown('<span style="font-size:.8rem;color:#6E6C66">No library items yet.</span>',
                     unsafe_allow_html=True)
 
-    # Firm context
     coach_names = ", ".join(c["name"] for c in coaches) if coaches else ""
-    firm_ctx = st.text_area("Additional firm context",
+    firm_ctx = st.text_area(
+        "Additional firm context",
         value=f"Phoenix Consulting International, authorised Hogan distributor for the GCC. "
               f"{'Proposed coaches: ' + coach_names + '.' if coach_names else ''}",
         height=70, key="dr_ctx")
@@ -904,7 +943,7 @@ def page_section_drafter(bid_id):
             with st.spinner("Drafting section… 15–25 seconds"):
                 try:
                     result = draft_proposal_section(
-                        section_title=chosen_sec.get("title",""),
+                        section_title=chosen_sec.get("title", ""),
                         requirements=chosen_reqs,
                         library_items=chosen_lib,
                         bid_context=bid,
@@ -919,42 +958,42 @@ def page_section_drafter(bid_id):
     if "dr_result" in st.session_state:
         r = st.session_state["dr_result"]
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-
-        score = r.get("strength_rating",0)
-        score_col = "#27AE60" if score>=4 else "#E67E22" if score>=3 else "#C0392B"
-        c1,c2,c3 = st.columns(3)
-        c1.markdown(f'<div style="text-align:center;background:#131316;border:1px solid #2A2A2E;'
-                    f'border-radius:6px;padding:.8rem">'
-                    f'<div style="font-size:1.6rem;font-weight:700;color:{score_col}">{score}/5</div>'
-                    f'<div style="font-size:.72rem;color:#A9A69D;text-transform:uppercase">Draft Strength</div>'
-                    f'</div>', unsafe_allow_html=True)
-        c2.markdown(f'<div style="font-size:.8rem;color:#A9A69D;padding:.4rem 0">'
-                    f'<strong>Addressed:</strong> {", ".join(r.get("requirements_addressed",[]) or ["—"])}</div>'
-                    f'<div style="font-size:.8rem;color:#C0392B;padding:.2rem 0">'
-                    f'<strong>Missing:</strong> {", ".join(r.get("requirements_missing",[]) or ["—"])}</div>',
-                    unsafe_allow_html=True)
-        c3.markdown(f'<div style="font-size:.78rem;color:#A9A69D">'
-                    f'~{r.get("word_count",0)} words</div>', unsafe_allow_html=True)
-
+        score     = r.get("strength_rating", 0)
+        score_col = "#27AE60" if score >= 4 else "#E67E22" if score >= 3 else "#C0392B"
+        c1, c2, c3 = st.columns(3)
+        c1.markdown(
+            f'<div style="text-align:center;background:#131316;border:1px solid #2A2A2E;'
+            f'border-radius:6px;padding:.8rem">'
+            f'<div style="font-size:1.6rem;font-weight:700;color:{score_col}">{score}/5</div>'
+            f'<div style="font-size:.72rem;color:#A9A69D;text-transform:uppercase">Draft Strength</div>'
+            f'</div>', unsafe_allow_html=True)
+        c2.markdown(
+            f'<div style="font-size:.8rem;color:#A9A69D;padding:.4rem 0">'
+            f'<strong>Addressed:</strong> '
+            f'{", ".join(r.get("requirements_addressed", []) or ["—"])}</div>'
+            f'<div style="font-size:.8rem;color:#C0392B;padding:.2rem 0">'
+            f'<strong>Missing:</strong> '
+            f'{", ".join(r.get("requirements_missing", []) or ["—"])}</div>',
+            unsafe_allow_html=True)
+        c3.markdown(
+            f'<div style="font-size:.78rem;color:#A9A69D">~{r.get("word_count", 0)} words</div>',
+            unsafe_allow_html=True)
         if r.get("improvement_notes"):
-            st.markdown(f'<div class="info-box"><strong>To strengthen:</strong> '
-                        f'{r["improvement_notes"]}</div>', unsafe_allow_html=True)
-
+            st.markdown(
+                f'<div class="info-box"><strong>To strengthen:</strong> '
+                f'{r["improvement_notes"]}</div>', unsafe_allow_html=True)
         st.markdown("### Draft")
-        draft_text = r.get("draft","")
+        draft_text = r.get("draft", "")
         edited = st.text_area("Edit draft here", value=draft_text, height=350, key="dr_edit")
-
-        c1,c2 = st.columns(2)
-        if c1.download_button("⬇ Download as text", data=edited,
-                file_name=f"draft_{chosen_sec.get('title','section').replace(' ','_')}.txt",
-                mime="text/plain", use_container_width=True):
-            pass
+        c1, c2 = st.columns(2)
+        c1.download_button(
+            "⬇ Download as text", data=edited,
+            file_name=f"draft_{chosen_sec.get('title','section').replace(' ','_')}.txt",
+            mime="text/plain", use_container_width=True)
         if c2.button("🔄 Redraft (discard edits)", use_container_width=True):
             del st.session_state["dr_result"]
             st.rerun()
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
 # SUBMISSION ASSEMBLER
 # ═══════════════════════════════════════════════════════════════════════════════
 def page_submission_assembler(bid_id):

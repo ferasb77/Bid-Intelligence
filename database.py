@@ -292,15 +292,46 @@ def get_library_items(bid_id=None, category=None):
         q = q.eq("category", category)
     return _rows(q.order("category").order("title").execute())
 
-def upsert_library_item(data):
+def upsert_library_item(data: dict) -> None:
+    """Save a library item. Generates and stores an embedding if Voyage is configured."""
     sb   = get_client()
-    keys = ["title","category","content","source","bid_id","tags","approved","notes"]
+    keys = ["title", "category", "content", "source", "bid_id",
+            "tags", "approved", "notes", "embedding"]
+
+    # Generate embedding if content changed and key is available
+    if data.get("content") or data.get("title"):
+        try:
+            from embeddings import embed_library_item, voyage_configured
+            if voyage_configured():
+                emb = embed_library_item(data)
+                if emb:
+                    data = {**data, "embedding": emb}
+        except Exception:
+            pass  # embedding failure is non-fatal
+
     if data.get("id"):
         sb.table("content_library").update(
             {k: data.get(k) for k in keys}).eq("id", data["id"]).execute()
     else:
         sb.table("content_library").insert(
             {k: data.get(k) for k in keys}).execute()
+
+
+def semantic_library_search(
+    query: str,
+    bid_id: str = None,
+    top_k: int = 5,
+) -> tuple[list[dict], bool]:
+    """
+    Return the top_k most semantically relevant library items for a query.
+    Returns (items, used_semantic) — used_semantic=False means keyword fallback.
+    """
+    items = get_library_items(bid_id=bid_id)
+    try:
+        from embeddings import semantic_search
+        return semantic_search(query, items, top_k=top_k)
+    except Exception:
+        return items[:top_k], False
 
 def delete_library_item(item_id):
     get_client().table("content_library").delete().eq("id", item_id).execute()

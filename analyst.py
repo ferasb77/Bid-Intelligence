@@ -801,45 +801,69 @@ Below 45: Critical submission gaps; proposal functionally incomplete
 
 ---
 
-Return ONLY this JSON - no markdown, no extra text:
+Return ONLY this JSON - no markdown, no extra text.
+Keep ALL string values under 120 characters. Do not over-explain.
+
 {{
   "overall_score": <0-100>,
-  "score_rationale": "<2 sentences — based on submission and evaluation criteria only>",
+  "score_rationale": "<max 100 chars>",
   "recommendation": "SUBMIT AS-IS|REVISE BEFORE SUBMITTING|MAJOR REVISION NEEDED",
-  "executive_summary": "<3-4 sentences>",
-  "strengths": ["<strength 1>", "<strength 2>", "<strength 3>"],
+  "executive_summary": "<max 200 chars>",
+  "strengths": ["<max 80 chars>", "<max 80 chars>", "<max 80 chars>"],
   "findings": [
     {{
       "severity": "Critical|High|Medium|Low",
       "stage": "Proposal Submission|Negotiation / Shortlist|Contract Execution|Contractual Obligation",
       "category": "<category>",
       "req_id": "<req_id or null>",
-      "title": "<short title>",
-      "issue": "<what is missing or weak - cite the specific tender section or requirement. If uncertain due to truncation, say so>",
-      "recommendation": "<specific actionable fix, including WHEN to act>",
-      "proposal_location": "<section of proposal where this relates, or N/A>",
+      "title": "<max 60 chars>",
+      "issue": "<max 120 chars>",
+      "recommendation": "<max 120 chars>",
+      "proposal_location": "<section or N/A>",
       "effort": "Minor edit|Moderate rewrite|Major addition|Post-submission action"
     }}
   ],
   "next_steps": [
     {{
       "priority": 1,
-      "action": "<specific action>",
-      "rationale": "<why, citing the tender>",
+      "action": "<max 100 chars>",
+      "rationale": "<max 80 chars>",
       "when": "Before submission|If shortlisted|Before contract execution|Upon contract award"
     }}
   ]
 }}
 
-Limit findings to the 10 most important. Limit next_steps to 6.
+Hard limits: max 7 findings, max 5 next_steps. Prioritise Critical and High severity.
+Truncate any string that would exceed the character limits above.
 """
 
-    raw1 = _call(SYSTEM, prompt1, max_tokens=4096)
+    raw1 = _call(SYSTEM, prompt1, max_tokens=3500)
     result = _parse_json(raw1)
+
+    # If full parse failed, try to recover a partial result from the truncated response
     if not isinstance(result, dict):
-        raise ValueError(
-            f"Call 1 failed to parse. First 300 chars: {raw1[:300]}"
-        )
+        import re as _re
+        # Strip fence and extract whatever key-value pairs completed
+        cleaned = _re.sub(r"^```[a-z]*\s*\n?", "", raw1.strip(), flags=_re.IGNORECASE)
+        cleaned = _re.sub(r"\n?```\s*$", "", cleaned).strip()
+        # Try closing the JSON at the last complete field
+        recovered = {}
+        for key in ("overall_score", "score_rationale", "recommendation",
+                    "executive_summary"):
+            m = _re.search(rf'"{key}"\s*:\s*("([^"]*)"|(\\d+))', cleaned)
+            if m:
+                val = m.group(2) if m.group(2) is not None else int(m.group(3))
+                recovered[key] = val
+        if recovered:
+            recovered["_truncated"] = True
+            recovered.setdefault("findings", [])
+            recovered.setdefault("strengths", [])
+            recovered.setdefault("next_steps", [])
+            result = recovered
+        else:
+            raise ValueError(
+                f"Call 1 failed to parse. First 300 chars: {raw1[:300]}"
+            )
 
     # ── Call 2: Per-requirement coverage ─────────────────────────────────────
     cov_lines = []
