@@ -1753,17 +1753,18 @@ def page_exec_dashboard():
         done_items  = (m_done  + r_done  + t_done)
         readiness   = round(done_items / total_items * 100) if total_items else 0
 
-        # Risk level
+        # Risk level — closed stages are never at risk
         risk = "Low"
-        if m_total > 0 and m_done < m_total:
-            risk = "High" if (m_total - m_done) >= 3 else "Medium"
-        if d is not None and d <= 7 and readiness < 60:
-            risk = "High"
-        if t_blocked > 0:
-            risk = max(risk, "Medium",
-                       key=lambda x: ["Low","Medium","High"].index(x))
-        if clar_changes > 0:
-            risk = "High"
+        if b.get("stage") not in ("Submitted", "Won", "Lost"):
+            if m_total > 0 and m_done < m_total:
+                risk = "High" if (m_total - m_done) >= 3 else "Medium"
+            if d is not None and d <= 7 and readiness < 60:
+                risk = "High"
+            if t_blocked > 0:
+                risk = max(risk, "Medium",
+                           key=lambda x: ["Low","Medium","High"].index(x))
+            if clar_changes > 0:
+                risk = "High"
 
         enriched.append({**b,
             "m_total":m_total,"m_done":m_done,
@@ -1812,9 +1813,12 @@ def page_exec_dashboard():
 
     st.markdown("")
 
-    # ── Alert bar ─────────────────────────────────────────────────────────────
+    # ── Alert bar — only active bids generate alerts ─────────────────────────
+    CLOSED_STAGES = {"Submitted", "Won", "Lost"}
     alerts = []
     for b in enriched:
+        if b.get("stage") in CLOSED_STAGES:
+            continue
         if b.get("clar_changes"):
             alerts.append(f"<strong>{b['client']}</strong> — {b['clar_changes']} clarification answer(s) require compliance matrix updates")
         if b.get("clar_unanswered") and (b["days"] or 999) <= 10:
@@ -1854,8 +1858,10 @@ def page_exec_dashboard():
     }
     RISK_COL = {"High":"#C0392B","Medium":"#E67E22","Low":"#27AE60"}
 
+    # Only truly active bids in the main table; submitted shown separately below
+    CLOSED = {"Won", "Lost", "No Bid", "Submitted"}
     active_sorted = sorted(
-        [b for b in enriched if b["stage"] not in ("Won","Lost","No Bid")],
+        [b for b in enriched if b["stage"] not in CLOSED],
         key=lambda x: (x["days"] or 999))
 
     for b in active_sorted:
@@ -1950,10 +1956,38 @@ def page_exec_dashboard():
             '<hr class="section-divider" style="margin:.3rem 0">',
             unsafe_allow_html=True)
 
+    # ── Submitted bids (awaiting outcome) ─────────────────────────────────────
+    submitted_bids = [b for b in enriched if b["stage"] == "Submitted"]
+    if submitted_bids:
+        st.markdown("")
+        st.markdown(
+            '<span style="font-size:.78rem;color:#27AE60;font-weight:700;'
+            'text-transform:uppercase;letter-spacing:.05em">'
+            f'✓ Submitted — Awaiting Outcome ({len(submitted_bids)})</span>',
+            unsafe_allow_html=True)
+        for b in submitted_bids:
+            c1, c2, c8 = st.columns([4, 3, 0.8])
+            c1.markdown(
+                f'<span style="font-weight:600">{b["client"]}</span>'
+                f'<span style="color:#A9A69D;font-size:.8rem"> · {b["title"][:50]}</span>',
+                unsafe_allow_html=True)
+            c2.markdown(
+                f'<span style="color:#27AE60;font-size:.82rem">✓ Submitted'
+                f'{(" — " + b.get("submission_deadline","")) if b.get("submission_deadline") else ""}'
+                f'</span>',
+                unsafe_allow_html=True)
+            if c8.button("→", key=f"ex_sub_{b['id']}", help=f"Open {b['client']}"):
+                st.session_state.active_bid = b["id"]
+                st.session_state.page = "bid_overview"
+                st.rerun()
+            st.markdown(
+                '<hr class="section-divider" style="margin:.3rem 0">',
+                unsafe_allow_html=True)
+
     # ── Upcoming deadlines timeline ────────────────────────────────────────────
     deadline_bids = [(b, b["days"]) for b in enriched
                      if b["days"] is not None and -5 <= b["days"] <= 60
-                     and b["stage"] not in ("Won","Lost","No Bid")]
+                     and b["stage"] not in ("Won", "Lost", "No Bid", "Submitted")]
     if deadline_bids:
         st.markdown("")
         st.markdown("### Deadline Timeline")
