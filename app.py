@@ -93,6 +93,18 @@ with st.sidebar:
 # ═════════════════════════════════════════════════════════════════════════════
 # PAGE: DASHBOARD
 # ═════════════════════════════════════════════════════════════════════════════
+
+def _deadline_label(bid: dict) -> str:
+    """
+    Return a deadline label for a bid, suppressing countdown if the bid
+    is already Submitted, Won, or Lost.
+    """
+    stage = bid.get("stage", "")
+    if stage in ("Submitted", "Won", "Lost"):
+        colour = {"Won": "#27AE60", "Lost": "#C0392B"}.get(stage, "#2471A3")
+        return f'<span style="color:{colour};font-size:.78rem">✓ {stage}</span>'
+    return days_label(days_until(bid.get("submission_deadline")))
+
 def page_dashboard():
     st.markdown("# Bid Intelligence Platform")
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
@@ -139,7 +151,7 @@ def page_dashboard():
             c1,c2,c3,c4,c5 = st.columns([3,2,1.5,2,1])
             c1.markdown(f"**{b['client']}** · {b['title'][:45]}")
             c2.markdown(f'<span style="color:#A9A69D;font-size:.8rem">{b.get("owner") or "—"}</span>', unsafe_allow_html=True)
-            c3.markdown(days_label(days_until(b.get("submission_deadline"))), unsafe_allow_html=True)
+            c3.markdown(_deadline_label(b), unsafe_allow_html=True)
             c4.markdown(readiness_bar(pct) if b["req_count"] else '<span style="color:#6E6C66;font-size:.75rem">No requirements</span>', unsafe_allow_html=True)
             if c5.button("Open", key=f"dash_{b['id']}"):
                 go("bid_overview", b["id"])
@@ -161,7 +173,7 @@ def page_all_bids():
         c1.markdown(f"**{b['client']}**")
         c1.markdown(f'<span style="color:#A9A69D;font-size:.8rem">{b["title"]}</span>', unsafe_allow_html=True)
         c2.markdown(stage_badge(b["stage"]), unsafe_allow_html=True)
-        c3.markdown(days_label(days_until(b.get("submission_deadline"))), unsafe_allow_html=True)
+        c3.markdown(_deadline_label(b), unsafe_allow_html=True)
         c3.markdown(f'<span style="color:#6E6C66;font-size:.72rem">{b.get("submission_deadline") or "—"}</span>', unsafe_allow_html=True)
         c4.markdown(readiness_bar(pct) if b["req_count"] else '<span style="color:#6E6C66;font-size:.75rem">No requirements</span>', unsafe_allow_html=True)
         if c5.button("Open →", key=f"all_{b['id']}"):
@@ -358,8 +370,14 @@ def page_bid_overview(bid_id):
     c1,c2,c3 = st.columns(3)
     sub_d  = days_until(bid.get("submission_deadline"))
     clar_d = days_until(bid.get("clarification_deadline"))
+    _stage = bid.get("stage","")
+    _sub_label = (
+        '<span style="color:#27AE60;font-size:.78rem">✓ Submitted</span>'
+        if _stage in ("Submitted","Won","Lost")
+        else (days_label(sub_d) if sub_d is not None else "")
+    )
     c1.markdown(metric_card("Submission Deadline", bid.get("submission_deadline") or "—",
-        days_label(sub_d) if sub_d is not None else ""), unsafe_allow_html=True)
+        _sub_label), unsafe_allow_html=True)
     c2.markdown(metric_card("Clarification Deadline", bid.get("clarification_deadline") or "—",
         days_label(clar_d) if clar_d is not None else ""), unsafe_allow_html=True)
     val = f"CAD {bid['value_cad']:,.0f}" if bid.get("value_cad") else "—"
