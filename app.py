@@ -14,12 +14,13 @@ from pages_extra import (page_content_library, page_proposal_analyzer,
     page_coach_roster, page_clarifications, page_section_drafter,
     page_submission_assembler, page_debrief, page_exec_dashboard)
 from pdf_export import generate_compliance_pdf
+from brand import dashboard_brand_html, sidebar_brand_html
 from components.ui import (inject_css, stage_badge, status_badge, priority_badge,
                             readiness_bar, days_until, days_label, metric_card,
                             STAGES, STATUSES, PRIORITIES, CATEGORIES, SENSITIVITY,
                             DOC_TYPES, STAGE_COLOURS, PRIORITY_COLOURS)
 
-st.set_page_config(page_title="Bid Intelligence Platform", page_icon="⚡",
+st.set_page_config(page_title="Bid Intelligence — Enable My Growth", page_icon="◈",
                    layout="wide", initial_sidebar_state="expanded")
 init_db()
 inject_css()
@@ -40,11 +41,7 @@ def go(page, bid_id=None):
 # SIDEBAR
 # ═════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
-    st.markdown("""
-    <div style="padding:.5rem 0 1rem 0">
-      <div style="font-family:'EB Garamond',serif;font-size:1.25rem;color:#EDEAE2">Bid Intelligence</div>
-      <div style="font-size:.7rem;color:#C6A15B;letter-spacing:.1em;text-transform:uppercase">Platform · MVP</div>
-    </div>""", unsafe_allow_html=True)
+    st.markdown(sidebar_brand_html(), unsafe_allow_html=True)
 
     if api_key_configured():
         st.markdown('<span style="font-size:.7rem;color:#27AE60">● API key configured</span>', unsafe_allow_html=True)
@@ -64,8 +61,8 @@ with st.sidebar:
         bid = get_bid(st.session_state.active_bid)
         if bid:
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-            st.markdown(f'<div style="font-size:.75rem;color:#C6A15B;text-transform:uppercase;margin-bottom:.3rem">Active Bid</div>'
-                        f'<div style="font-size:.85rem;font-weight:600;color:#EDEAE2;line-height:1.3">{bid["client"]}<br>'
+            st.markdown(f'<div style="font-size:.75rem;color:#C9A96E;text-transform:uppercase;margin-bottom:.3rem">Active Bid</div>'
+                        f'<div style="font-size:.85rem;font-weight:600;color:#EDEAE3;line-height:1.3">{bid["client"]}<br>'
                         f'<span style="font-weight:400;color:#A9A69D">{bid["title"][:38]}{"…" if len(bid["title"])>38 else ""}</span></div>',
                         unsafe_allow_html=True)
             st.markdown("")
@@ -106,8 +103,7 @@ def _deadline_label(bid: dict) -> str:
     return days_label(days_until(bid.get("submission_deadline")))
 
 def page_dashboard():
-    st.markdown("# Bid Intelligence Platform")
-    st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
+    st.markdown(dashboard_brand_html(), unsafe_allow_html=True)
     bids = get_all_bids()
     active    = [b for b in bids if b["stage"] in ("Qualifying","In Progress","Review")]
     submitted = [b for b in bids if b["stage"] == "Submitted"]
@@ -290,11 +286,11 @@ def _render_extraction_review():
         cr = [r for r in reqs if r.get("category")==cat]
         if not cr:
             continue
-        st.markdown(f'<span style="font-size:.78rem;color:#C6A15B;font-weight:600">{cat.upper()} ({len(cr)})</span>', unsafe_allow_html=True)
+        st.markdown(f'<span style="font-size:.78rem;color:#C9A96E;font-weight:600">{cat.upper()} ({len(cr)})</span>', unsafe_allow_html=True)
         for r in cr:
             w = f" · {r['weight']*100:.0f}%" if r.get("weight") else ""
-            st.markdown(f'<div style="background:#131316;border:1px solid #2A2A2E;border-radius:4px;padding:.4rem .7rem;margin:.2rem 0;font-size:.82rem">'
-                        f'<span style="color:#C6A15B">{r.get("req_id","")}</span><span style="color:#6E6C66">{w}</span> {r.get("description","")}'
+            st.markdown(f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;padding:.4rem .7rem;margin:.2rem 0;font-size:.82rem">'
+                        f'<span style="color:#C9A96E">{r.get("req_id","")}</span><span style="color:#6E6C66">{w}</span> {r.get("description","")}'
                         f'{"<br><span style=color:#6E6C66;font-size:.74rem>"+r.get("evidence","")+"</span>" if r.get("evidence") else ""}'
                         f'</div>', unsafe_allow_html=True)
 
@@ -309,7 +305,7 @@ def _render_extraction_review():
         st.markdown(f"### Proposal Outline — {len(secs)} sections")
         for s in sorted(secs, key=lambda x: x.get("sort_order",0)):
             st.markdown(f'<div style="font-size:.82rem;padding:.15rem 0">'
-                        f'<span style="color:#C6A15B;margin-right:.4rem">{s.get("section_num","")}</span>{s.get("title","")}</div>', unsafe_allow_html=True)
+                        f'<span style="color:#C9A96E;margin-right:.4rem">{s.get("section_num","")}</span>{s.get("title","")}</div>', unsafe_allow_html=True)
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
     c1,c2 = st.columns([2,1])
@@ -484,7 +480,7 @@ def page_compliance(bid_id):
     for cat in ["Mandatory","Rated","Financial","Supporting"]:
         cr = [r for r in reqs if r["category"]==cat]
         done_c = sum(1 for r in cr if r["status"]=="Complete")
-        st.markdown(f'<span style="font-size:.8rem;color:#C6A15B;font-weight:600;letter-spacing:.06em">{cat.upper()} — {done_c}/{len(cr)} complete</span>', unsafe_allow_html=True)
+        st.markdown(f'<span style="font-size:.8rem;color:#C9A96E;font-weight:600;letter-spacing:.06em">{cat.upper()} — {done_c}/{len(cr)} complete</span>', unsafe_allow_html=True)
         if not cr:
             st.markdown('<div class="empty-state" style="padding:.8rem">None yet.</div>', unsafe_allow_html=True)
         else:
@@ -500,7 +496,7 @@ def page_compliance(bid_id):
                 c2.markdown(f'<span style="font-size:.78rem;color:#6E6C66">{req["rfso_ref"] or "—"}</span>', unsafe_allow_html=True)
                 c3.markdown(f'<span style="font-size:.82rem">{req["description"]}</span>', unsafe_allow_html=True)
                 if req.get("weight"):
-                    c3.markdown(f'<span style="font-size:.72rem;color:#C6A15B">{req["weight"]*100:.0f}% weight</span>', unsafe_allow_html=True)
+                    c3.markdown(f'<span style="font-size:.72rem;color:#C9A96E">{req["weight"]*100:.0f}% weight</span>', unsafe_allow_html=True)
                 c4.markdown(f'<span style="font-size:.78rem;color:#A9A69D">{req["evidence"] or "—"}</span>', unsafe_allow_html=True)
                 c5.markdown(f'<span style="font-size:.82rem">{req["owner"] or "—"}</span>', unsafe_allow_html=True)
                 c6.markdown(f'<span style="font-size:.78rem;color:#A9A69D">{req["deadline"] or "—"}</span>', unsafe_allow_html=True)
@@ -824,10 +820,10 @@ def page_documents(bid_id):
 
         done    = sum(1 for d in type_docs if d["status"] in ("Uploaded","Approved","Submitted","Complete"))
         missing = sum(1 for d in type_docs if d["status"]=="Expected")
-        hdr_col = "#C0392B" if missing else "#C6A15B"
+        hdr_col = "#C0392B" if missing else "#C9A96E"
 
         st.markdown(
-            f'<div style="background:#131316;border-left:3px solid {hdr_col};'
+            f'<div style="background:#111118;border-left:3px solid {hdr_col};'
             f'padding:.4rem .8rem;margin:.5rem 0;border-radius:0 4px 4px 0">'
             f'<span style="color:{hdr_col};font-weight:700;font-size:.82rem">'
             f'{label}</span>'
@@ -863,7 +859,7 @@ def page_documents(bid_id):
                 unsafe_allow_html=True)
             if d.get("linked_req_ids"):
                 c1.markdown(
-                    f'<span style="font-size:.7rem;color:#C6A15B">'
+                    f'<span style="font-size:.7rem;color:#C9A96E">'
                     f'Reqs: {d["linked_req_ids"]}</span>',
                     unsafe_allow_html=True)
 
@@ -894,7 +890,7 @@ def page_documents(bid_id):
                     st.rerun()
             else:
                 c5.markdown(
-                    '<span style="color:#2A2A2E;font-size:.9rem" '
+                    '<span style="color:#292832;font-size:.9rem" '
                     'title="Upload a file first">🔍</span>',
                     unsafe_allow_html=True)
 
@@ -1162,7 +1158,7 @@ def page_documents(bid_id):
         if r.get("key_changes"):
             st.markdown("#### Key Changes")
             for ch in r["key_changes"]:
-                st.markdown(f'<span style="color:#C6A15B;font-size:.85rem">· {ch}</span>',
+                st.markdown(f'<span style="color:#C9A96E;font-size:.85rem">· {ch}</span>',
                             unsafe_allow_html=True)
 
         # New requirements
@@ -1174,9 +1170,9 @@ def page_documents(bid_id):
             st.markdown(f"#### ➕ New Requirements ({len(new_reqs)})")
             for req in new_reqs:
                 st.markdown(
-                    f'<div style="background:#131316;border-left:3px solid #C6A15B;'
+                    f'<div style="background:#111118;border-left:3px solid #C9A96E;'
                     f'padding:.5rem .8rem;margin:.25rem 0;font-size:.82rem">'
-                    f'<span style="color:#C6A15B;font-weight:700">{req.get("req_id","")}</span> '
+                    f'<span style="color:#C9A96E;font-weight:700">{req.get("req_id","")}</span> '
                     f'({req.get("category","")}) {req.get("description","")}</div>',
                     unsafe_allow_html=True)
 
@@ -1256,7 +1252,7 @@ def page_outline(bid_id):
         for i,sec in enumerate(sections,1):
             c1,c2,c3,c4,c5,c6,c7=st.columns([.7,.7,4,1.5,1.2,1.8,1])
             c1.markdown(f'<span style="font-size:.78rem;color:#6E6C66">{i}</span>', unsafe_allow_html=True)
-            c2.markdown(f'<span style="font-size:.82rem;color:#C6A15B">{sec.get("section_num") or ""}</span>', unsafe_allow_html=True)
+            c2.markdown(f'<span style="font-size:.82rem;color:#C9A96E">{sec.get("section_num") or ""}</span>', unsafe_allow_html=True)
             c3.markdown(f'<span style="font-size:.85rem;font-weight:500">{sec["title"]}</span>', unsafe_allow_html=True)
             if sec.get("notes"):
                 c3.markdown(f'<span style="font-size:.74rem;color:#6E6C66">{sec["notes"]}</span>', unsafe_allow_html=True)
@@ -1423,7 +1419,7 @@ def page_ai_analyst(bid_id):
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
             score=r.get("overall_score",0)
             c1,c2=st.columns([1,3])
-            c1.markdown(f'<div style="text-align:center;background:#131316;border:1px solid #2A2A2E;border-radius:6px;padding:1rem">'
+            c1.markdown(f'<div style="text-align:center;background:#111118;border:1px solid #292832;border-radius:6px;padding:1rem">'
                         f'<div style="font-size:2.5rem;font-weight:700;color:{_score_colour(score)}">{score}</div>'
                         f'<div style="font-size:.72rem;color:#A9A69D;text-transform:uppercase">Compliance Score</div></div>', unsafe_allow_html=True)
             c2.markdown(f'<div class="info-box">{r.get("summary","")}</div>', unsafe_allow_html=True)
@@ -1442,7 +1438,7 @@ def page_ai_analyst(bid_id):
                 for item in r.get("weak",[]):
                     st.markdown(f'<div style="background:#1A0F00;border:1px solid #3A2A00;border-radius:4px;padding:.4rem .6rem;margin:.2rem 0;font-size:.8rem">'
                                 f'<span style="color:#E67E22;font-weight:600">{item.get("req_id","")}</span> {item.get("finding","")}'
-                                f'<br><span style="color:#C6A15B;font-size:.75rem">→ {item.get("suggestion","")}</span></div>', unsafe_allow_html=True)
+                                f'<br><span style="color:#C9A96E;font-size:.75rem">→ {item.get("suggestion","")}</span></div>', unsafe_allow_html=True)
             with c3:
                 st.markdown(f'<span style="color:#C0392B;font-weight:600">✗ Missing ({len(r.get("missing",[]))})</span>', unsafe_allow_html=True)
                 for item in r.get("missing",[]):
@@ -1465,12 +1461,12 @@ def page_ai_analyst(bid_id):
             risk=r.get("risk_level","Unknown")
             rc={"High":"#C0392B","Medium":"#E67E22","Low":"#27AE60"}.get(risk,"#6E6C66")
             c1,c2=st.columns([1,4])
-            c1.markdown(f'<div style="text-align:center;background:#131316;border:2px solid {rc};border-radius:6px;padding:1rem">'
+            c1.markdown(f'<div style="text-align:center;background:#111118;border:2px solid {rc};border-radius:6px;padding:1rem">'
                         f'<div style="font-size:1.4rem;font-weight:700;color:{rc}">{risk}</div>'
                         f'<div style="font-size:.72rem;color:#A9A69D;text-transform:uppercase">Risk Level</div></div>', unsafe_allow_html=True)
             c2.markdown(f'<div class="warn-box">{r.get("summary","")}</div>', unsafe_allow_html=True)
             if r.get("recommendation"):
-                c2.markdown(f'<div style="background:#1B2A41;border-left:3px solid #C6A15B;padding:.6rem 1rem;border-radius:0 4px 4px 0;font-size:.85rem;margin-top:.5rem">'
+                c2.markdown(f'<div style="background:#18181F;border-left:3px solid #C9A96E;padding:.6rem 1rem;border-radius:0 4px 4px 0;font-size:.85rem;margin-top:.5rem">'
                             f'<strong>Do this today:</strong> {r["recommendation"]}</div>', unsafe_allow_html=True)
             st.markdown("")
             if r.get("critical"):
@@ -1485,9 +1481,9 @@ def page_ai_analyst(bid_id):
                 for item in r["at_risk"]:
                     st.markdown(f'<div style="background:#1A0F00;border:1px solid #3A2A00;border-radius:4px;padding:.5rem .8rem;margin:.25rem 0;font-size:.82rem">'
                                 f'<span style="color:#E67E22;font-weight:600">{item.get("req_id","")}</span> — {item.get("reason","")}'
-                                f'<br><span style="color:#C6A15B">→ {item.get("action","")}</span></div>', unsafe_allow_html=True)
+                                f'<br><span style="color:#C9A96E">→ {item.get("action","")}</span></div>', unsafe_allow_html=True)
             if r.get("unassigned"):
-                st.markdown(f'<div style="background:#131316;border:1px solid #2A2A2E;border-radius:4px;padding:.6rem .8rem;margin:.5rem 0;font-size:.82rem">'
+                st.markdown(f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;padding:.6rem .8rem;margin:.5rem 0;font-size:.82rem">'
                             f'<span style="color:#A9A69D;font-weight:600">Unassigned owners: </span>{", ".join(r["unassigned"])}</div>', unsafe_allow_html=True)
 
     with tab3:
@@ -1509,9 +1505,9 @@ def page_ai_analyst(bid_id):
             for q in questions:
                 pc=PRIORITY_COLOURS.get(q.get("priority","Medium"),"#6E6C66")
                 relates=", ".join(q.get("relates_to",[]))
-                st.markdown(f'<div style="background:#131316;border:1px solid #2A2A2E;border-left:3px solid {pc};border-radius:0 4px 4px 0;padding:.7rem 1rem;margin:.4rem 0">'
+                st.markdown(f'<div style="background:#111118;border:1px solid #292832;border-left:3px solid {pc};border-radius:0 4px 4px 0;padding:.7rem 1rem;margin:.4rem 0">'
                             f'<div style="display:flex;justify-content:space-between;margin-bottom:.3rem">'
-                            f'<span style="font-weight:600;color:#EDEAE2">{q.get("id","")}. {q.get("question","")}</span>'
+                            f'<span style="font-weight:600;color:#EDEAE3">{q.get("id","")}. {q.get("question","")}</span>'
                             f'<span style="font-size:.72rem;color:{pc};white-space:nowrap;margin-left:.5rem">{q.get("priority","")}</span></div>'
                             f'<div style="font-size:.76rem;color:#6E6C66;font-style:italic">Why this matters: {q.get("rationale","")}</div>'
                             f'{"<div style=font-size:.72rem;color:#A9A69D;margin-top:.2rem>Relates to: "+relates+"</div>" if relates else ""}'
@@ -1538,7 +1534,7 @@ def page_ai_analyst(bid_id):
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
             c1,c2=st.columns([1,3])
             with c1:
-                st.markdown(f'<div style="text-align:center;background:#131316;border:1px solid #2A2A2E;border-radius:6px;padding:1.2rem .8rem">'
+                st.markdown(f'<div style="text-align:center;background:#111118;border:1px solid #292832;border-radius:6px;padding:1.2rem .8rem">'
                             f'{_rec_badge(r.get("recommendation","?"))}'
                             f'<div style="margin-top:.8rem"><div style="font-size:2rem;font-weight:700;color:{_score_colour(r.get("overall_score",0))}">{r.get("overall_score",0)}</div>'
                             f'<div style="font-size:.7rem;color:#A9A69D;text-transform:uppercase">Overall Score</div></div>'
@@ -1634,18 +1630,18 @@ def page_deliverables(bid_id):
             c1,c2 = st.columns(2)
             if total_ai:
                 c1.markdown(
-                    f'<div style="background:#131316;border:1px solid #2A2A2E;border-left:3px solid #2471A3;'
+                    f'<div style="background:#111118;border:1px solid #292832;border-left:3px solid #2471A3;'
                     f'border-radius:0 4px 4px 0;padding:.8rem 1rem">'
                     f'<div style="font-size:.72rem;color:#A9A69D;text-transform:uppercase;letter-spacing:.06em">Option 1 — AI-Assisted (Core)</div>'
-                    f'<div style="font-size:1.6rem;font-weight:700;color:#EDEAE2">CAD {total_ai:,.2f}</div>'
+                    f'<div style="font-size:1.6rem;font-weight:700;color:#EDEAE3">CAD {total_ai:,.2f}</div>'
                     f'{"<div style=font-size:.75rem;color:#6E6C66>+ CAD " + f"{total_ai_all - total_ai:,.2f}" + " optional services</div>" if total_ai_all > total_ai else ""}'
                     f'</div>', unsafe_allow_html=True)
             if total_nonai:
                 c2.markdown(
-                    f'<div style="background:#131316;border:1px solid #2A2A2E;border-left:3px solid #1E8449;'
+                    f'<div style="background:#111118;border:1px solid #292832;border-left:3px solid #1E8449;'
                     f'border-radius:0 4px 4px 0;padding:.8rem 1rem">'
                     f'<div style="font-size:.72rem;color:#A9A69D;text-transform:uppercase;letter-spacing:.06em">Option 2 — Non-AI / Human-Only (Core)</div>'
-                    f'<div style="font-size:1.6rem;font-weight:700;color:#EDEAE2">CAD {total_nonai:,.2f}</div>'
+                    f'<div style="font-size:1.6rem;font-weight:700;color:#EDEAE3">CAD {total_nonai:,.2f}</div>'
                     f'{"<div style=font-size:.75rem;color:#6E6C66>+ CAD " + f"{total_nonai_all - total_nonai:,.2f}" + " optional services</div>" if total_nonai_all > total_nonai else ""}'
                     f'</div>', unsafe_allow_html=True)
             st.markdown("")
@@ -1654,7 +1650,7 @@ def page_deliverables(bid_id):
         CAT_COLORS = {
             "Core Service":       "#2471A3",
             "Optional Service":   "#7D3C98",
-            "Call-up Mechanic":   "#C6A15B",
+            "Call-up Mechanic":   "#C9A96E",
             "Reporting":          "#1E8449",
         }
 
@@ -1702,11 +1698,11 @@ def page_deliverables(bid_id):
                             unsafe_allow_html=True)
 
                 ai_p = f'CAD {d["price_ai"]:,.2f}' if d.get("price_ai") else "—"
-                c6.markdown(f'<span style="font-size:.85rem;color:#EDEAE2">{ai_p}</span>',
+                c6.markdown(f'<span style="font-size:.85rem;color:#EDEAE3">{ai_p}</span>',
                             unsafe_allow_html=True)
 
                 na_p = f'CAD {d["price_non_ai"]:,.2f}' if d.get("price_non_ai") else "—"
-                c7.markdown(f'<span style="font-size:.85rem;color:#EDEAE2">{na_p}</span>',
+                c7.markdown(f'<span style="font-size:.85rem;color:#EDEAE3">{na_p}</span>',
                             unsafe_allow_html=True)
 
                 if c8.button("✏", key=f"eds_{d['id']}"):
@@ -1898,7 +1894,7 @@ def _auto_populate_services(bid_id, reqs, bid):
 
 
 def _services_pdf(bid, dels):
-    """McKinsey-style services register PDF."""
+    """Enable My Growth services register PDF."""
     import io
     from reportlab.lib.pagesizes import landscape, A4
     from reportlab.lib.units import mm

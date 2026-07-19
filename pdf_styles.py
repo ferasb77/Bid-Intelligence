@@ -1,6 +1,6 @@
 """
-Shared McKinsey-style PDF design system.
-White background, Inter typography, colour used only as signal.
+Enable My Growth PDF design system for Bid Intelligence.
+White background, restrained typography, and colour used as signal.
 """
 import os
 from reportlab.lib.colors import HexColor, white, black
@@ -12,14 +12,12 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
 # ── Font registration ─────────────────────────────────────────────────────────
-FONT_DIR = os.path.join(os.path.dirname(__file__), "..", "fonts")
+FONT_DIR = os.path.join(os.path.dirname(__file__), "assets", "fonts")
 
 def register_fonts():
     fonts = {
-        "Inter":    "Inter-Regular.ttf",
-        "Inter-M":  "Inter-Medium.ttf",
-        "Inter-SB": "Inter-SemiBold.ttf",
-        "Inter-B":  "Inter-Bold.ttf",
+        "Inter":    "Inter-Regular.otf",
+        "Inter-M":  "Inter-Medium.otf",
     }
     for name, fname in fonts.items():
         path = os.path.join(FONT_DIR, fname)
@@ -36,8 +34,8 @@ def _font(weight="regular"):
     mapping = {
         "regular":  ("Inter",    "Helvetica"),
         "medium":   ("Inter-M",  "Helvetica"),
-        "semibold": ("Inter-SB", "Helvetica-Bold"),
-        "bold":     ("Inter-B",  "Helvetica-Bold"),
+        "semibold": ("Inter-M",  "Helvetica-Bold"),
+        "bold":     ("Inter-M",  "Helvetica-Bold"),
     }
     preferred, fallback = mapping.get(weight, ("Inter", "Helvetica"))
     try:
@@ -46,19 +44,18 @@ def _font(weight="regular"):
     except Exception:
         return fallback
 
-# ── Colour palette (McKinsey-adjacent) ───────────────────────────────────────
-# Primary: deep navy blue for headers
-# Accent: single blue stripe only — no colour fills on data rows
+# ── Enable My Growth colour palette ──────────────────────────────────────────
+# Night anchors hierarchy; gold identifies structure and emphasis.
 # Signal colours: red/amber/green for status only, never for decoration
 
-C_BLACK     = HexColor("#1A1A1A")   # near-black body text
-C_NAVY      = HexColor("#002060")   # McKinsey blue — headlines, header rules
-C_BLUE      = HexColor("#1F5C99")   # accent — section bars, column headers
-C_BLUE_L    = HexColor("#EBF2FA")   # very light blue tint — alternating rows
-C_GREY_1    = HexColor("#595959")   # secondary text
-C_GREY_2    = HexColor("#8C8C8C")   # tertiary / labels
-C_GREY_3    = HexColor("#D9D9D9")   # borders, rules
-C_GREY_4    = HexColor("#F5F5F5")   # lightest row fill
+C_BLACK     = HexColor("#282830")   # near-black body text
+C_NAVY      = HexColor("#0A0A0F")   # EMG night — headlines, header rules
+C_BLUE      = HexColor("#C9A96E")   # EMG gold — section bars, column headers
+C_BLUE_L    = HexColor("#F3EFE7")   # warm ivory tint — alternating rows
+C_GREY_1    = HexColor("#5F5D59")   # secondary text
+C_GREY_2    = HexColor("#918E86")   # tertiary / labels
+C_GREY_3    = HexColor("#D8D3CA")   # borders, rules
+C_GREY_4    = HexColor("#F7F4EE")   # lightest row fill
 C_WHITE     = HexColor("#FFFFFF")
 
 # Status signal colours
@@ -67,7 +64,7 @@ C_AMBER     = HexColor("#E26B0A")
 C_GREEN     = HexColor("#375623")
 C_GREEN_L   = HexColor("#70AD47")
 C_PURPLE    = HexColor("#7030A0")
-C_BLUE_SIG  = HexColor("#1F5C99")
+C_BLUE_SIG  = HexColor("#C9A96E")
 
 # Category accent colours (used ONLY for left-border stripe, not fills)
 CAT_ACCENT = {
@@ -194,11 +191,11 @@ def make_footer(left_text, landscape_mode=True):
 
 # ── Cover header builder ──────────────────────────────────────────────────────
 def cover_header(story, bid, doc_type_label):
-    """Append McKinsey-style page header to story list."""
+    """Append an Enable My Growth page header to the story."""
     from reportlab.platypus import Paragraph, Spacer, HRFlowable
     from datetime import date
 
-    story.append(pp("Enable My Growth  ·  Bid Intelligence Platform", "firm"))
+    story.append(pp("ENABLE MY GROWTH  ·  BID INTELLIGENCE", "firm"))
     story.append(Spacer(1, 1*mm))
     story.append(pp(doc_type_label, "doc_type"))
     story.append(Spacer(1, 3*mm))
@@ -229,7 +226,7 @@ def cover_header(story, bid, doc_type_label):
 # ── Clarification Questions PDF ───────────────────────────────────────────────
 def generate_clarifications_pdf(bid: dict, questions: list, include_rationale: bool = False) -> bytes:
     """
-    McKinsey-style clarification questions PDF.
+    Enable My Growth clarification questions PDF.
     Two modes: submission-ready (questions only) or internal (with rationale).
     """
     import io
@@ -243,8 +240,8 @@ def generate_clarifications_pdf(bid: dict, questions: list, include_rationale: b
     from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
 
     # Colours
-    C_NAVY   = HexColor("#002060")
-    C_BLUE   = HexColor("#1F5C99")
+    C_NAVY   = HexColor("#0A0A0F")
+    C_BLUE   = HexColor("#C9A96E")
     C_GREY_1 = HexColor("#595959")
     C_GREY_2 = HexColor("#8C8C8C")
     C_GREY_3 = HexColor("#D9D9D9")
@@ -283,7 +280,7 @@ def generate_clarifications_pdf(bid: dict, questions: list, include_rationale: b
     doc = SimpleDocTemplate(buf, pagesize=A4,
         leftMargin=ML, rightMargin=MR, topMargin=MT, bottomMargin=MB+10*mm,
         title=f"{doc_label} — {bid.get('client','')}",
-        author="Enable My Growth — Bid Intelligence Platform")
+        author="Enable My Growth — Bid Intelligence")
 
     # Footer
     cw = PW - ML - MR
@@ -305,7 +302,7 @@ def generate_clarifications_pdf(bid: dict, questions: list, include_rationale: b
     story = []
 
     # ── Cover header ──────────────────────────────────────────────────────────
-    story.append(pp("Enable My Growth  ·  Bid Intelligence Platform",
+    story.append(pp("ENABLE MY GROWTH  ·  BID INTELLIGENCE",
                     7.5, fn_sb, C_BLUE))
     story.append(Spacer(1, 1*mm))
     story.append(pp(doc_label, 8, fn_r, C_GREY_1))
@@ -518,7 +515,7 @@ def generate_clarifications_pdf(bid: dict, questions: list, include_rationale: b
 # ── Proposal Review PDF ───────────────────────────────────────────────────────
 def generate_proposal_review_pdf(bid: dict, result: dict, proposal_filename: str = "") -> bytes:
     """
-    McKinsey-style A4 portrait PDF for the proposal alignment review report.
+    Enable My Growth A4 portrait PDF for the proposal alignment review report.
     Sections: cover header → score card → executive summary → findings by
     severity → requirement coverage table → next steps.
     """
@@ -698,7 +695,7 @@ def generate_proposal_review_pdf(bid: dict, result: dict, proposal_filename: str
             STAGE_COL_PDF = {
                 "Proposal Submission":       HexColor("#C00000"),
                 "Negotiation / Shortlist":   HexColor("#E26B0A"),
-                "Contract Execution":        HexColor("#1F5C99"),
+                "Contract Execution":        HexColor("#C9A96E"),
                 "Contractual Obligation":    C_GREY_2,
             }
 
@@ -721,7 +718,7 @@ def generate_proposal_review_pdf(bid: dict, result: dict, proposal_filename: str
                     "Minor edit":             C_FULL,
                     "Moderate rewrite":       C_HIGH,
                     "Major addition":         C_CRIT,
-                    "Post-submission action": HexColor("#1F5C99"),
+                    "Post-submission action": HexColor("#C9A96E"),
                 }.get(effort, C_GREY_2)
 
                 inner_rows = [
@@ -862,7 +859,7 @@ def generate_proposal_review_pdf(bid: dict, result: dict, proposal_filename: str
 # ── Proposal Review PDF ───────────────────────────────────────────────────────
 def generate_proposal_review_pdf(bid: dict, result: dict, proposal_filename: str = "") -> bytes:
     """
-    McKinsey-style A4 portrait PDF of the proposal alignment analysis report.
+    Enable My Growth A4 portrait PDF of the proposal alignment analysis report.
     Sections: cover header → score panel → executive summary → strengths →
               findings by severity → requirement coverage → next steps.
     """

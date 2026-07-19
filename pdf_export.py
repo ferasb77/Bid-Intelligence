@@ -1,6 +1,6 @@
 """
-Compliance Matrix PDF — McKinsey style.
-White background, Inter typography, colour as signal only.
+Compliance Matrix PDF — Enable My Growth identity.
+White background, restrained typography, and colour as signal.
 """
 import io
 from reportlab.lib.pagesizes import A4, landscape
@@ -138,7 +138,7 @@ def generate_compliance_pdf(bid: dict, requirements: list) -> bytes:
         leftMargin=ML, rightMargin=MR,
         topMargin=MT, bottomMargin=MB + 8*mm,
         title=f"Compliance Matrix — {bid.get('client','')}",
-        author="Enable My Growth — Bid Intelligence Platform",
+        author="Enable My Growth — Bid Intelligence",
     )
 
     footer = make_footer(

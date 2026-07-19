@@ -187,12 +187,12 @@ def page_content_library(bid_id=None):
         for item in filtered:
             appr_icon = "✅" if item.get("approved") else "⬜"
             with st.expander(f"{appr_icon}  [{item['category']}]  {item['title']}"):
-                st.markdown(f'<div style="font-size:.82rem;color:#EDEAE2;white-space:pre-wrap;'
-                            f'background:#131316;border:1px solid #2A2A2E;border-radius:4px;'
+                st.markdown(f'<div style="font-size:.82rem;color:#EDEAE3;white-space:pre-wrap;'
+                            f'background:#111118;border:1px solid #292832;border-radius:4px;'
                             f'padding:.8rem 1rem;max-height:200px;overflow-y:auto">'
                             f'{item["content"]}</div>', unsafe_allow_html=True)
                 if item.get("tags"):
-                    st.markdown(f'<span style="font-size:.72rem;color:#C6A15B">Tags: {item["tags"]}</span>',
+                    st.markdown(f'<span style="font-size:.72rem;color:#C9A96E">Tags: {item["tags"]}</span>',
                                 unsafe_allow_html=True)
                 if item.get("source"):
                     st.markdown(f'<span style="font-size:.72rem;color:#6E6C66">Source: {item["source"]}</span>',
@@ -323,12 +323,12 @@ def page_proposal_analyzer(bid_id):
         st.markdown(f"### {len(items)} Content Blocks Extracted")
         for i, item in enumerate(items):
             with st.expander(f"[{item.get('category','')}]  {item.get('title','')}"):
-                st.markdown(f'<div style="font-size:.82rem;color:#EDEAE2;white-space:pre-wrap;'
-                            f'background:#131316;border:1px solid #2A2A2E;border-radius:4px;'
+                st.markdown(f'<div style="font-size:.82rem;color:#EDEAE3;white-space:pre-wrap;'
+                            f'background:#111118;border:1px solid #292832;border-radius:4px;'
                             f'padding:.8rem;max-height:160px;overflow-y:auto">'
                             f'{item.get("content","")}</div>', unsafe_allow_html=True)
                 if item.get("relevance_to_current"):
-                    st.markdown(f'<span style="font-size:.75rem;color:#C6A15B">'
+                    st.markdown(f'<span style="font-size:.75rem;color:#C9A96E">'
                                 f'→ {item["relevance_to_current"]}</span>',
                                 unsafe_allow_html=True)
 
@@ -410,11 +410,11 @@ def page_coach_roster():
                 c3.markdown(f"**Phone:** {coach.get('phone') or '—'}")
                 if coach.get("cv_summary"):
                     st.markdown(f'<div style="font-size:.82rem;color:#A9A69D;'
-                                f'background:#131316;border:1px solid #2A2A2E;'
+                                f'background:#111118;border:1px solid #292832;'
                                 f'border-radius:4px;padding:.6rem .8rem;margin:.4rem 0">'
                                 f'{coach["cv_summary"]}</div>', unsafe_allow_html=True)
                 if coach.get("reference_contact"):
-                    st.markdown(f'<span style="font-size:.75rem;color:#C6A15B">'
+                    st.markdown(f'<span style="font-size:.75rem;color:#C9A96E">'
                                 f'Reference: {coach["reference_contact"]}</span>',
                                 unsafe_allow_html=True)
                 if st.button("✏ Edit", key=f"ec_{coach['id']}"):
@@ -620,7 +620,7 @@ def page_clarifications(bid_id):
                     f'color:#E67E22">{len(high)}</div><div style="font-size:.72rem;'
                     f'color:#A9A69D;text-transform:uppercase">High</div></div>',
                     unsafe_allow_html=True)
-        c3.markdown(f'<div style="text-align:center;background:#131316;border:1px solid #2A2A2E;'
+        c3.markdown(f'<div style="text-align:center;background:#111118;border:1px solid #292832;'
                     f'border-radius:6px;padding:.6rem"><div style="font-size:1.3rem;font-weight:700;'
                     f'color:#A9A69D">{len(medium)}</div><div style="font-size:.72rem;'
                     f'color:#A9A69D;text-transform:uppercase">Medium</div></div>',
@@ -635,16 +635,16 @@ def page_clarifications(bid_id):
 
         for q in qs:
             pri = q.get("priority","Medium")
-            pri_col = {"Critical":"#C0392B","High":"#E67E22","Medium":"#C6A15B"}.get(pri,"#6E6C66")
+            pri_col = {"Critical":"#C0392B","High":"#E67E22","Medium":"#C9A96E"}.get(pri,"#6E6C66")
             cat = q.get("category","")
             relates = ", ".join(q.get("relates_to",[]))
 
             st.markdown(
-                f'<div style="background:#131316;border:1px solid #2A2A2E;'
+                f'<div style="background:#111118;border:1px solid #292832;'
                 f'border-left:4px solid {pri_col};border-radius:0 6px 6px 0;'
                 f'padding:.8rem 1rem;margin:.4rem 0">'
                 f'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.5rem">'
-                f'<span style="font-weight:700;color:#EDEAE2;font-size:.92rem;flex:1;margin-right:1rem">'
+                f'<span style="font-weight:700;color:#EDEAE3;font-size:.92rem;flex:1;margin-right:1rem">'
                 f'{q.get("id","")}. {q.get("question","")}</span>'
                 f'<div style="text-align:right;white-space:nowrap">'
                 f'<span style="background:{pri_col}22;color:{pri_col};padding:.15rem .5rem;'
@@ -724,7 +724,7 @@ def page_clarifications(bid_id):
         st.markdown("### Saved Questions")
 
         for grp_status, grp_label, grp_col in [
-            ("Draft",    "DRAFT",     "#C6A15B"),
+            ("Draft",    "DRAFT",     "#C9A96E"),
             ("Submitted","SUBMITTED", "#2471A3"),
             ("Answered", "ANSWERED",  "#27AE60"),
             ("Changes Required", "CHANGES REQUIRED", "#C0392B"),
@@ -1033,7 +1033,7 @@ def page_section_drafter(bid_id):
         score_col = "#27AE60" if score >= 4 else "#E67E22" if score >= 3 else "#C0392B"
         c1, c2, c3 = st.columns(3)
         c1.markdown(
-            f'<div style="text-align:center;background:#131316;border:1px solid #2A2A2E;'
+            f'<div style="text-align:center;background:#111118;border:1px solid #292832;'
             f'border-radius:6px;padding:.8rem">'
             f'<div style="font-size:1.6rem;font-weight:700;color:{score_col}">{score}/5</div>'
             f'<div style="font-size:.72rem;color:#A9A69D;text-transform:uppercase">Draft Strength</div>'
@@ -1116,16 +1116,16 @@ def page_submission_assembler(bid_id):
 
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
             c1,c2 = st.columns([1,4])
-            c1.markdown(f'<div style="text-align:center;background:#131316;border:2px solid {gng_col};'
+            c1.markdown(f'<div style="text-align:center;background:#111118;border:2px solid {gng_col};'
                         f'border-radius:6px;padding:1rem">'
                         f'<div style="font-size:1.2rem;font-weight:700;color:{gng_col}">{gng}</div>'
-                        f'<div style="font-size:1.8rem;font-weight:700;color:#EDEAE2">{score}</div>'
+                        f'<div style="font-size:1.8rem;font-weight:700;color:#EDEAE3">{score}</div>'
                         f'<div style="font-size:.7rem;color:#A9A69D">Readiness Score</div>'
                         f'</div>', unsafe_allow_html=True)
             c2.markdown(f'<div class="info-box">{r.get("summary","")}</div>',
                         unsafe_allow_html=True)
             if r.get("recommended_submission_time"):
-                c2.markdown(f'<div style="background:#1B2A41;border-left:3px solid #C6A15B;'
+                c2.markdown(f'<div style="background:#18181F;border-left:3px solid #C9A96E;'
                             f'padding:.6rem 1rem;border-radius:0 4px 4px 0;font-size:.85rem;margin-top:.5rem">'
                             f'<strong>Recommended submission time:</strong> '
                             f'{r["recommended_submission_time"]}</div>', unsafe_allow_html=True)
@@ -1133,7 +1133,7 @@ def page_submission_assembler(bid_id):
             if r.get("blockers"):
                 st.markdown("#### Blockers")
                 for b in r["blockers"]:
-                    sev_col = {"Critical":"#C0392B","High":"#E67E22","Medium":"#C6A15B"}.get(b.get("severity",""),"#6E6C66")
+                    sev_col = {"Critical":"#C0392B","High":"#E67E22","Medium":"#C9A96E"}.get(b.get("severity",""),"#6E6C66")
                     st.markdown(f'<div style="background:#1A0000;border:1px solid #3A0000;'
                                 f'border-left:3px solid {sev_col};border-radius:0 4px 4px 0;'
                                 f'padding:.6rem .8rem;margin:.3rem 0">'
@@ -1174,7 +1174,7 @@ def page_submission_assembler(bid_id):
             matched_status = next((v for k,v in sub_docs.items()
                                    if item.lower()[:12] in k.lower()), None)
             icon = "✅" if matched_status=="Complete" else "⬜"
-            col  = "#27AE60" if matched_status=="Complete" else "#EDEAE2"
+            col  = "#27AE60" if matched_status=="Complete" else "#EDEAE3"
             st.markdown(f'<div style="padding:.3rem 0;border-bottom:1px solid #1E1E22">'
                         f'<span style="color:{col}">{icon} <strong>{item}</strong></span> '
                         f'<span style="font-size:.78rem;color:#A9A69D">— {detail}</span></div>',
@@ -1346,7 +1346,7 @@ def page_submission_assembler(bid_id):
 
             def _score_ring(s):
                 s_col = "#27AE60" if s >= 75 else "#E67E22" if s >= 55 else "#C0392B"
-                return (f'<div style="text-align:center;background:#131316;border:2px solid {s_col};'
+                return (f'<div style="text-align:center;background:#111118;border:2px solid {s_col};'
                         f'border-radius:8px;padding:1.2rem .8rem">'
                         f'<div style="font-size:2.4rem;font-weight:800;color:{s_col}">{s}</div>'
                         f'<div style="font-size:.7rem;color:#A9A69D;text-transform:uppercase;'
@@ -1399,14 +1399,14 @@ def page_submission_assembler(bid_id):
             SEV_COLOUR = {
                 "Critical": "#C0392B",
                 "High":     "#E67E22",
-                "Medium":   "#C6A15B",
+                "Medium":   "#C9A96E",
                 "Low":      "#6E6C66",
             }
             SEV_BG = {
                 "Critical": "#1A0000",
                 "High":     "#1A0A00",
                 "Medium":   "#1A1500",
-                "Low":      "#131316",
+                "Low":      "#111118",
             }
             EFFORT_COL = {
                 "Minor edit":      "#27AE60",
@@ -1490,9 +1490,9 @@ def page_submission_assembler(bid_id):
                                 f'{" · "+location if location and location != "N/A" else ""}'
                                 f'</div>'
                                 f'{"<div style=background:"+stage_c+"22;border:1px solid "+stage_c+"44;border-radius:4px;padding:.2rem .6rem;display:inline-block;font-size:.72rem;color:"+stage_c+";font-weight:600;margin-bottom:.5rem>⏱ "+stage+"</div>" if stage else ""}'
-                                f'<div style="font-size:.88rem;color:#EDEAE2;margin-bottom:.6rem">'
+                                f'<div style="font-size:.88rem;color:#EDEAE3;margin-bottom:.6rem">'
                                 f'<strong>Issue:</strong> {issue}</div>'
-                                f'<div style="font-size:.85rem;color:#C6A15B;margin-bottom:.4rem">'
+                                f'<div style="font-size:.85rem;color:#C9A96E;margin-bottom:.4rem">'
                                 f'<strong>Recommendation:</strong> {rec_text}</div>'
                                 f'<div style="font-size:.75rem;color:{ec}">'
                                 f'Effort: {effort}</div>'
@@ -1543,7 +1543,7 @@ def page_submission_assembler(bid_id):
                     conf = cov.get("confidence","")
                     notes = cov.get("notes","")
                     row = st.columns([1, 1.5, 3, 2.5, 1.5])
-                    row[0].markdown(f'<span style="font-size:.8rem;color:#C6A15B">'
+                    row[0].markdown(f'<span style="font-size:.8rem;color:#C9A96E">'
                                     f'{cov.get("req_id","")}</span>', unsafe_allow_html=True)
                     row[1].markdown(f'<span style="font-size:.78rem;color:#A9A69D">'
                                     f'{cov.get("category","")}</span>', unsafe_allow_html=True)
@@ -1577,11 +1577,11 @@ def page_submission_assembler(bid_id):
                         if when else ""
                     )
                     st.markdown(
-                        f'<div style="background:#131316;border:1px solid #2A2A2E;'
-                        f'border-left:3px solid #C6A15B;border-radius:0 4px 4px 0;'
+                        f'<div style="background:#111118;border:1px solid #292832;'
+                        f'border-left:3px solid #C9A96E;border-radius:0 4px 4px 0;'
                         f'padding:.6rem 1rem;margin:.3rem 0">'
-                        f'<span style="color:#C6A15B;font-weight:700;font-size:.8rem">#{pri}</span> '
-                        f'<span style="font-size:.88rem;color:#EDEAE2">{step.get("action","")}</span>'
+                        f'<span style="color:#C9A96E;font-weight:700;font-size:.8rem">#{pri}</span> '
+                        f'<span style="font-size:.88rem;color:#EDEAE3">{step.get("action","")}</span>'
                         f'{when_badge}'
                         f'<br><span style="font-size:.78rem;color:#A9A69D">{step.get("rationale","")}</span>'
                         f'</div>',
@@ -1615,7 +1615,7 @@ def page_debrief(bid_id):
 
     if debriefs:
         d = debriefs[0]
-        outcome_col = {"Won":"#27AE60","Lost":"#C0392B","Pending":"#C6A15B"}.get(
+        outcome_col = {"Won":"#27AE60","Lost":"#C0392B","Pending":"#C9A96E"}.get(
             d.get("outcome","Pending"),"#6E6C66")
         c1,c2,c3,c4 = st.columns(4)
         c1.markdown(f'<div class="metric-card"><div class="label">Outcome</div>'
@@ -1715,7 +1715,7 @@ def page_exec_dashboard():
     st.markdown(
         f'<div style="font-size:.82rem;color:#A9A69D;margin-bottom:.5rem">'
         f'Phoenix Consulting International  ·  '
-        f'Bid Intelligence Platform  ·  '
+        f'Bid Intelligence  ·  '
         f'{date.today().strftime("%B %d, %Y")}</div>',
         unsafe_allow_html=True)
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
@@ -1787,9 +1787,9 @@ def page_exec_dashboard():
     won_val      = sum(b.get("value_cad") or 0 for b in won)
 
     c1,c2,c3,c4,c5,c6 = st.columns(6)
-    def kpi(col, label, value, sub="", colour="#EDEAE2"):
+    def kpi(col, label, value, sub="", colour="#EDEAE3"):
         col.markdown(
-            f'<div style="background:#131316;border:1px solid #2A2A2E;border-radius:6px;'
+            f'<div style="background:#111118;border:1px solid #292832;border-radius:6px;'
             f'padding:.8rem .6rem;text-align:center">'
             f'<div style="font-size:.68rem;color:#A9A69D;text-transform:uppercase;'
             f'letter-spacing:.06em;margin-bottom:.2rem">{label}</div>'
@@ -1806,7 +1806,7 @@ def page_exec_dashboard():
     kpi(c4, "Deadlines ≤14d",   len(urgent),    "immediate action",
         "#E67E22" if urgent else "#27AE60")
     kpi(c5, "Win Rate",          wr,             f"{len(won)}W / {len(lost)}L",
-        "#27AE60" if won else "#EDEAE2")
+        "#27AE60" if won else "#EDEAE3")
     kpi(c6, "Won Value",
         f"${won_val/1000:.0f}K" if won_val else "—",
         "confirmed revenue")
@@ -1851,7 +1851,7 @@ def page_exec_dashboard():
             unsafe_allow_html=True)
 
     STAGE_COL = {
-        "Identified":"#6E6C66","Qualifying":"#C6A15B",
+        "Identified":"#6E6C66","Qualifying":"#C9A96E",
         "In Progress":"#2980B9","Review":"#8E44AD",
         "Submitted":"#27AE60","Won":"#1E8449",
         "Lost":"#C0392B","No Bid":"#555555",
@@ -2088,7 +2088,7 @@ def page_exec_dashboard():
 
 
 def _exec_dashboard_pdf(bids, coaches, alerts):
-    """McKinsey-style executive dashboard PDF — A4 portrait."""
+    """Enable My Growth executive dashboard PDF — A4 portrait."""
     import io
     from datetime import date
     from reportlab.lib.pagesizes import A4
@@ -2134,14 +2134,14 @@ def _exec_dashboard_pdf(bids, coaches, alerts):
         canvas.setFont(fn_r, 7)
         canvas.setFillColor(C_GREY_2)
         canvas.drawString(ML, 10*mm,
-            "Phoenix Consulting International  ·  Bid Intelligence Platform  ·  Executive Report")
+            "Phoenix Consulting International  ·  Bid Intelligence  ·  Executive Report")
         canvas.drawRightString(PW-MR, 10*mm, f"Page {doc.page}")
         canvas.restoreState()
 
     story = []
 
     # Header
-    story.append(pp("Enable My Growth  ·  Bid Intelligence Platform",
+    story.append(pp("ENABLE MY GROWTH  ·  BID INTELLIGENCE",
                     7.5, fn_sb, C_BLUE))
     story.append(Spacer(1, 1*mm))
     story.append(pp("Executive Bid Report", 8, fn_r, C_GREY_1))

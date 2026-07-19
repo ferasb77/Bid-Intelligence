@@ -1,6 +1,10 @@
-# Bid Intelligence Platform — MVP
+# Bid Intelligence — Decision & Proposal Platform
 
-Phase 1 · Bid Control · Local SQLite · Streamlit
+An endorsed Enable My Growth application developed by Feras Banna.
+
+Bid Intelligence provides a structured environment for examining bid
+decisions, evidence, compliance, and proposal readiness before committing
+resources. Human commercial judgment remains accountable at every stage.
 
 ## Setup (one time)
 
@@ -22,9 +26,9 @@ Opens at http://localhost:8501
 ```
 bid_platform/
 ├── app.py                  # Entry point + routing
-├── database.py             # SQLite schema + all data access
-├── data/bids.db            # Created on first run (git-ignore this)
-├── uploads/                # RFP files stored here
+├── brand.py                # Enable My Growth product identity
+├── database.py             # Supabase data access
+├── assets/                 # Approved mark and brand fonts
 ├── components/
 │   └── ui.py               # CSS, badges, helpers
 └── pages/
@@ -48,7 +52,8 @@ bid_platform/
 | Tasks | Task board grouped by priority |
 | Proposal Outline | Section list with template quick-start |
 
-## Phase 2 (next)
+## Brand
 
-AI extraction will read an uploaded RFP PDF and auto-populate
-the compliance matrix — same data model, no schema changes needed.
+See `BRAND-INTEGRATION.md` for product positioning, identity tokens, and the
+distinction between the Enable My Growth product brand and client-specific
+operating context.
