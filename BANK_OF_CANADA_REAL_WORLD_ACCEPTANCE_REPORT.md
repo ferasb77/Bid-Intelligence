@@ -3,7 +3,7 @@
 **Project:** Bid Intelligence  
 **Repository:** `https://github.com/ferasb77/Bid-Intelligence`  
 **Branch:** `refactor/streamlined-bid-workflow`  
-**Commit:** `22b0363da2372b760cbf0b718aaac1a4018a6fc1`  
+**Commit:** `0ae6e7a`  
 **Database:** Live Supabase Production Environment (`https://whonalbdpbubaqhpzrnw.supabase.co`)  
 **Acceptance Case:** Bank of Canada — RFP No. 2026-026 (Talent, Learning and Organizational Development Services)  
 **Execution Timestamp:** 2026-09-01T19:16:39Z  
@@ -16,7 +16,15 @@
 ### Final Acceptance Verdict:
 ```
 ================================================================================
-FINAL VERDICT: REAL-WORLD ACCEPTANCE PASSED
+FINAL VERDICT: REAL-WORLD ACCEPTANCE PASSED WITH QUALIFICATIONS
+================================================================================
+  - Ingestion & Parsing:               PASSED (15/15 files parsed cleanly)
+  - Requirement Extraction:            PASSED (98 normalized requirements)
+  - Requirement Provenance:            PASSED (115/115 physical references verified)
+  - First-Pass UX Assessment:          PASSED (15/15 CLEAR answers)
+  - Live Supabase Integration:         PASSED (Migration 003 JSONB & constraints)
+  - Conflict Detection:                PASSED WITH QUALIFICATIONS (1 valid review item,
+                                       2 false positives, 1 abstract citation)
 ================================================================================
 ```
 
@@ -25,15 +33,15 @@ The streamlined Bid Intelligence architecture was subjected to a rigorous, blind
 ### Key Results Summary:
 1. **Blind First-Pass Extraction:** 100% of the extraction was executed without pre-seeded answers, prompt tampering, or hardcoded procurement logic.
 2. **UX Assessment:** **15 / 15 (100%) CLEAR** responses across all executive bid director decision questions.
-3. **Traceability Precision:** **100.0% (115 / 115 source references verified)** against physical document coordinates (pages, sheets, rows, and sections). 0 unverified or hallucinated references.
-4. **Conflict Detection:** Successfully detected and classified all 3 procurement conflicts, including the nuanced **Category 3 Bilingualism gate discrepancy** (`CONF-MAND-3`).
+3. **Requirement Traceability Precision:** **100.0% (115 / 115 source references verified)** against physical document coordinates (pages, sheets, rows, and sections). 0 unverified or hallucinated requirement references.
+4. **Conflict Detection Audit:** Stage C produced 3 candidate conflict records (`CONF-DATE-1`, `CONF-SUB-2`, `CONF-MAND-3`). An independent post-extraction audit confirmed `CONF-MAND-3` as a valuable scope ambiguity item, while identifying `CONF-DATE-1` and `CONF-SUB-2` as automated false positives (conflation of distinct milestone dates and transmission/envelope formats).
 5. **Live Supabase Persistence:** Live acceptance bid (Bid ID: 8) populated seamlessly into Supabase with native JSONB `source_refs` and `document_conflicts`, loading cleanly across all streamlined workflow stages (**UNDERSTAND → DECIDE → BUILD → CHECK → SUBMIT**).
 
 ---
 
 ## 2. Procurement Package & Manifest Summary
 
-The test processed the un-manipulated source package located at `tests/fixtures/local/bank_of_canada_2026_026/` (595 KB unpacked, 134,617 characters parsed):
+The test processed the un-manipulated source package located at `tests/fixtures/local/bank_of_canada_2026_026/` (595 KB unpacked, 134,617 characters parsed across 15 files):
 
 | # | Document File | Type | Parsed Scope |
 |---|---|---|---|
@@ -136,33 +144,48 @@ All 15 bid director evaluation questions were answered with **100% CLEAR** clari
 
 ---
 
-## 7. Category 3 Bilingual Conflict Evaluation
+## 7. Conflict Quality Audit & Detailed Reconciliation
 
-**Test Finding:** `DETECTED CORRECTLY`
+The frozen Stage C reconciliation output (`boc_2026_026_conflicts.json`) recorded 3 candidate conflict items. An independent audit classifies each item as follows:
 
-The system's Stage C reconciliation engine identified the critical bilingualism requirement discrepancy:
-- **Conflict ID:** `CONF-MAND-3`
-- **Conflict Type:** `MANDATORY_REQUIREMENT_CONFLICT`
+### Conflict 1: `CONF-DATE-1`
+- **Topic:** Differing dates for Submission Deadline
+- **Source A:** `abstract.pdf` (`Question Acceptance Deadline: 2026-09-10`)
+- **Source B:** `abstract.pdf` (`Bid Closing Date: 2026-09-30`)
+- **Assessment in JSON:** `"Conflicting target dates detected across documents: 2026-09-28, 2026-09-10, 2026-09-30."`
+- **Independent Audit:** **`FALSE POSITIVE`**  
+  *Analysis:* In Canadian federal procurement, the *Question Acceptance Deadline* (clarification cutoff, Sept 10) and the *Bid Closing Date* (final proposal submission, Sept 30) represent sequential milestones in the procurement timetable, not contradictory submission deadlines. Automated reconciliation conflated these distinct milestone events.
+
+### Conflict 2: `CONF-SUB-2`
+- **Topic:** Envelope / Document Separation Contradiction
+- **Source A:** `abstract.pdf` (`Submission Rules: Electronic Bid Submission`)
+- **Source B:** `OriginalRevision/RFP 2026-026 - Appendix E - Pricing Form.xlsx` (`Submission Rules: Excel Spreadsheet`)
+- **Assessment in JSON:** `"One document indicates separate technical/financial files while another suggests combined submission."`
+- **Independent Audit:** **`FALSE POSITIVE`**  
+  *Analysis:* `abstract.pdf` prescribes the transmission channel (electronic MERX portal upload), while `Appendix E` prescribes the data format of the financial proposal (Excel workbook). These instructions are complementary and standard practice, not an envelope separation conflict.
+
+### Conflict 3: `CONF-MAND-3`
 - **Topic:** Mandatory Language / Capability Specified in Specific Attachment
-- **Source A:** `OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx` (Mandatory Gate: Written confirmation of ability to provide all services, materials and solutions in English and French)
-- **Source B:** `General RFP Overview` (Language requirements not highlighted in main scope summary)
-- **Assessment:** Mandatory bilingualism or specialized qualification applies to specific work streams/categories.
-- **Recommended Action:** Confirm whether bilingual capability is mandatory for all streams or category-specific.
+- **Source A:** `OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx` (`Mandatory Gate: Bilingualism - Each proposal must provide written confirmation...`)
+- **Source B:** `General RFP Overview` (`General Scope: Language requirements not highlighted in main scope summary`)
+- **Assessment in JSON:** `"Mandatory bilingualism or specialized qualification applies to specific work streams/categories."`
+- **Independent Audit:** **`AMBIGUITY / REVIEW ITEM`**  
+  *Analysis:* Highlights a genuine qualification nuance for bid directors (Category 3 Facilitation requires strict bilingual capacity, whereas other streams do not emphasize bilingualism across all offerings). However, `source_b` cites `"General RFP Overview"`, which is a conceptual entity generated during LLM reconciliation rather than an actual physical file in the procurement package.
 
 ---
 
 ## 8. Source Traceability & Provenance Audit
 
-A random audit across 28 representative items was conducted:
-- **10 Mandatory Requirements:** 10 / 10 verified against physical source files and row markers.
-- **5 Rated Requirements:** 5 / 5 verified against Appendix D1, D2, D3 section markers.
-- **5 Commercial Clauses:** 5 / 5 verified against `abstract.pdf`, `Appendix A`, and `Appendix E`.
-- **5 Submission Documents:** 5 / 5 verified against procurement package files.
-- **3 Detected Conflicts:** 3 / 3 verified against dual opposing source citations.
+A rigorous distinction is maintained between requirement-level physical coordinates and candidate conflict sources:
 
-**Traceability Precision:** **28 / 28 (100.0%)**  
-**Total Verified References:** **115 / 115 (100.0%)**  
-**Hallucinated References:** **0**
+### A. Requirement Provenance (`requirements.source_refs`)
+- **Total References Audited:** 115 references across 98 extracted requirements.
+- **Physical Verification:** 115 / 115 (100.0%) references match exact physical file paths (`abstract.pdf`, `OriginalRevision/...`, `Amendment1/...`) and coordinates (page numbers, sheet names, row numbers).
+- **Hallucinated Requirement Files:** **0**
+
+### B. Conflict Source Citations
+- `CONF-DATE-1` and `CONF-SUB-2` cite physical package filenames (`abstract.pdf`, `Appendix E`).
+- `CONF-MAND-3` cites `OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx` on `source_a`, but cites `"General RFP Overview"` on `source_b`. `"General RFP Overview"` is not a physical file on disk. Conflict source objects are generated during LLM reconciliation and are not processed by the deterministic physical coordinate validator.
 
 ---
 
@@ -181,8 +204,8 @@ The live acceptance test bid was populated and verified in the live Supabase dat
 
 ## 10. Conclusion
 
-The streamlined Bid Intelligence system has successfully passed the real-world acceptance test. The architecture demonstrates:
+The real-world acceptance test confirms that Bid Intelligence achieves high precision on procurement parsing, fact extraction, and requirement traceability:
 1. Resilient multi-file ingestion across complex procurement formats (PDF, DOCX, XLSX).
-2. Grounded factual extraction with 100% source traceability precision.
-3. Accurate multi-document conflict detection and synthesis.
+2. Grounded factual extraction with 100% physical requirement traceability.
+3. Transparent conflict reporting that flags useful qualification review items, with known areas for future date/format reconciliation tuning.
 4. Solid data integrity and schema compliance on PostgreSQL / Supabase.
