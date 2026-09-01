@@ -13,11 +13,12 @@ Following the merge of Bid Intelligence RC1 to `main` and subsequent quality rev
 
 The refinement:
 1. Eliminates false-positive candidate discrepancies identified during the Bank of Canada RFP 2026-026 blind acceptance test.
-2. Introduces mandatory requirement **scope normalization** so differing criteria across distinct service categories (e.g. Category 1 vs Category 2) are recognized as complementary rather than contradictory.
-3. Implements strict priority-ordered **security clearance classification** (`TOP_SECRET` $\rightarrow$ `SECRET` $\rightarrow$ `RELIABILITY`).
-4. Introduces normalized **monetary amount extraction** for commercial insurance limits (comparing `$2M` vs `$2,000,000` with varying prose without false positives).
-5. Handles **internal document date inconsistencies** as `REVIEW_ITEM`.
-6. Audits conflict citations against physical package files.
+2. Implements **opposing source pair selection** (`select_opposing_pair`), ensuring `source_a.text != source_b.text` and displaying the actual contradictory values when 3+ records exist with duplicates.
+3. Introduces mandatory requirement **scope normalization** so differing criteria across distinct service categories (e.g. Category 1 vs Category 2) are recognized as complementary rather than contradictory.
+4. Implements strict priority-ordered **security clearance classification** (`TOP_SECRET` $\rightarrow$ `SECRET` $\rightarrow$ `RELIABILITY`).
+5. Introduces normalized **monetary amount extraction** for commercial insurance limits with safety guards against treating unrelated years (e.g. 2026) as amounts.
+6. Handles **internal document date inconsistencies** as `REVIEW_ITEM`.
+7. Audits conflict citations against physical package files.
 
 All changes strictly preserve the RC1 architecture, extraction prompts, submission gating, and database schema (Migration 003) with zero breaking changes.
 
@@ -35,7 +36,33 @@ During the RC1 blind acceptance test against Bank of Canada RFP 2026-026, 3 cand
 
 ---
 
-## 3. Semantic Event Model (Date Classification)
+## 3. Opposing Source Pair Selection (`select_opposing_pair`)
+
+In previous implementations, detectors selected `source_a` and `source_b` using the first and last elements (`list[0]` and `list[-1]`). In multi-source packages with 3+ records containing duplicate values (e.g., Doc A: Sep 15, Doc B: Sep 30, Doc C: Sep 15), this could result in `source_a` and `source_b` both displaying `"Sep 15"` even though a contradiction existed in Doc B.
+
+The deterministic helper [`select_opposing_pair()`](file:///C:/Users/feras/Documents/Projects/Bid-Intelligence/extractor.py#L707) groups candidate records by their normalized comparison values and selects two records with differing values:
+
+```python
+def select_opposing_pair(records: list, value_fn) -> tuple | None:
+    """
+    Find two records record_a and record_b such that value_fn(record_a) != value_fn(record_b).
+    Returns (record_a, record_b) or None if fewer than 2 distinct values exist.
+    """
+```
+
+**Applied Across All Detectors:**
+- `DATE_CONFLICT`: Selects records representing differing target dates.
+- `EVALUATION_CONFLICT`: Selects records representing contradictory technical weights.
+- `PAGE_LIMIT`: Selects records representing differing page limit numbers.
+- `MANDATORY_REQUIREMENT_CONFLICT`: Selects records representing differing experience years or clearance levels within the same category.
+- `COMMERCIAL_TERM_CONFLICT`: Selects records representing differing panel caps or insurance limits.
+- `SCOPE_CONFLICT`: Selects records representing differing deliverable/cohort counts.
+
+For every conflict, `source_a.text != source_b.text` is guaranteed.
+
+---
+
+## 4. Semantic Event Model (Date Classification)
 
 Dates extracted in Stage B are classified using priority-ordered regex patterns in `classify_date_milestone()`:
 
@@ -64,7 +91,7 @@ DATE_EVENT_PATTERNS = [
 
 ---
 
-## 4. Mandatory Requirement Scope Normalization & Clearance Priority
+## 5. Mandatory Requirement Scope Normalization & Clearance Priority
 
 ### A. Scope Normalization
 Requirements are partitioned by operational scope using `_extract_requirement_scope()`:
@@ -82,7 +109,7 @@ Clearance requirements are classified with strict priority:
 
 ---
 
-## 5. Dimension Normalization Model (Submission Rules)
+## 6. Dimension Normalization Model (Submission Rules)
 
 Submission rules are classified using `classify_submission_rule_dimension()` into operational dimensions:
 
@@ -94,14 +121,9 @@ Submission rules are classified using `classify_submission_rule_dimension()` int
 6. `FILE_FORMAT`: PDF, DOCX, XLSX, searchable PDF.
 7. `DOCUMENT_REQUIREMENT`: Specific form checklists (Appendix A, ESG questionnaire, Pricing Form).
 
-**Comparison Rules:**
-- Only rules belonging to the **same operational dimension** are compared.
-- Complementary rules (e.g. `SUBMISSION_CHANNEL` + `FILE_FORMAT`) are suppressed.
-- Direct contradictions within a dimension (e.g. `MERX` vs `Email Only`, or `Separate Envelopes` vs `Single Combined PDF`) trigger `TRUE_CONFLICT`.
-
 ---
 
-## 6. Like-With-Like Commercial & Insurance Normalization
+## 7. Like-With-Like Commercial & Insurance Normalization
 
 Commercial insurance clauses are categorized using `classify_insurance_class()` into standardized coverage classes:
 - `COMMERCIAL_GENERAL_LIABILITY` (CGL, general liability, comprehensive liability)
@@ -110,15 +132,16 @@ Commercial insurance clauses are categorized using `classify_insurance_class()` 
 - `AUTOMOBILE_LIABILITY` (motor vehicle, fleet)
 - `WORKERS_COMPENSATION` (workers comp, WSIB)
 
-### Monetary Limit Parsing
+### Monetary Limit Parsing & Year Protection
 Monetary thresholds are extracted via `extract_monetary_amount()`:
 - `$2,000,000` and `$2M including bodily injury` both normalize to `2000000.0` $\rightarrow$ `NO CONFLICT`.
 - `$2M` vs `$5M` within the same insurance class $\rightarrow$ `classification: TRUE_CONFLICT`.
+- Isolated 4-digit integers such as `"Policy effective in 2026"` or `"RFP 2026-026"` are **NOT** normalized as monetary limits.
 - If amounts cannot be reliably parsed but wording varies $\rightarrow$ `classification: REVIEW_ITEM` (no spurious `TRUE_CONFLICT` based purely on prose differences).
 
 ---
 
-## 7. Source Validity & Provenance Grounding Architecture
+## 8. Source Validity & Provenance Grounding Architecture
 
 Every candidate conflict or review item is audited against `package_files` via `validate_conflict_source_validity()`:
 
@@ -128,7 +151,7 @@ Every candidate conflict or review item is audited against `package_files` via `
 
 ---
 
-## 8. Output Model & Schema Compatibility
+## 9. Output Model & Schema Compatibility
 
 The output model maintains 100% backward compatibility with Supabase Migration 003, JSONB columns, and UI pages while adding new rich metadata:
 
@@ -143,35 +166,36 @@ The output model maintains 100% backward compatibility with Supabase Migration 0
   "topic": "Differing dates for Submission Deadline",
   "source_a": {"doc": "Main_RFP.pdf", "ref": "Bid Closing Date", "text": "2026-09-15"},
   "source_b": {"doc": "Addendum_1.pdf", "ref": "Bid Closing Date", "text": "2026-09-30"},
-  "assessment": "Conflicting target dates detected across documents: 2026-09-15, 2026-09-30.",
-  "recommended_action": "Verify if the latest Addendum or Bulletin formally extends this deadline."
+  "assessment": "Conflicting target dates detected: 2026-09-15, 2026-09-30.",
+  "recommended_action": "Verify if an addendum or revision formally clarifies the authoritative date."
 }
 ```
 
 ---
 
-## 9. Verification Test Suite Matrix
+## 10. Verification Test Suite Matrix
 
 ```
 ================================================================================
 FULL RC1 + STAGE C TEST SUITE EXECUTION SUMMARY
 ================================================================================
-1. tests/test_stage_c_refinement.py:             22 / 22 PASSED  (0.012s)
+1. tests/test_stage_c_refinement.py:             27 / 27 PASSED  (0.014s)
    • Bank of Canada Regression Tests (A, B, C):   3 / 3 PASSED
    • Mandatory Scope Normalization Tests:         2 / 2 PASSED
    • Security Clearance Priority Tests:           3 / 3 PASSED
-   • Insurance Monetary Normalization Tests:      4 / 4 PASSED
+   • Insurance Monetary Normalization Tests:      5 / 5 PASSED
+   • Multi-Source Opposing Pair Selection Tests:  4 / 4 PASSED
    • Same-Document Date Inconsistency Test:       1 / 1 PASSED
    • Positive True Conflict Tests (A, B, C, E):   4 / 4 PASSED
    • Source Validity & Provenance Tests:          4 / 4 PASSED
    • Frozen Bank of Canada Replay Test:           1 / 1 PASSED
-2. tests/test_streamlined_workflow.py:            27 / 27 PASSED  (0.242s)
+2. tests/test_streamlined_workflow.py:            27 / 27 PASSED  (0.254s)
 3. tests/integration/test_package_ingestion.py:    5 / 5 PASSED   (1 skipped live AI)
-4. tests/smoke/test_live_supabase_migration_003:   5 / 5 PASSED   (25.055s)
-5. tests/smoke/test_all_pages_runtime.py:          7 / 7 PASSED   (28.464s)
+4. tests/smoke/test_live_supabase_migration_003:   5 / 5 PASSED   (36.616s)
+5. tests/smoke/test_all_pages_runtime.py:          7 / 7 PASSED   (55.601s)
 ================================================================================
-TOTAL TESTS DISCOVERED:                          67
-TOTAL PASSED:                                    66
+TOTAL TESTS DISCOVERED:                          72
+TOTAL PASSED:                                    71
 TOTAL SKIPPED:                                   1 (Live AI integration smoke)
 TOTAL FAILED / ERRORS:                           0
 ================================================================================
@@ -179,7 +203,7 @@ TOTAL FAILED / ERRORS:                           0
 
 ---
 
-## 10. Bank of Canada Frozen Replay Summary
+## 11. Bank of Canada Frozen Replay Summary
 
 Replaying `reconcile_package_facts()` against `tests/acceptance/results/boc_2026_026_normalized_facts.json`:
 
@@ -191,16 +215,16 @@ Documented in detail in: `tests/acceptance/results/STAGE_C_RC1_RECONCILIATION_RE
 
 ---
 
-## 11. Final Recommendation
+## 12. Final Recommendation
 
 ```
 ================================================================================
 FINAL VERDICT: READY FOR PR REVIEW
 ================================================================================
 Branch fix/stage-c-conflict-reconciliation has passed all deterministic regression
-tests, scope normalization tests, security clearance priority verifications,
-monetary parsing tests, provenance audits, live Supabase checks, UI runtime
-executions, and frozen Bank of Canada replay verifications.
+tests, opposing pair selection tests, scope normalization tests, security clearance
+priority verifications, monetary parsing safety tests, provenance audits, live
+Supabase checks, UI runtime executions, and frozen Bank of Canada replay verifications.
 
 Ready for PR review.
 ================================================================================

@@ -4,11 +4,12 @@ Verifies:
 1. Bank of Canada Regression Cases (False positive date and submission dimension suppression; removal of tender-specific heuristics).
 2. Mandatory Requirement Scope Normalization (Category/stream scoped years of experience & security clearance).
 3. Top Secret Priority & Security Clearance Contradictions (TOP_SECRET -> SECRET -> RELIABILITY).
-4. Insurance Monetary Amount Normalization (Like-with-like amount parsing; $2M vs $2,000,000 prose = NO CONFLICT; $2M vs $5M = TRUE CONFLICT).
-5. Positive True Conflict Cases (Contradictory dates, submission channels, envelope separation, insurance, page limits).
-6. Same-Document Same-Milestone Date Inconsistencies (Classified as REVIEW_ITEM).
-7. Source Validity & Provenance Grounding (Physical vs Synthesized vs Partial).
-8. Frozen Bank of Canada Reconciliation Replay.
+4. Insurance Monetary Amount Normalization & Year Safety (Safe parsing; $2M vs $2,000,000 = NO CONFLICT; year 2026 ignored).
+5. Multi-Source Opposing Pair Selection (3+ records with duplicates: source_a.text != source_b.text).
+6. Positive True Conflict Cases (Contradictory dates, submission channels, envelope separation, insurance, page limits).
+7. Same-Document Same-Milestone Date Inconsistencies (Classified as REVIEW_ITEM).
+8. Source Validity & Provenance Grounding (Physical vs Synthesized vs Partial).
+9. Frozen Bank of Canada Reconciliation Replay.
 """
 import os
 import json
@@ -20,6 +21,7 @@ from extractor import (
     classify_insurance_class,
     classify_security_clearance,
     extract_monetary_amount,
+    select_opposing_pair,
     validate_conflict_source_validity,
     detect_document_conflicts,
     reconcile_package_facts
@@ -181,13 +183,20 @@ class TestStageCSecurityClearancePriority(unittest.TestCase):
 
 
 class TestStageCInsuranceAmountNormalization(unittest.TestCase):
-    """Scenario 4: Monetary amount parsing and like-with-like insurance reconciliation."""
+    """Scenario 4: Monetary amount parsing, year protection, and like-with-like insurance reconciliation."""
 
     def test_monetary_amount_extraction(self):
         self.assertEqual(extract_monetary_amount("CGL coverage of $2,000,000"), 2000000.0)
         self.assertEqual(extract_monetary_amount("CGL insurance minimum $2M including bodily injury"), 2000000.0)
         self.assertEqual(extract_monetary_amount("CGL coverage of $5M"), 5000000.0)
         self.assertEqual(extract_monetary_amount("Coverage of CAD 5,000,000"), 5000000.0)
+        self.assertEqual(extract_monetary_amount("2 million liability"), 2000000.0)
+        self.assertEqual(extract_monetary_amount("2M coverage"), 2000000.0)
+
+    def test_year_not_interpreted_as_monetary_amount(self):
+        """Policy effective in 2026; evidence of insurance required -> None (not 2026.0)."""
+        self.assertIsNone(extract_monetary_amount("Policy effective in 2026; evidence of insurance required"))
+        self.assertIsNone(extract_monetary_amount("Solicitation number RFP 2026-026"))
 
     def test_matching_monetary_limits_with_differing_prose_no_conflict(self):
         """CGL coverage of $2,000,000 vs CGL insurance minimum $2M including bodily injury -> NO CONFLICT."""
@@ -230,8 +239,80 @@ class TestStageCInsuranceAmountNormalization(unittest.TestCase):
         self.assertEqual(len(ins_conflicts), 0)
 
 
+class TestStageCMultiSourceOpposingPairSelection(unittest.TestCase):
+    """Scenario 5: Multi-source record sets (3+ records) with duplicate values ensuring opposing source pairing."""
+
+    def test_multi_source_date_conflict_pairs_differing_values(self):
+        """A.pdf -> Sep 15, B.pdf -> Sep 30, C.pdf -> Sep 15: source_a.text != source_b.text (Sep 15 vs Sep 30)."""
+        normalized = {
+            "dates": [
+                {"milestone": "Bid Closing Date", "date": "2026-09-15", "source_doc": "A.pdf"},
+                {"milestone": "Bid Closing Date", "date": "2026-09-30", "source_doc": "B.pdf"},
+                {"milestone": "Bid Closing Date", "date": "2026-09-15", "source_doc": "C.pdf"}
+            ]
+        }
+        pkg_files = ["A.pdf", "B.pdf", "C.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        date_conflicts = [c for c in conflicts if c.get("conflict_type") == "DATE_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
+        self.assertEqual(len(date_conflicts), 1)
+        self.assertNotEqual(date_conflicts[0]["source_a"]["text"], date_conflicts[0]["source_b"]["text"])
+        pair_dates = {date_conflicts[0]["source_a"]["text"], date_conflicts[0]["source_b"]["text"]}
+        self.assertEqual(pair_dates, {"2026-09-15", "2026-09-30"})
+
+    def test_multi_source_experience_threshold_pairs_differing_values(self):
+        """Category 1: A.pdf -> 5 years, B.pdf -> 10 years, C.pdf -> 5 years: displayed sources 5 vs 10, not 5 vs 5."""
+        normalized = {
+            "requirements": [
+                {"req_id": "M1", "category": "Mandatory", "description": "Category 1: Minimum 5 years of advisory experience required.", "source_refs": [{"source_doc": "A.pdf"}]},
+                {"req_id": "M1", "category": "Mandatory", "description": "Category 1: Minimum 10 years of advisory experience required.", "source_refs": [{"source_doc": "B.pdf"}]},
+                {"req_id": "M1", "category": "Mandatory", "description": "Category 1: Minimum 5 years of advisory experience required.", "source_refs": [{"source_doc": "C.pdf"}]}
+            ]
+        }
+        pkg_files = ["A.pdf", "B.pdf", "C.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        mand_conflicts = [c for c in conflicts if c.get("conflict_type") == "MANDATORY_REQUIREMENT_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
+        self.assertEqual(len(mand_conflicts), 1)
+        self.assertNotEqual(mand_conflicts[0]["source_a"]["text"], mand_conflicts[0]["source_b"]["text"])
+        self.assertIn("5", mand_conflicts[0]["source_a"]["text"])
+        self.assertIn("10", mand_conflicts[0]["source_b"]["text"])
+
+    def test_multi_source_insurance_pairs_differing_limits(self):
+        """CGL: A.pdf -> $2M, B.pdf -> $5M, C.pdf -> $2M with extra wording: displayed pair normalizes to 2M vs 5M."""
+        normalized = {
+            "commercial_clauses": [
+                {"topic": "Commercial General Liability Insurance", "details": "CGL coverage of $2,000,000", "source_doc": "A.pdf"},
+                {"topic": "Commercial General Liability Insurance", "details": "CGL coverage of $5,000,000", "source_doc": "B.pdf"},
+                {"topic": "Commercial General Liability Insurance", "details": "CGL insurance minimum $2M including bodily injury", "source_doc": "C.pdf"}
+            ]
+        }
+        pkg_files = ["A.pdf", "B.pdf", "C.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        ins_conflicts = [c for c in conflicts if c.get("conflict_type") == "COMMERCIAL_TERM_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
+        self.assertEqual(len(ins_conflicts), 1)
+        amt_a = extract_monetary_amount(ins_conflicts[0]["source_a"]["text"])
+        amt_b = extract_monetary_amount(ins_conflicts[0]["source_b"]["text"])
+        self.assertNotEqual(amt_a, amt_b)
+        self.assertEqual({amt_a, amt_b}, {2000000.0, 5000000.0})
+
+    def test_multi_source_page_limits_pairs_differing_limits(self):
+        """A.pdf -> 10 pages, B.pdf -> 15 pages, C.pdf -> 10 pages: displayed pair is 10 vs 15."""
+        normalized = {
+            "submission_rules": [
+                {"item": "Proposal Format", "format": "PDF", "details": "Technical proposal must not exceed 10 pages", "source_doc": "A.pdf"},
+                {"item": "Proposal Format", "format": "PDF", "details": "Technical proposal must not exceed 15 pages", "source_doc": "B.pdf"},
+                {"item": "Proposal Format", "format": "PDF", "details": "Technical proposal must not exceed 10 pages", "source_doc": "C.pdf"}
+            ]
+        }
+        pkg_files = ["A.pdf", "B.pdf", "C.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        page_conflicts = [c for c in conflicts if c.get("conflict_type") == "SUBMISSION_RULE_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
+        self.assertEqual(len(page_conflicts), 1)
+        self.assertNotEqual(page_conflicts[0]["source_a"]["text"], page_conflicts[0]["source_b"]["text"])
+        self.assertEqual({page_conflicts[0]["source_a"]["text"], page_conflicts[0]["source_b"]["text"]}, {"10 pages", "15 pages"})
+
+
 class TestStageCSameDocumentSameMilestoneDates(unittest.TestCase):
-    """Scenario 5: Same physical document containing differing dates for the same semantic milestone."""
+    """Scenario 6: Same physical document containing differing dates for the same semantic milestone."""
 
     def test_same_document_differing_dates_is_review_item(self):
         """Bid Closing Date 2026-09-15 vs Bid Closing Date 2026-09-30 in same document -> REVIEW_ITEM."""
@@ -250,7 +331,7 @@ class TestStageCSameDocumentSameMilestoneDates(unittest.TestCase):
 
 
 class TestStageCPositiveTrueConflicts(unittest.TestCase):
-    """Scenario 6: Positive tests ensuring legitimate contradictions are captured as TRUE_CONFLICT."""
+    """Scenario 7: Positive tests ensuring legitimate contradictions are captured as TRUE_CONFLICT."""
 
     def test_positive_a_closing_date_contradiction_across_docs(self):
         """Positive Case A: Bid Closing Date 2026-09-15 vs Bid Closing Date 2026-09-30 across docs -> TRUE CONFLICT."""
@@ -315,7 +396,7 @@ class TestStageCPositiveTrueConflicts(unittest.TestCase):
 
 
 class TestStageCSourceValidityAndProvenance(unittest.TestCase):
-    """Scenario 7: Source validity classifications and synthetic reference downgrades."""
+    """Scenario 8: Source validity classifications and synthetic reference downgrades."""
 
     def test_physical_both_when_both_filenames_resolve_to_physical_files(self):
         src_a = {"doc": "RFP.pdf", "text": "2026-09-15"}
@@ -359,7 +440,7 @@ class TestStageCSourceValidityAndProvenance(unittest.TestCase):
 
 
 class TestBankOfCanadaStageCReplay(unittest.TestCase):
-    """Scenario 8: Replay refined Stage C reconciliation against frozen Bank of Canada normalized facts."""
+    """Scenario 9: Replay refined Stage C reconciliation against frozen Bank of Canada normalized facts."""
 
     def test_bank_of_canada_frozen_replay(self):
         fixture_path = os.path.join(
