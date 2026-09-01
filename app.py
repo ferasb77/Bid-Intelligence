@@ -8,11 +8,18 @@ from database import (init_db, get_all_bids, get_bid, create_bid, update_bid, de
                       get_documents, upsert_document, delete_document, save_upload,
                       get_document_versions, create_expected_document,
                       get_outline, upsert_section, delete_section,
-                      get_readiness)
+                      get_readiness, get_bid_brief, upsert_bid_brief)
 from config import get_api_key, api_key_configured
 from pages_extra import (page_content_library, page_proposal_analyzer,
-    page_coach_roster, page_clarifications, page_section_drafter,
-    page_submission_assembler, page_debrief, page_exec_dashboard)
+    page_team_roster, page_clarifications, page_section_drafter,
+    page_submission_assembler, page_exec_dashboard)
+from pages.stage_understand import page_understand
+from pages.stage_decide import page_decide
+from pages.stage_build import page_build
+from pages.stage_check import page_check
+from pages.stage_submit import page_submit
+from pages.stage_debrief import page_debrief
+from pages.settings_firm import page_settings_firm
 from pdf_export import generate_compliance_pdf
 from brand import dashboard_brand_html, sidebar_brand_html
 from components.ui import (inject_css, stage_badge, status_badge, priority_badge,
@@ -50,13 +57,19 @@ with st.sidebar:
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
-    for label, key in {"🏠  Dashboard": "dashboard", "📋  All Bids": "all_bids",
-                   "➕  New Bid": "new_bid", "📚  Content Library": "content_library",
-                   "🏋  Coach Roster": "coach_roster",
-                   "📊  Executive View": "exec_dashboard"}.items():
+    # ── Global Navigation ──
+    for label, key in {
+        "🏠  Dashboard": "dashboard",
+        "📋  Bids Directory": "all_bids",
+        "➕  New Bid Ingestion": "new_bid",
+        "📚  Content Library": "content_library",
+        "📊  Executive View": "exec_dashboard",
+        "⚙️  Firm Profile & Settings": "settings_firm",
+    }.items():
         if st.button(label, key=f"nav_{key}", use_container_width=True):
             go(key)
 
+    # ── Active Bid Navigation (5-Stage Decision Workflow) ──
     if st.session_state.active_bid:
         bid = get_bid(st.session_state.active_bid)
         if bid:
@@ -66,22 +79,23 @@ with st.sidebar:
                         f'<span style="font-weight:400;color:#A9A69D">{bid["title"][:38]}{"…" if len(bid["title"])>38 else ""}</span></div>',
                         unsafe_allow_html=True)
             st.markdown("")
-            for label, key in {
-                "📊  Overview":          "bid_overview",
-                "✅  Compliance Matrix": "compliance",
-                "📁  Documents":         "documents",
-                "☑️  Tasks":             "tasks",
-                "📦  Deliverables":      "deliverables",
-                "📝  Proposal Outline":  "outline",
-                "🤖  AI Analyst":        "ai_analyst",
-                "❓  Clarifications":    "clarifications",
-                "✍  Section Drafter":   "section_drafter",
-                "🔬  Proposal Analyzer": "proposal_analyzer",
-                "📤  Submission":        "submission_assembler",
-                "🏆  Debrief":           "debrief",
-            }.items():
+
+            stages_nav = {
+                "💡  1. UNDERSTAND": "stage_understand",
+                "⚖️  2. DECIDE":     "stage_decide",
+                "🛠️  3. BUILD":      "stage_build",
+                "🔍  4. CHECK":      "stage_check",
+                "🚀  5. SUBMIT":     "stage_submit",
+            }
+
+            # Reveal Debrief contextually once submitted or closed
+            if bid.get("stage") in ("Submitted", "Won", "Lost", "Withdrawn", "No Bid"):
+                stages_nav["🏆  Debrief"] = "stage_debrief"
+
+            for label, key in stages_nav.items():
                 if st.button(label, key=f"nav_{key}", use_container_width=True):
                     go(key)
+
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
             if st.button("← All Bids", use_container_width=True):
                 st.session_state.active_bid = None
@@ -94,11 +108,11 @@ with st.sidebar:
 def _deadline_label(bid: dict) -> str:
     """
     Return a deadline label for a bid, suppressing countdown if the bid
-    is already Submitted, Won, or Lost.
+    is already Submitted, Won, Lost, Withdrawn, or No Bid.
     """
     stage = bid.get("stage", "")
-    if stage in ("Submitted", "Won", "Lost"):
-        colour = {"Won": "#27AE60", "Lost": "#C0392B"}.get(stage, "#2471A3")
+    if stage in ("Submitted", "Won", "Lost", "Withdrawn", "No Bid"):
+        colour = {"Won": "#27AE60", "Lost": "#C0392B", "Withdrawn": "#7F8C8D", "No Bid": "#555555"}.get(stage, "#2471A3")
         return f'<span style="color:{colour};font-size:.78rem">✓ {stage}</span>'
     return days_label(days_until(bid.get("submission_deadline")))
 
@@ -109,13 +123,16 @@ def page_dashboard():
     submitted = [b for b in bids if b["stage"] == "Submitted"]
     won       = [b for b in bids if b["stage"] == "Won"]
     lost      = [b for b in bids if b["stage"] == "Lost"]
+    withdrawn = [b for b in bids if b["stage"] == "Withdrawn"]
+    nobid     = [b for b in bids if b["stage"] == "No Bid"]
     urgent    = [b for b in active if (days_until(b.get("submission_deadline")) or 999) <= 14]
 
     c1,c2,c3,c4 = st.columns(4)
     c1.markdown(metric_card("Active Bids", len(active), f"{len(bids)} total"), unsafe_allow_html=True)
     c2.markdown(metric_card("Submitted", len(submitted), "awaiting outcome"), unsafe_allow_html=True)
-    wr = f"{round(len(won)/(len(won)+len(lost))*100)}%" if (won or lost) else "—"
-    c3.markdown(metric_card("Win Rate", wr, f"{len(won)}W / {len(lost)}L"), unsafe_allow_html=True)
+    closed_decided = len(won) + len(lost)
+    wr = f"{round(len(won)/closed_decided*100)}%" if closed_decided else "—"
+    c3.markdown(metric_card("Win Rate", wr, f"{len(won)}W / {len(lost)}L ({len(withdrawn)} Withdrawn)"), unsafe_allow_html=True)
     c4.markdown(metric_card("Deadlines ≤14d", len(urgent), "need attention"), unsafe_allow_html=True)
     st.markdown("")
 
@@ -132,7 +149,7 @@ def page_dashboard():
             c2.markdown(days_label(days_until(b.get("submission_deadline"))), unsafe_allow_html=True)
             c3.markdown(readiness_bar(pct), unsafe_allow_html=True)
             if c4.button("Open", key=f"urg_{b['id']}"):
-                go("bid_overview", b["id"])
+                go("stage_understand", b["id"])
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
     st.markdown("### Pipeline")
@@ -150,7 +167,7 @@ def page_dashboard():
             c3.markdown(_deadline_label(b), unsafe_allow_html=True)
             c4.markdown(readiness_bar(pct) if b["req_count"] else '<span style="color:#6E6C66;font-size:.75rem">No requirements</span>', unsafe_allow_html=True)
             if c5.button("Open", key=f"dash_{b['id']}"):
-                go("bid_overview", b["id"])
+                go("stage_understand", b["id"])
         st.markdown("")
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -173,7 +190,7 @@ def page_all_bids():
         c3.markdown(f'<span style="color:#6E6C66;font-size:.72rem">{b.get("submission_deadline") or "—"}</span>', unsafe_allow_html=True)
         c4.markdown(readiness_bar(pct) if b["req_count"] else '<span style="color:#6E6C66;font-size:.75rem">No requirements</span>', unsafe_allow_html=True)
         if c5.button("Open →", key=f"all_{b['id']}"):
-            go("bid_overview", b["id"])
+            go("stage_understand", b["id"])
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -204,25 +221,54 @@ def page_new_bid():
         return
 
     # Upload
-    st.markdown("### Upload RFP")
-    st.markdown('<div class="info-box">Upload the RFP or tender document. Claude will extract the bid details, deadlines, compliance matrix, and proposal outline automatically.</div>', unsafe_allow_html=True)
-    uploaded = st.file_uploader("Drop RFP here (PDF, DOCX, TXT)", type=["pdf","docx","doc","txt"], label_visibility="collapsed")
-    if uploaded:
-        fb = uploaded.read()
-        st.markdown(f'<div class="info-box">📄 <strong>{uploaded.name}</strong> — {len(fb)//1024} KB ready to extract.</div>', unsafe_allow_html=True)
-        if st.button("🔍  Extract with Claude AI →", use_container_width=True, type="primary"):
+    st.markdown("### Upload Procurement Package")
+    st.markdown(
+        '<div class="info-box">'
+        'Upload your complete procurement package (Main RFP, Appendices, Workbooks, Addenda, or a ZIP archive). '
+        'Supported formats: <strong>PDF, DOCX, XLSX, CSV, TXT, ZIP</strong>. Claude will analyze all documents through a staged pipeline, '
+        'reconcile cross-document conflicts, extract the compliance matrix with validated source traceability, and synthesize the executive Bid Brief.'
+        '</div>',
+        unsafe_allow_html=True
+    )
+    from extractor import extract_procurement_package, unpack_procurement_package
+    uploaded_files = st.file_uploader(
+        "Upload procurement documents or ZIP archive (PDF, DOCX, XLSX, CSV, TXT, ZIP)",
+        type=["pdf", "docx", "xlsx", "csv", "txt", "zip"],
+        accept_multiple_files=True,
+        key="pkg_uploader"
+    )
+
+    if uploaded_files:
+        raw_tuples = [(f.name, f.read()) for f in uploaded_files]
+        pkg_files, pkg_warnings = unpack_procurement_package(raw_tuples)
+
+        if pkg_warnings:
+            for w in pkg_warnings:
+                st.markdown(f'<div class="warn-box">⚠️ {w}</div>', unsafe_allow_html=True)
+
+        st.markdown(
+            f'<div style="background:#111118;border:1px solid #292832;border-radius:6px;padding:.8rem 1.1rem;margin-bottom:.8rem">'
+            f'<strong>📦 Procurement Package Loaded:</strong> {len(pkg_files)} supported file(s) ready to extract.'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+        for fn, fb in pkg_files:
+            st.markdown(f'<span style="font-size:.78rem;color:#A9A69D">📄 <strong>{fn}</strong> ({len(fb)//1024} KB)</span>', unsafe_allow_html=True)
+
+        st.markdown("")
+        if st.button("🔍 Analyze Complete Package with Claude AI →", use_container_width=True, type="primary"):
             if not st.session_state.get("anthropic_api_key"):
                 st.error("Add your Anthropic API key first.")
             else:
-                with st.spinner("Reading RFP and extracting structure… 15–30 seconds"):
+                with st.spinner(f"Reading and reconciling {len(pkg_files)} procurement document(s)… 20–40s"):
                     try:
-                        result, model_used = extract_rfp(fb, uploaded.name, st.session_state["anthropic_api_key"])
+                        result, model_used = extract_procurement_package(pkg_files, st.session_state["anthropic_api_key"])
                         st.session_state["extraction"] = result
-                        st.session_state["extraction_file"] = {"bytes": fb, "name": uploaded.name}
+                        st.session_state["extraction_pkg_files"] = pkg_files
                         st.session_state["model_used"] = model_used
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Extraction failed: {e}")
+                        st.error(f"Package extraction failed: {e}")
                         st.markdown('<div class="warn-box">Check that your Anthropic API key is valid (starts with sk-ant-).</div>', unsafe_allow_html=True)
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
@@ -247,22 +293,34 @@ def page_new_bid():
                     bid_id = create_bid({"title":title,"client":client,"file_number":file_no,
                         "stage":stage,"sensitivity":sens,"owner":owner,"value_cad":val or None,
                         "submission_deadline":sub_dl or None,"clarification_deadline":clar_dl or None,"notes":notes})
-                    go("bid_overview", bid_id)
+                    go("stage_understand", bid_id)
                 else:
                     st.error("Title and Client required.")
 
 def _render_extraction_review():
     extracted = st.session_state["extraction"]
-    fb        = st.session_state["extraction_file"]["bytes"]
-    fname     = st.session_state["extraction_file"]["name"]
-    model_used= st.session_state.get("model_used","claude-sonnet-4-6")
+    pkg_files = st.session_state.get("extraction_pkg_files", [])
+    model_used= st.session_state.get("model_used","claude-haiku-4-5-20251001")
     bid   = extracted.get("bid",{})
+    brief = extracted.get("brief",{})
     reqs  = extracted.get("requirements",[])
     docs  = extracted.get("documents",[])
     secs  = extracted.get("outline",[])
+    conflicts = brief.get("document_conflicts", [])
 
-    st.markdown("## Review Extracted Information")
-    st.markdown(f'<div class="info-box">Extracted using <strong>{model_used}</strong>. Review and edit, then click <strong>Create Bid</strong>.</div>', unsafe_allow_html=True)
+    st.markdown("## Review Extracted Package Intelligence")
+    st.markdown(f'<div class="info-box">Synthesized from <strong>{len(pkg_files)} document(s)</strong> using <strong>{model_used}</strong>. Review and edit before creating bid.</div>', unsafe_allow_html=True)
+
+    if conflicts:
+        st.markdown("### ⚠️ Cross-Document Discrepancies Detected")
+        for dc in conflicts:
+            st.markdown(
+                f'<div class="warn-box">'
+                f'<strong>[{dc.get("conflict_type","CONFLICT")}] {dc.get("topic","Discrepancy")}</strong>'
+                f'<br>{dc.get("assessment","")}'
+                f'</div>',
+                unsafe_allow_html=True
+            )
 
     st.markdown("### Bid Details")
     c1,c2 = st.columns(2)
@@ -309,26 +367,41 @@ def _render_extraction_review():
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
     c1,c2 = st.columns([2,1])
-    if c1.button("✅  Create Bid with Extracted Data", use_container_width=True, type="primary"):
+    if c1.button("✅  Create Bid with Extracted Package", use_container_width=True, type="primary"):
         if not title or not client:
             st.error("Title and Client are required.")
             return
         bid_id = create_bid({"title":title,"client":client,"file_number":file_no,
             "stage":stage,"sensitivity":sens,"owner":owner,"value_cad":val or None,
             "submission_deadline":sub_dl or None,"clarification_deadline":clar_dl or None,"notes":notes})
-        save_upload(bid_id, fname, fb)
+        
+        # Save all package files
+        for fn, fb in pkg_files:
+            save_upload(bid_id, fn, fb)
+            
+        brief_data = extracted.get("brief") or {}
+        brief_data["bid_id"] = bid_id
+        upsert_bid_brief(brief_data)
         for r in reqs:
-            upsert_requirement({**r,"id":None,"bid_id":bid_id,"notes":r.get("notes") or ""})
+            upsert_requirement({
+                **r,
+                "id": None,
+                "bid_id": bid_id,
+                "qual_status": r.get("qual_status", "UNKNOWN"),
+                "evidence_status": r.get("evidence_status", "MISSING"),
+                "source_refs": r.get("source_refs", []),
+                "notes": r.get("notes") or ""
+            })
         for d in docs:
             upsert_document({**d,"id":None,"bid_id":bid_id,"file_path":None})
         for s in secs:
             upsert_section({**s,"id":None,"bid_id":bid_id})
         st.session_state["extraction"] = None
-        st.session_state["extraction_file"] = None
-        go("bid_overview", bid_id)
+        st.session_state["extraction_pkg_files"] = None
+        go("stage_understand", bid_id)
     if c2.button("✕  Start Over", use_container_width=True):
         st.session_state["extraction"] = None
-        st.session_state["extraction_file"] = None
+        st.session_state["extraction_pkg_files"] = None
         st.rerun()
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1267,24 +1340,24 @@ def page_outline(bid_id):
         st.markdown('<div class="empty-state">No sections yet.</div>', unsafe_allow_html=True)
         st.markdown("### Quick-start template")
         c1,c2=st.columns(2)
-        if c1.button("📋 CDA-AMC Coaching RFSO Structure",use_container_width=True):
+        if c1.button("📋 Professional Services Proposal Outline",use_container_width=True):
             for i,(n,t,o,w) in enumerate([
                 ("1","Executive Summary","Proposal Lead",500),
-                ("2","Understanding of CDA-AMC's Needs","Proposal Lead",400),
-                ("3","Coaching Philosophy","Proposal Lead",500),
-                ("4","Coaching Methodology","Proposal Lead",600),
-                ("5","Approach to the Three Coaching Groups","Proposal Lead",700),
-                ("6","Work Plan and Delivery Model","Proposal Lead",500),
-                ("7","Coach Selection and Matching Process","Proposal Lead",400),
-                ("8","Confidentiality and Ethics","Proposal Lead",300),
-                ("9","Team Qualifications and CVs","HR Coordinator",600),
-                ("10","Case Study / Testimonial","Business Development",400),
-                ("11","Healthcare and NFP Sector Familiarity","Proposal Lead",400),
-                ("12","Change Management Experience","Proposal Lead",300),
-                ("13","IDEA, Reconciliation, and ESG","Executive Sponsor",400),
-                ("14","AI / Non-AI Methodology and Safeguards","Proposal Lead",400),
-                ("15","Responses to Five Coaching Questions","Proposal Lead",600),
-                ("16","Optional Services","Proposal Lead",200)]):
+                ("2","Understanding of the Client Requirements & Objectives","Proposal Lead",400),
+                ("3","Delivery Philosophy & Framework","Proposal Lead",500),
+                ("4","Technical & Operational Methodology","Proposal Lead",600),
+                ("5","Service Stream Architecture & SOW Alignment","Proposal Lead",700),
+                ("6","Work Plan, Phasing, and Delivery Schedule","Proposal Lead",500),
+                ("7","Resource Allocation & Team Matching Process","Proposal Lead",400),
+                ("8","Governance, Confidentiality, and Ethics","Proposal Lead",300),
+                ("9","Key Personnel Qualifications & Detailed CVs","HR Coordinator",600),
+                ("10","Relevant Past Performance & Case Studies","Business Development",400),
+                ("11","Sector & Domain Experience","Proposal Lead",400),
+                ("12","Risk Management & Change Transition","Proposal Lead",300),
+                ("13","Accessibility, ESG, and Social Value Commitments","Executive Sponsor",400),
+                ("14","Technology, Data Security, and AI Safeguards","Proposal Lead",400),
+                ("15","Technical Evaluation Criteria Responses","Proposal Lead",600),
+                ("16","Value-Add & Optional Services","Proposal Lead",200)]):
                 upsert_section({"id":None,"bid_id":bid_id,"sort_order":i,"section_num":n,
                     "title":t,"owner":o,"word_limit":w,"status":"Not Started","notes":""})
             st.rerun()
@@ -1522,7 +1595,7 @@ def page_ai_analyst(bid_id):
         st.markdown("### Bid / No-Bid Assessment")
         st.markdown('<div class="info-box">Scores this opportunity across five strategic dimensions and produces a recommendation.</div>', unsafe_allow_html=True)
         fc=st.text_area("Your firm's relevant capabilities",height=120,
-            placeholder="e.g. Phoenix Consulting International is the authorised Hogan distributor for the GCC…",key="bn_context")
+            placeholder="e.g. Established consultancy specializing in management advisory, digital transformation, and workforce analytics…",key="bn_context")
         if st.button("🎯 Generate bid/no-bid assessment",key="bn_run",use_container_width=True,type="primary"):
             with st.spinner("Scoring opportunity…"):
                 try:
@@ -1665,140 +1738,44 @@ def page_deliverables(bid_id):
                 f'<span style="color:{col};font-weight:700;font-size:.82rem;letter-spacing:.06em">'
                 f'{cat.upper()} ({len(cat_dels)})</span></div>',
                 unsafe_allow_html=True)
-
-            hcols = st.columns([.5, 2.2, 2.8, 1.2, 1.2, 1.6, 1.6, .5])
-            for h, hcol in zip(["ID","Service","Description / Scope",
-                                  "Duration","Volume / Unit",
-                                  "Price (AI)","Price (Non-AI)",""], hcols):
-                hcol.markdown(f'<span style="font-size:.7rem;color:#A9A69D;'
-                              f'font-weight:600;text-transform:uppercase">{h}</span>',
-                              unsafe_allow_html=True)
-
             for d in cat_dels:
-                c1,c2,c3,c4,c5,c6,c7,c8 = st.columns([.5,2.2,2.8,1.2,1.2,1.6,1.6,.5])
-                c1.markdown(f'<span style="font-size:.82rem;color:{col};font-weight:700">'
-                            f'{d.get("service_id") or "—"}</span>', unsafe_allow_html=True)
+                opt_tag = '<span style="background:#2C1810;color:#E67E22;font-size:.7rem;padding:.1rem .4rem;border-radius:3px;margin-left:.4rem">OPTIONAL</span>' if d.get("optional") else ""
+                with st.expander(f"**{d.get('service_id','')}** {d['title']}{opt_tag}"):
+                    c1,c2,c3 = st.columns(3)
+                    c1.markdown(f"**Duration / Cycle:** {d.get('duration') or '—'}")
+                    c2.markdown(f"**Volume / Units:** {d.get('volume') or '—'}")
+                    c3.markdown(f"**Unit Type:** {d.get('unit') or '—'}")
+                    if d.get("description"):
+                        st.markdown(f'<div style="color:#A9A69D;font-size:.85rem;margin:.4rem 0">{d["description"]}</div>', unsafe_allow_html=True)
+                    if d.get("linked_req_ids"):
+                        st.markdown(f'<span style="font-size:.78rem;color:#6E6C66">Linked Requirements: {d["linked_req_ids"]}</span>', unsafe_allow_html=True)
+                    if d.get("notes"):
+                        st.markdown(f'<span style="font-size:.78rem;color:#C9A96E">Notes: {d["notes"]}</span>', unsafe_allow_html=True)
+                    if st.button("🗑 Delete", key=f"del_d_{d['id']}"):
+                        delete_deliverable(d["id"])
+                        st.rerun()
 
-                c2.markdown(f'<span style="font-size:.88rem;font-weight:600">{d["title"]}</span>',
-                            unsafe_allow_html=True)
-                if d.get("linked_req_ids"):
-                    c2.markdown(f'<span style="font-size:.7rem;color:#6E6C66">'
-                                f'Ref: {d["linked_req_ids"]}</span>', unsafe_allow_html=True)
-
-                c3.markdown(f'<span style="font-size:.8rem;color:#A9A69D">'
-                            f'{d.get("description") or "—"}</span>', unsafe_allow_html=True)
-
-                c4.markdown(f'<span style="font-size:.8rem">{d.get("duration") or "—"}</span>',
-                            unsafe_allow_html=True)
-
-                vol  = d.get("volume") or "—"
-                unit = d.get("unit") or ""
-                c5.markdown(f'<span style="font-size:.8rem">{vol}</span><br>'
-                            f'<span style="font-size:.72rem;color:#6E6C66">{unit}</span>',
-                            unsafe_allow_html=True)
-
-                ai_p = f'CAD {d["price_ai"]:,.2f}' if d.get("price_ai") else "—"
-                c6.markdown(f'<span style="font-size:.85rem;color:#EDEAE3">{ai_p}</span>',
-                            unsafe_allow_html=True)
-
-                na_p = f'CAD {d["price_non_ai"]:,.2f}' if d.get("price_non_ai") else "—"
-                c7.markdown(f'<span style="font-size:.85rem;color:#EDEAE3">{na_p}</span>',
-                            unsafe_allow_html=True)
-
-                if c8.button("✏", key=f"eds_{d['id']}"):
-                    st.session_state["editing_svc"] = d["id"]
-                    st.rerun()
-                st.markdown('<hr class="section-divider" style="margin:.25rem 0">',
-                            unsafe_allow_html=True)
-            st.markdown("")
-
-    else:
-        st.markdown(
-            '<div class="info-box">No services defined yet. Click <strong>Load from RFP</strong> '
-            'to auto-populate from the extracted requirements, or add manually below.</div>',
-            unsafe_allow_html=True)
-
-    # ── Edit panel ────────────────────────────────────────────────────────────
-    eid = st.session_state.get("editing_svc")
-    if eid:
-        svc = next((d for d in dels if d["id"] == eid), None)
-        if svc:
-            st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-            st.markdown(f"### Edit — {svc['title']}")
-            with st.form("edit_svc"):
-                c1,c2,c3 = st.columns(3)
-                title = c1.text_input("Service Title", value=svc["title"])
-                sid   = c2.text_input("ID", value=svc.get("service_id") or "")
-                cat   = c3.selectbox("Category", DEL_CATEGORIES,
-                                     index=DEL_CATEGORIES.index(svc.get("category","Core Service"))
-                                     if svc.get("category") in DEL_CATEGORIES else 0)
-                desc = st.text_area("Description / Scope", value=svc.get("description") or "", height=80)
-                c1,c2,c3 = st.columns(3)
-                dur  = c1.text_input("Duration", value=svc.get("duration") or "",
-                                     placeholder="e.g. 12 months")
-                vol  = c2.text_input("Volume", value=svc.get("volume") or "",
-                                     placeholder="e.g. 24 hours")
-                unit = c3.text_input("Unit", value=svc.get("unit") or "",
-                                     placeholder="e.g. per engagement")
-                c1,c2,c3,c4 = st.columns(4)
-                pai  = c1.number_input("Price — AI Option (CAD)",
-                                       value=float(svc.get("price_ai") or 0), step=100.0, min_value=0.0)
-                pna  = c2.number_input("Price — Non-AI Option (CAD)",
-                                       value=float(svc.get("price_non_ai") or 0), step=100.0, min_value=0.0)
-                opt  = c3.checkbox("Optional service", value=bool(svc.get("optional")))
-                so   = c4.number_input("Order", value=int(svc.get("sort_order") or 0), step=1)
-                linked = st.text_input("Linked Req IDs", value=svc.get("linked_req_ids") or "",
-                                       placeholder="§4.6, R3…")
-                notes = st.text_area("Notes", value=svc.get("notes") or "", height=60)
-                c1,c2,c3 = st.columns([2,1,1])
-                sv = c1.form_submit_button("Save", use_container_width=True)
-                dl = c2.form_submit_button("Delete", use_container_width=True)
-                cx = c3.form_submit_button("Cancel", use_container_width=True)
-            if sv:
-                upsert_deliverable({"id":eid,"bid_id":bid_id,"title":title,
-                    "service_id":sid,"category":cat,"description":desc,
-                    "duration":dur,"volume":vol,"unit":unit,
-                    "price_ai":pai or None,"price_non_ai":pna or None,
-                    "optional":1 if opt else 0,"sort_order":so,
-                    "linked_req_ids":linked,"notes":notes})
-                del st.session_state["editing_svc"]
-                st.rerun()
-            if dl:
-                delete_deliverable(eid)
-                del st.session_state["editing_svc"]
-                st.rerun()
-            if cx:
-                del st.session_state["editing_svc"]
-                st.rerun()
-
-    # ── Add service ───────────────────────────────────────────────────────────
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-    with st.expander("➕ Add Service"):
-        with st.form("add_svc", clear_on_submit=True):
-            c1,c2,c3 = st.columns(3)
-            title = c1.text_input("Service Title *")
-            sid   = c2.text_input("ID", placeholder="S1, OPT1…")
-            cat   = c3.selectbox("Category", DEL_CATEGORIES)
-            desc  = st.text_area("Description / Scope", height=70)
-            c1,c2,c3 = st.columns(3)
-            dur  = c1.text_input("Duration",  placeholder="e.g. 6 months")
-            vol  = c2.text_input("Volume",    placeholder="e.g. 12 hours")
-            unit = c3.text_input("Unit",      placeholder="e.g. per engagement")
+    with st.expander("➕ Add Service / Deliverable Manually"):
+        with st.form("add_deliv"):
+            c1,c2 = st.columns(2)
+            sid   = c1.text_input("Service ID", placeholder="S1, DEL-01…")
+            title = c2.text_input("Title *")
+            desc  = st.text_area("Description")
             c1,c2,c3,c4 = st.columns(4)
-            pai  = c1.number_input("Price — AI (CAD)",     min_value=0.0, step=100.0)
-            pna  = c2.number_input("Price — Non-AI (CAD)", min_value=0.0, step=100.0)
-            opt  = c3.checkbox("Optional service")
-            linked = c4.text_input("Linked Refs", placeholder="§4.6, R3…")
-            notes = st.text_area("Notes", height=50)
-            if st.form_submit_button("Add Service", use_container_width=True):
+            cat   = c1.selectbox("Category", ["Core Service","Advisory","Workshop","Reporting","Optional Add-on","Call-up Mechanic"])
+            dur   = c2.text_input("Duration", placeholder="3 months, 12 weeks…")
+            vol   = c3.text_input("Volume", placeholder="24 hours, 5 workshops…")
+            unit  = c4.text_input("Unit", placeholder="per engagement, hourly…")
+            c1,c2 = st.columns(2)
+            reqs_link = c1.text_input("Linked Req IDs", placeholder="M1, R3…")
+            opt   = c2.checkbox("Optional / Add-on Service", value=False)
+            notes = st.text_input("Notes")
+            if st.form_submit_button("Add Deliverable", use_container_width=True):
                 if title:
-                    upsert_deliverable({"id":None,"bid_id":bid_id,
-                        "sort_order":len(dels),"service_id":sid,
-                        "title":title,"description":desc,"category":cat,
-                        "duration":dur,"volume":vol,"unit":unit,
-                        "price_ai":pai or None,"price_non_ai":pna or None,
-                        "optional":1 if opt else 0,
-                        "linked_req_ids":linked,"notes":notes})
+                    upsert_deliverable({"id":None,"bid_id":bid_id,"service_id":sid,"title":title,
+                        "description":desc,"category":cat,"duration":dur,"volume":vol,
+                        "unit":unit,"optional":1 if opt else 0,"linked_req_ids":reqs_link,"notes":notes})
                     st.rerun()
                 else:
                     st.error("Title is required.")
@@ -1806,86 +1783,46 @@ def page_deliverables(bid_id):
 
 def _auto_populate_services(bid_id, reqs, bid):
     """Pre-populate services from the Statement of Work based on extracted requirements."""
-    # Standard coaching groups from CDA-AMC RFSO §4.6 — or generic if not recognized
     notes_lower = (bid.get("notes") or "").lower()
-    is_coaching = any(w in notes_lower for w in ["coach","coaching","mentor"])
+    is_advisory = any(w in notes_lower for w in ["advisory", "consulting", "strategy", "review"])
 
-    if is_coaching:
+    if is_advisory:
         services = [
-            {"service_id":"S1","title":"Group 1 — Executive Coaching",
-             "description":"12-month coaching engagement for executive-level leaders. "
-                           "24 coaching hours total. Includes chemistry meeting, triangulation "
-                           "session with people-leader, and structured coaching cycle.",
-             "category":"Core Service","duration":"12 months","volume":"24 hours",
-             "unit":"per engagement","optional":0,
-             "linked_req_ids":"§4.6 II(a), R3","notes":""},
-            {"service_id":"S2","title":"Group 2 — Select Leader Coaching",
-             "description":"6-month coaching engagement for select leaders seeking development. "
-                           "12 coaching hours total. Covers high-potential and development-opportunity leaders.",
-             "category":"Core Service","duration":"6 months","volume":"12 hours",
-             "unit":"per engagement","optional":0,
-             "linked_req_ids":"§4.6 II(b), R3","notes":"Groups 2 and 3 are majority of volume"},
-            {"service_id":"S3","title":"Group 3 — New Leader Coaching",
-             "description":"3-month coaching engagement for newly promoted or acquired leaders. "
-                           "6 coaching hours total. Focused on role alignment and measurable results.",
-             "category":"Core Service","duration":"3 months","volume":"6 hours",
-             "unit":"per engagement","optional":0,
-             "linked_req_ids":"§4.6 II(c), R3","notes":""},
-            {"service_id":"S4","title":"Chemistry Meeting",
-             "description":"Initial meeting between coach and employee to assess fit. "
-                           "If not a fit, vendor has up to 5 business days to propose an alternative coach.",
-             "category":"Call-up Mechanic","duration":"One session","volume":"1 hour",
-             "unit":"per engagement","optional":0,
-             "linked_req_ids":"§4.6 I(a)","notes":"If substitution fails, CDA-AMC may select alternate vendor"},
-            {"service_id":"S5","title":"Triangulation Meeting",
-             "description":"First formal coaching session including the employee's people-leader. "
-                           "Sets development goals and defines observable outcomes and measurement approach.",
-             "category":"Call-up Mechanic","duration":"First session","volume":"1 hour",
-             "unit":"per engagement","optional":0,
-             "linked_req_ids":"§4.6 I(c)","notes":"Included within total coaching hours"},
-            {"service_id":"OPT1","title":"360-Degree Assessment",
-             "description":"Multi-rater feedback assessment gathering input from manager, peers, "
-                           "and direct reports. Must be requested early and priced separately.",
-             "category":"Optional Service","duration":"As requested","volume":"Per participant",
-             "unit":"per participant","optional":1,
-             "linked_req_ids":"§4.6 V","notes":"Must be priced separately; declining does not diminish core coaching"},
-            {"service_id":"OPT2","title":"Psychometric / Personality Assessment",
-             "description":"Validated psychometric instrument (e.g. Hogan) providing leadership "
-                           "potential, derailer, and values insight to inform coaching goals.",
-             "category":"Optional Service","duration":"As requested","volume":"Per participant",
-             "unit":"per participant","optional":1,
-             "linked_req_ids":"§4.6 V","notes":"Propose Hogan suite as optional — confirm via clarification Q"},
-            {"service_id":"OPT3","title":"Leadership Assessment Report",
-             "description":"Written assessment report synthesising psychometric and coaching data "
-                           "into a structured leadership profile and development recommendations.",
-             "category":"Optional Service","duration":"As requested","volume":"Per participant",
-             "unit":"per participant","optional":1,
-             "linked_req_ids":"§4.6 V","notes":""},
-            {"service_id":"SOA1","title":"Standing Offer Agreement (SOA) — Call-up Mechanic",
-             "description":"No guaranteed volume. Each engagement triggered by a written Call-up "
-                           "from a CDA-AMC representative. Services, deliverables, and fees stated per call-up. "
-                           "CDA-AMC may award more than one SOA. Agreement valid Oct 1, 2026 – Sep 30, 2029.",
-             "category":"Call-up Mechanic","duration":"Oct 2026 – Sep 2029","volume":"No guaranteed volume",
-             "unit":"per call-up","optional":0,
-             "linked_req_ids":"§4.7","notes":"PCHO clause: other pan-Canadian health orgs may access same services and pricing"},
-            {"service_id":"REP1","title":"Post-Engagement Progress Update",
-             "description":"Confidential summary of coaching progress and goal achievement shared "
-                           "between coach, participant, and people-leader at end of engagement.",
-             "category":"Reporting","duration":"End of engagement","volume":"Per engagement",
-             "unit":"per engagement","optional":0,
-             "linked_req_ids":"§4.6 I(c)","notes":"Confidential — no individual session content disclosed"},
+            {"service_id":"S1","title":"Inception & Needs Analysis",
+             "description":"Initial stakeholder interviews, document review, and baseline assessment.",
+             "category":"Core Service","duration":"Weeks 1–3","volume":"1 engagement",
+             "unit":"per engagement","optional":0,"linked_req_ids":"M1, R1","notes":""},
+            {"service_id":"S2","title":"Detailed Solution & Framework Design",
+             "description":"Development of tailored frameworks, methodologies, and technical architecture.",
+             "category":"Core Service","duration":"Weeks 4–8","volume":"Core deliverable",
+             "unit":"per engagement","optional":0,"linked_req_ids":"R2","notes":""},
+            {"service_id":"S3","title":"Stakeholder Workshops & Facilitation",
+             "description":"Interactive validation sessions, leadership workshops, and alignment forums.",
+             "category":"Core Service","duration":"Weeks 6–10","volume":"Up to 4 workshops",
+             "unit":"per workshop","optional":0,"linked_req_ids":"R3","notes":""},
+            {"service_id":"S4","title":"Final Report & Executive Presentation",
+             "description":"Comprehensive recommendations report, transition roadmap, and executive briefing.",
+             "category":"Reporting","duration":"Weeks 10–12","volume":"1 final report + deck",
+             "unit":"per milestone","optional":0,"linked_req_ids":"R4","notes":""},
+            {"service_id":"OPT1","title":"Post-Implementation Advisory & Sustainment Support",
+             "description":"Quarterly progress reviews, advisory check-ins, and sustainment monitoring.",
+             "category":"Optional Service","duration":"6 months post-delivery","volume":"20 hours advisory",
+             "unit":"per month","optional":1,"linked_req_ids":"R5","notes":"Priced separately as optional"},
         ]
     else:
-        # Generic services template for non-coaching bids
         services = [
-            {"service_id":"S1","title":"Core Service Delivery",
-             "description":"Primary service as described in the Statement of Work.",
-             "category":"Core Service","duration":"Per SOW","volume":"As specified",
-             "unit":"per engagement","optional":0,"linked_req_ids":"§4.0","notes":""},
-            {"service_id":"OPT1","title":"Optional Services",
-             "description":"Additional services not included in the standard package.",
-             "category":"Optional Service","duration":"As requested","volume":"Per request",
-             "unit":"per item","optional":1,"linked_req_ids":"","notes":"Price separately"},
+            {"service_id":"S1","title":"Core Deliverable Delivery",
+             "description":"Primary technical service as defined in the tender Statement of Work.",
+             "category":"Core Service","duration":"Agreement term","volume":"As per SOW",
+             "unit":"per milestone","optional":0,"linked_req_ids":"M1","notes":""},
+            {"service_id":"S2","title":"Project Management & Governance Reporting",
+             "description":"Regular progress reporting, risk log maintenance, and steering meetings.",
+             "category":"Reporting","duration":"Monthly / Quarterly","volume":"Periodic reports",
+             "unit":"per month","optional":0,"linked_req_ids":"R1","notes":""},
+            {"service_id":"OPT1","title":"Optional Value-Add Capabilities",
+             "description":"Extended support, additional training, or specialized tools.",
+             "category":"Optional Service","duration":"As requested","volume":"On-demand",
+             "unit":"per call-up","optional":1,"linked_req_ids":"","notes":"Optional scope"},
         ]
 
     for i, s in enumerate(services):
@@ -2056,43 +1993,36 @@ def _services_pdf(bid, dels):
 page  = st.session_state.page
 bid_id = st.session_state.active_bid
 
-if   page == "dashboard":
+# Global pages
+if page == "dashboard":
     page_dashboard()
-elif page == "content_library":
-    page_content_library()
-elif page == "coach_roster":
-    page_coach_roster()
-elif page == "exec_dashboard":
-    page_exec_dashboard()
 elif page == "all_bids":
     page_all_bids()
 elif page == "new_bid":
     page_new_bid()
+elif page == "content_library":
+    page_content_library()
+elif page in ("team_roster", "coach_roster"):
+    page_team_roster()
+elif page == "exec_dashboard":
+    page_exec_dashboard()
+elif page == "settings_firm":
+    page_settings_firm()
+
+# Active bid pages (5 workflow stages + contextual debrief + backward compatibility)
 elif bid_id is None:
     go("dashboard")
-elif page == "bid_overview":
-    page_bid_overview(bid_id)
-elif page == "compliance":
-    page_compliance(bid_id)
-elif page == "tasks":
-    page_tasks(bid_id)
-elif page == "documents":
-    page_documents(bid_id)
-elif page == "outline":
-    page_outline(bid_id)
-elif page == "ai_analyst":
-    page_ai_analyst(bid_id)
-elif page == "deliverables":
-    page_deliverables(bid_id)
-elif page == "clarifications":
-    page_clarifications(bid_id)
-elif page == "section_drafter":
-    page_section_drafter(bid_id)
-elif page == "proposal_analyzer":
-    page_proposal_analyzer(bid_id)
-elif page == "submission_assembler":
-    page_submission_assembler(bid_id)
-elif page == "debrief":
+elif page in ("stage_understand", "bid_overview"):
+    page_understand(bid_id)
+elif page in ("stage_decide", "clarifications", "ai_analyst"):
+    page_decide(bid_id)
+elif page in ("stage_build", "outline", "section_drafter", "tasks", "documents", "deliverables"):
+    page_build(bid_id)
+elif page in ("stage_check", "compliance", "proposal_analyzer"):
+    page_check(bid_id)
+elif page in ("stage_submit", "submission_assembler"):
+    page_submit(bid_id)
+elif page in ("stage_debrief", "debrief"):
     page_debrief(bid_id)
 else:
     go("dashboard")

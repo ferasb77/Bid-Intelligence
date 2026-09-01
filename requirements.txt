@@ -1,9 +1,12 @@
 streamlit
 anthropic
 pymupdf
+pypdf
+python-docx
 python-dotenv
 reportlab
 pdf2image
 openpyxl
 supabase
 voyageai
+

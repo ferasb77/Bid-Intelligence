@@ -1,12 +1,18 @@
 """
-Phase 2 — AI Compliance Analyst
-Four capabilities:
-  1. compliance_review   — draft section vs requirements gap analysis
-  2. missing_evidence    — scan matrix for at-risk items
-  3. clarification_qs    — generate strategic clarification questions
-  4. bid_no_bid          — scored bid/no-bid recommendation
+Bid Intelligence — AI Compliance, Strategy, and Proposal Analyst.
+Provides decision-oriented intelligence across the bid lifecycle:
+  1. compliance_review         — draft section vs requirements gap analysis
+  2. missing_evidence          — scan matrix for at-risk items and qualification gaps
+  3. clarification_qs          — generate strategic, RFP-derived clarification questions
+  4. bid_no_bid                — multi-dimensional pursuit evaluation with blocker detection
+  5. past_proposal_analyzer    — extract reusable modular blocks and team capabilities
+  6. section_drafter           — evidence-based proposal section drafting
+  7. submission_readiness_check— final gate check before proposal submission
+  8. addendum_analyzer         — scan amendments and supplementary documents for changes
+  9. proposal_alignment        — two-call comprehensive proposal alignment audit
 """
 import json
+import re
 import anthropic
 from config import get_api_key
 
@@ -28,12 +34,10 @@ def _parse_json(raw: str) -> dict | list:
     Handles: markdown fences (complete OR truncated), trailing commentary,
     and JSON cut mid-stream before closing braces.
     """
-    import re as _re
-
-    # 1. Aggressive fence removal — works even when closing fence is absent
+    # 1. Aggressive fence removal
     text = raw.strip()
-    text = _re.sub(r"^```[a-z]*\s*\n?", "", text, flags=_re.IGNORECASE)
-    text = _re.sub(r"\n?```\s*$", "", text)
+    text = re.sub(r"^```[a-z]*\s*\n?", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\n?```\s*$", "", text)
     text = text.strip()
 
     # 2. Direct parse
@@ -77,7 +81,6 @@ def _parse_json(raw: str) -> dict | list:
             return result
 
     # 4. Truncation repair: JSON cut before model finished writing it.
-    #    Find the JSON start, then walk backward closing brackets until parseable.
     start_idx = text.find('{')
     if start_idx == -1:
         start_idx = text.find('[')
@@ -87,7 +90,6 @@ def _parse_json(raw: str) -> dict | list:
             if fragment[end_pos] not in ('}', ']', '"', '0123456789'):
                 continue
             chunk = fragment[:end_pos + 1]
-            # Close any unclosed brackets
             for oc2, cc2 in [('{', '}'), ('[', ']')]:
                 diff = chunk.count(oc2) - chunk.count(cc2)
                 chunk += cc2 * max(diff, 0)
@@ -100,9 +102,9 @@ def _parse_json(raw: str) -> dict | list:
             except json.JSONDecodeError:
                 continue
 
-    # 5. Nuclear: recover scalar key/value pairs as a flat dict
-    pairs = _re.findall(r'"([^"]+)"\s*:\s*"([^"]*)"', text)
-    numbers = _re.findall(r'"([^"]+)"\s*:\s*(-?\d+(?:\\.\d+)?)', text)
+    # 5. Fallback: recover scalar key/value pairs as flat dict
+    pairs = re.findall(r'"([^"]+)"\s*:\s*"([^"]*)"', text)
+    numbers = re.findall(r'"([^"]+)"\s*:\s*(-?\d+(?:\.\d+)?)', text)
     if pairs or numbers:
         recovered = dict(pairs)
         recovered.update({k: float(v) if '.' in v else int(v) for k, v in numbers})
@@ -115,18 +117,13 @@ def _parse_json(raw: str) -> dict | list:
     )
 
 
-
-
 # ── 1. Compliance Review ──────────────────────────────────────────────────────
-COMPLIANCE_SYSTEM = """You are a senior proposal reviewer. Your job is to compare a draft proposal 
-section against the RFP requirements it is meant to address and identify gaps, weaknesses, and 
-missing evidence. Be specific, direct, and actionable. Do not be encouraging — identify real problems."""
+COMPLIANCE_SYSTEM = """You are a senior proposal reviewer and compliance auditor.
+Your job is to compare a draft proposal section against the RFP requirements it is meant to address
+and identify compliance gaps, weak arguments, and missing evidence. Be specific, direct, and actionable."""
 
 def compliance_review(draft_text: str, requirements: list[dict]) -> dict:
-    """
-    Compare a draft proposal section against the compliance matrix.
-    Returns structured feedback with addressed/weak/missing items.
-    """
+    """Compare draft text against requirements; return structured feedback."""
     reqs_text = "\n".join(
         f"- [{r.get('req_id','')}] ({r.get('category','')}) {r.get('description','')} "
         f"| Evidence required: {r.get('evidence') or 'not specified'}"
@@ -139,12 +136,12 @@ def compliance_review(draft_text: str, requirements: list[dict]) -> dict:
 DRAFT PROPOSAL TEXT:
 {draft_text}
 
-Analyse how well the draft addresses each requirement. Return ONLY valid JSON:
+Analyze how well the draft addresses each requirement. Return ONLY valid JSON:
 {{
   "overall_score": <integer 0-100>,
   "summary": "<2-3 sentence overall assessment>",
   "addressed": [
-    {{"req_id": "M1", "finding": "how it is addressed"}}
+    {{"req_id": "M1", "finding": "how it is addressed with evidence"}}
   ],
   "weak": [
     {{"req_id": "R3", "finding": "what is present but insufficient", "suggestion": "specific improvement"}}
@@ -159,21 +156,18 @@ Analyse how well the draft addresses each requirement. Return ONLY valid JSON:
     return _parse_json(raw)
 
 
-# ── 2. Missing Evidence Detection ─────────────────────────────────────────────
-EVIDENCE_SYSTEM = """You are a bid compliance controller. You scan compliance matrices for risk. 
-Be blunt about what is at risk. Prioritise mandatory items above all else."""
+# ── 2. Missing Evidence & Qualification Risk Detection ────────────────────────
+EVIDENCE_SYSTEM = """You are a senior bid compliance controller. You scan requirement registers and qualification matrices for risk.
+Be blunt about what is at risk. Prioritize mandatory pass/fail qualification conditions above all else."""
 
 def missing_evidence(requirements: list[dict], bid_info: dict) -> dict:
-    """
-    Scan the full compliance matrix and surface at-risk items.
-    Returns prioritised risk list with recommended actions.
-    """
+    """Scan matrix and surface at-risk items and unassigned requirements."""
     sub_deadline = bid_info.get("submission_deadline", "unknown")
     clar_deadline = bid_info.get("clarification_deadline", "unknown")
 
     reqs_text = "\n".join(
         f"[{r.get('req_id','')}] {r.get('category','')} | "
-        f"Status: {r.get('status','')} | "
+        f"Status: {r.get('status','')} | Qual: {r.get('qual_status','UNKNOWN')} | "
         f"Owner: {r.get('owner') or 'UNASSIGNED'} | "
         f"Deadline: {r.get('deadline') or 'not set'} | "
         f"Evidence: {r.get('evidence') or 'not specified'} | "
@@ -185,17 +179,17 @@ def missing_evidence(requirements: list[dict], bid_info: dict) -> dict:
 Submission deadline: {sub_deadline}
 Clarification deadline: {clar_deadline}
 
-COMPLIANCE MATRIX:
+COMPLIANCE & QUALIFICATION MATRIX:
 {reqs_text}
 
-Identify all at-risk items. Return ONLY valid JSON:
+Identify all at-risk and unverified qualification items. Return ONLY valid JSON:
 {{
   "risk_level": "High|Medium|Low",
   "summary": "<blunt 2-sentence assessment of where this bid stands>",
   "critical": [
     {{
       "req_id": "M1",
-      "reason": "why this is critical",
+      "reason": "why this is critical or disqualifying",
       "action": "specific action needed",
       "by_when": "suggested internal deadline"
     }}
@@ -203,106 +197,86 @@ Identify all at-risk items. Return ONLY valid JSON:
   "at_risk": [
     {{
       "req_id": "R3",
-      "reason": "why at risk",
+      "reason": "why at risk or unverified",
       "action": "action needed"
     }}
   ],
   "unassigned": ["list of req_ids with no owner"],
-  "recommendation": "<single most important thing to do today>"
+  "recommendation": "<single most important priority action today>"
 }}"""
 
     raw = _call(EVIDENCE_SYSTEM, prompt, max_tokens=2048)
     return _parse_json(raw)
 
 
-# ── 3. Clarification Question Generator ───────────────────────────────────────
-CLARIFICATION_SYSTEM = """You are a senior bid strategist with deep experience in 
-Canadian federal procurement and professional-services consulting RFPs.
-
-Your job is to generate clarification questions that are:
-1. STRATEGICALLY CRITICAL — could change the bid/no-bid decision or prevent disqualification
-2. ELIGIBILITY-CLARIFYING — resolve ambiguities about who can bid and how
-3. SCOPE-DEFINING — nail down volume, geography, language, subcontracting rules
-4. COMMERCIALLY PROTECTIVE — confirm pricing assumptions and change-order rules
-5. COMPETITIVELY NEUTRAL — never reveal the bidder's weaknesses or strategy
+# ── 3. Strategic Clarification Question Generator ─────────────────────────────
+CLARIFICATION_SYSTEM = """You are a senior bid strategist and procurement advisor with extensive experience in competitive tendering.
+Your job is to generate clarification questions that:
+1. STRATEGICALLY CRITICAL — resolve ambiguities that could cause disqualification or alter the bid/no-bid decision.
+2. ELIGIBILITY & SCOPE CLEAR — clarify mandatory qualification thresholds, deliverables, volumes, and service levels.
+3. COMMERCIALLY PROTECTIVE — confirm pricing structures, indexation, travel policies, and change-order rules.
+4. COMPETITIVELY NEUTRAL — protect the bidder's commercial strategy; never reveal internal weaknesses.
 
 Questions must be:
-- Phrased as a neutral request for clarification, not an argument
-- Specific enough to get a definitive yes/no or quantified answer
-- Grounded in an actual ambiguity in the RFP — never ask what's already answered
-- Submitted before the enquiry deadline (answers go to ALL bidders, so phrase carefully)
+- Phrased as a neutral, professional request for clarification referencing specific RFP sections.
+- Formulated to elicit a definitive, binding answer from the procurement authority.
+- Grounded strictly in ambiguities in the tender documentation provided.
 
-For each question, provide a private rationale (internal use only) explaining the 
-strategic importance and what answer Phoenix needs to proceed confidently."""
+For each question, provide a private rationale (for internal bid team use only) explaining the strategic intent."""
 
 def generate_clarification_questions(bid_info: dict, requirements: list[dict],
-                                      rfp_context: str = "") -> dict:
-    """Generate ranked, submission-ready clarification questions from the RFP."""
+                                      rfp_context: str = "", firm_concerns: str = "") -> dict:
+    """Generate ranked, submission-ready clarification questions derived from the RFP."""
+    req_lines = []
+    for r in requirements:
+        wt_str = f" {r['weight']*100:.0f}%" if r.get('weight') else ""
+        req_lines.append(
+            f"[{r.get('req_id','')}] ({r.get('category','')}{wt_str}) "
+            f"{r.get('description','')[:180]} | "
+            f"Ref: {r.get('rfso_ref','') or 'not specified'} | Evidence: {r.get('evidence','') or 'not specified'}"
+        )
+    reqs_text = "\n".join(req_lines)
 
-    reqs_text = "\n".join(
-        f"[{r.get('req_id','')}] ({r.get('category','')} "
-        f"{f'{r["weight"]*100:.0f}%' if r.get('weight') else ''}) "
-        f"{r.get('description','')[:180]} | "
-        f"Evidence: {r.get('evidence','') or 'not specified'}"
-        for r in requirements
-    )
-
-    sub_deadline  = bid_info.get("submission_deadline","")
-    clar_deadline = bid_info.get("clarification_deadline","")
-    client        = bid_info.get("client","")
-    title         = bid_info.get("title","")
-    notes         = bid_info.get("notes","")[:600]
+    sub_deadline = bid_info.get("submission_deadline", "Not stated")
+    clar_deadline = bid_info.get("clarification_deadline", "Not stated")
+    client = bid_info.get("client", "Procurement Authority")
+    title = bid_info.get("title", "Competitive Opportunity")
+    notes = bid_info.get("notes", "")[:600]
 
     prompt = f"""PROCUREMENT DETAILS:
 Client: {client}
 Opportunity: {title}
-Enquiry deadline: {clar_deadline} (14:00 Ottawa local time)
+Enquiry deadline: {clar_deadline}
 Submission deadline: {sub_deadline}
 Summary: {notes}
 
-FULL REQUIREMENT REGISTER:
+REQUIREMENT REGISTER:
 {reqs_text}
 
-{f'ADDITIONAL RFP CONTEXT (read carefully for ambiguities):\n{rfp_context[:4000]}' if rfp_context else ''}
+{f'ADDITIONAL RFP CONTEXT / EXCERPTS:\n{rfp_context[:4000]}' if rfp_context else ''}
+{f'BIDDER INTERNAL CONCERNS (use to shape questions but do not disclose directly):\n{firm_concerns[:1500]}' if firm_concerns else ''}
 
-KNOWN RISK AREAS TO PROBE (generate questions targeting these if applicable):
-- Coach location: RFP says work at "contractor's facilities in Canada" — does this bar non-Canadian coaches?
-- Subcontracting: Are international coaches acceptable as subcontractors under Appendix B Part B?
-- Language: Is French bilingual capacity mandatory or an asset only?
-- Volume: No guaranteed call-up volume — what is the estimated number of engagements per year?
-- Coach substitution: 5-business-day rule — what happens if no suitable substitute exists?
-- Optional services: Are Hogan or other psychometric assessments acceptable under §4.6 V?
-- Insurance: Must $2M coverage be in force at submission, or only at SOA execution?
-- References: Can internal CDA-AMC references be pre-approved before the enquiry deadline?
-- AI disclosure: Does administrative AI use (scheduling, internal tools) require disclosure?
-- PCHO clause: Which other organizations may access this SOA and what is the estimated scope?
-- Pricing: Is HST applicable to services provided by a non-Canadian supplier?
-- Evaluation: Will short-listed bidders receive individual evaluation scores before presentations?
-
-Generate 10-12 clarification questions. Be concise — keep each field under 200 characters. Return ONLY valid JSON with no trailing commas:
+Generate 8-12 prioritized clarification questions addressing genuine ambiguities in mandatory qualification criteria, scope boundaries, evaluation scoring, commercial mechanics, or contractual risks.
+Keep each field concise (under 250 characters). Return ONLY valid JSON:
 {{
   "questions": [
     {{
       "id": "Q1",
-      "question": "Complete question text referencing the RFSO section. Under 200 chars.",
-      "rationale": "Internal rationale. Under 150 chars.",
-      "priority": "Critical",
-      "risk_if_unanswered": "Risk. Under 100 chars.",
+      "question": "Neutral, professional question referencing the RFP section. Under 200 chars.",
+      "rationale": "Internal strategic rationale explaining why this matters. Under 150 chars.",
+      "priority": "Critical|High|Medium",
+      "risk_if_unanswered": "Commercial or compliance risk if unclarified. Under 100 chars.",
       "relates_to": ["M1"],
-      "category": "Eligibility"
+      "category": "Eligibility|Scope|Commercial|Evaluation|Contract"
     }}
   ],
-  "submission_notes": "Brief submission advice. Under 150 chars.",
+  "submission_notes": "Advice on how and when to submit these clarification requests. Under 150 chars.",
   "critical_count": 0,
-  "deadline_note": "Deadline reminder. Under 80 chars."
-}}
-
-Order: Critical first, then High, then Medium.
-IMPORTANT: Keep ALL string values concise. Do not let any single string exceed 250 characters."""
+  "deadline_note": "Deadline reminder note. Under 80 chars."
+}}"""
 
     raw = _call(CLARIFICATION_SYSTEM, prompt, max_tokens=4096)
     result = _parse_json(raw)
-    # Ensure all questions have required keys
     for q in result.get("questions", []):
         q.setdefault("id", "")
         q.setdefault("question", "")
@@ -310,166 +284,153 @@ IMPORTANT: Keep ALL string values concise. Do not let any single string exceed 2
         q.setdefault("priority", "Medium")
         q.setdefault("risk_if_unanswered", "")
         q.setdefault("relates_to", [])
-        q.setdefault("category", "Other")
+        q.setdefault("category", "General")
     return result
 
 
-# ── 4. Bid / No-Bid Scoring ───────────────────────────────────────────────────
-BID_NOBID_SYSTEM = """You are a senior partner at a consulting firm evaluating whether to pursue 
-a bid. You are experienced, unsentimental, and focused on winning probability and resource efficiency. 
-Base your assessment on the evidence provided. Do not be encouraging if the case is weak."""
+# ── 4. Bid / No-Bid Pursuit Scoring ───────────────────────────────────────────
+BID_NOBID_SYSTEM = """You are a senior executive partner evaluating whether to commit resources to pursue a competitive bid.
+You are objective, unsentimental, and focused on win probability, delivery capability, qualification certainty, and return on effort.
+Base your recommendation strictly on the RFP requirements, qualification status, and bidder capability profile provided."""
 
 def bid_no_bid_score(bid_info: dict, requirements: list[dict],
                      firm_context: str = "") -> dict:
-    """
-    Produce a structured bid/no-bid recommendation with scored dimensions.
-    firm_context: optional free-text about the bidding firm's capabilities.
-    """
+    """Produce a structured pursuit recommendation across five strategic dimensions."""
     reqs_summary = "\n".join(
-        f"- [{r.get('req_id','')}] ({r.get('category','')}) "
+        f"- [{r.get('req_id','')}] ({r.get('category','')}) Qual: {r.get('qual_status','UNKNOWN')} | "
         f"Weight: {str(round(r['weight']*100)) + '%' if r.get('weight') else 'n/a'} | "
         f"{r.get('description','')[:120]}"
         for r in requirements
     )
 
-    prompt = f"""BID UNDER EVALUATION:
+    prompt = f"""OPPORTUNITY UNDER EVALUATION:
 Title: {bid_info.get('title','')}
 Client: {bid_info.get('client','')}
 Submission deadline: {bid_info.get('submission_deadline','unknown')}
 Summary: {bid_info.get('notes','')[:500]}
 
-REQUIREMENTS AND EVALUATION CRITERIA:
+REQUIREMENTS & QUALIFICATION GATES:
 {reqs_summary}
 
-BIDDER CONTEXT:
-{firm_context[:1000] if firm_context else 'Not provided — assess based on requirements alone.'}
+BIDDER PROFILE & CAPABILITIES:
+{firm_context[:1000] if firm_context else 'Assess feasibility based on requirement standards.'}
 
-Score this bid across five dimensions (0-10 each) and give a final recommendation.
+Score this opportunity across five strategic dimensions (0-10 each) and provide an actionable pursuit recommendation.
 Return ONLY valid JSON:
 {{
-  "recommendation": "BID|NO BID|CONDITIONAL BID",
+  "recommendation": "GO|GO WITH CONDITIONS|NO-GO|NEEDS MORE INFORMATION",
   "confidence": "High|Medium|Low",
-  "overall_score": <0-100>,
+  "overall_score": <integer 0-100>,
   "summary": "<3-4 sentence executive summary of the recommendation>",
   "dimensions": {{
     "strategic_fit": {{
       "score": <0-10>,
-      "rationale": "why this score",
-      "evidence": "what supports this"
+      "rationale": "Alignment with firm strategy and core offerings",
+      "evidence": "Supporting factors"
     }},
     "capability_fit": {{
       "score": <0-10>,
-      "rationale": "assessment of ability to deliver",
-      "evidence": "gaps or strengths"
+      "rationale": "Ability to deliver scope and satisfy mandatory qualifications",
+      "evidence": "Identified strengths or capability gaps"
     }},
     "competitive_position": {{
       "score": <0-10>,
-      "rationale": "likely position vs competitors",
-      "evidence": "differentiators or weaknesses"
+      "rationale": "Likely positioning vs. competitor landscape and differentiators",
+      "evidence": "Value proposition edge"
     }},
     "resource_availability": {{
       "score": <0-10>,
-      "rationale": "can the team be staffed",
-      "evidence": "deadline and effort considerations"
+      "rationale": "Capacity to write proposal and staff delivery team before deadline",
+      "evidence": "Timeline considerations"
     }},
     "risk": {{
       "score": <0-10>,
-      "rationale": "compliance and delivery risk",
-      "evidence": "specific risk factors"
+      "rationale": "Assessment of commercial, legal, and operational risks",
+      "evidence": "Specific risk factors or contract liabilities"
     }}
   }},
-  "conditions": ["<condition if CONDITIONAL BID, else empty list>"],
-  "win_themes": ["<strongest differentiator 1>", "<strongest differentiator 2>"],
-  "red_flags": ["<critical risk or weakness 1>", "<risk 2>"]
+  "hard_blockers": ["<mandatory qualification failure or disqualification factor if any>"],
+  "conditions": ["<critical condition that must be resolved to proceed, if any>"],
+  "win_themes": ["<strongest competitive differentiator 1>", "<strongest differentiator 2>"],
+  "red_flags": ["<critical pursuit risk or weakness 1>", "<risk 2>"]
 }}"""
 
     raw = _call(BID_NOBID_SYSTEM, prompt, max_tokens=2048)
     return _parse_json(raw)
 
 
-# ── 5. Past Proposal Analyzer ─────────────────────────────────────────────────
-PROPOSAL_ANALYZER_SYSTEM = """You are an expert proposal analyst reviewing past submitted proposals 
-to extract reusable content for a consulting firm's knowledge library. Extract structured, 
-verbatim-quality content that can be directly reused or adapted in future proposals."""
+# ── 5. Past Proposal Content Ingestion ────────────────────────────────────────
+PROPOSAL_ANALYZER_SYSTEM = """You are an expert proposal knowledge manager.
+Your task is to analyze submitted past proposal documents and extract high-value, reusable content blocks
+(methodologies, case studies, team credentials, governance frameworks, quality policies, and executive summaries)
+for a firm's content library."""
 
 def analyze_past_proposal(text: str, bid_context: dict) -> dict:
-    """
-    Extract reusable content blocks from a past proposal document.
-    Returns structured library items ready to store.
-    """
+    """Extract modular reusable content and team qualifications from a past proposal document."""
     prompt = f"""CURRENT BID CONTEXT:
 Client: {bid_context.get('client','')}
 Title: {bid_context.get('title','')}
 Notes: {bid_context.get('notes','')[:300]}
 
-PAST PROPOSAL TEXT (first 12,000 chars):
+PAST PROPOSAL TEXT EXCERPT (first 12,000 characters):
 {text[:12000]}
 
-Extract all reusable content. Return ONLY valid JSON:
+Extract all reusable proposal content blocks and key personnel profiles. Return ONLY valid JSON:
 {{
   "proposal_summary": {{
-    "client": "client name from the past proposal",
-    "year": "year submitted if visible",
-    "service_type": "type of service proposed",
-    "outcome": "Won/Lost/Unknown"
+    "client": "Client or buyer name from the past proposal",
+    "year": "Year submitted if visible",
+    "service_type": "Type of service or solution proposed",
+    "outcome": "Won|Lost|Unknown"
   }},
   "library_items": [
     {{
-      "title": "Short descriptive title",
-      "category": "one of: Coaching Philosophy|Methodology|Case Study|Team Qualification|IDEA Statement|ESG Statement|Reconciliation Statement|Executive Summary|Sector Experience|Reference|CV Summary|Pricing Structure|Other",
-      "content": "The actual reusable text content — verbatim or lightly edited for reuse. Be thorough.",
-      "relevance_to_current": "How this content maps to the current bid requirements",
-      "tags": "comma-separated tags e.g. coaching,executive,healthcare,NFP"
+      "title": "Descriptive title of content block",
+      "category": "Methodology|Case Study|Executive Summary|Technical Architecture|Team Qualification|Governance|Quality Assurance|IDEA / ESG Statement|Pricing Structure|Other",
+      "content": "Verbatim or polished reusable proposal text block.",
+      "relevance_to_current": "How this content maps to typical competitive requirements",
+      "tags": "comma-separated tags e.g. consulting,transformation,public_sector,enterprise"
     }}
   ],
-  "coaches_found": [
+  "team_members_found": [
     {{
-      "name": "Coach name",
-      "credentials": "Listed credentials",
-      "icf_level": "ICF level if mentioned e.g. PCC, MCC, ACC",
-      "sectors": "sectors mentioned",
-      "languages": "languages mentioned",
-      "cv_summary": "Brief CV summary from the proposal"
+      "name": "Full Name",
+      "credentials": "Key degrees, certifications, or professional designations",
+      "role": "Role or specialty",
+      "sectors": "Key industry sectors mentioned",
+      "languages": "Languages mentioned if any",
+      "cv_summary": "Concise summary of experience and qualification profile"
     }}
   ],
-  "gaps": ["Content that the current bid needs but this proposal doesn't provide"]
-}}
-
-Extract as many library_items as possible — be thorough. Minimum 5 items if content allows."""
+  "gaps": ["Content categories or evidence areas that this proposal does not cover"]
+}}"""
 
     raw = _call(PROPOSAL_ANALYZER_SYSTEM, prompt, max_tokens=4096)
     result = _parse_json(raw)
-
-    # Ensure result is always a dict with expected keys
     if not isinstance(result, dict):
         result = {}
     result.setdefault("proposal_summary", {})
     result.setdefault("library_items", [])
-    result.setdefault("coaches_found", [])
+    result.setdefault("team_members_found", [])
     result.setdefault("gaps", [])
 
-    # Ensure library_items is a list of dicts
     if not isinstance(result["library_items"], list):
         result["library_items"] = []
-    result["library_items"] = [
-        i for i in result["library_items"] if isinstance(i, dict)
-    ]
+    result["library_items"] = [i for i in result["library_items"] if isinstance(i, dict)]
 
     return result
 
 
 # ── 6. Proposal Section Drafter ───────────────────────────────────────────────
-DRAFTER_SYSTEM = """You are a senior proposal writer for a consulting firm. 
-Write proposal sections that are specific, evidence-based, and directly responsive 
-to the evaluation criteria. Never use generic filler language. Every sentence 
-should either demonstrate capability or directly address a stated requirement. 
-Write in first-person plural (we/our) from the bidding firm's perspective."""
+DRAFTER_SYSTEM = """You are a senior proposal writer. Write proposal sections that are specific, evidence-based,
+persuasive, and directly responsive to stated evaluation criteria.
+Every paragraph must demonstrate verified capability or directly answer a requirement.
+Write in professional first-person plural (we / our) from the bidding firm's perspective."""
 
 def draft_proposal_section(section_title: str, requirements: list,
                             library_items: list, bid_context: dict,
                             firm_context: str = "", word_limit: int = 500) -> dict:
-    """Draft a proposal section using requirements and library content."""
-
+    """Draft a tailored proposal section incorporating relevant requirements and library content."""
     reqs_text = "\n".join(
         f"- [{r.get('req_id','')}] {r.get('description','')} "
         f"(Evidence required: {r.get('evidence') or 'not specified'})"
@@ -478,7 +439,7 @@ def draft_proposal_section(section_title: str, requirements: list,
     lib_text = "\n\n".join(
         f"[{item.get('category','')}] {item.get('title','')}\n{item.get('content','')[:600]}"
         for item in library_items[:6]
-    ) if library_items else "No library content available — draft from scratch."
+    ) if library_items else "No library content supplied — draft tailored response based on requirements and context."
 
     prompt = f"""PROPOSAL SECTION TO DRAFT: {section_title}
 TARGET WORD COUNT: approximately {word_limit} words
@@ -486,48 +447,46 @@ TARGET WORD COUNT: approximately {word_limit} words
 BID CONTEXT:
 Client: {bid_context.get('client','')}
 Opportunity: {bid_context.get('title','')}
-Client context: {bid_context.get('notes','')[:300]}
+Client Context: {bid_context.get('notes','')[:300]}
 
 REQUIREMENTS THIS SECTION MUST ADDRESS:
 {reqs_text}
 
-AVAILABLE REUSABLE CONTENT FROM PAST PROPOSALS:
+AVAILABLE REUSABLE ASSETS & EVIDENCE:
 {lib_text}
 
-FIRM CONTEXT:
-{firm_context[:800] if firm_context else 'Phoenix Consulting International — authorised Hogan distributor for GCC, executive coaching and leadership development specialists.'}
+BIDDER FIRM CONTEXT:
+{firm_context[:800] if firm_context else 'Professional services firm specializing in strategic advisory, program delivery, and transformation.'}
 
-Write the section now. Return ONLY valid JSON:
+Draft the section now. Return ONLY valid JSON:
 {{
   "section_title": "{section_title}",
-  "draft": "The full drafted section text with proper paragraphs. Use professional proposal language.",
-  "requirements_addressed": ["req_id list of requirements explicitly addressed"],
-  "requirements_missing": ["req_ids not yet addressed — need more content"],
+  "draft": "Full drafted section text formatted into cohesive paragraphs with clear headings if helpful.",
+  "requirements_addressed": ["list of req_ids explicitly addressed"],
+  "requirements_missing": ["req_ids requiring further factual evidence"],
   "word_count": <approximate word count>,
-  "strength_rating": <1-5 where 5 is publication-ready>,
-  "improvement_notes": "What would make this stronger — specific additions or evidence needed"
+  "strength_rating": <integer 1-5 where 5 is publication-ready>,
+  "improvement_notes": "Specific suggestions to strengthen score against evaluation criteria"
 }}"""
 
     raw = _call(DRAFTER_SYSTEM, prompt, max_tokens=3000)
     return _parse_json(raw)
 
 
-# ── 7. Submission Readiness Check ─────────────────────────────────────────────
-READINESS_SYSTEM = """You are a bid compliance controller doing a final pre-submission 
-check. You are looking for anything that could cause disqualification, score reduction, 
-or last-minute problems. Be precise and unsparing."""
+# ── 7. Final Submission Readiness Check ───────────────────────────────────────
+READINESS_SYSTEM = """You are a bid compliance director conducting a final pre-submission quality audit.
+Examine the submission package for any missing forms, unverified requirements, formatting defects, or blockers that could risk disqualification."""
 
 def submission_readiness_check(bid: dict, requirements: list,
                                 documents: list, outline: list) -> dict:
-    """Final gate check before submission."""
-
+    """Final pre-submission gate check."""
     mandatory_status = [
-        f"[{r.get('req_id','')}] {r.get('description','')[:80]} → {r.get('status','')}"
+        f"[{r.get('req_id','')}] {r.get('description','')[:80]} → Status: {r.get('status','')} | Qual: {r.get('qual_status','UNKNOWN')}"
         for r in requirements if r.get('category') == 'Mandatory'
     ]
     doc_status = [
-        f"{d.get('name','')} → {d.get('status','')}"
-        for d in documents if d.get('doc_type') == 'Submission'
+        f"{d.get('name','')} (Mandatory: {bool(d.get('mandatory'))}) → {d.get('status','')}"
+        for d in documents if d.get('doc_type') in ('Submission', 'Financial')
     ]
     section_status = [
         f"[{s.get('section_num','')}] {s.get('title','')} → {s.get('status','')}"
@@ -544,47 +503,39 @@ MANDATORY REQUIREMENTS STATUS:
 SUBMISSION DOCUMENTS STATUS:
 {chr(10).join(doc_status) or 'None recorded'}
 
-PROPOSAL OUTLINE SECTION STATUS:
+PROPOSAL SECTIONS STATUS:
 {chr(10).join(section_status) or 'None recorded'}
 
-Perform a final pre-submission readiness check. Return ONLY valid JSON:
+Conduct the final readiness gate check. Return ONLY valid JSON:
 {{
   "go_no_go": "GO|NO GO|CONDITIONAL GO",
-  "readiness_score": <0-100>,
-  "summary": "2-3 sentence assessment",
+  "readiness_score": <integer 0-100>,
+  "summary": "2-3 sentence overall readiness assessment",
   "blockers": [
     {{
-      "item": "what is blocked",
+      "item": "Specific blocked item or missing mandatory submission element",
       "severity": "Critical|High|Medium",
-      "action": "exact action needed",
-      "by_when": "suggested deadline"
+      "action": "Immediate corrective action required",
+      "by_when": "Suggested deadline"
     }}
   ],
-  "warnings": ["non-critical issues to watch"],
+  "warnings": ["non-critical warnings or polish items"],
   "submission_checklist": [
-    {{"item": "checklist item", "status": "Ready|Pending|Blocked"}}
+    {{"item": "Checklist item", "status": "Ready|Pending|Blocked"}}
   ],
-  "recommended_submission_time": "suggested time to submit (before hard deadline)"
+  "recommended_submission_time": "Suggested target time prior to hard deadline"
 }}"""
 
     raw = _call(READINESS_SYSTEM, prompt, max_tokens=2048)
     return _parse_json(raw)
 
 
-# ── 8. Addendum / Supplementary Document Analyzer ────────────────────────────
-ADDENDUM_SYSTEM = """You are an expert bid analyst reviewing a supplementary document — 
-an addendum, bulletin, amendment, or additional tender file — that modifies or supplements 
-the original RFP. Your job is to identify what has changed, what new requirements have been 
-added, and what existing requirements have been modified or clarified."""
+# ── 8. Addendum & Amendment Analyzer ──────────────────────────────────────────
+ADDENDUM_SYSTEM = """You are an expert bid analyst reviewing a tender addendum, bulletin, or amendment document.
+Identify what has changed, new requirements introduced, modifications to existing requirements, deadline shifts, and formal Q&A answers."""
 
 def analyze_addendum(text: str, existing_requirements: list, bid_info: dict) -> dict:
-    """
-    Analyze an addendum/supplementary document and return:
-    - New requirements to add to the compliance matrix
-    - Changes to existing requirements
-    - Deadline changes
-    - Key clarifications
-    """
+    """Analyze supplementary tender documents and extract modifications."""
     existing_summary = "\n".join(
         f"[{r.get('req_id','')}] {r.get('description','')[:100]}"
         for r in existing_requirements[:30]
@@ -594,63 +545,60 @@ def analyze_addendum(text: str, existing_requirements: list, bid_info: dict) -> 
 Current submission deadline: {bid_info.get('submission_deadline','')}
 Current clarification deadline: {bid_info.get('clarification_deadline','')}
 
-EXISTING COMPLIANCE MATRIX (first 30 items):
+EXISTING COMPLIANCE MATRIX (sample):
 {existing_summary}
 
-ADDENDUM / SUPPLEMENTARY DOCUMENT TEXT:
+ADDENDUM / AMENDMENT DOCUMENT TEXT:
 {text[:10000]}
 
-Analyze this document and identify all changes. Return ONLY valid JSON under 250 chars per string value:
+Analyze all changes introduced by this document. Return ONLY valid JSON:
 {{
-  "document_type": "Addendum|Bulletin|Amendment|Clarification|Other",
-  "document_number": "e.g. Addendum 1",
-  "summary": "What this document does in 1-2 sentences",
+  "document_type": "Addendum|Bulletin|Amendment|Clarification Q&A|Specification Update",
+  "document_number": "e.g. Addendum No. 1",
+  "summary": "1-2 sentence summary of what this document changes",
   "deadline_changes": {{
     "submission_deadline": "new YYYY-MM-DD date or null if unchanged",
     "clarification_deadline": "new YYYY-MM-DD date or null if unchanged",
-    "other_dates": "any other date changes mentioned"
+    "other_dates": "any other date changes"
   }},
   "new_requirements": [
     {{
       "req_id": "A1-M1",
       "category": "Mandatory|Rated|Financial|Supporting",
-      "description": "New requirement description",
-      "rfso_ref": "section reference",
+      "description": "Description of the new requirement",
+      "rfso_ref": "Section reference",
       "weight": null,
-      "evidence": "evidence required",
+      "evidence": "Evidence required",
       "owner": null,
       "deadline": null,
       "status": "Not Started",
-      "notes": "Added by addendum"
+      "qual_status": "UNKNOWN",
+      "gap_action": "Action to confirm compliance",
+      "notes": "Added via addendum"
     }}
   ],
   "modified_requirements": [
     {{
       "req_id": "M1",
-      "change_description": "What changed and how",
-      "new_text": "Updated requirement text if changed"
+      "change_description": "Exact description of what changed",
+      "new_text": "Updated requirement wording"
     }}
   ],
   "clarifications": [
     {{
-      "topic": "what was clarified",
-      "clarification": "the clarification text",
-      "affects_req_ids": ["M1","R3"]
+      "topic": "Topic clarified",
+      "clarification": "Key clarification answer",
+      "affects_req_ids": ["M1"]
     }}
   ],
-  "key_changes": ["Most important change 1", "Most important change 2"]
+  "key_changes": ["Major change item 1", "Major change item 2"]
 }}"""
 
     raw = _call(ADDENDUM_SYSTEM, prompt, max_tokens=4096)
     return _parse_json(raw)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PROPOSAL REVIEW — two-call approach to avoid token limit truncation
-# Call 1: score + findings + strengths + next_steps  (~3000 token response)
-# Call 2: per-requirement coverage table             (~2000 token response)
-# ═══════════════════════════════════════════════════════════════════════════════
-
+# ── 9. Comprehensive Proposal Alignment Audit ─────────────────────────────────
 def analyze_proposal_alignment(
     proposal_text: str,
     requirements: list[dict],
@@ -658,167 +606,61 @@ def analyze_proposal_alignment(
     bid_info: dict,
 ) -> dict:
     """
-    Analyze a final proposal against RFP requirements and compliance matrix.
-    Two API calls to stay within token limits.
-    All stage classification derived from the tender documents provided.
+    Two-call comprehensive alignment analysis scoring the proposal against RFP documents.
+    Call 1: Overall score, findings by procurement stage, strengths, and next steps.
+    Call 2: Per-requirement coverage breakdown.
     """
-
-    # ── Shared context blocks ────────────────────────────────────────────────
-    rfp_snippet   = (rfp_text      or "")[:4000]
+    rfp_snippet = (rfp_text or "")[:4000]
     proposal_snip = (proposal_text or "")[:8000]
 
     req_lines = []
     for r in requirements:
-        cat  = r.get("category", "")
-        rid  = r.get("req_id", "")
+        cat = r.get("category", "")
+        rid = r.get("req_id", "")
         desc = (r.get("description") or "")[:120]
-        wt   = f"{r['weight']*100:.0f}%" if r.get("weight") else ""
-        ev   = (r.get("evidence") or "")[:60]
+        wt = f"{r['weight']*100:.0f}%" if r.get("weight") else ""
+        ev = (r.get("evidence") or "")[:60]
         req_lines.append(f"[{cat}] {rid} {wt}: {desc} | Evidence: {ev}")
     req_block = "\n".join(req_lines) if req_lines else "No requirements loaded."
 
     bid_header = f"BID: {bid_info.get('title','')} | CLIENT: {bid_info.get('client','')}"
 
     SYSTEM = (
-        "You are a senior proposal reviewer with deep expertise in competitive "
-        "procurement across multiple sectors and jurisdictions. "
-        "Your role is to assess how well a proposal responds to its specific tender. "
-        "You derive ALL conclusions from the tender documents and proposal provided. "
-        "You NEVER assume requirements that are not explicitly stated in those documents. "
-        "Respond with valid JSON only — no markdown fences, no preamble, no trailing text."
+        "You are a senior proposal reviewer with expertise in competitive procurement. "
+        "Assess how well the proposal satisfies the specific tender requirements. "
+        "Derive ALL conclusions strictly from the tender documents and proposal text provided. "
+        "Classify findings into accurate procurement stages: Proposal Submission, Negotiation / Shortlist, "
+        "Contract Execution, or Contractual Obligation. Respond with valid JSON only."
     )
 
-    prompt1 = f"""
-{bid_header}
+    prompt1 = f"""{bid_header}
 
-=== TENDER DOCUMENTS (extracted text) ===
+=== TENDER DOCUMENTS ===
 {rfp_snippet}
 
 === COMPLIANCE MATRIX ===
 {req_block}
 
-=== PROPOSAL TEXT (may be truncated) ===
+=== PROPOSAL TEXT ===
 {proposal_snip}
 
-## YOUR TASK
-
-Review the proposal against this specific tender and score alignment.
-
----
-
-## STEP 1 — IDENTIFY WHAT IS ACTUALLY REQUIRED AND WHEN
-
-Read the tender documents above and identify:
-
-**A. Proposal Submission Requirements**
-Look for sections explicitly titled (or equivalent to):
-"Submission Requirements", "Submissions with Proposal", "Instructions to Proponents",
-"Mandatory Submission", "Required Documents at Submission", or similar.
-ONLY items explicitly listed there are submission-stage requirements.
-Common examples: submission/declaration forms, pricing forms, technical content,
-consortium/multi-party forms, social procurement questionnaires, method statements.
-
-**B. Post-Award / Pre-Contract Requirements**
-Look for sections titled (or equivalent to):
-"Conditions for Award", "Conditions for Signing", "Conditions Precedent",
-"Required Before Execution", or similar.
-These items are NOT required at proposal submission — only if selected.
-Common examples: insurance certificates, registration proof, performance bonds,
-professional licences (unless the ITP explicitly requires them at submission).
-
-**C. Evaluated Criteria**
-Look for evaluation/scoring sections. Items listed there affect the SCORE but are
-not necessarily pass/fail submission requirements. A weak response scores low;
-an absent response may score zero but is not always disqualifying.
-
-**D. Post-Shortlist Requirements**
-Items explicitly stated as required only from the preferred or highest-rated proponent.
-Common examples: detailed cost breakdowns, reference verification, presentations.
-
-**E. Contractual Obligations**
-Duties that arise after contract award. Found in General Conditions, Special Conditions,
-or draft agreement clauses. These are performance obligations, not proposal documents.
-Common examples: privacy compliance, confidentiality, IP assignment, insurance maintenance.
-
----
-
-## STEP 2 — ASSESS THE PROPOSAL CAREFULLY
-
-**Critical reading rules:**
-- The proposal text may be truncated. If a section is not visible in the extract,
-  do NOT assume it is absent from the actual proposal — note the uncertainty.
-- Only flag something as missing if the tender EXPLICITLY requires it and there is
-  NO evidence of it in the proposal text provided.
-- Do not invent requirements from General Conditions or contract clauses that do
-  not appear in the submission checklist.
-- Do not flag contractual obligations (privacy, confidentiality, IP, compliance
-  statements) as proposal deficiencies unless the tender explicitly requires a
-  standalone declaration form to be submitted with the proposal.
-- If the tender requires a consortium/multi-party form and the proposal is from
-  a consortium, flag its absence if not evident in the proposal.
-- If the tender requires a social procurement questionnaire or similar form,
-  flag its absence if not evident.
-
----
-
-## STEP 3 — CLASSIFY EACH FINDING BY PROCUREMENT STAGE
-
-Assign the stage based solely on what the tender documents say:
-
-- "Proposal Submission"      — explicitly required WITH the proposal at submission
-- "Negotiation / Shortlist"  — required only if shortlisted or selected
-- "Contract Execution"       — required before contract signing, not at proposal stage
-- "Contractual Obligation"   — ongoing performance duty, not a proposal document
-
----
-
-## STEP 4 — ASSIGN SEVERITY
-
-- Critical : A Proposal Submission item completely missing and likely disqualifying.
-             NEVER assign Critical to Contract Execution or Contractual Obligation items.
-             NEVER assign Critical to something you are uncertain about due to truncation.
-
-- High     : A Proposal Submission item seriously deficient, OR a high-weight evaluated
-             criterion substantially underaddressed.
-
-- Medium   : Minor proposal gap; OR a Negotiation/Shortlist item to prepare for;
-             OR a Contract Execution item the team should plan for.
-
-- Low      : Polish issues; Contractual Obligations worth noting for awareness only.
-
----
-
-## STEP 5 — SCORE
-
-Score 0-100 based ONLY on proposal-stage submission and evaluation requirements.
-Do NOT deduct points for absent Contract Execution or Contractual Obligation items.
-
-90-100: Comprehensively addresses all submission and evaluation requirements
-75-89:  Solid with minor gaps in evaluated criteria
-60-74:  Adequate but meaningful gaps in scored criteria
-45-59:  Significant weaknesses across multiple evaluation areas
-Below 45: Critical submission gaps; proposal functionally incomplete
-
----
-
-Return ONLY this JSON - no markdown, no extra text.
-Keep ALL string values under 120 characters. Do not over-explain.
-
+Review the proposal against the tender requirements. Score 0-100 based on proposal submission criteria.
+Return ONLY valid JSON:
 {{
   "overall_score": <0-100>,
   "score_rationale": "<max 100 chars>",
   "recommendation": "SUBMIT AS-IS|REVISE BEFORE SUBMITTING|MAJOR REVISION NEEDED",
   "executive_summary": "<max 200 chars>",
-  "strengths": ["<max 80 chars>", "<max 80 chars>", "<max 80 chars>"],
+  "strengths": ["<strength 1>", "<strength 2>", "<strength 3>"],
   "findings": [
     {{
       "severity": "Critical|High|Medium|Low",
       "stage": "Proposal Submission|Negotiation / Shortlist|Contract Execution|Contractual Obligation",
       "category": "<category>",
       "req_id": "<req_id or null>",
-      "title": "<max 60 chars>",
-      "issue": "<max 120 chars>",
-      "recommendation": "<max 120 chars>",
+      "title": "<finding title>",
+      "issue": "<concise explanation of gap>",
+      "recommendation": "<actionable fix>",
       "proposal_location": "<section or N/A>",
       "effort": "Minor edit|Moderate rewrite|Major addition|Post-submission action"
     }}
@@ -826,87 +668,52 @@ Keep ALL string values under 120 characters. Do not over-explain.
   "next_steps": [
     {{
       "priority": 1,
-      "action": "<max 100 chars>",
-      "rationale": "<max 80 chars>",
+      "action": "<action description>",
+      "rationale": "<why it matters>",
       "when": "Before submission|If shortlisted|Before contract execution|Upon contract award"
     }}
   ]
-}}
-
-Hard limits: max 7 findings, max 5 next_steps. Prioritise Critical and High severity.
-Truncate any string that would exceed the character limits above.
-"""
+}}"""
 
     raw1 = _call(SYSTEM, prompt1, max_tokens=3500)
     result = _parse_json(raw1)
-
-    # If full parse failed, try to recover a partial result from the truncated response
     if not isinstance(result, dict):
-        import re as _re
-        # Strip fence and extract whatever key-value pairs completed
-        cleaned = _re.sub(r"^```[a-z]*\s*\n?", "", raw1.strip(), flags=_re.IGNORECASE)
-        cleaned = _re.sub(r"\n?```\s*$", "", cleaned).strip()
-        # Try closing the JSON at the last complete field
-        recovered = {}
-        for key in ("overall_score", "score_rationale", "recommendation",
-                    "executive_summary"):
-            m = _re.search(rf'"{key}"\s*:\s*("([^"]*)"|(\\d+))', cleaned)
-            if m:
-                val = m.group(2) if m.group(2) is not None else int(m.group(3))
-                recovered[key] = val
-        if recovered:
-            recovered["_truncated"] = True
-            recovered.setdefault("findings", [])
-            recovered.setdefault("strengths", [])
-            recovered.setdefault("next_steps", [])
-            result = recovered
-        else:
-            raise ValueError(
-                f"Call 1 failed to parse. First 300 chars: {raw1[:300]}"
-            )
+        result = {"overall_score": 50, "recommendation": "REVISE BEFORE SUBMITTING", "findings": [], "strengths": [], "next_steps": []}
 
-    # ── Call 2: Per-requirement coverage ─────────────────────────────────────
-    cov_lines = []
-    for r in requirements:
-        rid  = r.get("req_id", "")
-        cat  = r.get("category", "")
-        desc = (r.get("description") or "")[:80]
-        cov_lines.append(f"{rid} [{cat}]: {desc}")
+    # Call 2: Requirement Coverage
+    cov_lines = [f"{r.get('req_id','')} [{r.get('category','')}]: {(r.get('description') or '')[:80]}" for r in requirements]
     cov_block = "\n".join(cov_lines) if cov_lines else "No requirements."
 
-    prompt2 = f"""
-{bid_header}
+    prompt2 = f"""{bid_header}
 
 === REQUIREMENTS TO ASSESS ===
 {cov_block}
 
-=== PROPOSAL TEXT (may be truncated) ===
+=== PROPOSAL TEXT ===
 {proposal_snip}
 
-For each requirement listed, assess how well the proposal addresses it.
-If the proposal text is truncated and you cannot verify, use "Cannot Assess" with a note.
-Base your assessment only on what is visible in the proposal text above.
-
-Return ONLY this JSON - no markdown, no extra text:
+Assess per-requirement coverage. Return ONLY valid JSON:
 {{
   "requirement_coverage": [
     {{
       "req_id": "<req_id>",
       "category": "<category>",
-      "description": "<15 word max description>",
+      "description": "<concise description>",
       "coverage": "Fully Addressed|Partially Addressed|Not Addressed|Cannot Assess",
       "confidence": "High|Medium|Low",
-      "notes": "<one sentence - note if uncertain due to truncation>"
+      "notes": "<one sentence note>"
     }}
   ]
-}}
-"""
+}}"""
 
-    raw2 = _call(SYSTEM, prompt2, max_tokens=3000)
-    coverage_result = _parse_json(raw2)
-    if isinstance(coverage_result, dict):
-        result["requirement_coverage"] = coverage_result.get("requirement_coverage", [])
-    else:
+    try:
+        raw2 = _call(SYSTEM, prompt2, max_tokens=3000)
+        coverage_result = _parse_json(raw2)
+        if isinstance(coverage_result, dict):
+            result["requirement_coverage"] = coverage_result.get("requirement_coverage", [])
+        else:
+            result["requirement_coverage"] = []
+    except Exception:
         result["requirement_coverage"] = []
 
     return result

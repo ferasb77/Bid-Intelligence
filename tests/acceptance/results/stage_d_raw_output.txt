@@ -1,0 +1,417 @@
+```json
+{
+  "bid": {
+    "title": "RFP 2026-026 - Talent, Learning and Organizational Development Services",
+    "client": "Bank of Canada",
+    "file_number": "RFP 2026-026",
+    "owner": null,
+    "sensitivity": "Standard",
+    "submission_deadline": "2026-09-30",
+    "clarification_deadline": "2026-09-10",
+    "value_cad": null,
+    "notes": "Formal RFP for qualified Service Providers to deliver talent, learning, and organizational development services on an as-required basis. Services include facilitation, customized learning programs, and HR consulting. Initial 3-year contract term with optional 2-year extension."
+  },
+  "brief": {
+    "executive_summary": "Bank of Canada seeks qualified service providers to deliver on-demand talent, learning, and organizational development services across three primary service categories: (1) Learning and Development Programs—customized and off-the-shelf learning solutions ranging from instructor-led to blended delivery for leader development; (2) HR Advisory Services—strategic human resources and organizational development consulting including workforce assessments, succession planning, and implementation recommendations; and (3) Facilitation and Team Effectiveness—customized facilitation and team effectiveness engagements tailored to organizational needs. All services must be delivered bilingually (English and French), with digital content meeting accessibility standards (WCAG, EN 301 549). Service providers must maintain security clearances and demonstrate relevant experience with organizations of 1,000+ employees.",
+    "opportunity_type": "Services RFP",
+    "contract_term": "3 years with optional 2-year extension, subject to Bank satisfaction and mutual agreement",
+    "procurement_model": "Single Contract",
+    "scope_categories": [
+      "Learning and Development Programs",
+      "HR Advisory Services",
+      "Facilitation and Team Effectiveness"
+    ],
+    "deliverables_summary": [
+      {
+        "title": "Learning and Development Programs",
+        "description": "Customized and off-the-shelf learning solutions including needs analysis, curriculum design, pilot delivery, program delivery across 21 cohorts (420 leaders over 3 years), and evaluation. All materials in English and French. Evaluated pricing includes: Needs Analysis (48 hours), Design & Development (pre-work, full-day workshop, 2 virtual coaching circles, PDF materials, facilitator guide, evaluation tools), Pilot Delivery (1 full-day workshop + feedback), Program Delivery (21 cohorts × 20 participants × 3 years), and Project Management (35 hours/year).",
+        "category": "Core"
+      },
+      {
+        "title": "HR Advisory Services",
+        "description": "Strategic consulting including discovery/assessment (20 Bank documents, workforce datasets, 15 stakeholder interviews, validation session), analysis and recommendations (workforce risk analysis, succession/talent sustainability planning, implementation roadmap), and reporting/executive presentation (1 final English report, 1 ninety-minute executive presentation). Evaluated pricing includes: Discovery and assessment, Analysis and recommendation, Reporting and executive presentation, and Project Management (3 hours/week for 12-week engagement).",
+        "category": "Core"
+      },
+      {
+        "title": "Facilitation and Team Effectiveness Engagements",
+        "description": "Customized facilitation and team effectiveness services including analysis phase (1 kickoff, 7 interviews, documentation review), design phase (approach, 1 planning meeting, 2 workshop agendas, materials), delivery phase (2 four-hour in-person workshops with 7 participants), and follow-up/evaluation phase (post-engagement report, feedback survey, recommendations). Evaluated pricing includes: Analysis, Design, Delivery (2 four-hour workshops), and Follow-up and evaluation.",
+        "category": "Core"
+      },
+      {
+        "title": "Proposal Technical Response - Rated Criteria",
+        "description": "Comprehensive response document (10-15 pages depending on service category) addressing seven rated criteria: Corporate Profile, Key Personnel and Roster, Methodology & Advisory Approach (or Curriculum & Program Design Capability for L&D, or Facilitation Methodology), Thought Leadership & Innovation, Relationship Management, Value-added Services, and Relevant Experience and References.",
+        "category": "Core"
+      },
+      {
+        "title": "Key Personnel Profiles",
+        "description": "Brief profiles (maximum half-page each) for up to 4 key individuals in dedicated relationship or coordination roles, including name, proposed role, years of experience, specialization, designations, certifications, and credentials. Excluded from page limits.",
+        "category": "Core"
+      },
+      {
+        "title": "Thought Leadership Materials",
+        "description": "Two samples of published articles, white papers, research, frameworks, or thought leadership materials demonstrating innovation and expertise (maximum 2 pages per sample). Excluded from page limits.",
+        "category": "Core"
+      },
+      {
+        "title": "Relevant Experience Case Studies",
+        "description": "Two to three detailed case studies of services completed within specified timeframe (2 years for L&D/HR Advisory; 3 years for Facilitation) with organizations of 1,000+ employees. Each case study includes client details, objectives, services delivered, target audience, delivery model, participant count, duration, challenges addressed, measurable outcomes, and verifiable client reference contact information (name, title, email, phone).",
+        "category": "Core"
+      },
+      {
+        "title": "Bilingual Service Delivery",
+        "description": "Written confirmation of ability to deliver all services, materials, and solutions in English and French. Mandatory requirement; failure results in disqualification.",
+        "category": "Core"
+      },
+      {
+        "title": "Security Clearance Capability",
+        "description": "Written confirmation of ability to meet Bank's Reliability clearance requirements (electronic fingerprints, criminal record check, credit check, security screening interview) for all service delivery resources. Mandatory requirement; failure results in disqualification.",
+        "category": "Core"
+      },
+      {
+        "title": "Digital Accessibility Compliance",
+        "description": "All digital learning content must comply with CAN/ASC - EN 301 549:2024, EN 301 549:2021, and WCAG standards. Mandatory for L&D service category.",
+        "category": "Core"
+      },
+      {
+        "title": "Pricing Form - Envelope 2",
+        "description": "Complete Appendix E Pricing Form with all applicable tabs: Category Selection, Service Category Rate Cards (Year 1, Year 2, Year 3 with Maximum Annual Increase documentation), Evaluated Pricing Scenarios for each proposed category (using Bank-provided standardized scenarios), Optional Value-Added Services Tab, and comprehensive Notes/Restrictions documentation of all assumptions, exclusions, and dependencies. All pricing in Canadian dollars, all-inclusive of professional fees, materials, tools, administrative costs; applicable taxes excluded.",
+        "category": "Core"
+      }
+    ],
+    "qualification_gates": [
+      {
+        "requirement": "Bilingualism - Ability to deliver all services, materials and solutions in English and French",
+        "type": "Mandatory Qualification",
+        "rfp_ref": "Appendix B1, B2, B3 - Mandatory Criteria",
+        "disqualification_risk": "High"
+      },
+      {
+        "requirement": "Security Clearance - Ability to meet Bank's Reliability clearance requirements for all service delivery resources",
+        "type": "Mandatory Qualification",
+        "rfp_ref": "Appendix B1, B2, B3 - Mandatory Criteria",
+        "disqualification_risk": "High"
+      },
+      {
+        "requirement": "Digital Accessibility - For L&D category: All digital content must comply with CAN/ASC - EN 301 549:2024 and WCAG standards",
+        "type": "Mandatory Qualification",
+        "rfp_ref": "Appendix B3 - Mandatory Criteria (Facilitation category)",
+        "disqualification_risk": "High"
+      },
+      {
+        "requirement": "Minimum Qualification - Specified experience thresholds per service category (documented in Appendix C1, C2, C3)",
+        "type": "Mandatory Qualification",
+        "rfp_ref": "Appendix C1, C2, C3 - Minimum Qualification Requirements",
+        "disqualification_risk": "High"
+      },
+      {
+        "requirement": "Conflict of Interest Declaration - Must declare or confirm absence of conflicts; failure to declare results in deemed no-conflict status but inaccurate disclosure may impact eligibility",
+        "type": "Mandatory Qualification",
+        "rfp_ref": "Appendix A - Submission Form",
+        "disqualification_risk": "Medium"
+      },
+      {
+        "requirement": "Forced Labour and Child Labour Compliance - Proponent and all subcontractors must comply with Fighting Against Forced Labour and Child Labour in Supply Chains Act (SC 2023, c 9)",
+        "type": "Mandatory Qualification",
+        "rfp_ref": "Appendix A - Submission Form; Compliance Certifications",
+        "disqualification_risk": "High"
+      },
+      {
+        "requirement": "Authority to Bind - Signatory must confirm they have authority to bind the proponent",
+        "type": "Mandatory Qualification",
+        "rfp_ref": "Appendix A - Submission Form",
+        "disqualification_risk": "High"
+      }
+    ],
+    "evaluation_breakdown": [
+      {
+        "stage": "Mandatory Criteria Gate (Pass/Fail)",
+        "weight": null,
+        "threshold": "All three mandatory criteria sets (B1, B2, B3) must be satisfied",
+        "notes": "Failure in any mandatory criterion results in automatic rejection. Mandatory criteria include bilingualism, security clearance capability, and accessibility compliance (where applicable). No scoring; binary pass/fail gate applied."
+      },
+      {
+        "stage": "Minimum Qualification Gate (Pass/Fail)",
+        "weight": null,
+        "threshold": "All minimum qualification requirements (C1, C2, C3) must be satisfied",
+        "notes": "Binary pass/fail qualification gate applied prior to rated evaluation. Proponents must demonstrate specified experience thresholds per service category. Failure results in ineligibility regardless of rated proposal quality."
+      },
+      {
+        "stage": "Rated Criteria Evaluation (Scored)",
+        "weight": null,
+        "threshold": null,
+        "notes": "Proponents evaluated only on service categories for which they submit responses. Seven rated criteria areas: (1) Corporate Profile, (2) Key Personnel and Roster, (3) Methodology & Advisory Approach (or Curriculum & Program Design Capability for L&D, or Facilitation Methodology for Facilitation), (4) Thought Leadership & Innovation, (5) Relationship Management, (6) Value-added Services, (7) Relevant Experience and References. Specific scoring weights and thresholds detailed in Appendix D1, D2, D3."
+      },
+      {
+        "stage": "Environmental, Social and Governance Assessment",
+        "weight": null,
+        "threshold": null,
+        "notes": "Appendix F - ESG Questionnaire completion required. Note: Responses are collected for information purposes only and will not be used for proposal evaluation or future Bank participation decisions."
+      },
+      {
+        "stage": "Pricing Evaluation (Category-Specific)",
+        "weight": null,
+        "threshold": null,
+        "notes": "Pricing evaluated separately for each proposed service category using Bank-provided standardized evaluated scenarios. L&D Total Evaluated Category Price calculated from: Needs Analysis (48 hours) + Design & Development + Pilot Delivery + Program Delivery (21 cohorts × 140 leaders over 3 years) + Project Management. HR Advisory Total Evaluated Category Price calculated from: Discovery and assessment + Analysis and recommendation + Reporting and executive presentation + Project Management (3 hours/week × 12 weeks). Facilitation Total Evaluated Category Price calculated from: Analysis phase + Design phase + Delivery phase (2 four-hour workshops) + Follow-up and evaluation phase."
+      },
+      {
+        "stage": "Submission Compliance Review",
+        "weight": null,
+        "threshold": null,
+        "notes": "Response format compliance: L&D and HR Advisory responses must not exceed 12 pages (Appendix D2); Facilitation responses must not exceed 10 pages (Appendix D3), excluding key personnel profiles (max 4 × half-page), thought leadership samples (2 × max 2 pages each), resumes, and product samples. Page size 8.5 × 11 inches, standard margins, minimum font 10 points. External links not evaluated unless otherwise stated."
+      }
+    ],
+    "commercial_structure": [
+      {
+        "topic": "Contract Term and Extension",
+        "details": "Initial term of 3 years with optional 2-year extension, subject to Bank satisfaction and mutual agreement. No automatic renewal."
+      },
+      {
+        "topic": "Service Delivery Model",
+        "details": "Services provided on an as-required basis, allowing flexibility in engagement timing, volume, and scope. No minimum purchase commitment implied by evaluated pricing scenarios."
+      },
+      {
+        "topic": "Pricing Model Flexibility",
+        "details": "Proponents may propose hourly rates, daily rates, fixed fees, subscription models, bundled pricing, retainers, or other pricing models. However, standardized evaluated scenarios must be priced using Bank-provided specifications for evaluation purposes."
+      },
+      {
+        "topic": "Rate Card Requirements",
+        "details": "Proponents must provide Year 1, Year 2, and Year 3 rates in rate card. Maximum Annual Increase for Option Years must be documented. Pricing escalation between year 1 and option years must be clearly stated to avoid disputes."
+      },
+      {
+        "topic": "Pricing Inclusions",
+        "details": "All pricing must be all-inclusive of professional fees, preparation and delivery time, reporting, project management, materials, tools, administrative costs, third-party fees, and any other costs required to deliver applicable services. Applicable taxes excluded (GST/HST/QST)."
+      },
+      {
+        "topic": "Pricing Exclusions",
+        "details": "L&D: Travel expenses, venue costs, catering, participant technology, and internal Bank resources excluded. HR Advisory: Travel expenses excluded. Facilitation: Travel expenses, venue costs, catering, participant technology, and internal Bank resources excluded. All exclusions must be documented in pricing form Notes/Restrictions."
+      },
+      {
+        "topic": "Bundled Services and Subscriptions",
+        "details": "Where services are included in subscriptions, retainers, bundles, or base fees, proponents must identify each service in category rate card and document bundled arrangements in Notes/Restrictions column. Proponents must clarify pricing treatment to avoid post-award disputes."
+      },
+      {
+        "topic": "Currency",
+        "details": "All pricing in Canadian dollars (CAD)."
+      },
+      {
+        "topic": "Language and Accessibility Delivery",
+        "details": "L&D: All participant materials, facilitator materials, and supporting resources must be provided in both English and French; digital content must comply with accessibility standards. HR Advisory and Facilitation: Deliverables (reports, presentations) specified as English only, but engagement meetings/interviews delivered bilingually as needed. Translation and bilingual delivery costs must be included in pricing."
+      },
+      {
+        "topic": "Form of Agreement",
+        "details": "Appendix G Form of Agreement must be accepted as submitted. Proponents have limited negotiation flexibility; acceptance of form is condition of proposal eligibility."
+      },
+      {
+        "topic": "Trade Compliance",
+        "details": "Procurement subject to Canadian Free Trade Agreement (CFTA) requirements."
+      },
+      {
+        "topic": "Non-Binding RFP Process",
+        "details": "RFP process does not constitute legally binding bidding process. No legal relationship or obligations created unless and until Bank of Canada and selected proponent enter into executed contract. Statement of Work may be adjusted during post-award negotiation."
+      }
+    ],
+    "contract_risks": [
+      {
+        "risk": "Multiple Cascading Mandatory Qualification Gates",
+        "severity": "High",
+        "details": "Proponents must satisfy three separate mandatory criteria sets (B1, B2, B3) AND three minimum qualification requirement sets (C1, C2, C3) to proceed to evaluation. Failure in ANY gate results in automatic rejection. This creates multiple disqualification vectors."
+      },
+      {
+        "risk": "Bilingual Service Delivery Requirement",
+        "severity": "High",
+        "details": "Mandatory requirement to deliver all services, materials, and solutions in both English and French throughout contract term. Resource turnover, capacity constraints, or translation delays could impact contract performance and expose provider to termination liability."
+      },
+      {
+        "risk": "Security Clearance Compliance",
+        "severity": "High",
+        "details": "All service delivery resources must obtain and maintain Reliability clearance including electronic fingerprints, criminal record check, credit check, and security screening interview. Clearance failure for any key resource could result in forced replacement or contract termination. Clearance delays could impact project start dates."
+      },
+      {
+        "risk": "Digital Accessibility Standards Compliance",
+        "severity": "High",
+        "details": "All digital learning content must comply with multiple accessibility standards (CAN/ASC - EN 301 549:2024, EN 301 549:2021, WCAG). Non-compliance exposes Bank to Accessible Canada Act violations and potential regulatory penalties; provider may be required to remediate at own cost."
+      },
+      {
+        "risk": "Two-Envelope Submission Process",
+        "severity": "Medium",
+        "details": "Separate Envelope 1 (Technical/Proposal) and Envelope 2 (Pricing) process reduces opportunity for integrated cost-benefit narratives. Pricing cannot be modified after Envelope 1 acceptance. Pricing errors or omissions cannot be corrected post-submission without risking disqualification."
+      },
+      {
+        "risk": "Evaluated Pricing Scenario Non-Commitment",
+        "severity": "Medium",
+        "details": "Evaluated pricing quantities are for evaluation purposes only and do not constitute commitment by Bank to purchase any minimum volume. Proponent must price standardized scenarios but actual engagement volumes could be significantly lower."
+      },
+      {
+        "risk": "Undefined Evaluation Weights and Scoring Thresholds",
+        "severity": "Medium",
+        "details": "While Appendix D1, D2, D3 rated criteria response forms are referenced, specific scoring weights, thresholds, and point allocations are not detailed in this abstract. Scoring methodology may not be disclosed until after submission deadline, limiting ability to optimize proposal strategy."
+      },
+      {
+        "risk": "Conflict of Interest Liability",
+        "severity": "High",
+        "details": "Proponent must declare conflicts of interest; failure to declare or misrepresentation of conflicts could result in disqualification post-award or contract termination. Conflicts include unfair bidding advantages, access to confidential information, improper communications, or financial interests impairing objective judgment."
+      },
+      {
+        "risk": "Forced Labour and Child Labour Compliance Certification",
+        "severity": "High",
+        "details": "Proponent must certify compliance with Fighting Against Forced Labour and Child Labour in Supply Chains Act (SC 2023, c 9) for both itself and all subcontractors. Non-compliance, inadequate due diligence, or misrepresentation could result in disqualification, contract termination, and reputational damage."
+      },
+      {
+        "risk": "Subcontractor Liability and Management",
+        "severity": "Medium",
+        "details": "Proponent responsible for all subcontractor compliance with contract terms, labour standards, forced labour/child labour requirements, and service delivery. Subcontractor non-performance or non-compliance could trigger provider liability and contract termination."
+      },
+      {
+        "risk": "Insufficient Pricing Disclosure",
+        "severity": "High",
+        "details": "Failure to provide complete pricing information in Appendix E pricing form may result in proposal being deemed non-compliant or receiving zero points for pricing evaluation. All cost assumptions, restrictions, exceptions, minimum commitments, usage caps, travel costs, third-party costs, and exclusions must be explicitly documented in Notes/Restrictions columns."
+      },
+      {
+        "risk": "Pricing Outside Approved Form",
+        "severity": "High",
+        "details": "All pricing must be contained solely within Appendix E Pricing Form. Costs disclosed elsewhere in proposal will not be evaluated or paid by the Bank. Proponent bears risk of incomplete pricing if information is scattered across multiple documents."
+      },
+      {
+        "risk": "Scope and Deliverable Specification Ambiguity",
+        "severity": "Medium",
+        "details": "Proponent must price Bank-provided standardized evaluated scenarios exactly as specified. Pricing must not rely on information not provided in RFP. Any deviations from scenario specifications must be clearly documented with associated cost impacts. Under-pricing due to scope misunderstanding could result in low margin contract."
+      },
+      {
+        "risk": "Rate Escalation and Maximum Increase Disclosure",
+        "severity": "Medium",
+        "details": "Proponent must identify Maximum Annual Increase for Option Years in rate card and provide Year 2 and Year 3 rates for evaluated scenarios. Failure to disclose escalation limits clearly could lead to disputes over allowable increases during contract option period."
+      },
+      {
+        "risk": "Experience Verification and Recency Requirements",
+        "severity": "High",
+        "details": "Proponent must demonstrate relevant experience with organizations of 1,000+ employees within specified timeframe (2 years for L&D/HR Advisory; 3 years for Facilitation). Case studies must be verifiable with live client references. Inadequate documentation or unverifiable references could result in disqualification regardless of proposal quality."
+      },
+      {
+        "risk": "Resource Capacity and Continuity",
+        "severity": "High",
+        "details": "Proponent must maintain minimum 5 dedicated L&D professionals with specified seniority levels (L&D category). Failure to maintain resource commitments or unexpected staffing changes could impact service delivery and trigger contract performance issues."
+      },
+      {
+        "risk": "Minimum Qualification Gates Applicability",
+        "severity": "High",
+        "details": "Appendix C1, C2, C3 specify minimum qualification requirements which vary by service category. Proponent must satisfy ALL minimum qualifications for each service category proposed. Failure on any minimum qualification results in automatic ineligibility for that service category regardless of rated proposal score."
+      },
+      {
+        "risk": "Evaluation Scope Limitation",
+        "severity": "Medium",
+        "details": "Proponents are evaluated only on service categories for which they submit responses. Proponents proposing only one service category cannot claim competitive advantage in other categories. Multi-category competitors may have evaluation advantage."
+      },
+      {
+        "risk": "Submission Format and Page Limit Compliance",
+        "severity": "Medium",
+        "details": "Response page limits vary by service category (10-15 pages depending on appendix). Non-compliance with page limits, font size requirements (minimum 10 points), or page dimensions (8.5 × 11 inches) could result in proposal rejection or partial non-evaluation. External links not evaluated."
+      },
+      {
+        "risk": "Addenda and Amendments",
+        "severity": "Medium",
+        "details": "RFP issued with Amendment No. 1 (issued 2026-08-28; published 2026-09-01). Proponent must acknowledge all addenda/amendments in Appendix A Submission Form. Failure to acknowledge or incorporation of pre-amendment terms could result in non-compliance."
+      },
+      {
+        "risk": "ESG Questionnaire Completion",
+        "severity": "Low",
+        "details": "Appendix F ESG Questionnaire completion is required but responses are collected for information purposes only and will not be used for proposal evaluation or future Bank participation decisions. However, non-submission may be flagged as non-compliance; proponents should complete all sections."
+      },
+      {
+        "risk": "Question Acceptance Deadline",
+        "severity": "Medium",
+        "details": "Clarification questions must be submitted by 2026-09-10. Late questions will not be answered. Proponents must conduct thorough RFP review early to identify ambiguities and request clarification before deadline."
+      },
+      {
+        "risk": "Pricing Form Tab Completeness",
+        "severity": "High",
+        "details": "Proponents must complete all applicable tabs in Appendix E Pricing Form (Category Selection, Rate Cards, Evaluated Scenarios, optional Value-Added Services Tab). Tabs must not be deleted. Rows may be added as needed. Incomplete form submission could result in non-compliance."
+      },
+      {
+        "risk": "Conflict Detection - Submission Envelope Ambiguity",
+        "severity": "Medium",
+        "details": "DETECTED CONFLICT: One document indicates separate technical/financial files while another suggests combined submission approach. Proponents MUST separate Financial Envelope from Technical Proposal to prevent mandatory disqualification. Confirm submission method with RFP contact immediately."
+      },
+      {
+        "risk": "Conflict Detection - Mandatory Language Requirements Scope",
+        "severity": "Medium",
+        "details": "DETECTED CONFLICT: Bilingualism requirement is highlighted in Appendix B3 for Facilitation category but applicability to all service categories requires confirmation. Proponents should assume bilingualism is mandatory for ALL categories unless clarified by amendment or buyer response."
+      }
+    ],
+    "submission_requirements": [
+      {
+        "item": "Envelope 1 - Technical Proposal and Identity",
+        "format": "Electronic Bid Submission (consolidated document)",
+        "details": "Contains Appendix A (Submission Form), Appendix B1/B2/B3 (Mandatory Criteria), Appendix C1/C2/C3 (Minimum Qualification Requirements), Appendix D1/D2/D3 (Rated Criteria Response Forms), Appendix F (ESG Questionnaire), and Appendix G (Form of Agreement). NO PRICING in this envelope."
+      },
+      {
+        "item": "Envelope 2 - Pricing",
+        "format": "Electronic Bid Submission (Appendix E Excel file only)",
+        "details": "Contains Appendix E Pricing Form with all completed applicable tabs: Category Selection, Service Category Rate Cards (Years 1-3 with Maximum Annual Increase), Evaluated Pricing Scenarios (for each proposed category), optional Value-Added Services Tab, and comprehensive Notes/Restrictions documentation. Limited to 1 file."
+      },
+      {
+        "item": "Appendix A - Submission Form",
+        "format": "Completed Word Document or Form",
+        "details": "Mandatory. Complete all sections: (1) Proponent Information (full legal name, other business names, address, phone, RFP contact person), (2) Acknowledgement of Addenda (list addenda numbers or 'None'), (3) Conflict of Interest Declaration (declare conflict or confirm absence), (4) Forced Labour and Child Labour Compliance Certifications, (5) Authority to Bind Certification with authorized signature."
+      },
+      {
+        "item": "Appendix B1 - Mandatory Criteria",
+        "format": "Completed Excel Spreadsheet or Response Document",
+        "details": "Mandatory. Submit responses to all mandatory criteria specified in B1. Pass/fail gate; failure in any criterion results in disqualification."
+      },
+      {
+        "item": "Appendix B2 - Mandatory Criteria (Bilingualism & Security Clearance)",
+        "format": "Written Confirmation Document",
+        "details": "Mandatory. Submit written confirmation of: (1) Ability to deliver all services, materials, and solutions in English and French, and (2) Ability to meet Bank's Reliability clearance requirements for all service delivery resources."
+      },
+      {
+        "item": "Appendix B3 - Mandatory Criteria (Facilitation Category)",
+        "format": "Completed Response Document",
+        "details": "Mandatory for Facilitation service category. Submit responses to mandatory criteria specified in B3 (Bilingualism, Security Clearance, Accessibility compliance). Pass/fail gate."
+      },
+      {
+        "item": "Appendix C1 - Minimum Qualification Requirements",
+        "format": "Completed Excel Spreadsheet or Response",
+        "details": "Mandatory. Submit Yes/No confirmation for each minimum qualification requirement with supporting evidence. Pass/fail gate; failure in any requirement results in ineligibility."
+      },
+      {
+        "item": "Appendix C2 - Minimum Qualification Requirements",
+        "format": "Yes/No Response in Designated Column",
+        "details": "Mandatory. Submit Yes/No confirmation for each of three minimum qualification requirements. Supporting documentation of evidence required. Binary pass/fail gate applied."
+      },
+      {
+        "item": "Appendix C3 - Minimum Qualification Requirements (Facilitation Category)",
+        "format": "Yes/No Confirmation",
+        "details": "Mandatory for Facilitation category. Submit Yes/No confirmation for minimum qualification requirements specified in C3."
+      },
+      {
+        "item": "Appendix D1 - Rated Criteria Response Form (L&D Category)",
+        "format": "Word Document (15-page maximum)",
+        "details": "Mandatory for L&D service category. Response addressing seven rated criteria: (1) Corporate Profile, (2) Key Personnel and Roster, (3) Curriculum & Program Design Capability, (4) Measurement Approach, (5) Relationship Management, (6) Value-added Services, (7) Relevant Experience and References. Page limit: 15 pages (excluding resumes, profiles, samples). Page size 8.5 × 11 inches, standard margins, minimum font 10 points."
+      },
+      {
+        "item": "Appendix D2 - Rated Criteria Response Form (HR Advisory Category)",
+        "format": "Word Document (12-page maximum)",
+        "details": "Mandatory for HR Advisory service category. Response addressing seven rated criteria: (1) Corporate Profile, (2) Key Personnel and Roster, (3) Methodology & Advisory Approach, (4) Thought Leadership & Innovation, (5) Relationship Management, (6) Value-added Services, (7) Relevant Experience and References. Page limit: 12 pages (excluding key personnel profiles [max 4 × half-page], thought leadership samples [2 × max 2 pages each], resumes, work samples). Page size 8.5 × 11 inches, standard margins, minimum font 10 points. External links not evaluated."
+      },
+      {
+        "item": "Appendix D3 - Rated Criteria Response Form (Facilitation Category)",
+        "format": "Word Document (10-page maximum)",
+        "details": "Mandatory for Facilitation service category. Response addressing rated criteria including facilitation methodology, approach, tools, frameworks. Page limit: 10 pages (excluding key personnel profiles, resumes, work samples). Page size 8.5 × 11 inches, standard margins, minimum font 10 points. Sample workshop agenda or facilitation plan (anonymized) required and excluded from page limit."
+      },
+      {
+        "item": "Key Personnel Profiles (Integrated in D1/D2/D3)",
+        "format": "Embedded in Response or Separate File",
+        "details": "Mandatory. Brief profile (maximum half-page each) for up to 4 key individuals serving in dedicated relationship or coordination roles. Include: name, proposed role, years of experience, specialization, designations, certifications, and credentials. Excluded from rated criteria response page limits."
+      },
+      {
+        "item": "Thought Leadership Samples (D2 HR Advisory; optional for others)",
+        "format": "Separate PDF Files or Embedded",
+        "details": "Mandatory for HR Advisory (D2); optional for others. Two samples of published articles, white papers, research, frameworks, or thought leadership materials demonstrating expertise and innovation (maximum 2 pages per sample). Excluded from page limits."
+      },
+      {
+        "item": "Relevant Experience Case Studies",
+        "format": "Integrated in D1/D2/D3 Response",
+        "details": "Mandatory. Two to three case studies of services completed within specified timeframe (2 years for L&D/HR Advisory; 3 years for Facilitation) with organizations of 1,000+ employees. Each case study includes: (1) Client organization details, (2) Engagement objectives, (3) Services delivered, (4) Target audience/participant profile, (5) Delivery model, (6) Duration/format, (7) Participant count, (8) Challenges addressed, (9) Measurable outcomes, (10) Verifiable client reference contact information (name, title, email, phone). Client organization names may be anonymized if confidentiality applies, but contact references must be verifiable."
+      },
+      {
+        "item": "Sample Workshop Agenda or Facilitation

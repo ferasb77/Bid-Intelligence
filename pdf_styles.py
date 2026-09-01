@@ -318,7 +318,7 @@ def generate_clarifications_pdf(bid: dict, questions: list, include_rationale: b
     if bid.get("file_number"):
         parts.append(f"File #{bid['file_number']}")
     if bid.get("clarification_deadline"):
-        parts.append(f"Enquiry Deadline  {bid['clarification_deadline']}  14:00 Ottawa")
+        parts.append(f"Enquiry Deadline  {bid['clarification_deadline']}")
     if bid.get("submission_deadline"):
         parts.append(f"Submission  {bid['submission_deadline']}")
     parts.append(f"Generated  {date.today().strftime('%B %d, %Y')}")
@@ -369,16 +369,14 @@ def generate_clarifications_pdf(bid: dict, questions: list, include_rationale: b
     # Submission note
     if not include_rationale:
         story.append(pp(
-            "Note: As required under §2.6, all enquiries and responses will be provided to all "
-            "organizations invited to respond. Questions are submitted by email to "
-            f"contracts@cda-amc.ca before {bid.get('clarification_deadline','')} 14:00 Ottawa local time.",
+            "Note: All enquiries and formal responses will be provided to all prospective bidders. "
+            f"Questions must be submitted prior to the clarification deadline ({bid.get('clarification_deadline','not stated')}).",
             7.5, fn_r, C_GREY_1))
         story.append(Spacer(1, 5*mm))
     else:
         story.append(pp(
-            "Strategic context: Questions are phrased neutrally to avoid revealing Phoenix's "
-            "position, subcontracting structure, or gaps. Rationale and risk assessments below "
-            "are for internal planning only and must not be submitted.",
+            "Strategic context: Questions are phrased neutrally to avoid revealing internal bidding strategy or capability gaps. "
+            "Internal rationale and risk assessments below are for bid team planning only and must not be submitted.",
             7.5, fn_r, C_GREY_1))
         story.append(Spacer(1, 5*mm))
 
@@ -491,11 +489,11 @@ def generate_clarifications_pdf(bid: dict, questions: list, include_rationale: b
         story.append(pp("Submission Instructions", 11, fn_b, C_NAVY))
         story.append(Spacer(1, 2*mm))
         instructions = [
-            ("Submit to", f"contracts@cda-amc.ca"),
-            ("Deadline", f"{bid.get('clarification_deadline','')} — 14:00 Ottawa local time (21:00 Beirut)"),
-            ("Reference", f"File #{bid.get('file_number','')} in subject line"),
-            ("Note", "All questions and responses will be shared with all invited organizations (§2.6)"),
-            ("Responses", "CDA-AMC will respond within 2 business days; bulletins issued by July 28, 2026"),
+            ("Submit to", "Designated Procurement Portal / Authority Contact"),
+            ("Deadline", f"{bid.get('clarification_deadline','')} — As stated in tender instructions"),
+            ("Reference", f"Opportunity #{bid.get('file_number','')}" if bid.get('file_number') else "Opportunity Reference"),
+            ("Note", "All questions and official answers will be shared with all prospective bidders."),
+            ("Responses", "Formal responses and addenda issued through official tender portal."),
         ]
         for label, value in instructions:
             row = Table([[pp(label, 8, fn_sb, C_NAVY), pp(value, 8, fn_r, C_BLACK)]],

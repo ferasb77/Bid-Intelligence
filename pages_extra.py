@@ -15,11 +15,11 @@ from components.ui import (days_until,
 from config import api_key_configured
 
 LIB_CATEGORIES = [
-    "Coaching Philosophy", "Methodology", "Case Study",
-    "Team Qualification", "IDEA Statement", "ESG Statement",
-    "Reconciliation Statement", "Executive Summary",
-    "Sector Experience", "Reference", "CV Summary",
-    "Pricing Structure", "Other",
+    "Methodology", "Case Study", "Executive Summary",
+    "Team Qualification", "Technical Architecture", "Governance",
+    "Quality Assurance", "IDEA Statement", "ESG Statement",
+    "Reconciliation Statement", "Sector Experience", "Reference",
+    "CV Summary", "Pricing Structure", "Other",
 ]
 CLAR_STATUSES   = ["Draft", "Submitted", "Answered", "Changes Required", "Closed"]
 CLAR_PRIORITIES = ["Critical", "High", "Medium", "Low"]
@@ -242,7 +242,7 @@ def page_proposal_analyzer(bid_id):
     bid = get_bid(bid_id)
     st.markdown("# Past Proposal Analyzer")
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="info-box">Upload a past Phoenix proposal (PDF). Claude reads the '
+    st.markdown('<div class="info-box">Upload a past submitted proposal (PDF/Word/Text). Claude reads the '
                 'document and extracts reusable content blocks — methodology, case studies, '
                 'team qualifications, policy statements — and maps them to the current bid. '
                 'Everything goes straight into the Content Library.</div>',
@@ -375,12 +375,15 @@ def page_proposal_analyzer(bid_id):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# COACH ROSTER
+# TEAM & RESOURCE LIBRARY
 # ═══════════════════════════════════════════════════════════════════════════════
-def page_coach_roster():
+def page_team_roster():
     coaches = get_coaches()
-    st.markdown("# Coach Roster")
+    st.markdown("# Team & Resource Library")
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="info-box">Directory of key personnel, subject matter experts, and delivery resources '
+                'with verified credentials, industry sectors, security clearances, and availability for tender submissions.</div>',
+                unsafe_allow_html=True)
 
     if coaches:
         avail = sum(1 for c in coaches if c.get("availability")=="Available")
@@ -389,20 +392,21 @@ def page_coach_roster():
             if c.get("languages"):
                 langs.update(lang.strip() for lang in c["languages"].split(","))
         c1,c2,c3 = st.columns(3)
-        c1.metric("Total Coaches", len(coaches))
-        c2.metric("Available", avail)
+        c1.metric("Total Team Members", len(coaches))
+        c2.metric("Available for Deployment", avail)
         c3.metric("Languages Covered", len(langs))
         st.markdown("")
 
         for coach in coaches:
             avail_col = {"Available":"#27AE60","Partially Available":"#E67E22",
                          "Unavailable":"#C0392B"}.get(coach.get("availability",""),"#6E6C66")
-            with st.expander(f"**{coach['name']}**  ·  {coach.get('credentials','') or ''}  ·  "
-                             f"{coach.get('icf_level','') or ''}"):
+            cred_str = f" · {coach.get('credentials','')}" if coach.get('credentials') else ""
+            desig_str = f" · {coach.get('icf_level','')}" if coach.get('icf_level') else ""
+            with st.expander(f"**{coach['name']}**{cred_str}{desig_str}"):
                 c1,c2,c3 = st.columns(3)
-                c1.markdown(f"**Sectors:** {coach.get('sectors') or '—'}")
+                c1.markdown(f"**Sectors / Domains:** {coach.get('sectors') or '—'}")
                 c1.markdown(f"**Languages:** {coach.get('languages') or '—'}")
-                c2.markdown(f"**Location:** {coach.get('location') or '—'}")
+                c2.markdown(f"**Location / Base:** {coach.get('location') or '—'}")
                 c2.markdown(f'**Availability:** <span style="color:{avail_col}">'
                             f'{coach.get("availability","—")}</span>',
                             unsafe_allow_html=True)
@@ -415,14 +419,13 @@ def page_coach_roster():
                                 f'{coach["cv_summary"]}</div>', unsafe_allow_html=True)
                 if coach.get("reference_contact"):
                     st.markdown(f'<span style="font-size:.75rem;color:#C9A96E">'
-                                f'Reference: {coach["reference_contact"]}</span>',
+                                f'Client Reference: {coach["reference_contact"]}</span>',
                                 unsafe_allow_html=True)
                 if st.button("✏ Edit", key=f"ec_{coach['id']}"):
                     st.session_state["editing_coach"] = coach["id"]
                     st.rerun()
     else:
-        st.markdown('<div class="empty-state">No coaches yet. Run the Proposal Analyzer on past '
-                    'proposals to auto-populate, or add manually below.</div>',
+        st.markdown('<div class="empty-state">No team members registered yet. Add key personnel below or ingest from past proposals.</div>',
                     unsafe_allow_html=True)
 
     eid = st.session_state.get("editing_coach")
@@ -502,6 +505,8 @@ def page_coach_roster():
                 else:
                     st.error("Name required.")
 
+page_coach_roster = page_team_roster
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CLARIFICATION TRACKER
@@ -525,9 +530,9 @@ def page_clarifications(bid_id):
             f'align-items:center">'
             f'<div>'
             f'<span style="color:{col};font-weight:700;font-size:.95rem">'
-            f'Enquiry deadline: {bid.get("clarification_deadline","")} — 14:00 Ottawa (21:00 Beirut)</span>'
+            f'Enquiry deadline: {bid.get("clarification_deadline","")}</span>'
             f'<br><span style="color:#A9A69D;font-size:.78rem">'
-            f'All questions and answers are shared with ALL bidders. Phrase accordingly.</span>'
+            f'All formal questions and official answers are shared with ALL bidders. Phrase accordingly.</span>'
             f'</div>'
             f'<span style="color:{col};font-size:1.2rem;font-weight:700">'
             f'{days_label(clar_dl)}</span></div>',
@@ -560,19 +565,19 @@ def page_clarifications(bid_id):
             height=120,
             placeholder=(
                 "Paste key sections from the RFP that have ambiguities, or describe specific "
-                "concerns:\n\n- Phoenix coaches are based outside Canada\n"
-                "- We want to propose Hogan assessments as optional services\n"
-                "- Unsure whether $2M insurance must be in place at submission or award"
+                "concerns:\n\n- Scope boundary questions or delivery model ambiguities\n"
+                "- Optional vs mandatory service packaging\n"
+                "- Unsure whether insurance or security clearance must be in place at submission or award"
             ),
             key="cq_rfp_ctx")
 
         firm_concerns = st.text_area(
-            "Phoenix-specific concerns (internal context — not sent to client)",
+            "Firm-specific concerns (internal context — not sent to client)",
             height=80,
             placeholder=(
-                "e.g. Our coaches are based in Beirut and Dubai. "
-                "We want to propose Hogan as an optional service. "
-                "We are considering a Canadian subcontractor arrangement."
+                "e.g. Our team operates across distributed offices. "
+                "We want to propose specialized proprietary methodologies. "
+                "We are considering a joint venture or subcontractor arrangement."
             ),
             key="cq_firm_ctx")
 
@@ -789,7 +794,7 @@ def page_clarifications(bid_id):
                 sub_d = c1.text_input("Submitted Date", value=q.get("submitted_date",""),
                                       placeholder="2026-07-22")
                 ans_d = c2.text_input("Answer Date",    value=q.get("answer_date",""))
-                answer  = st.text_area("Answer (record when received from CDA-AMC)",
+                answer  = st.text_area("Answer (record when received from client/authority)",
                                        value=q.get("answer",""), height=120)
                 changes = st.checkbox("⚠ This answer requires compliance matrix updates",
                                       value=bool(q.get("changes_matrix")))
@@ -870,10 +875,10 @@ def page_clarifications(bid_id):
 
         st.markdown(
             '<div class="info-box" style="margin-top:.5rem">'
-            '<strong>Submission copy</strong> — questions only, no internal rationale. '
-            'Send this to contracts@cda-amc.ca.<br>'
-            '<strong>Internal copy</strong> — includes private rationale and risk assessment. '
-            'For Phoenix internal use only.</div>',
+            '<strong>Submission copy</strong> — formal questions only, no internal rationale. '
+            'Submit through official procurement portal/contact.<br>'
+            '<strong>Internal copy</strong> — includes private commercial rationale and risk assessment. '
+            'For bid team internal use only.</div>',
             unsafe_allow_html=True)
 
     # ── Add manually ──────────────────────────────────────────────────────────
@@ -1001,10 +1006,13 @@ def page_section_drafter(bid_id):
                     unsafe_allow_html=True)
 
     coach_names = ", ".join(c["name"] for c in coaches) if coaches else ""
+    from database import get_firm_profile
+    profile = get_firm_profile()
+    firm_default = profile.get("overview") or profile.get("company_name", "Enable My Growth")
     firm_ctx = st.text_area(
         "Additional firm context",
-        value=f"Phoenix Consulting International, authorised Hogan distributor for the GCC. "
-              f"{'Proposed coaches: ' + coach_names + '.' if coach_names else ''}",
+        value=f"{firm_default}. "
+              f"{'Proposed team members: ' + coach_names + '.' if coach_names else ''}",
         height=70, key="dr_ctx")
 
     if st.button("✍ Draft this section with Claude", use_container_width=True, type="primary"):
@@ -1088,7 +1096,7 @@ def page_submission_assembler(bid_id):
                     f'<span style="font-size:1.1rem;font-weight:700;color:{col}">'
                     f'{days_label(sub_d).replace("<span","<span")}</span> '
                     f'<span style="color:#A9A69D;font-size:.85rem">until submission — '
-                    f'{bid.get("submission_deadline","")} 14:00 Ottawa (21:00 Beirut)</span></div>',
+                    f'{bid.get("submission_deadline","")}</span></div>',
                     unsafe_allow_html=True)
 
     tab1, tab2 = st.tabs(["📋 Readiness & Checklist", "🔍 Proposal Review"])
@@ -1153,20 +1161,20 @@ def page_submission_assembler(bid_id):
 
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
-        # ── Manual checklist ──────────────────────────────────────────────────
+        # ── Submission Package Checklist ──────────────────────────────────────
         st.markdown("### Submission Package Checklist")
         CHECKLIST = [
-            ("Technical Proposal", "Separate searchable PDF", "technical"),
-            ("Financial Proposal", "Separate searchable PDF (Appendix B both options)", "financial"),
-            ("Supplement A", "Submission Form — signed by authorized signatory", "form"),
-            ("Schedule A — AI Disclosure", "Completed and signed; aligned with methodology and pricing", "form"),
-            ("Insurance confirmations", "Liability $2M + E&O $2M", "form"),
-            ("Three references", "Contact details; max 1 CDA-AMC internal (pre-approved)", "supporting"),
-            ("Coach CVs", "All proposed coaches with credentials", "supporting"),
-            ("Case study / testimonial", "With measurable behaviour change outcomes", "supporting"),
-            ("AI/Non-AI pricing alignment", "Technical methodology ↔ Financial pricing ↔ AI Disclosure all consistent", "qa"),
-            ("File size check", "Total email ≤ 20 MB including all attachments", "qa"),
-            ("Submission email", "To contracts@cda-amc.ca or MERX upload — before 14:00 Ottawa", "qa"),
+            ("Technical Proposal", "Separate searchable PDF document", "technical"),
+            ("Financial Proposal", "Separate pricing schedule / envelope", "financial"),
+            ("Submission Form", "Completed and signed by authorized signatory", "form"),
+            ("AI / Technology Disclosure", "Completed and signed if required by tender", "form"),
+            ("Insurance Confirmations", "Required commercial general liability & E&O coverage", "form"),
+            ("Client References", "Verifiable past client contact details and case histories", "supporting"),
+            ("Key Personnel CVs", "Proposed team members with verified credentials", "supporting"),
+            ("Case Studies / Past Projects", "Evidence of past performance in similar scope", "supporting"),
+            ("Commercial Consistency Check", "Technical scope ↔ Pricing envelope alignment", "qa"),
+            ("File Size / Format Verification", "Compliant with portal size limits and naming rules", "qa"),
+            ("Submission Channel Check", "Portal upload or designated email confirmed", "qa"),
         ]
         sub_docs = {d["name"]: d["status"] for d in docs if d.get("doc_type")=="Submission"}
 
@@ -1185,7 +1193,7 @@ def page_submission_assembler(bid_id):
         unanswered = [c for c in clars if c.get("status")=="Submitted"]
         if unanswered:
             st.markdown(f'<div class="warn-box">⚠ {len(unanswered)} clarification question(s) '
-                        f'submitted but not yet answered — check for CDA-AMC bulletins by July 28.</div>',
+                        f'submitted but not yet answered — monitor official addenda bulletins before deadline.</div>',
                         unsafe_allow_html=True)
         needs_matrix = [c for c in clars if c.get("changes_matrix") and c.get("status")=="Answered"]
         if needs_matrix:
@@ -1609,7 +1617,7 @@ def page_debrief(bid_id):
     st.markdown("# Win / Loss Debrief")
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
     st.markdown('<div class="info-box">Record the outcome and evaluation feedback for this bid. '
-                'Over time, this builds Phoenix\'s institutional win-rate intelligence — '
+                'Over time, this builds the firm\'s institutional win-rate intelligence — '
                 'which sectors they win, at what price points, and where scoring is weakest.</div>',
                 unsafe_allow_html=True)
 
@@ -1708,13 +1716,14 @@ def page_debrief(bid_id):
 def page_exec_dashboard():
     from database import (get_all_bids, get_requirements, get_tasks,
                           get_clarifications, get_debriefs, get_coaches,
-                          get_documents)
+                          get_documents, get_firm_profile)
     from datetime import date
 
+    firm_prof = get_firm_profile()
     st.markdown("# Executive Dashboard")
     st.markdown(
         f'<div style="font-size:.82rem;color:#A9A69D;margin-bottom:.5rem">'
-        f'Phoenix Consulting International  ·  '
+        f'{firm_prof.get("company_name", "Enable My Growth")}  ·  '
         f'Bid Intelligence  ·  '
         f'{date.today().strftime("%B %d, %Y")}</div>',
         unsafe_allow_html=True)
@@ -2077,17 +2086,20 @@ def page_exec_dashboard():
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
     if st.button("⬇ Export Executive Report (PDF)", use_container_width=False):
         try:
-            pdf = _exec_dashboard_pdf(enriched, coaches, alerts)
+            from database import get_firm_profile
+            prof = get_firm_profile()
+            comp_name = prof.get("company_name", "Enable My Growth")
+            pdf = _exec_dashboard_pdf(enriched, coaches, alerts, comp_name)
             st.download_button(
                 "⬇ Download PDF",
                 data=pdf,
-                file_name=f"phoenix_bid_executive_report_{date.today().isoformat()}.pdf",
+                file_name=f"bid_intelligence_executive_report_{date.today().isoformat()}.pdf",
                 mime="application/pdf")
         except Exception as e:
             st.error(f"PDF error: {e}")
 
 
-def _exec_dashboard_pdf(bids, coaches, alerts):
+def _exec_dashboard_pdf(bids, coaches, alerts, company_name="Enable My Growth"):
     """Enable My Growth executive dashboard PDF — A4 portrait."""
     import io
     from datetime import date
@@ -2124,7 +2136,7 @@ def _exec_dashboard_pdf(bids, coaches, alerts):
 
     doc = SimpleDocTemplate(buf, pagesize=A4,
         leftMargin=ML, rightMargin=MR, topMargin=20*mm, bottomMargin=20*mm,
-        title="Executive Bid Report — Phoenix Consulting International")
+        title=f"Executive Bid Report — {company_name}")
 
     def footer(canvas, doc):
         canvas.saveState()
@@ -2134,7 +2146,7 @@ def _exec_dashboard_pdf(bids, coaches, alerts):
         canvas.setFont(fn_r, 7)
         canvas.setFillColor(C_GREY_2)
         canvas.drawString(ML, 10*mm,
-            "Phoenix Consulting International  ·  Bid Intelligence  ·  Executive Report")
+            f"{company_name}  ·  Bid Intelligence  ·  Executive Report")
         canvas.drawRightString(PW-MR, 10*mm, f"Page {doc.page}")
         canvas.restoreState()
 
@@ -2147,7 +2159,7 @@ def _exec_dashboard_pdf(bids, coaches, alerts):
     story.append(pp("Executive Bid Report", 8, fn_r, C_GREY_1))
     story.append(Spacer(1, 3*mm))
     story.append(HRFlowable(width="100%", thickness=3, color=C_NAVY, spaceAfter=3*mm))
-    story.append(pp("Phoenix Consulting International", 20, fn_b, C_NAVY, leading=24))
+    story.append(pp(company_name, 20, fn_b, C_NAVY, leading=24))
     story.append(Spacer(1, 1*mm))
     story.append(pp("Bid Pipeline — Executive Summary", 10, fn_r, C_GREY_1))
     story.append(Spacer(1, 1*mm))
