@@ -74,9 +74,21 @@ def get_requirements(bid_id):
                  .select("*").eq("bid_id", bid_id)
                  .order("category").order("req_id").execute())
 
+def format_requirement_payload(data, keys):
+    """Format payload for requirements table. Preserves native list/dict for JSONB source_refs."""
+    clean = {}
+    for k in keys:
+        if k in data:
+            v = data.get(k)
+            if k == "source_refs":
+                # JSONB column: pass Python list/dict directly to Supabase client
+                clean[k] = v if isinstance(v, (list, dict)) else ([] if v is None else v)
+            else:
+                clean[k] = v
+    return clean
+
 def upsert_requirement(data):
     sb = get_client()
-    import json
     keys_with_integrity = ["req_id","category","description","rfso_ref","weight",
                            "evidence","owner","deadline","status","notes",
                            "qual_status","gap_action","qual_notes",
@@ -87,19 +99,8 @@ def upsert_requirement(data):
     keys_basic = ["req_id","category","description","rfso_ref","weight",
                   "evidence","owner","deadline","status","notes"]
 
-    def _format_payload(keys):
-        clean = {}
-        for k in keys:
-            if k in data:
-                v = data.get(k)
-                if k == "source_refs" and isinstance(v, (list, dict)):
-                    clean[k] = json.dumps(v)
-                else:
-                    clean[k] = v
-        return clean
-
     def _do_upsert(keys):
-        clean = _format_payload(keys)
+        clean = format_requirement_payload(data, keys)
         if data.get("id"):
             sb.table("requirements").update(clean).eq("id", data["id"]).execute()
         else:
@@ -453,23 +454,32 @@ def get_bid_brief(bid_id: int) -> dict | None:
     except Exception:
         return None
 
+def format_bid_brief_payload(data: dict, keys: list) -> dict:
+    """Format payload for bid_briefs table. Preserves native list/dict for JSONB document_conflicts."""
+    import json
+    clean = {}
+    for k in keys:
+        if k in data:
+            v = data.get(k)
+            if k == "document_conflicts":
+                # JSONB column: pass Python list/dict directly to Supabase client
+                clean[k] = v if isinstance(v, (list, dict)) else ([] if v is None else v)
+            elif isinstance(v, (list, dict)):
+                clean[k] = json.dumps(v)
+            else:
+                clean[k] = v
+    return clean
+
 def upsert_bid_brief(data: dict) -> None:
     """Insert or update structured Bid Brief with fallback."""
     sb = get_client()
-    import json
     keys = ["bid_id", "executive_summary", "opportunity_type", "contract_term",
             "procurement_model", "scope_categories", "deliverables_summary",
             "qualification_gates", "evaluation_breakdown", "commercial_structure",
             "contract_risks", "submission_requirements", "key_dates", "source_citations",
             "document_conflicts"]
     
-    clean = {}
-    for k in keys:
-        v = data.get(k)
-        if isinstance(v, (list, dict)):
-            clean[k] = json.dumps(v)
-        else:
-            clean[k] = v
+    clean = format_bid_brief_payload(data, keys)
 
     try:
         existing = _one(sb.table("bid_briefs").select("id").eq("bid_id", data["bid_id"]).execute())

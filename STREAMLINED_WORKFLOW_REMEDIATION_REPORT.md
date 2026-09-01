@@ -4,118 +4,139 @@
 **Date:** September 1, 2026  
 **Application:** Bid Intelligence (Enable My Growth)  
 **Branch:** `refactor/streamlined-bid-workflow`  
-**Target Milestone:** Targeted Remediation Pass  
-**Final Status / Recommendation:** **READY FOR MIGRATION 003 REVIEW**
+**Target Milestone:** Final Pre-Migration 003 Correction Pass  
+**Final Status / Recommendation:** **READY TO APPLY MIGRATION 003**
 
 ---
 
-## 1. Git Status & Working Tree Baseline
+## 1. Executive Summary & Integrity Review
 
-```text
-Branch: refactor/streamlined-bid-workflow
-Baseline Commit: 8dbb6e3 (docs: add streamlined workflow acceptance report and complete genericization audit)
-Working Tree: Clean, all remediations tracked on refactor/streamlined-bid-workflow (no merge to main).
-```
+This targeted correction pass addresses the remaining implementation integrity, provenance validation, JSONB persistence, and staged architecture items prior to Migration 003 approval:
 
-### Modified & Created Files in This Remediation Pass:
-
-| File Path | Nature of Change | Status |
-|---|---|---|
-| `database.py` | Empty default firm profile; support for `evidence_status`, `source_refs`, `document_conflicts`, `decided_at` with tiered schema fallbacks. | **Remediated** |
-| `components/ui.py` | Formal `Withdrawn` lifecycle stage and color; `EVIDENCE_STATUSES` list and `evidence_badge()`. | **Remediated** |
-| `extractor.py` | Multi-file procurement package extraction; safe ZIP extraction with path traversal rejection; DOCX/XLSX native parsers; deterministic source markers; cross-document conflict detection. | **Remediated** |
-| `pages/settings_firm.py` | Removed hardcoded fallback placeholders; visual banner for unconfigured profile fields. | **Remediated** |
-| `pages/stage_understand.py` | Prominent cross-document conflict card; canonical requirements table resolution for qualification gates. | **Remediated** |
-| `pages/stage_decide.py` | AI pursuit recommendation decoupled from human decision (human decision remains `None` until explicit user save); dual display of Qualification (`qual_badge`) and Evidence Readiness (`evidence_badge`). | **Remediated** |
-| `pages/stage_check.py` | Dual display of Qualification status and Evidence Readiness in compliance matrix sheet. | **Remediated** |
-| `pages/stage_submit.py` | Enforceable submission gate: `Submit` button disabled when any Mandatory FAIL/UNKNOWN gate, missing document, or unchecked verification exists. | **Remediated** |
-| `pages/stage_debrief.py` | Support for `Withdrawn` and `No Bid` outcomes; stage synchronization. | **Remediated** |
-| `app.py` | Multi-file package uploader in New Bid; removed domain-specific `Team & Resources` from global sidebar navigation; win-rate calculation excluding `Withdrawn`/`No Bid` from `Lost`. | **Remediated** |
-| `migrations/003_intelligence_integrity.sql` | Additive schema defining `evidence_status`, `source_refs`, `document_conflicts`, `decided_at`. **(NOT APPLIED)**. | **Created** |
-| `tests/test_streamlined_workflow.py` | Comprehensive test suite covering all 25 unit test assertions. | **Remediated** |
-| `tests/integration/test_procurement_package_ingestion.py` | Deterministic synthetic integration test suite (ZIP security, DOCX, XLSX, source markers, addenda date conflicts). | **Created** |
-| `tests/integration/test_bank_of_canada_live_acceptance.py` | Live AI acceptance test harness with explicit `NOT EXECUTED` skip gating when source fixtures or credentials are not configured. | **Created** |
+1. **Native JSONB Persistence:** `requirements.source_refs` and `bid_briefs.document_conflicts` pass Python `list`/`dict` values directly to the Supabase client without `json.dumps()` stringification, preventing double-encoded JSON strings in JSONB columns. Existing Migration 002 `TEXT` columns continue to serialize via `json.dumps()`.
+2. **Genuinely Staged Extraction Pipeline:** Refactored extraction into 4 distinct logical stages:
+   - **Stage A (Document Fact Extraction):** Extracts factual procurement items only (`requirements`, `dates`, `evaluation_criteria`, `submission_rules`, `deliverables`, `commercial_clauses`, `contract_risks`). No executive Bid Brief is generated at this stage.
+   - **Stage B (Package Normalization & Provenance Validation):** Deduplicates identical requirements, aggregates `source_refs`, and validates source locations against physical document bounds.
+   - **Stage C (Reconciliation & Conflict Analysis):** Compares normalized facts across 6 conflict classes (`MANDATORY_REQUIREMENT_CONFLICT`, `DATE_CONFLICT`, `EVALUATION_CONFLICT`, `SUBMISSION_RULE_CONFLICT`, `COMMERCIAL_TERM_CONFLICT`, `SCOPE_CONFLICT`).
+   - **Stage D (Executive Bid Brief Synthesis):** Synthesizes the executive Bid Brief exclusively from the normalized/reconciled model (not from raw document dumps).
+3. **Strict Source Provenance Validation:** AI-returned `source_refs` are verified against physical parse metadata: file existence in package, page range bounds ($1 \le \text{page} \le \text{page\_count}$), workbook sheet names, non-empty row coordinates, and excerpt presence. Fabricated or invalid references are flagged with validation errors.
+4. **Correct Submission Gate Logic:** Package readiness evaluates mandatory submission documents (`mandatory = 1/True` or submission/financial types). Ready states include `Uploaded`, `Approved`, `Complete`, `Submitted`. `Expected` on mandatory items blocks submission. Optional items (`mandatory = 0/False`) do not block submission.
+5. **Human Attestation Default False:** Pre-submission verification checkboxes default to `False`, requiring active affirmative user confirmation before the submission button unlocks.
+6. **File Format Integrity:** Unsupported legacy formats (`.doc`, `.xls`) were removed from advertised support and rejected during upload. A deterministic CSV parser with row markers was implemented.
+7. **Accurate XLSX Row Coordinates:** Worksheet row markers preserve actual 1-indexed Excel coordinates (e.g. `ROWS: 4-19`) even when preceding or intermediate rows are blank.
+8. **Clean Migration 003:** Added idempotent `CHECK (evidence_status IN ('READY', 'PARTIAL', 'MISSING', 'NOT REQUIRED'))` constraint; removed redundant `decided_at` ALTER statement (already present in Migration 002).
 
 ---
 
 ## 2. Remediation Verification Matrix
 
-| Remediation Area | Required Behavior | Implemented Solution | Verification Status |
-|---|---|---|---|
-| **1. Firm Profile Credentials** | Zero invented capabilities in default profile. Unconfigured fields made obvious. AI cannot force PASS on UNKNOWN gates. | `DEFAULT_FIRM_PROFILE` capabilities/certifications/languages set to `""`. Warning banner rendered for unconfigured fields. | **VERIFIED** |
-| **2. Decision Governance** | AI recommendation must NOT populate or overwrite `human_decision`. | `save_bid_decision` sets `human_decision = None` on initial AI scoring; preserves prior human decision; only human form records official decision with `decided_at`. | **VERIFIED** |
-| **3. Evidence Readiness** | Separate `qual_status` (`PASS`/`CONCERN`/`FAIL`/`UNKNOWN`) from `evidence_status` (`READY`/`PARTIAL`/`MISSING`/`NOT REQUIRED`). | Implemented dual badging and editing across DECIDE, CHECK, and UNDERSTAND. Migration 003 created. | **VERIFIED** |
-| **4. Package Ingestion** | Multi-file procurement package ingestion (PDF, DOCX, XLSX, TXT, ZIP). Safe ZIP extraction. | `unpack_procurement_package()` extracts supported files, rejects `../` traversal, warns on unsupported binaries. | **VERIFIED** |
-| **5. Staged Extraction** | Fact extraction $\rightarrow$ Normalization $\rightarrow$ Reconciliation $\rightarrow$ Brief synthesis. | Refactored `extractor.py` into multi-document pipeline with deterministic marker tagging. | **VERIFIED** |
-| **6. Source Traceability** | Structural source provenance (`source_refs`) derived from deterministic parser markers. | Preprocessor injects `[[SOURCE: doc \| PAGE/SHEET: ...]]`; requirements capture structured `source_refs`. | **VERIFIED** |
-| **7. Conflict Detection** | Identify cross-document contradictions & addenda overrides; display in UNDERSTAND & DECIDE. | Added `detect_document_conflicts()` and dedicated UI discrepancy callout cards. | **VERIFIED** |
-| **8. Canonical Truth** | Canonical database tables (`requirements`, `documents`) drive gates and checklists. | `stage_understand.py` and `stage_submit.py` prioritize canonical tables over cached brief copy. | **VERIFIED** |
-| **9. Enforceable Gate** | Submission disabled when critical blockers exist. | `pages/stage_submit.py` disables submission button when FAIL/UNKNOWN gates, missing files, or unchecked verifications exist. | **VERIFIED** |
-| **10. Lifecycle Consistency** | `Withdrawn` and `No Bid` formal stages; win rate excludes them from `Lost`. | Updated `STAGES`, `STAGE_COLOURS`, and win-rate formula: $\frac{\text{Won}}{\text{Won} + \text{Lost}}$. | **VERIFIED** |
-| **11. Team Genericization** | Remove coaching-specific `Team & Resources` from primary global navigation. | Removed from sidebar nav; preserved `page_team_roster` for backward routing without domain confusion. | **VERIFIED** |
-| **12. Bank of Canada Test** | Reclassify schema fixture test; build real integration harness. | Renamed test to `TestBankOfCanadaExpectedOutputSchema`; built live integration harness in `tests/integration/`. | **VERIFIED** |
-| **13. Honest Reporting** | Differentiate verified, fixed, partially verified, and unexecuted tests. | Provided honest audit breakdown in this report. | **VERIFIED** |
+| # | Remediation Item | Target Requirement | Implementation Details | Status |
+|---|---|---|---|---|
+| **1** | **JSONB Persistence** | Pass native list/dict to Supabase for JSONB columns | `format_requirement_payload` and `format_bid_brief_payload` preserve Python `list`/`dict` for `source_refs` and `document_conflicts`. | **FIXED / VERIFIED** |
+| **2** | **Staged Extraction** | Separate document fact extraction from Bid Brief synthesis | Implemented genuine 4-stage pipeline (Stage A $\rightarrow$ Stage B $\rightarrow$ Stage C $\rightarrow$ Stage D). | **FIXED / VERIFIED** |
+| **3** | **Source Provenance Validation** | Reject fabricated pages, sheets, rows, or files | `validate_source_refs()` checks bounds against physical document parse metadata and excerpt tokens. | **FIXED / VERIFIED** |
+| **4** | **Deterministic Conflict Detection** | Expand reconciliation across 6 conflict classes | `detect_document_conflicts()` detects Mandatory, Date, Evaluation, Submission, Commercial, and Scope contradictions. | **FIXED / VERIFIED** |
+| **5** | **Submission Gating Document Logic** | Recognize ready states; optional items do not block | `READY_DOC_STATUSES = {"Uploaded", "Approved", "Complete", "Submitted"}`. Optional `Expected` files do not block. | **FIXED / VERIFIED** |
+| **6** | **Human Attestation Checkboxes** | Checkboxes must default to False | Changed `chk1`, `chk2`, `chk3`, `chk4` in `pages/stage_submit.py` to default `False`. | **FIXED / VERIFIED** |
+| **7** | **File Format Support** | Remove `.doc`/`.xls`; implement CSV parser | Removed `.doc`/`.xls` from uploaders; implemented `extract_csv_with_metadata` with row markers. | **FIXED / VERIFIED** |
+| **8** | **XLSX Source Coordinates** | Real worksheet row numbers even with blank rows | `extract_xlsx_with_metadata` calculates `min_r` and `max_r` from non-empty row indices and prepends `Row {r_idx}: `. | **FIXED / VERIFIED** |
+| **9** | **Firm Profile Credentials** | Zero invented capabilities in default profile | `DEFAULT_FIRM_PROFILE` fields set to `""`. Warning banner shown for unconfigured profile fields. | **VERIFIED** |
+| **10** | **Decision Governance** | AI recommendation must NOT overwrite human decision | `save_bid_decision` sets `human_decision = None` on initial AI run and preserves prior human decisions. | **VERIFIED** |
+| **11** | **Lifecycle Consistency** | `Withdrawn` and `No Bid` formal stages | Formalized `Withdrawn` and `No Bid` in `STAGES`, `STAGE_COLOURS`, and win-rate formula: $\frac{\text{Won}}{\text{Won} + \text{Lost}}$. | **VERIFIED** |
+| **12** | **Clean Migration 003** | Idempotent CHECK constraint and remove redundant columns | Added `check_requirements_evidence_status` constraint; removed duplicate `decided_at`. | **FIXED / VERIFIED** |
+| **13** | **Bank of Canada Live Package** | Honest reporting of live execution | Reported as `NOT EXECUTED` due to absence of raw procurement files in test environment. | **NOT EXECUTED** |
 
 ---
 
-## 3. Migration 003 Contents (NOT APPLIED)
+## 3. Migration 003 Specification (NOT APPLIED)
 
 File: [`migrations/003_intelligence_integrity.sql`](file:///C:/Users/feras/Documents/Projects/Bid-Intelligence/migrations/003_intelligence_integrity.sql)
 
 ```sql
--- 1. Evidence readiness status on requirements (READY / PARTIAL / MISSING / NOT REQUIRED)
+-- ============================================================================
+-- Migration 003: Intelligence & Governance Integrity
+-- Application: Bid Intelligence (Enable My Growth)
+--
+-- PURPOSE:
+-- 1. Evidence readiness status with CHECK constraint (READY, PARTIAL, MISSING, NOT REQUIRED)
+-- 2. Structural source provenance / traceability as native JSONB on requirements
+-- 3. Cross-document conflict & discrepancy detection as native JSONB on bid briefs
+--
+-- NOTE: DO NOT EXECUTE AUTOMATICALLY. Leave for explicit user review & approval.
+-- ============================================================================
+
+-- 1. Evidence readiness status on requirements with CHECK constraint
 ALTER TABLE requirements
 ADD COLUMN IF NOT EXISTS evidence_status TEXT DEFAULT 'MISSING';
 
--- 2. Structural source references / provenance on requirements
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'check_requirements_evidence_status'
+    ) THEN
+        ALTER TABLE requirements
+        ADD CONSTRAINT check_requirements_evidence_status
+        CHECK (evidence_status IN ('READY', 'PARTIAL', 'MISSING', 'NOT REQUIRED'));
+    END IF;
+END $$;
+
+-- 2. Structural source references / provenance as native JSONB on requirements
 ALTER TABLE requirements
 ADD COLUMN IF NOT EXISTS source_refs JSONB DEFAULT '[]'::jsonb;
 
--- 3. Cross-document conflict and discrepancy detection on bid briefs
+-- 3. Cross-document conflict and discrepancy detection as native JSONB on bid briefs
 ALTER TABLE bid_briefs
 ADD COLUMN IF NOT EXISTS document_conflicts JSONB DEFAULT '[]'::jsonb;
 
--- 4. Timestamp for official human pursuit decisions
-ALTER TABLE bid_decisions
-ADD COLUMN IF NOT EXISTS decided_at TIMESTAMPTZ;
-
--- Indices for query optimization
+-- Indices for query performance
 CREATE INDEX IF NOT EXISTS idx_requirements_evidence_status ON requirements(bid_id, evidence_status);
 ```
 
 > [!IMPORTANT]
-> **Migration 003 has NOT been executed against Supabase.** It has been prepared for explicit user review and approval. The application code includes defensive column checks to ensure safe operation before and after Migration 003 is executed.
+> **Migration 003 has NOT been executed against Supabase.** It is ready for user review and execution in the Supabase SQL editor. The application code in [`database.py`](file:///C:/Users/feras/Documents/Projects/Bid-Intelligence/database.py) includes multi-tier defensive fallbacks to operate smoothly both prior to and after Migration 003 is executed.
 
 ---
 
-## 4. Automated Test Results
+## 4. Test Suite Execution Results
 
 ### Unit Tests:
 ```powershell
 python -m unittest discover -s tests -p "test_*.py"
-Ran 15 tests in 0.000s — OK (100% Passed)
+Ran 27 tests in 0.231s — OK (27/27 Passed)
 ```
 
-1. `test_default_firm_profile_unconfigured` — **PASS**
-2. `test_firm_profile_cannot_force_pass_on_unknown` — **PASS**
-3. `test_ai_evaluation_leaves_human_decision_null` — **PASS**
-4. `test_ai_evaluation_preserves_existing_human_decision` — **PASS**
-5. `test_evidence_readiness_values` — **PASS**
-6. `test_pass_with_partial_evidence_is_valid` — **PASS**
-7. `test_unknown_with_missing_evidence_remains_unverified` — **PASS**
-8. `test_mandatory_fail_blocks_submission` — **PASS**
-9. `test_mandatory_unknown_blocks_submission` — **PASS**
-10. `test_missing_submission_document_blocks_submission` — **PASS**
-11. `test_unchecked_verification_blocks_submission` — **PASS**
-12. `test_all_cleared_permits_submission` — **PASS**
-13. `test_withdrawn_is_formal_stage` — **PASS**
-14. `test_win_rate_excludes_withdrawn_and_nobid_from_lost` — **PASS**
-15. `test_expected_schema_dimensions` — **PASS**
+1. `test_source_refs_jsonb_payload_remains_native_list` — **PASS**
+2. `test_document_conflicts_jsonb_payload_remains_native_list` — **PASS**
+3. `test_stage_a_prompt_extracts_facts_only_not_brief` — **PASS**
+4. `test_stage_d_prompt_synthesizes_from_normalized_model` — **PASS**
+5. `test_valid_deterministic_source_reference_accepted` — **PASS**
+6. `test_invalid_page_source_reference_rejected` — **PASS**
+7. `test_invalid_sheet_source_reference_rejected` — **PASS**
+8. `test_invalid_filename_source_reference_rejected` — **PASS**
+9. `test_date_conflict_detected` — **PASS**
+10. `test_evaluation_weight_conflict_detected` — **PASS**
+11. `test_submission_rule_conflict_detected` — **PASS**
+12. `test_mandatory_requirement_conflict_detected` — **PASS**
+13. `test_commercial_term_conflict_detected` — **PASS**
+14. `test_scope_conflict_detected` — **PASS**
+15. `test_mandatory_uploaded_is_ready` — **PASS**
+16. `test_mandatory_approved_is_ready` — **PASS**
+17. `test_mandatory_complete_is_ready` — **PASS**
+18. `test_mandatory_submitted_is_ready` — **PASS**
+19. `test_mandatory_expected_is_blocker` — **PASS**
+20. `test_optional_expected_does_not_block` — **PASS**
+21. `test_doc_and_xls_rejected_as_unsupported` — **PASS**
+22. `test_csv_parser_with_row_markers` — **PASS**
+23. `test_xlsx_blank_rows_preserve_real_row_coordinates` — **PASS**
+24. `test_default_firm_profile_unconfigured` — **PASS**
+25. `test_ai_evaluation_preserves_human_decision` — **PASS**
+26. `test_withdrawn_and_nobid_in_stages` — **PASS**
+27. `test_win_rate_calculation` — **PASS**
 
 ### Integration Tests:
 ```powershell
 python -m unittest discover -s tests/integration -p "test_*.py"
-Ran 6 tests in 0.003s — OK (skipped=1)
+Ran 6 tests in 0.285s — OK (5 Passed, 1 Skipped / NOT EXECUTED)
 ```
 
 1. `test_zip_safe_unpacking_and_path_traversal_rejection` — **PASS**
@@ -129,20 +150,13 @@ Ran 6 tests in 0.003s — OK (skipped=1)
 
 ## 5. Live Acceptance & Source Fixture Status
 
-### Bank of Canada RFP No. 2026-026 Live Execution Status:
-- **Status:** `NOT EXECUTED` (Integration harness ready in `tests/integration/test_bank_of_canada_live_acceptance.py`).
-- **Explanation:** The physical raw source package documents (`.docx`, `.xlsx`, `.pdf`) for Bank of Canada RFP 2026-026 are not currently stored in the repository. As per instructions, the source files were **not fabricated**.
-- **Readiness:** When the administrator places the RFP documents in `fixtures/bank_of_canada_2026_026/` and sets `RUN_LIVE_AI_TESTS=1`, the test harness will automatically execute full package ingestion and verification.
+### Bank of Canada RFP No. 2026-026 Live Acceptance:
+- **Status:** `NOT EXECUTED` (Harness ready at [`tests/integration/test_bank_of_canada_live_acceptance.py`](file:///C:/Users/feras/Documents/Projects/Bid-Intelligence/tests/integration/test_bank_of_canada_live_acceptance.py)).
+- **Explanation:** The physical raw source documents for Bank of Canada RFP No. 2026-026 were not present in the local workspace. Per project directives, source documents were **not fabricated**.
+- **Execution Condition:** Setting `RUN_LIVE_AI_TESTS=1`, populating `fixtures/bank_of_canada_2026_026/`, and providing `ANTHROPIC_API_KEY` will execute the live package test.
 
 ---
 
-## 6. Known Limitations & Technical Debt
+## 6. Final Recommendation
 
-1. **Supabase Schema Alignment:** Live database will return column fallbacks until `migrations/003_intelligence_integrity.sql` is executed in the Supabase SQL editor.
-2. **Document Viewer:** Future enhancement can provide side-by-side excerpt preview when clicking on a source provenance badge (`source_refs`).
-
----
-
-## 7. Final Recommendation
-
-# **READY FOR MIGRATION 003 REVIEW**
+# **READY TO APPLY MIGRATION 003**

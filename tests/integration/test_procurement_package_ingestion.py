@@ -11,7 +11,8 @@ from extractor import (
     extract_text_from_file,
     unpack_procurement_package,
     detect_document_conflicts,
-    PACKAGE_EXTRACTION_PROMPT
+    STAGE_A_FACT_EXTRACTION_PROMPT,
+    STAGE_D_SYNTHESIS_PROMPT
 )
 
 
@@ -33,6 +34,9 @@ class TestProcurementPackageIngestion(unittest.TestCase):
             z.writestr("../../etc/passwd", "Root exploit.")
             # Unsupported binary
             z.writestr("malicious_executable.exe", b"MZ\x90\x00BinaryExe")
+            # Unsupported legacy formats
+            z.writestr("legacy.doc", b"Old binary doc")
+            z.writestr("legacy.xls", b"Old binary xls")
             # Hidden system file
             z.writestr(".DS_Store", b"\x00\x00")
 
@@ -48,10 +52,12 @@ class TestProcurementPackageIngestion(unittest.TestCase):
         self.assertIn("Pricing_Template.xlsx", unpacked_names)
         self.assertIn("Schedule_1.txt", unpacked_names)
 
-        # Path traversal files and binaries MUST be rejected
+        # Path traversal files, binaries, and legacy files MUST be rejected
         self.assertNotIn("../malicious_file.txt", unpacked_names)
         self.assertNotIn("../../etc/passwd", unpacked_names)
         self.assertNotIn("malicious_executable.exe", unpacked_names)
+        self.assertNotIn("legacy.doc", unpacked_names)
+        self.assertNotIn("legacy.xls", unpacked_names)
         self.assertNotIn(".DS_Store", unpacked_names)
 
         # Warnings should record the rejections
@@ -66,14 +72,13 @@ class TestProcurementPackageIngestion(unittest.TestCase):
         parsed1 = extract_text_from_file(doc1_bytes, "Main_RFP.txt")
         parsed2 = extract_text_from_file(doc2_bytes, "Appendix_B.txt")
 
-        self.assertIn("[[SOURCE: Main_RFP.txt]]", parsed1)
+        self.assertIn("[[SOURCE: Main_RFP.txt", parsed1)
         self.assertIn("bilingual support", parsed1)
-        self.assertIn("[[SOURCE: Appendix_B.txt]]", parsed2)
+        self.assertIn("[[SOURCE: Appendix_B.txt", parsed2)
         self.assertIn("Reliability clearance", parsed2)
 
     def test_docx_xml_parsing_fallback(self):
         """Verify DOCX text extraction parses headings and body text cleanly."""
-        # Create a synthetic minimal DOCX zip structure in-memory
         docx_buffer = io.BytesIO()
         with zipfile.ZipFile(docx_buffer, "w", zipfile.ZIP_DEFLATED) as z:
             doc_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -112,20 +117,16 @@ class TestProcurementPackageIngestion(unittest.TestCase):
         self.assertIn("Deliverable Cohorts: 21", extracted)
 
     def test_addenda_deadline_conflict_reconciliation(self):
-        """Verify that when an addendum amends the deadline, a conflict/reconciliation record is generated."""
-        mock_extracted = {
-            "bid": {"submission_deadline": "2026-10-02"},
-            "brief": {
-                "key_dates": [
-                    {"milestone": "Original Submission Deadline", "date": "2026-09-30"},
-                    {"milestone": "Revised Extended Deadline (Addendum 1)", "date": "2026-10-02"}
-                ],
-                "document_conflicts": []
-            }
+        """Verify that when an addendum amends the deadline, a conflict record is generated."""
+        normalized_facts = {
+            "dates": [
+                {"milestone": "Submission Deadline", "date": "2026-09-30", "source_doc": "Main_RFP.pdf"},
+                {"milestone": "Revised Extended Deadline (Addendum 1)", "date": "2026-10-02", "source_doc": "Addendum_No_1.pdf"}
+            ]
         }
         package_files = ["Main_RFP.pdf", "Addendum_No_1.pdf"]
 
-        conflicts = detect_document_conflicts(mock_extracted, package_files)
+        conflicts = detect_document_conflicts(normalized_facts, package_files)
 
         self.assertTrue(len(conflicts) > 0)
         date_conflict = next((c for c in conflicts if c.get("conflict_type") == "DATE_CONFLICT"), None)

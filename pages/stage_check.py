@@ -72,7 +72,7 @@ def page_check(bid_id: int):
         )
 
         c_up1, c_up2 = st.columns([2, 1])
-        prop_file = c_up1.file_uploader("Upload draft or final proposal (PDF, DOCX, TXT)", type=["pdf", "docx", "txt", "doc"], key="prop_align_file")
+        prop_file = c_up1.file_uploader("Upload draft or final proposal (PDF, DOCX, TXT)", type=["pdf", "docx", "txt"], key="prop_align_file")
         proposal_text = ""
         if prop_file:
             proposal_text = extract_text_from_file(prop_file.read(), prop_file.name)

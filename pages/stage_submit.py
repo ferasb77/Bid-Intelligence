@@ -33,11 +33,15 @@ def page_submit(bid_id: int):
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
 
     # ── READINESS STATUS EVALUATION ───────────────────────────────────────────
-    sub_docs = [d for d in docs if d.get("doc_type") in ("Submission", "Financial")]
+    READY_DOC_STATUSES = {"Uploaded", "Approved", "Complete", "Submitted"}
+    # Mandatory submission documents: either explicitly mandatory=1/True or Submission/Financial type not marked optional (mandatory=0)
+    sub_docs = [d for d in docs if d.get("doc_type") in ("Submission", "Financial") or d.get("mandatory") in (1, True, "1", "true")]
+    required_sub_docs = [d for d in sub_docs if d.get("mandatory") not in (0, False, "0", "false")]
+    
     mand_reqs = [r for r in reqs if r.get("category") == "Mandatory"]
     m_fail = sum(1 for r in mand_reqs if r.get("qual_status") == "FAIL")
     m_unknown = sum(1 for r in mand_reqs if r.get("qual_status", "UNKNOWN") == "UNKNOWN")
-    docs_missing = sum(1 for d in sub_docs if d.get("status") != "Uploaded")
+    docs_missing = sum(1 for d in required_sub_docs if d.get("status") not in READY_DOC_STATUSES)
 
     sub_dl = days_until(bid.get("submission_deadline"))
 
@@ -56,7 +60,7 @@ def page_submit(bid_id: int):
         f'<div style="background:#111118;border:2px solid {gate_col};border-radius:6px;padding:1.1rem 1.5rem">'
         f'<div style="font-size:.72rem;color:#A9A69D;text-transform:uppercase">Final Gate Status</div>'
         f'<div style="font-size:1.5rem;font-weight:700;color:{gate_col};margin:.2rem 0">{gate_status}</div>'
-        f'<div style="font-size:.8rem;color:#EDEAE3">{len(sub_docs)-docs_missing}/{len(sub_docs)} submission files ready · {m_fail} blockers</div>'
+        f'<div style="font-size:.8rem;color:#EDEAE3">{len(required_sub_docs)-docs_missing}/{len(required_sub_docs)} required submission files ready · {m_fail} blockers</div>'
         f'</div>',
         unsafe_allow_html=True
     )
@@ -69,18 +73,19 @@ def page_submit(bid_id: int):
     st.markdown("### 📦 Dynamic Submission Package Checklist")
     st.markdown(
         '<div style="font-size:.82rem;color:#A9A69D;margin-bottom:.8rem">'
-        'Ensure all required submission envelopes, signed forms, and pricing files are uploaded.'
+        'Ensure all required submission envelopes, signed forms, and pricing files are uploaded and approved.'
         '</div>',
         unsafe_allow_html=True
     )
 
     if sub_docs:
         for doc in sub_docs:
-            st_col = "#27AE60" if doc.get("status") == "Uploaded" else "#C0392B"
+            is_mand = doc.get("mandatory") not in (0, False, "0", "false")
+            mand_tag = '<span style="color:#C0392B;font-weight:700;font-size:.72rem">[REQUIRED]</span>' if is_mand else '<span style="color:#6E6C66;font-size:.72rem">[OPTIONAL]</span>'
             st.markdown(
                 f'<div style="display:flex;justify-content:space-between;align-items:center;background:#111118;'
                 f'border:1px solid #292832;border-radius:4px;padding:.6rem 1rem;margin:.3rem 0">'
-                f'<div>📄 <strong>{doc["name"]}</strong> <span style="font-size:.75rem;color:#A9A69D">[{doc.get("doc_type","")}]</span>'
+                f'<div>📄 <strong>{doc["name"]}</strong> {mand_tag} <span style="font-size:.75rem;color:#A9A69D">[{doc.get("doc_type","")}]</span>'
                 f'{"<div style=font-size:.74rem;color:#6E6C66>" + doc.get("notes","") + "</div>" if doc.get("notes") else ""}'
                 f'</div>'
                 f'<span>{status_badge(doc.get("status","Expected"))}</span>'
@@ -91,7 +96,7 @@ def page_submit(bid_id: int):
         st.markdown('<div class="info-box">No specific submission documents separated. Add submission package files below.</div>', unsafe_allow_html=True)
 
     with st.expander("➕ Upload / Add Submission Package File"):
-        up_file = st.file_uploader("Upload finalized submission document", type=["pdf", "docx", "xlsx", "doc"], key="sub_pkg_file")
+        up_file = st.file_uploader("Upload finalized submission document (PDF, DOCX, XLSX, CSV, TXT, ZIP)", type=["pdf", "docx", "xlsx", "csv", "txt", "zip"], key="sub_pkg_file")
         if up_file:
             up_key = f"uploaded_sub_{bid_id}_{up_file.name}_{up_file.size}"
             if not st.session_state.get(up_key):
@@ -102,12 +107,12 @@ def page_submit(bid_id: int):
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
-    # ── PRE-SUBMISSION VERIFICATION GATES ─────────────────────────────────────
+    # ── PRE-SUBMISSION VERIFICATION GATES (HUMAN ATTESTATIONS DEFAULT FALSE) ─
     st.markdown("### 🛡️ Final Gate Verifications")
-    chk1 = st.checkbox("Technical and Financial proposals formatted and separated according to RFP instructions", value=True)
-    chk2 = st.checkbox("All mandatory qualification criteria verified with PASS status", value=(m_fail == 0 and m_unknown == 0))
-    chk3 = st.checkbox("All formal tender addenda and Q&A bulletins acknowledged", value=True)
-    chk4 = st.checkbox("Authorized executive sign-off confirmed", value=True)
+    chk1 = st.checkbox("Technical and Financial proposals formatted and separated according to RFP instructions", value=False)
+    chk2 = st.checkbox("All mandatory qualification criteria verified with PASS status", value=False)
+    chk3 = st.checkbox("All formal tender addenda and Q&A bulletins acknowledged", value=False)
+    chk4 = st.checkbox("Authorized executive sign-off confirmed", value=False)
 
     # ── CRITICAL BLOCKER AGGREGATION ──────────────────────────────────────────
     critical_blockers = []

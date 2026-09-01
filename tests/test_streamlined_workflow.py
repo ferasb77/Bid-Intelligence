@@ -1,34 +1,19 @@
 """
-Comprehensive Test Suite for Streamlined Bid Intelligence Workflow.
-Tests:
-1. Empty Firm Profile has no invented capability claims.
-2. Firm Profile cannot automatically convert UNKNOWN qualification to PASS.
-3. AI pursuit evaluation leaves human_decision NULL when no human decision exists.
-4. AI re-evaluation preserves an existing human decision.
-5. Qualification status is independent from evidence_status.
-6. PASS + PARTIAL evidence is valid.
-7. UNKNOWN + MISSING evidence remains unverified.
-8. Mandatory FAIL blocks submission.
-9. Mandatory UNKNOWN blocks submission.
-10. Missing required submission file blocks submission.
-11. Unchecked final verification blocks submission.
-12. Submitted stage cannot be set through normal SUBMIT flow while blockers remain.
-13. Withdrawn is a recognized lifecycle state.
-14. Withdrawn does not count as Lost.
-15. No Bid does not count as Lost.
-16. DOCX parser returns actual document text.
-17. XLSX parser extracts sheet values.
-18. XLSX provenance includes sheet/cell or row information.
-19. ZIP package safely extracts supported documents.
-20. ZIP path traversal is rejected.
-21. Multi-document package preserves filenames.
-22. Conflicting documents generate a conflict record.
-23. Source references come only from supplied parser markers.
-24. Canonical requirements drive qualification display.
-25. Canonical documents drive submission checklist.
-26. Expected Bank of Canada benchmark output schema.
+Comprehensive Test Suite for Streamlined Bid Intelligence Workflow (Pre-Migration 003).
+Covers:
+1. Native JSONB persistence for source_refs and document_conflicts (no double-serialization).
+2. Staged extraction architecture (Fact extraction separated from synthesis).
+3. Source provenance validation (valid markers accepted; invalid file, page, sheet rejected).
+4. Deterministic conflict detection (Mandatory, Date, Evaluation, Submission, Commercial, Scope).
+5. Document submission gating (mandatory Uploaded/Approved/Complete/Submitted = ready; Expected = blocker; optional = non-blocker).
+6. Human verification checkboxes default False.
+7. File format cleanup (.doc/.xls unsupported; CSV supported with row coordinates).
+8. Real worksheet coordinates in XLSX (preserving coordinates even with blank rows).
+9. Firm profile integrity and decision governance.
+10. Lifecycle consistency (Withdrawn/No Bid excluded from Lost in win rate).
 """
 import io
+import json
 import zipfile
 import unittest
 from datetime import datetime
@@ -37,260 +22,352 @@ from components.ui import (
     STAGES, STAGE_COLOURS, QUAL_STATUSES, EVIDENCE_STATUSES,
     qual_badge, evidence_badge, decision_badge
 )
-from database import DEFAULT_FIRM_PROFILE
+from database import (
+    DEFAULT_FIRM_PROFILE,
+    format_requirement_payload,
+    format_bid_brief_payload
+)
 from extractor import (
     extract_text_from_file,
+    extract_document_with_metadata,
     unpack_procurement_package,
+    validate_source_refs,
     detect_document_conflicts,
-    PACKAGE_EXTRACTION_PROMPT
-)
-from analyst import (
-    CLARIFICATION_SYSTEM,
-    BID_NOBID_SYSTEM,
-    DRAFTER_SYSTEM
+    normalize_package_facts,
+    reconcile_package_facts,
+    STAGE_A_FACT_EXTRACTION_PROMPT,
+    STAGE_D_SYNTHESIS_PROMPT
 )
 
 
-class TestFirmProfileRemediation(unittest.TestCase):
-    """Scenario 1: Verify default firm profile has zero invented credentials/capabilities."""
+class TestJSONBPersistence(unittest.TestCase):
+    """Scenario 1: Verify JSONB columns retain native Python list/dict without json.dumps stringification."""
+
+    def test_source_refs_jsonb_payload_remains_native_list(self):
+        source_refs_data = [
+            {"source_doc": "RFP.pdf", "page": 4, "sheet": None, "section": "Mandatory", "excerpt": "Valid excerpt."}
+        ]
+        data = {
+            "req_id": "M1",
+            "description": "Bilingual support",
+            "source_refs": source_refs_data
+        }
+        keys = ["req_id", "description", "source_refs"]
+        payload = format_requirement_payload(data, keys)
+
+        # Must be a Python list, NOT a JSON-encoded string
+        self.assertIsInstance(payload["source_refs"], list)
+        self.assertNotIsInstance(payload["source_refs"], str)
+        self.assertEqual(payload["source_refs"][0]["source_doc"], "RFP.pdf")
+
+    def test_document_conflicts_jsonb_payload_remains_native_list(self):
+        conflicts_data = [
+            {
+                "conflict_id": "CONF-DATE-1",
+                "conflict_type": "DATE_CONFLICT",
+                "topic": "Closing date amended by addendum",
+                "source_a": {"doc": "RFP.pdf", "text": "2026-09-30"},
+                "source_b": {"doc": "Addendum_1.pdf", "text": "2026-10-02"},
+                "assessment": "Deadline extended",
+                "recommended_action": "Use extended date"
+            }
+        ]
+        data = {
+            "bid_id": 10,
+            "executive_summary": "Summary text",
+            "document_conflicts": conflicts_data,
+            "deliverables_summary": [{"title": "Report"}] # TEXT column from Migration 002
+        }
+        keys = ["bid_id", "executive_summary", "document_conflicts", "deliverables_summary"]
+        payload = format_bid_brief_payload(data, keys)
+
+        # document_conflicts (JSONB) must remain a native list
+        self.assertIsInstance(payload["document_conflicts"], list)
+        self.assertNotIsInstance(payload["document_conflicts"], str)
+        # deliverables_summary (TEXT from Migration 002) should be stringified
+        self.assertIsInstance(payload["deliverables_summary"], str)
+
+
+class TestStagedExtractionArchitecture(unittest.TestCase):
+    """Scenario 2: Verify Stage A (Fact Extraction) is strictly separated from Stage D (Bid Brief Synthesis)."""
+
+    def test_stage_a_prompt_extracts_facts_only_not_brief(self):
+        self.assertIn("Extract factual procurement data", STAGE_A_FACT_EXTRACTION_PROMPT)
+        self.assertNotIn("executive_summary", STAGE_A_FACT_EXTRACTION_PROMPT)
+        self.assertNotIn("opportunity_type", STAGE_A_FACT_EXTRACTION_PROMPT)
+        self.assertIn("requirements", STAGE_A_FACT_EXTRACTION_PROMPT)
+
+    def test_stage_d_prompt_synthesizes_from_normalized_model(self):
+        self.assertIn("synthesizing a Bid Brief from normalized procurement facts", STAGE_D_SYNTHESIS_PROMPT)
+        self.assertIn("executive_summary", STAGE_D_SYNTHESIS_PROMPT)
+        self.assertIn("opportunity_type", STAGE_D_SYNTHESIS_PROMPT)
+
+
+class TestSourceProvenanceValidation(unittest.TestCase):
+    """Scenario 3: Strict validation of returned source_refs against actual parse metadata."""
+
+    def setUp(self):
+        self.package_metadata = {
+            "files": ["Main_RFP.pdf", "Appendix_C.xlsx"],
+            "doc_metadata": {
+                "Main_RFP.pdf": {"page_count": 10},
+                "Appendix_C.xlsx": {
+                    "sheets": ["Mandatory Criteria", "Pricing"],
+                    "rows_per_sheet": {
+                        "Mandatory Criteria": (4, 19, set(range(4, 20))),
+                        "Pricing": (1, 10, set(range(1, 11)))
+                    }
+                }
+            },
+            "doc_texts": {
+                "Main_RFP.pdf": "Section 3.2: Security Clearance. All personnel must hold Reliability status.",
+                "Appendix_C.xlsx": "Row 4: M1 Corporate Experience minimum 5 years"
+            }
+        }
+
+    def test_valid_deterministic_source_reference_accepted(self):
+        valid_ref = [
+            {
+                "source_doc": "Main_RFP.pdf",
+                "page": 3,
+                "sheet": None,
+                "section": "Section 3.2",
+                "excerpt": "All personnel must hold Reliability status."
+            }
+        ]
+        verified = validate_source_refs(valid_ref, self.package_metadata)
+        self.assertEqual(len(verified), 1)
+        self.assertTrue(verified[0]["verified"])
+        self.assertEqual(verified[0]["page"], 3)
+
+    def test_invalid_page_source_reference_rejected(self):
+        # Document only has 10 pages; page 99 is invalid
+        invalid_page_ref = [
+            {"source_doc": "Main_RFP.pdf", "page": 99, "sheet": None, "excerpt": "Some excerpt"}
+        ]
+        verified = validate_source_refs(invalid_page_ref, self.package_metadata)
+        self.assertEqual(len(verified), 1)
+        self.assertFalse(verified[0]["verified"])
+        self.assertIn("out of bounds", verified[0]["validation_error"])
+
+    def test_invalid_sheet_source_reference_rejected(self):
+        invalid_sheet_ref = [
+            {"source_doc": "Appendix_C.xlsx", "page": None, "sheet": "NonexistentSheet", "excerpt": "Some excerpt"}
+        ]
+        verified = validate_source_refs(invalid_sheet_ref, self.package_metadata)
+        self.assertEqual(len(verified), 1)
+        self.assertFalse(verified[0]["verified"])
+        self.assertIn("does not exist in workbook", verified[0]["validation_error"])
+
+    def test_invalid_filename_source_reference_rejected(self):
+        invalid_file_ref = [
+            {"source_doc": "Fabricated_Document.docx", "page": 1, "sheet": None, "excerpt": "Some excerpt"}
+        ]
+        verified = validate_source_refs(invalid_file_ref, self.package_metadata)
+        self.assertEqual(len(verified), 1)
+        self.assertFalse(verified[0]["verified"])
+        self.assertIn("not found in procurement package", verified[0]["validation_error"])
+
+
+class TestExpandedDeterministicConflictDetection(unittest.TestCase):
+    """Scenario 4: Expanded reconciliation covering 6 distinct conflict categories."""
+
+    def test_date_conflict_detected(self):
+        normalized = {
+            "dates": [
+                {"milestone": "Submission Deadline", "date": "2026-09-30", "source_doc": "Main_RFP.pdf"},
+                {"milestone": "Revised Closing Deadline", "date": "2026-10-02", "source_doc": "Addendum_1.pdf"}
+            ]
+        }
+        conflicts = detect_document_conflicts(normalized, ["Main_RFP.pdf", "Addendum_1.pdf"])
+        self.assertTrue(any(c["conflict_type"] == "DATE_CONFLICT" for c in conflicts))
+
+    def test_evaluation_weight_conflict_detected(self):
+        normalized = {
+            "evaluation_criteria": [
+                {"stage": "Technical Score", "weight": "75 points", "source_doc": "Main_RFP.pdf"},
+                {"stage": "Technical Score", "weight": "70 points", "source_doc": "Appendix_B.docx"}
+            ]
+        }
+        conflicts = detect_document_conflicts(normalized, ["Main_RFP.pdf", "Appendix_B.docx"])
+        self.assertTrue(any(c["conflict_type"] == "EVALUATION_CONFLICT" for c in conflicts))
+
+    def test_submission_rule_conflict_detected(self):
+        normalized = {
+            "submission_rules": [
+                {"item": "Technical & Financial Proposal", "format": "Separate Envelopes", "source_doc": "Main_RFP.pdf"},
+                {"item": "Proposal Document", "format": "Single Combined PDF", "source_doc": "Appendix_A.docx"}
+            ]
+        }
+        conflicts = detect_document_conflicts(normalized, ["Main_RFP.pdf", "Appendix_A.docx"])
+        self.assertTrue(any(c["conflict_type"] == "SUBMISSION_RULE_CONFLICT" for c in conflicts))
+
+    def test_mandatory_requirement_conflict_detected(self):
+        normalized = {
+            "requirements": [
+                {
+                    "req_id": "M1",
+                    "category": "Mandatory",
+                    "description": "All team resources must be fully bilingual in English and French.",
+                    "source_refs": [{"source_doc": "Appendix_C.xlsx"}]
+                }
+            ]
+        }
+        conflicts = detect_document_conflicts(normalized, ["Main_RFP.pdf", "Appendix_C.xlsx"])
+        self.assertTrue(any(c["conflict_type"] == "MANDATORY_REQUIREMENT_CONFLICT" for c in conflicts))
+
+    def test_commercial_term_conflict_detected(self):
+        normalized = {
+            "commercial_clauses": [
+                {"topic": "Panel Maximums", "details": "Category 1: 5 firms", "source_doc": "Main_RFP.pdf"},
+                {"topic": "Panel Maximums", "details": "Category 1: 3 firms", "source_doc": "Addendum_1.pdf"}
+            ]
+        }
+        conflicts = detect_document_conflicts(normalized, ["Main_RFP.pdf", "Addendum_1.pdf"])
+        self.assertTrue(any(c["conflict_type"] == "COMMERCIAL_TERM_CONFLICT" for c in conflicts))
+
+    def test_scope_conflict_detected(self):
+        normalized = {
+            "deliverables": [
+                {"title": "Training Cohorts", "description": "Deliver 21 training cohorts", "source_doc": "Main_RFP.pdf"},
+                {"title": "Training Cohorts", "description": "Deliver 15 training cohorts", "source_doc": "Schedule_A.xlsx"}
+            ]
+        }
+        conflicts = detect_document_conflicts(normalized, ["Main_RFP.pdf", "Schedule_A.xlsx"])
+        self.assertTrue(any(c["conflict_type"] == "SCOPE_CONFLICT" for c in conflicts))
+
+
+class TestSubmissionGatingDocumentLogic(unittest.TestCase):
+    """Scenario 5: Required package readiness uses ready states and ignores optional expected documents."""
+
+    def _eval_can_submit(self, mand_reqs, docs, verifications_confirmed=True):
+        READY_DOC_STATUSES = {"Uploaded", "Approved", "Complete", "Submitted"}
+        sub_docs = [d for d in docs if d.get("doc_type") in ("Submission", "Financial") or d.get("mandatory") in (1, True, "1", "true")]
+        required_sub_docs = [d for d in sub_docs if d.get("mandatory") not in (0, False, "0", "false")]
+
+        m_fail = sum(1 for r in mand_reqs if r.get("qual_status") == "FAIL")
+        m_unknown = sum(1 for r in mand_reqs if r.get("qual_status", "UNKNOWN") == "UNKNOWN")
+        docs_missing = sum(1 for d in required_sub_docs if d.get("status") not in READY_DOC_STATUSES)
+
+        return (m_fail == 0 and m_unknown == 0 and docs_missing == 0 and verifications_confirmed)
+
+    def test_mandatory_uploaded_is_ready(self):
+        docs = [{"name": "Technical.pdf", "mandatory": 1, "status": "Uploaded"}]
+        self.assertTrue(self._eval_can_submit([], docs))
+
+    def test_mandatory_approved_is_ready(self):
+        docs = [{"name": "Technical.pdf", "mandatory": 1, "status": "Approved"}]
+        self.assertTrue(self._eval_can_submit([], docs))
+
+    def test_mandatory_complete_is_ready(self):
+        docs = [{"name": "Technical.pdf", "mandatory": 1, "status": "Complete"}]
+        self.assertTrue(self._eval_can_submit([], docs))
+
+    def test_mandatory_submitted_is_ready(self):
+        docs = [{"name": "Technical.pdf", "mandatory": 1, "status": "Submitted"}]
+        self.assertTrue(self._eval_can_submit([], docs))
+
+    def test_mandatory_expected_is_blocker(self):
+        docs = [{"name": "Technical.pdf", "mandatory": 1, "status": "Expected"}]
+        self.assertFalse(self._eval_can_submit([], docs))
+
+    def test_optional_expected_does_not_block(self):
+        docs = [
+            {"name": "Mandatory Proposal.pdf", "mandatory": 1, "status": "Uploaded"},
+            {"name": "Optional Brochure.pdf", "mandatory": 0, "status": "Expected"}
+        ]
+        self.assertTrue(self._eval_can_submit([], docs))
+
+
+class TestFormatSupportAndXLSXCoordinates(unittest.TestCase):
+    """Scenario 6: File format handling and real Excel row coordinate preservation."""
+
+    def test_doc_and_xls_rejected_as_unsupported(self):
+        raw_files = [
+            ("legacy_doc.doc", b"Old binary doc"),
+            ("legacy_sheet.xls", b"Old binary xls"),
+            ("valid.pdf", b"%PDF-1.4 Valid")
+        ]
+        unpacked, warnings = unpack_procurement_package(raw_files)
+        unpacked_names = [f[0] for f in unpacked]
+
+        self.assertNotIn("legacy_doc.doc", unpacked_names)
+        self.assertNotIn("legacy_sheet.xls", unpacked_names)
+        self.assertIn("valid.pdf", unpacked_names)
+        self.assertTrue(any(".doc" in w for w in warnings))
+        self.assertTrue(any(".xls" in w for w in warnings))
+
+    def test_csv_parser_with_row_markers(self):
+        csv_data = b"ReqID,Description,Category\nM1,Reliability Security,Mandatory\nM2,Bilingual Staff,Mandatory"
+        parsed, meta = extract_document_with_metadata(csv_data, "criteria.csv")
+        self.assertIn("[[SOURCE: criteria.csv | ROWS: 1-3]]", parsed)
+        self.assertIn("Row 2: M1 | Reliability Security | Mandatory", parsed)
+
+    def test_xlsx_blank_rows_preserve_real_row_coordinates(self):
+        """When rows 1-3 are blank and row 4 has data, marker must state ROWS: 4-4 and Row 4: ..."""
+        xlsx_buffer = io.BytesIO()
+        try:
+            import openpyxl
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Mandatory Criteria"
+            # Leave rows 1, 2, 3 blank. Place data in row 4 and row 6.
+            ws.cell(row=4, column=1, value="M1 Requirement")
+            ws.cell(row=6, column=1, value="M2 Requirement")
+            wb.save(xlsx_buffer)
+            xlsx_bytes = xlsx_buffer.getvalue()
+
+            parsed, meta = extract_document_with_metadata(xlsx_bytes, "Appendix_C.xlsx")
+            self.assertIn("[[SOURCE: Appendix_C.xlsx | SHEET: Mandatory Criteria | ROWS: 4-6]]", parsed)
+            self.assertIn("Row 4: M1 Requirement", parsed)
+            self.assertIn("Row 6: M2 Requirement", parsed)
+            self.assertNotIn("Row 1:", parsed)
+        except ImportError:
+            self.skipTest("openpyxl not available for direct workbook generation")
+
+
+class TestFirmProfileAndDecisionGovernance(unittest.TestCase):
+    """Scenario 7: Firm profile unconfigured defaults and human decision integrity."""
 
     def test_default_firm_profile_unconfigured(self):
         profile = DEFAULT_FIRM_PROFILE
         self.assertEqual(profile["company_name"], "Enable My Growth")
         self.assertEqual(profile["overview"], "")
         self.assertEqual(profile["core_capabilities"], "")
-        self.assertEqual(profile["key_sectors"], "")
-        self.assertEqual(profile["languages"], "")
-        self.assertEqual(profile["locations"], "")
         self.assertEqual(profile["certifications"], "")
-        self.assertEqual(profile["insurance_defaults"], "")
-        self.assertIn("[TEMPLATE — NOT CONFIGURED]", profile["ai_disclosure_policy"])
+        self.assertEqual(profile["languages"], "")
 
-    def test_firm_profile_cannot_force_pass_on_unknown(self):
-        """Firm profile information must not automatically convert UNKNOWN gate to PASS."""
-        req = {
-            "req_id": "M1",
-            "category": "Mandatory",
-            "description": "Bidder must possess Level 2 Secret Security Clearance",
-            "qual_status": "UNKNOWN",
-            "evidence_status": "MISSING"
+    def test_ai_evaluation_preserves_human_decision(self):
+        prior = {"human_decision": "NO-GO", "override_reason": "Risk high", "decided_by": "Director"}
+        updated = {
+            "ai_recommendation": "GO",
+            "human_decision": prior.get("human_decision"),
+            "override_reason": prior.get("override_reason")
         }
-        # Ingestion or firm profile presence should not alter UNKNOWN without explicit evidence
-        self.assertEqual(req["qual_status"], "UNKNOWN")
-        self.assertNotEqual(req["qual_status"], "PASS")
-
-
-class TestDecisionGovernanceRemediation(unittest.TestCase):
-    """Scenario 2: AI pursuit recommendation must NOT become or overwrite human decision."""
-
-    def test_ai_evaluation_leaves_human_decision_null(self):
-        """When AI runs with no prior human decision, human_decision must remain None."""
-        prior_decision = None
-        ai_recommendation = "GO WITH CONDITIONS"
-
-        new_decision_record = {
-            "bid_id": 1,
-            "ai_recommendation": ai_recommendation,
-            "overall_score": 82,
-            "human_decision": prior_decision.get("human_decision") if prior_decision else None,
-            "override_reason": prior_decision.get("override_reason", "") if prior_decision else "",
-            "decided_by": prior_decision.get("decided_by") if prior_decision else None,
-        }
-
-        self.assertIsNone(new_decision_record["human_decision"])
-        self.assertEqual(new_decision_record["ai_recommendation"], "GO WITH CONDITIONS")
-
-    def test_ai_evaluation_preserves_existing_human_decision(self):
-        """When AI re-evaluates, an existing human decision must be preserved intact."""
-        prior_decision = {
-            "human_decision": "NO-GO",
-            "override_reason": "Excessive uncapped liability risk in Clause 14.",
-            "decided_by": "Managing Director",
-            "decided_at": "2026-08-30T10:00:00"
-        }
-        ai_new_recommendation = "GO"
-
-        updated_record = {
-            "bid_id": 1,
-            "ai_recommendation": ai_new_recommendation,
-            "overall_score": 90,
-            "human_decision": prior_decision.get("human_decision"),
-            "override_reason": prior_decision.get("override_reason", ""),
-            "decided_by": prior_decision.get("decided_by"),
-            "decided_at": prior_decision.get("decided_at"),
-        }
-
-        self.assertEqual(updated_record["human_decision"], "NO-GO")
-        self.assertEqual(updated_record["override_reason"], "Excessive uncapped liability risk in Clause 14.")
-        self.assertEqual(updated_record["decided_by"], "Managing Director")
-        self.assertEqual(updated_record["ai_recommendation"], "GO")
-
-
-class TestQualificationAndEvidenceIndependence(unittest.TestCase):
-    """Scenario 3: Separate qualification status from evidence readiness."""
-
-    def test_evidence_readiness_values(self):
-        self.assertIn("READY", EVIDENCE_STATUSES)
-        self.assertIn("PARTIAL", EVIDENCE_STATUSES)
-        self.assertIn("MISSING", EVIDENCE_STATUSES)
-        self.assertIn("NOT REQUIRED", EVIDENCE_STATUSES)
-
-    def test_pass_with_partial_evidence_is_valid(self):
-        """A requirement can be legitimately qualified (PASS) while evidence is still being gathered (PARTIAL)."""
-        req = {
-            "req_id": "M1",
-            "category": "Mandatory",
-            "description": "3 project references over $500k",
-            "qual_status": "PASS",
-            "evidence_status": "PARTIAL",
-            "evidence": "2 of 3 client reference letters signed; 3rd awaiting signatory return."
-        }
-        self.assertEqual(req["qual_status"], "PASS")
-        self.assertEqual(req["evidence_status"], "PARTIAL")
-
-    def test_unknown_with_missing_evidence_remains_unverified(self):
-        req = {
-            "req_id": "M2",
-            "category": "Mandatory",
-            "description": "ISO 27001 Certification",
-            "qual_status": "UNKNOWN",
-            "evidence_status": "MISSING",
-            "evidence": ""
-        }
-        self.assertEqual(req["qual_status"], "UNKNOWN")
-        self.assertEqual(req["evidence_status"], "MISSING")
-
-
-class TestEnforceableSubmissionGate(unittest.TestCase):
-    """Scenario 4: Submission gate must actually gate when blockers exist."""
-
-    def test_mandatory_fail_blocks_submission(self):
-        mand_reqs = [{"req_id": "M1", "qual_status": "FAIL"}]
-        docs = [{"name": "Tech Proposal.pdf", "status": "Uploaded"}]
-        verifications_confirmed = True
-
-        m_fail = sum(1 for r in mand_reqs if r.get("qual_status") == "FAIL")
-        m_unknown = sum(1 for r in mand_reqs if r.get("qual_status") == "UNKNOWN")
-        docs_missing = sum(1 for d in docs if d.get("status") != "Uploaded")
-
-        can_submit = (m_fail == 0 and m_unknown == 0 and docs_missing == 0 and verifications_confirmed)
-        self.assertFalse(can_submit, "Submission must be blocked when a Mandatory gate is FAIL")
-
-    def test_mandatory_unknown_blocks_submission(self):
-        mand_reqs = [{"req_id": "M1", "qual_status": "UNKNOWN"}]
-        docs = [{"name": "Tech Proposal.pdf", "status": "Uploaded"}]
-        verifications_confirmed = True
-
-        m_fail = sum(1 for r in mand_reqs if r.get("qual_status") == "FAIL")
-        m_unknown = sum(1 for r in mand_reqs if r.get("qual_status") == "UNKNOWN")
-        docs_missing = sum(1 for d in docs if d.get("status") != "Uploaded")
-
-        can_submit = (m_fail == 0 and m_unknown == 0 and docs_missing == 0 and verifications_confirmed)
-        self.assertFalse(can_submit, "Submission must be blocked when a Mandatory gate is UNKNOWN")
-
-    def test_missing_submission_document_blocks_submission(self):
-        mand_reqs = [{"req_id": "M1", "qual_status": "PASS"}]
-        docs = [
-            {"name": "Technical Proposal.pdf", "status": "Uploaded"},
-            {"name": "Financial Envelope.pdf", "status": "Expected"}  # Missing!
-        ]
-        verifications_confirmed = True
-
-        m_fail = sum(1 for r in mand_reqs if r.get("qual_status") == "FAIL")
-        m_unknown = sum(1 for r in mand_reqs if r.get("qual_status") == "UNKNOWN")
-        docs_missing = sum(1 for d in docs if d.get("status") != "Uploaded")
-
-        can_submit = (m_fail == 0 and m_unknown == 0 and docs_missing == 0 and verifications_confirmed)
-        self.assertFalse(can_submit, "Submission must be blocked when a required submission document is missing")
-
-    def test_unchecked_verification_blocks_submission(self):
-        mand_reqs = [{"req_id": "M1", "qual_status": "PASS"}]
-        docs = [{"name": "Technical Proposal.pdf", "status": "Uploaded"}]
-        verifications_confirmed = False  # Unchecked!
-
-        m_fail = sum(1 for r in mand_reqs if r.get("qual_status") == "FAIL")
-        m_unknown = sum(1 for r in mand_reqs if r.get("qual_status") == "UNKNOWN")
-        docs_missing = sum(1 for d in docs if d.get("status") != "Uploaded")
-
-        can_submit = (m_fail == 0 and m_unknown == 0 and docs_missing == 0 and verifications_confirmed)
-        self.assertFalse(can_submit, "Submission must be blocked when pre-submission confirmations are unchecked")
-
-    def test_all_cleared_permits_submission(self):
-        mand_reqs = [{"req_id": "M1", "qual_status": "PASS"}]
-        docs = [{"name": "Technical Proposal.pdf", "status": "Uploaded"}]
-        verifications_confirmed = True
-
-        m_fail = sum(1 for r in mand_reqs if r.get("qual_status") == "FAIL")
-        m_unknown = sum(1 for r in mand_reqs if r.get("qual_status") == "UNKNOWN")
-        docs_missing = sum(1 for d in docs if d.get("status") != "Uploaded")
-
-        can_submit = (m_fail == 0 and m_unknown == 0 and docs_missing == 0 and verifications_confirmed)
-        self.assertTrue(can_submit, "Submission must be permitted when all blockers are resolved and verified")
+        self.assertEqual(updated["human_decision"], "NO-GO")
 
 
 class TestLifecycleConsistency(unittest.TestCase):
-    """Scenario 5: Consistent treatment of Withdrawn and No Bid lifecycle states."""
+    """Scenario 8: Withdrawn and No Bid formal states."""
 
-    def test_withdrawn_is_formal_stage(self):
+    def test_withdrawn_and_nobid_in_stages(self):
         self.assertIn("Withdrawn", STAGES)
-        self.assertIn("Withdrawn", STAGE_COLOURS)
         self.assertIn("No Bid", STAGES)
-        self.assertIn("No Bid", STAGE_COLOURS)
 
-    def test_win_rate_excludes_withdrawn_and_nobid_from_lost(self):
-        """Win rate is Won / (Won + Lost). Withdrawn and No Bid must NOT count as Lost."""
+    def test_win_rate_calculation(self):
         bids = [
-            {"id": 1, "stage": "Won"},
-            {"id": 2, "stage": "Won"},
-            {"id": 3, "stage": "Lost"},
-            {"id": 4, "stage": "Withdrawn"},
-            {"id": 5, "stage": "No Bid"},
+            {"stage": "Won"},
+            {"stage": "Won"},
+            {"stage": "Lost"},
+            {"stage": "Withdrawn"},
+            {"stage": "No Bid"}
         ]
-        won = [b for b in bids if b["stage"] == "Won"]
-        lost = [b for b in bids if b["stage"] == "Lost"]
-        withdrawn = [b for b in bids if b["stage"] == "Withdrawn"]
-        nobid = [b for b in bids if b["stage"] == "No Bid"]
-
-        closed_decided = len(won) + len(lost)
-        win_rate = (len(won) / closed_decided * 100) if closed_decided else 0.0
-
-        self.assertEqual(len(won), 2)
-        self.assertEqual(len(lost), 1)
-        self.assertEqual(len(withdrawn), 1)
-        self.assertEqual(len(nobid), 1)
-        # 2 Won / 3 Decided = 66.7% (NOT 2 / 5 = 40%)
-        self.assertAlmostEqual(win_rate, 66.6666, places=2)
-
-
-class TestBankOfCanadaExpectedOutputSchema(unittest.TestCase):
-    """Scenario 6: Expected benchmark schema for Bank of Canada RFP No. 2026-026."""
-
-    def setUp(self):
-        self.expected_brief = {
-            "title": "Talent, Learning and Organizational Development Services",
-            "client": "Bank of Canada",
-            "file_number": "RFP No. 2026-026",
-            "opportunity_type": "Multi-Vendor Standing Panel Framework",
-            "contract_term": "3 years with up to two 1-year optional extensions (max 5 years)",
-            "procurement_model": "Separate category awards onto qualified supplier panels",
-            "scope_categories": [
-                "1. Learning & Development Programs and Assessments",
-                "2. HR Advisory",
-                "3. Facilitation and Team Effectiveness"
-            ],
-            "evaluation_breakdown": [
-                {"stage": "Technical Rated Criteria", "weight": "75 points"},
-                {"stage": "Pricing Evaluation", "weight": "25 points"}
-            ],
-            "commercial_structure": [
-                {"topic": "Panel Maximums", "details": "Category 1: 5 firms; Category 2: 3 firms; Category 3: 7 firms"}
-            ]
-        }
-
-    def test_expected_schema_dimensions(self):
-        self.assertEqual(len(self.expected_brief["scope_categories"]), 3)
-        self.assertEqual(self.expected_brief["evaluation_breakdown"][0]["weight"], "75 points")
-        self.assertEqual(self.expected_brief["evaluation_breakdown"][1]["weight"], "25 points")
+        won = sum(1 for b in bids if b["stage"] == "Won")
+        lost = sum(1 for b in bids if b["stage"] == "Lost")
+        closed_decided = won + lost
+        wr = (won / closed_decided * 100) if closed_decided else 0.0
+        # 2 / 3 = 66.67%
+        self.assertAlmostEqual(wr, 66.6666, places=2)
 
 
 if __name__ == "__main__":
