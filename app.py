@@ -1285,24 +1285,24 @@ def page_outline(bid_id):
         st.markdown('<div class="empty-state">No sections yet.</div>', unsafe_allow_html=True)
         st.markdown("### Quick-start template")
         c1,c2=st.columns(2)
-        if c1.button("📋 CDA-AMC Coaching RFSO Structure",use_container_width=True):
+        if c1.button("📋 Professional Services Proposal Outline",use_container_width=True):
             for i,(n,t,o,w) in enumerate([
                 ("1","Executive Summary","Proposal Lead",500),
-                ("2","Understanding of CDA-AMC's Needs","Proposal Lead",400),
-                ("3","Coaching Philosophy","Proposal Lead",500),
-                ("4","Coaching Methodology","Proposal Lead",600),
-                ("5","Approach to the Three Coaching Groups","Proposal Lead",700),
-                ("6","Work Plan and Delivery Model","Proposal Lead",500),
-                ("7","Coach Selection and Matching Process","Proposal Lead",400),
-                ("8","Confidentiality and Ethics","Proposal Lead",300),
-                ("9","Team Qualifications and CVs","HR Coordinator",600),
-                ("10","Case Study / Testimonial","Business Development",400),
-                ("11","Healthcare and NFP Sector Familiarity","Proposal Lead",400),
-                ("12","Change Management Experience","Proposal Lead",300),
-                ("13","IDEA, Reconciliation, and ESG","Executive Sponsor",400),
-                ("14","AI / Non-AI Methodology and Safeguards","Proposal Lead",400),
-                ("15","Responses to Five Coaching Questions","Proposal Lead",600),
-                ("16","Optional Services","Proposal Lead",200)]):
+                ("2","Understanding of the Client Requirements & Objectives","Proposal Lead",400),
+                ("3","Delivery Philosophy & Framework","Proposal Lead",500),
+                ("4","Technical & Operational Methodology","Proposal Lead",600),
+                ("5","Service Stream Architecture & SOW Alignment","Proposal Lead",700),
+                ("6","Work Plan, Phasing, and Delivery Schedule","Proposal Lead",500),
+                ("7","Resource Allocation & Team Matching Process","Proposal Lead",400),
+                ("8","Governance, Confidentiality, and Ethics","Proposal Lead",300),
+                ("9","Key Personnel Qualifications & Detailed CVs","HR Coordinator",600),
+                ("10","Relevant Past Performance & Case Studies","Business Development",400),
+                ("11","Sector & Domain Experience","Proposal Lead",400),
+                ("12","Risk Management & Change Transition","Proposal Lead",300),
+                ("13","Accessibility, ESG, and Social Value Commitments","Executive Sponsor",400),
+                ("14","Technology, Data Security, and AI Safeguards","Proposal Lead",400),
+                ("15","Technical Evaluation Criteria Responses","Proposal Lead",600),
+                ("16","Value-Add & Optional Services","Proposal Lead",200)]):
                 upsert_section({"id":None,"bid_id":bid_id,"sort_order":i,"section_num":n,
                     "title":t,"owner":o,"word_limit":w,"status":"Not Started","notes":""})
             st.rerun()
@@ -1540,7 +1540,7 @@ def page_ai_analyst(bid_id):
         st.markdown("### Bid / No-Bid Assessment")
         st.markdown('<div class="info-box">Scores this opportunity across five strategic dimensions and produces a recommendation.</div>', unsafe_allow_html=True)
         fc=st.text_area("Your firm's relevant capabilities",height=120,
-            placeholder="e.g. Phoenix Consulting International is the authorised Hogan distributor for the GCC…",key="bn_context")
+            placeholder="e.g. Established consultancy specializing in management advisory, digital transformation, and workforce analytics…",key="bn_context")
         if st.button("🎯 Generate bid/no-bid assessment",key="bn_run",use_container_width=True,type="primary"):
             with st.spinner("Scoring opportunity…"):
                 try:
@@ -1698,125 +1698,49 @@ def page_deliverables(bid_id):
                             f'{d.get("service_id") or "—"}</span>', unsafe_allow_html=True)
 
                 c2.markdown(f'<span style="font-size:.88rem;font-weight:600">{d["title"]}</span>',
-                            unsafe_allow_html=True)
+    # Group by category
+    cats = list(dict.fromkeys(d.get("category","Core Service") for d in delivs))
+    for cat in cats:
+        cat_d = [d for d in delivs if d.get("category","Core Service")==cat]
+        st.markdown(f'<div style="font-size:.9rem;font-weight:600;color:#C9A96E;margin:1rem 0 .4rem">{cat.upper()} ({len(cat_d)})</div>', unsafe_allow_html=True)
+        for d in cat_d:
+            opt_tag = '<span style="background:#2C1810;color:#E67E22;font-size:.7rem;padding:.1rem .4rem;border-radius:3px;margin-left:.4rem">OPTIONAL</span>' if d.get("optional") else ""
+            with st.expander(f"**{d.get('service_id','')}** {d['title']}{opt_tag}"):
+                c1,c2,c3 = st.columns(3)
+                c1.markdown(f"**Duration / Cycle:** {d.get('duration') or '—'}")
+                c2.markdown(f"**Volume / Units:** {d.get('volume') or '—'}")
+                c3.markdown(f"**Unit Type:** {d.get('unit') or '—'}")
+                if d.get("description"):
+                    st.markdown(f'<div style="color:#A9A69D;font-size:.85rem;margin:.4rem 0">{d["description"]}</div>', unsafe_allow_html=True)
                 if d.get("linked_req_ids"):
-                    c2.markdown(f'<span style="font-size:.7rem;color:#6E6C66">'
-                                f'Ref: {d["linked_req_ids"]}</span>', unsafe_allow_html=True)
-
-                c3.markdown(f'<span style="font-size:.8rem;color:#A9A69D">'
-                            f'{d.get("description") or "—"}</span>', unsafe_allow_html=True)
-
-                c4.markdown(f'<span style="font-size:.8rem">{d.get("duration") or "—"}</span>',
-                            unsafe_allow_html=True)
-
-                vol  = d.get("volume") or "—"
-                unit = d.get("unit") or ""
-                c5.markdown(f'<span style="font-size:.8rem">{vol}</span><br>'
-                            f'<span style="font-size:.72rem;color:#6E6C66">{unit}</span>',
-                            unsafe_allow_html=True)
-
-                ai_p = f'CAD {d["price_ai"]:,.2f}' if d.get("price_ai") else "—"
-                c6.markdown(f'<span style="font-size:.85rem;color:#EDEAE3">{ai_p}</span>',
-                            unsafe_allow_html=True)
-
-                na_p = f'CAD {d["price_non_ai"]:,.2f}' if d.get("price_non_ai") else "—"
-                c7.markdown(f'<span style="font-size:.85rem;color:#EDEAE3">{na_p}</span>',
-                            unsafe_allow_html=True)
-
-                if c8.button("✏", key=f"eds_{d['id']}"):
-                    st.session_state["editing_svc"] = d["id"]
+                    st.markdown(f'<span style="font-size:.78rem;color:#6E6C66">Linked Requirements: {d["linked_req_ids"]}</span>', unsafe_allow_html=True)
+                if d.get("notes"):
+                    st.markdown(f'<span style="font-size:.78rem;color:#C9A96E">Notes: {d["notes"]}</span>', unsafe_allow_html=True)
+                if st.button("🗑 Delete", key=f"del_d_{d['id']}"):
+                    delete_deliverable(d["id"])
                     st.rerun()
-                st.markdown('<hr class="section-divider" style="margin:.25rem 0">',
-                            unsafe_allow_html=True)
-            st.markdown("")
 
-    else:
-        st.markdown(
-            '<div class="info-box">No services defined yet. Click <strong>Load from RFP</strong> '
-            'to auto-populate from the extracted requirements, or add manually below.</div>',
-            unsafe_allow_html=True)
-
-    # ── Edit panel ────────────────────────────────────────────────────────────
-    eid = st.session_state.get("editing_svc")
-    if eid:
-        svc = next((d for d in dels if d["id"] == eid), None)
-        if svc:
-            st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-            st.markdown(f"### Edit — {svc['title']}")
-            with st.form("edit_svc"):
-                c1,c2,c3 = st.columns(3)
-                title = c1.text_input("Service Title", value=svc["title"])
-                sid   = c2.text_input("ID", value=svc.get("service_id") or "")
-                cat   = c3.selectbox("Category", DEL_CATEGORIES,
-                                     index=DEL_CATEGORIES.index(svc.get("category","Core Service"))
-                                     if svc.get("category") in DEL_CATEGORIES else 0)
-                desc = st.text_area("Description / Scope", value=svc.get("description") or "", height=80)
-                c1,c2,c3 = st.columns(3)
-                dur  = c1.text_input("Duration", value=svc.get("duration") or "",
-                                     placeholder="e.g. 12 months")
-                vol  = c2.text_input("Volume", value=svc.get("volume") or "",
-                                     placeholder="e.g. 24 hours")
-                unit = c3.text_input("Unit", value=svc.get("unit") or "",
-                                     placeholder="e.g. per engagement")
-                c1,c2,c3,c4 = st.columns(4)
-                pai  = c1.number_input("Price — AI Option (CAD)",
-                                       value=float(svc.get("price_ai") or 0), step=100.0, min_value=0.0)
-                pna  = c2.number_input("Price — Non-AI Option (CAD)",
-                                       value=float(svc.get("price_non_ai") or 0), step=100.0, min_value=0.0)
-                opt  = c3.checkbox("Optional service", value=bool(svc.get("optional")))
-                so   = c4.number_input("Order", value=int(svc.get("sort_order") or 0), step=1)
-                linked = st.text_input("Linked Req IDs", value=svc.get("linked_req_ids") or "",
-                                       placeholder="§4.6, R3…")
-                notes = st.text_area("Notes", value=svc.get("notes") or "", height=60)
-                c1,c2,c3 = st.columns([2,1,1])
-                sv = c1.form_submit_button("Save", use_container_width=True)
-                dl = c2.form_submit_button("Delete", use_container_width=True)
-                cx = c3.form_submit_button("Cancel", use_container_width=True)
-            if sv:
-                upsert_deliverable({"id":eid,"bid_id":bid_id,"title":title,
-                    "service_id":sid,"category":cat,"description":desc,
-                    "duration":dur,"volume":vol,"unit":unit,
-                    "price_ai":pai or None,"price_non_ai":pna or None,
-                    "optional":1 if opt else 0,"sort_order":so,
-                    "linked_req_ids":linked,"notes":notes})
-                del st.session_state["editing_svc"]
-                st.rerun()
-            if dl:
-                delete_deliverable(eid)
-                del st.session_state["editing_svc"]
-                st.rerun()
-            if cx:
-                del st.session_state["editing_svc"]
-                st.rerun()
-
-    # ── Add service ───────────────────────────────────────────────────────────
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-    with st.expander("➕ Add Service"):
-        with st.form("add_svc", clear_on_submit=True):
-            c1,c2,c3 = st.columns(3)
-            title = c1.text_input("Service Title *")
-            sid   = c2.text_input("ID", placeholder="S1, OPT1…")
-            cat   = c3.selectbox("Category", DEL_CATEGORIES)
-            desc  = st.text_area("Description / Scope", height=70)
-            c1,c2,c3 = st.columns(3)
-            dur  = c1.text_input("Duration",  placeholder="e.g. 6 months")
-            vol  = c2.text_input("Volume",    placeholder="e.g. 12 hours")
-            unit = c3.text_input("Unit",      placeholder="e.g. per engagement")
+    with st.expander("➕ Add Service / Deliverable Manually"):
+        with st.form("add_deliv"):
+            c1,c2 = st.columns(2)
+            sid   = c1.text_input("Service ID", placeholder="S1, DEL-01…")
+            title = c2.text_input("Title *")
+            desc  = st.text_area("Description")
             c1,c2,c3,c4 = st.columns(4)
-            pai  = c1.number_input("Price — AI (CAD)",     min_value=0.0, step=100.0)
-            pna  = c2.number_input("Price — Non-AI (CAD)", min_value=0.0, step=100.0)
-            opt  = c3.checkbox("Optional service")
-            linked = c4.text_input("Linked Refs", placeholder="§4.6, R3…")
-            notes = st.text_area("Notes", height=50)
-            if st.form_submit_button("Add Service", use_container_width=True):
+            cat   = c1.selectbox("Category", ["Core Service","Advisory","Workshop","Reporting","Optional Add-on","Call-up Mechanic"])
+            dur   = c2.text_input("Duration", placeholder="3 months, 12 weeks…")
+            vol   = c3.text_input("Volume", placeholder="24 hours, 5 workshops…")
+            unit  = c4.text_input("Unit", placeholder="per engagement, hourly…")
+            c1,c2 = st.columns(2)
+            reqs_link = c1.text_input("Linked Req IDs", placeholder="M1, R3…")
+            opt   = c2.checkbox("Optional / Add-on Service", value=False)
+            notes = st.text_input("Notes")
+            if st.form_submit_button("Add Deliverable", use_container_width=True):
                 if title:
-                    upsert_deliverable({"id":None,"bid_id":bid_id,
-                        "sort_order":len(dels),"service_id":sid,
-                        "title":title,"description":desc,"category":cat,
-                        "duration":dur,"volume":vol,"unit":unit,
-                        "price_ai":pai or None,"price_non_ai":pna or None,
-                        "optional":1 if opt else 0,
-                        "linked_req_ids":linked,"notes":notes})
+                    upsert_deliverable({"id":None,"bid_id":bid_id,"service_id":sid,"title":title,
+                        "description":desc,"category":cat,"duration":dur,"volume":vol,
+                        "unit":unit,"optional":1 if opt else 0,"linked_req_ids":reqs_link,"notes":notes})
                     st.rerun()
                 else:
                     st.error("Title is required.")
@@ -1824,86 +1748,46 @@ def page_deliverables(bid_id):
 
 def _auto_populate_services(bid_id, reqs, bid):
     """Pre-populate services from the Statement of Work based on extracted requirements."""
-    # Standard coaching groups from CDA-AMC RFSO §4.6 — or generic if not recognized
     notes_lower = (bid.get("notes") or "").lower()
-    is_coaching = any(w in notes_lower for w in ["coach","coaching","mentor"])
+    is_advisory = any(w in notes_lower for w in ["advisory", "consulting", "strategy", "review"])
 
-    if is_coaching:
+    if is_advisory:
         services = [
-            {"service_id":"S1","title":"Group 1 — Executive Coaching",
-             "description":"12-month coaching engagement for executive-level leaders. "
-                           "24 coaching hours total. Includes chemistry meeting, triangulation "
-                           "session with people-leader, and structured coaching cycle.",
-             "category":"Core Service","duration":"12 months","volume":"24 hours",
-             "unit":"per engagement","optional":0,
-             "linked_req_ids":"§4.6 II(a), R3","notes":""},
-            {"service_id":"S2","title":"Group 2 — Select Leader Coaching",
-             "description":"6-month coaching engagement for select leaders seeking development. "
-                           "12 coaching hours total. Covers high-potential and development-opportunity leaders.",
-             "category":"Core Service","duration":"6 months","volume":"12 hours",
-             "unit":"per engagement","optional":0,
-             "linked_req_ids":"§4.6 II(b), R3","notes":"Groups 2 and 3 are majority of volume"},
-            {"service_id":"S3","title":"Group 3 — New Leader Coaching",
-             "description":"3-month coaching engagement for newly promoted or acquired leaders. "
-                           "6 coaching hours total. Focused on role alignment and measurable results.",
-             "category":"Core Service","duration":"3 months","volume":"6 hours",
-             "unit":"per engagement","optional":0,
-             "linked_req_ids":"§4.6 II(c), R3","notes":""},
-            {"service_id":"S4","title":"Chemistry Meeting",
-             "description":"Initial meeting between coach and employee to assess fit. "
-                           "If not a fit, vendor has up to 5 business days to propose an alternative coach.",
-             "category":"Call-up Mechanic","duration":"One session","volume":"1 hour",
-             "unit":"per engagement","optional":0,
-             "linked_req_ids":"§4.6 I(a)","notes":"If substitution fails, CDA-AMC may select alternate vendor"},
-            {"service_id":"S5","title":"Triangulation Meeting",
-             "description":"First formal coaching session including the employee's people-leader. "
-                           "Sets development goals and defines observable outcomes and measurement approach.",
-             "category":"Call-up Mechanic","duration":"First session","volume":"1 hour",
-             "unit":"per engagement","optional":0,
-             "linked_req_ids":"§4.6 I(c)","notes":"Included within total coaching hours"},
-            {"service_id":"OPT1","title":"360-Degree Assessment",
-             "description":"Multi-rater feedback assessment gathering input from manager, peers, "
-                           "and direct reports. Must be requested early and priced separately.",
-             "category":"Optional Service","duration":"As requested","volume":"Per participant",
-             "unit":"per participant","optional":1,
-             "linked_req_ids":"§4.6 V","notes":"Must be priced separately; declining does not diminish core coaching"},
-            {"service_id":"OPT2","title":"Psychometric / Personality Assessment",
-             "description":"Validated psychometric instrument (e.g. Hogan) providing leadership "
-                           "potential, derailer, and values insight to inform coaching goals.",
-             "category":"Optional Service","duration":"As requested","volume":"Per participant",
-             "unit":"per participant","optional":1,
-             "linked_req_ids":"§4.6 V","notes":"Propose Hogan suite as optional — confirm via clarification Q"},
-            {"service_id":"OPT3","title":"Leadership Assessment Report",
-             "description":"Written assessment report synthesising psychometric and coaching data "
-                           "into a structured leadership profile and development recommendations.",
-             "category":"Optional Service","duration":"As requested","volume":"Per participant",
-             "unit":"per participant","optional":1,
-             "linked_req_ids":"§4.6 V","notes":""},
-            {"service_id":"SOA1","title":"Standing Offer Agreement (SOA) — Call-up Mechanic",
-             "description":"No guaranteed volume. Each engagement triggered by a written Call-up "
-                           "from a CDA-AMC representative. Services, deliverables, and fees stated per call-up. "
-                           "CDA-AMC may award more than one SOA. Agreement valid Oct 1, 2026 – Sep 30, 2029.",
-             "category":"Call-up Mechanic","duration":"Oct 2026 – Sep 2029","volume":"No guaranteed volume",
-             "unit":"per call-up","optional":0,
-             "linked_req_ids":"§4.7","notes":"PCHO clause: other pan-Canadian health orgs may access same services and pricing"},
-            {"service_id":"REP1","title":"Post-Engagement Progress Update",
-             "description":"Confidential summary of coaching progress and goal achievement shared "
-                           "between coach, participant, and people-leader at end of engagement.",
-             "category":"Reporting","duration":"End of engagement","volume":"Per engagement",
-             "unit":"per engagement","optional":0,
-             "linked_req_ids":"§4.6 I(c)","notes":"Confidential — no individual session content disclosed"},
+            {"service_id":"S1","title":"Inception & Needs Analysis",
+             "description":"Initial stakeholder interviews, document review, and baseline assessment.",
+             "category":"Core Service","duration":"Weeks 1–3","volume":"1 engagement",
+             "unit":"per engagement","optional":0,"linked_req_ids":"M1, R1","notes":""},
+            {"service_id":"S2","title":"Detailed Solution & Framework Design",
+             "description":"Development of tailored frameworks, methodologies, and technical architecture.",
+             "category":"Core Service","duration":"Weeks 4–8","volume":"Core deliverable",
+             "unit":"per engagement","optional":0,"linked_req_ids":"R2","notes":""},
+            {"service_id":"S3","title":"Stakeholder Workshops & Facilitation",
+             "description":"Interactive validation sessions, leadership workshops, and alignment forums.",
+             "category":"Core Service","duration":"Weeks 6–10","volume":"Up to 4 workshops",
+             "unit":"per workshop","optional":0,"linked_req_ids":"R3","notes":""},
+            {"service_id":"S4","title":"Final Report & Executive Presentation",
+             "description":"Comprehensive recommendations report, transition roadmap, and executive briefing.",
+             "category":"Reporting","duration":"Weeks 10–12","volume":"1 final report + deck",
+             "unit":"per milestone","optional":0,"linked_req_ids":"R4","notes":""},
+            {"service_id":"OPT1","title":"Post-Implementation Advisory & Sustainment Support",
+             "description":"Quarterly progress reviews, advisory check-ins, and sustainment monitoring.",
+             "category":"Optional Service","duration":"6 months post-delivery","volume":"20 hours advisory",
+             "unit":"per month","optional":1,"linked_req_ids":"R5","notes":"Priced separately as optional"},
         ]
     else:
-        # Generic services template for non-coaching bids
         services = [
-            {"service_id":"S1","title":"Core Service Delivery",
-             "description":"Primary service as described in the Statement of Work.",
-             "category":"Core Service","duration":"Per SOW","volume":"As specified",
-             "unit":"per engagement","optional":0,"linked_req_ids":"§4.0","notes":""},
-            {"service_id":"OPT1","title":"Optional Services",
-             "description":"Additional services not included in the standard package.",
-             "category":"Optional Service","duration":"As requested","volume":"Per request",
-             "unit":"per item","optional":1,"linked_req_ids":"","notes":"Price separately"},
+            {"service_id":"S1","title":"Core Deliverable Delivery",
+             "description":"Primary technical service as defined in the tender Statement of Work.",
+             "category":"Core Service","duration":"Agreement term","volume":"As per SOW",
+             "unit":"per milestone","optional":0,"linked_req_ids":"M1","notes":""},
+            {"service_id":"S2","title":"Project Management & Governance Reporting",
+             "description":"Regular progress reporting, risk log maintenance, and steering meetings.",
+             "category":"Reporting","duration":"Monthly / Quarterly","volume":"Periodic reports",
+             "unit":"per month","optional":0,"linked_req_ids":"R1","notes":""},
+            {"service_id":"OPT1","title":"Optional Value-Add Capabilities",
+             "description":"Extended support, additional training, or specialized tools.",
+             "category":"Optional Service","duration":"As requested","volume":"On-demand",
+             "unit":"per call-up","optional":1,"linked_req_ids":"","notes":"Optional scope"},
         ]
 
     for i, s in enumerate(services):

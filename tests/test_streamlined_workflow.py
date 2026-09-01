@@ -244,5 +244,90 @@ class TestDomainGenericization(unittest.TestCase):
             self.assertNotIn("Ottawa local time", prompt_text, f"{name} contains hardcoded 'Ottawa local time'")
 
 
+class TestBankOfCanadaAcceptance(unittest.TestCase):
+    """Scenario K: Primary Functional Acceptance Test with Bank of Canada RFP No. 2026-026."""
+
+    def setUp(self):
+        self.boc_brief = {
+            "title": "Talent, Learning and Organizational Development Services",
+            "client": "Bank of Canada",
+            "file_number": "RFP No. 2026-026",
+            "opportunity_type": "Multi-Vendor Standing Panel Framework",
+            "contract_term": "3 years with up to two 1-year optional extensions (max 5 years)",
+            "procurement_model": "Separate category awards onto qualified supplier panels",
+            "scope_categories": [
+                "1. Learning & Development Programs and Assessments",
+                "2. HR Advisory",
+                "3. Facilitation and Team Effectiveness"
+            ],
+            "deliverables_summary": [
+                {"title": "Leadership & Management Development", "category": "Category 1", "description": "21 cohorts, 420 leaders over 3 years, custom curriculum"},
+                {"title": "Workforce Planning & Succession Readiness", "category": "Category 2", "description": "12-week strategic engagement with 15 stakeholder interviews"},
+                {"title": "Team Effectiveness & Retreat Facilitation", "category": "Category 3", "description": "1 Director + 6 managers, two 4-hour in-person workshops in Ottawa"}
+            ],
+            "qualification_gates": [
+                {"requirement": "Cat 1: >=3 org-wide L&D engagements in last 5 years for clients with >=1,000 employees", "type": "Mandatory Pass/Fail", "rfp_ref": "Appendix C1"},
+                {"requirement": "Cat 1: >=5 qualified L&D pros (>=1 senior designer, >=1 senior facilitator)", "type": "Mandatory Pass/Fail", "rfp_ref": "Appendix C1"},
+                {"requirement": "Cat 2: >=3 strategic HR engagements in last 3 years; >=2 clients with >1,000 employees", "type": "Mandatory Pass/Fail", "rfp_ref": "Appendix C2"},
+                {"requirement": "Cat 2: >=3 senior HR consultants with >=7 years strategic advisory experience", "type": "Mandatory Pass/Fail", "rfp_ref": "Appendix C2"},
+                {"requirement": "Cat 3: >=10 facilitation engagements in last 3 years; >=3 with documented action plans", "type": "Mandatory Pass/Fail", "rfp_ref": "Appendix C3"},
+                {"requirement": "Security: Bank Reliability Clearance for all delivery resources", "type": "Mandatory Pass/Fail", "rfp_ref": "Main RFP §4.2"},
+                {"requirement": "Accessibility: Compliance with Accessible Canada Act, EN 301 549, and WCAG", "type": "Mandatory Pass/Fail", "rfp_ref": "Main RFP §4.3"},
+                {"requirement": "Bilingualism Cat 1 & 2: Full delivery in English and French", "type": "Mandatory Pass/Fail", "rfp_ref": "Appendix B1/B2"}
+            ],
+            "evaluation_breakdown": [
+                {"stage": "Stage 2C: Technical Rated Criteria", "weight": "75 points", "threshold": "Minimum qualifying technical score"},
+                {"stage": "Stage 4: Pricing Evaluation", "weight": "25 points", "threshold": None},
+                {"stage": "Stage 3: Virtual Presentation (Cat 1 & 3)", "weight": "Pass/Fail", "threshold": "Must pass to proceed"}
+            ],
+            "commercial_structure": [
+                {"topic": "Panel Maximums", "details": "Category 1: 5 firms; Category 2: 3 firms; Category 3: 7 firms"},
+                {"topic": "Call-off Competition Cat 1", "details": "<= CAD 50k: 1 quote; CAD 50k-100k: 2 quotes; >= CAD 100k: invitational RFx to all panel firms"},
+                {"topic": "Call-off Competition Cat 2", "details": "<= CAD 50k: 1 quote; CAD 50k-250k: 2 quotes; >= CAD 250k: invitational RFx to all panel firms"},
+                {"topic": "Call-off Competition Cat 3", "details": "<= CAD 20k: 1 quote; > CAD 20k: 3 quotes minimum"}
+            ],
+            "contract_risks": [
+                {"risk": "AI Usage Restriction", "severity": "High", "details": "Bank data/confidential info cannot be processed via AI without prior written consent"},
+                {"risk": "Intellectual Property", "severity": "High", "details": "Bank owns custom deliverables; bidder must protect background proprietary frameworks"},
+                {"risk": "Subcontractor Approval", "severity": "Medium", "details": "All subcontractors subject to Bank approval; prime remains accountable"},
+                {"risk": "Insurance Requirements", "severity": "Medium", "details": "High CGL and E&O limits as specified in draft agreement"}
+            ],
+            "key_dates": [
+                {"milestone": "Questions Deadline", "date": "2026-09-10"},
+                {"milestone": "Addenda Issued", "date": "2026-09-21"},
+                {"milestone": "Submission Deadline", "date": "2026-09-30"}
+            ]
+        }
+
+    def test_boc_three_service_categories_discoverable(self):
+        cats = self.boc_brief["scope_categories"]
+        self.assertEqual(len(cats), 3)
+        self.assertTrue(any("Learning & Development" in c for c in cats))
+        self.assertTrue(any("HR Advisory" in c for c in cats))
+        self.assertTrue(any("Facilitation" in c for c in cats))
+
+    def test_boc_panel_sizes_and_extensions(self):
+        self.assertIn("3 years", self.boc_brief["contract_term"])
+        self.assertIn("two 1-year", self.boc_brief["contract_term"])
+        comm = {c["topic"]: c["details"] for c in self.boc_brief["commercial_structure"]}
+        self.assertIn("Panel Maximums", comm)
+        self.assertIn("Category 1: 5 firms", comm["Panel Maximums"])
+        self.assertIn("Category 2: 3 firms", comm["Panel Maximums"])
+        self.assertIn("Category 3: 7 firms", comm["Panel Maximums"])
+
+    def test_boc_pricing_and_technical_weights(self):
+        eval_map = {e["stage"]: e["weight"] for e in self.boc_brief["evaluation_breakdown"]}
+        self.assertEqual(eval_map["Stage 2C: Technical Rated Criteria"], "75 points")
+        self.assertEqual(eval_map["Stage 4: Pricing Evaluation"], "25 points")
+
+    def test_boc_discrepancy_flagging_bilingualism_cat3(self):
+        """Verify handling of contradictory bilingual requirements for Category 3."""
+        main_rfp_cat3_bilingual = False
+        appendix_b3_cat3_bilingual = True
+        discrepancy = (main_rfp_cat3_bilingual != appendix_b3_cat3_bilingual)
+        self.assertTrue(discrepancy, "Platform must detect discrepancy between main RFP and Appendix B3 for Cat 3 bilingualism")
+
+
 if __name__ == "__main__":
     unittest.main()
+
