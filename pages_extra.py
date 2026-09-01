@@ -428,8 +428,6 @@ def page_team_roster():
         st.markdown('<div class="empty-state">No team members registered yet. Add key personnel below or ingest from past proposals.</div>',
                     unsafe_allow_html=True)
 
-page_coach_roster = page_team_roster
-
     eid = st.session_state.get("editing_coach")
     if eid:
         coach = next((c for c in coaches if c["id"]==eid), None)
@@ -506,6 +504,8 @@ page_coach_roster = page_team_roster
                     st.rerun()
                 else:
                     st.error("Name required.")
+
+page_coach_roster = page_team_roster
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

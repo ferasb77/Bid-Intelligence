@@ -10,6 +10,11 @@ from supabase import create_client, Client
 # ── Connection ────────────────────────────────────────────────────────────────
 def get_client() -> Client:
     try:
+        from dotenv import load_dotenv
+        load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
+    except Exception:
+        pass
+    try:
         url = st.secrets["SUPABASE_URL"]
         key = st.secrets["SUPABASE_SERVICE_KEY"]
     except Exception:

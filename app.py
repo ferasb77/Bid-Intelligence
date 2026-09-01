@@ -1738,42 +1738,22 @@ def page_deliverables(bid_id):
                 f'<span style="color:{col};font-weight:700;font-size:.82rem;letter-spacing:.06em">'
                 f'{cat.upper()} ({len(cat_dels)})</span></div>',
                 unsafe_allow_html=True)
-
-            hcols = st.columns([.5, 2.2, 2.8, 1.2, 1.2, 1.6, 1.6, .5])
-            for h, hcol in zip(["ID","Service","Description / Scope",
-                                  "Duration","Volume / Unit",
-                                  "Price (AI)","Price (Non-AI)",""], hcols):
-                hcol.markdown(f'<span style="font-size:.7rem;color:#A9A69D;'
-                              f'font-weight:600;text-transform:uppercase">{h}</span>',
-                              unsafe_allow_html=True)
-
             for d in cat_dels:
-                c1,c2,c3,c4,c5,c6,c7,c8 = st.columns([.5,2.2,2.8,1.2,1.2,1.6,1.6,.5])
-                c1.markdown(f'<span style="font-size:.82rem;color:{col};font-weight:700">'
-                            f'{d.get("service_id") or "—"}</span>', unsafe_allow_html=True)
-
-                c2.markdown(f'<span style="font-size:.88rem;font-weight:600">{d["title"]}</span>',
-    # Group by category
-    cats = list(dict.fromkeys(d.get("category","Core Service") for d in delivs))
-    for cat in cats:
-        cat_d = [d for d in delivs if d.get("category","Core Service")==cat]
-        st.markdown(f'<div style="font-size:.9rem;font-weight:600;color:#C9A96E;margin:1rem 0 .4rem">{cat.upper()} ({len(cat_d)})</div>', unsafe_allow_html=True)
-        for d in cat_d:
-            opt_tag = '<span style="background:#2C1810;color:#E67E22;font-size:.7rem;padding:.1rem .4rem;border-radius:3px;margin-left:.4rem">OPTIONAL</span>' if d.get("optional") else ""
-            with st.expander(f"**{d.get('service_id','')}** {d['title']}{opt_tag}"):
-                c1,c2,c3 = st.columns(3)
-                c1.markdown(f"**Duration / Cycle:** {d.get('duration') or '—'}")
-                c2.markdown(f"**Volume / Units:** {d.get('volume') or '—'}")
-                c3.markdown(f"**Unit Type:** {d.get('unit') or '—'}")
-                if d.get("description"):
-                    st.markdown(f'<div style="color:#A9A69D;font-size:.85rem;margin:.4rem 0">{d["description"]}</div>', unsafe_allow_html=True)
-                if d.get("linked_req_ids"):
-                    st.markdown(f'<span style="font-size:.78rem;color:#6E6C66">Linked Requirements: {d["linked_req_ids"]}</span>', unsafe_allow_html=True)
-                if d.get("notes"):
-                    st.markdown(f'<span style="font-size:.78rem;color:#C9A96E">Notes: {d["notes"]}</span>', unsafe_allow_html=True)
-                if st.button("🗑 Delete", key=f"del_d_{d['id']}"):
-                    delete_deliverable(d["id"])
-                    st.rerun()
+                opt_tag = '<span style="background:#2C1810;color:#E67E22;font-size:.7rem;padding:.1rem .4rem;border-radius:3px;margin-left:.4rem">OPTIONAL</span>' if d.get("optional") else ""
+                with st.expander(f"**{d.get('service_id','')}** {d['title']}{opt_tag}"):
+                    c1,c2,c3 = st.columns(3)
+                    c1.markdown(f"**Duration / Cycle:** {d.get('duration') or '—'}")
+                    c2.markdown(f"**Volume / Units:** {d.get('volume') or '—'}")
+                    c3.markdown(f"**Unit Type:** {d.get('unit') or '—'}")
+                    if d.get("description"):
+                        st.markdown(f'<div style="color:#A9A69D;font-size:.85rem;margin:.4rem 0">{d["description"]}</div>', unsafe_allow_html=True)
+                    if d.get("linked_req_ids"):
+                        st.markdown(f'<span style="font-size:.78rem;color:#6E6C66">Linked Requirements: {d["linked_req_ids"]}</span>', unsafe_allow_html=True)
+                    if d.get("notes"):
+                        st.markdown(f'<span style="font-size:.78rem;color:#C9A96E">Notes: {d["notes"]}</span>', unsafe_allow_html=True)
+                    if st.button("🗑 Delete", key=f"del_d_{d['id']}"):
+                        delete_deliverable(d["id"])
+                        st.rerun()
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
     with st.expander("➕ Add Service / Deliverable Manually"):
