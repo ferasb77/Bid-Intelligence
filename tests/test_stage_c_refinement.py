@@ -2,11 +2,13 @@
 Stage C Cross-Document Reconciliation Refinement Test Suite.
 Verifies:
 1. Bank of Canada Regression Cases (False positive date and submission dimension suppression; removal of tender-specific heuristics).
-2. Positive True Conflict Cases (Contradictory dates, submission channels, envelope separation, insurance, page limits).
-3. Like-with-Like Insurance Comparison (Distinct classes = NO CONFLICT; same class = TRUE CONFLICT).
-4. Same-Document Same-Milestone Date Inconsistencies (Classified as REVIEW_ITEM).
-5. Source Validity & Provenance Grounding (Physical vs Synthesized vs Partial).
-6. Frozen Bank of Canada Reconciliation Replay.
+2. Mandatory Requirement Scope Normalization (Category/stream scoped years of experience & security clearance).
+3. Top Secret Priority & Security Clearance Contradictions (TOP_SECRET -> SECRET -> RELIABILITY).
+4. Insurance Monetary Amount Normalization (Like-with-like amount parsing; $2M vs $2,000,000 prose = NO CONFLICT; $2M vs $5M = TRUE CONFLICT).
+5. Positive True Conflict Cases (Contradictory dates, submission channels, envelope separation, insurance, page limits).
+6. Same-Document Same-Milestone Date Inconsistencies (Classified as REVIEW_ITEM).
+7. Source Validity & Provenance Grounding (Physical vs Synthesized vs Partial).
+8. Frozen Bank of Canada Reconciliation Replay.
 """
 import os
 import json
@@ -16,6 +18,8 @@ from extractor import (
     classify_date_milestone,
     classify_submission_rule_dimension,
     classify_insurance_class,
+    classify_security_clearance,
+    extract_monetary_amount,
     validate_conflict_source_validity,
     detect_document_conflicts,
     reconcile_package_facts
@@ -35,7 +39,6 @@ class TestStageCBankOfCanadaRegression(unittest.TestCase):
         }
         pkg_files = ["abstract.pdf"]
         conflicts = detect_document_conflicts(normalized, pkg_files)
-        # Must NOT generate a DATE_CONFLICT for distinct sequential milestones
         date_conflicts = [c for c in conflicts if c.get("conflict_type") == "DATE_CONFLICT"]
         self.assertEqual(len(date_conflicts), 0)
 
@@ -49,7 +52,6 @@ class TestStageCBankOfCanadaRegression(unittest.TestCase):
         }
         pkg_files = ["abstract.pdf", "Appendix_E.xlsx"]
         conflicts = detect_document_conflicts(normalized, pkg_files)
-        # Must NOT generate SUBMISSION_RULE_CONFLICT for complementary rules across different dimensions
         sub_conflicts = [c for c in conflicts if c.get("conflict_type") == "SUBMISSION_RULE_CONFLICT"]
         self.assertEqual(len(sub_conflicts), 0)
 
@@ -67,12 +69,152 @@ class TestStageCBankOfCanadaRegression(unittest.TestCase):
         }
         pkg_files = ["abstract.pdf", "Appendix_B3.xlsx", "Appendix_A.docx"]
         conflicts = detect_document_conflicts(normalized, pkg_files)
-        # No artificial ambiguity or conflict manufactured from standard appendix structure
         self.assertEqual(len(conflicts), 0)
 
 
-class TestStageCLikeWithLikeInsuranceComparison(unittest.TestCase):
-    """Scenario 2: Like-with-like insurance comparison logic."""
+class TestStageCMandatoryScopeNormalization(unittest.TestCase):
+    """Scenario 2: Mandatory requirement scope and category normalization."""
+
+    def test_different_categories_different_years_experience_no_conflict(self):
+        """Category 1 requires 5 years experience vs Category 2 requires 10 years experience -> NO CONFLICT."""
+        normalized = {
+            "requirements": [
+                {
+                    "req_id": "M1",
+                    "category": "Mandatory",
+                    "description": "Category 1: Minimum 5 years of organizational advisory experience required.",
+                    "source_refs": [{"source_doc": "Appendix_B1.xlsx"}]
+                },
+                {
+                    "req_id": "M2",
+                    "category": "Mandatory",
+                    "description": "Category 2: Minimum 10 years of executive coaching experience required.",
+                    "source_refs": [{"source_doc": "Appendix_B2.xlsx"}]
+                }
+            ]
+        }
+        pkg_files = ["Appendix_B1.xlsx", "Appendix_B2.xlsx"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        mand_conflicts = [c for c in conflicts if c.get("conflict_type") == "MANDATORY_REQUIREMENT_CONFLICT"]
+        self.assertEqual(len(mand_conflicts), 0)
+
+    def test_same_category_different_years_experience_is_true_conflict(self):
+        """Category 1 requires 5 years experience vs Category 1 addendum requires 10 years experience -> TRUE CONFLICT."""
+        normalized = {
+            "requirements": [
+                {
+                    "req_id": "M1",
+                    "category": "Mandatory",
+                    "description": "Category 1: Minimum 5 years of organizational advisory experience required.",
+                    "source_refs": [{"source_doc": "Appendix_B1.xlsx"}]
+                },
+                {
+                    "req_id": "M1",
+                    "category": "Mandatory",
+                    "description": "Category 1: Minimum 10 years of organizational advisory experience required.",
+                    "source_refs": [{"source_doc": "Addendum_1.docx"}]
+                }
+            ]
+        }
+        pkg_files = ["Appendix_B1.xlsx", "Addendum_1.docx"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        mand_conflicts = [c for c in conflicts if c.get("conflict_type") == "MANDATORY_REQUIREMENT_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
+        self.assertEqual(len(mand_conflicts), 1)
+        self.assertEqual(mand_conflicts[0]["source_validity"], "PHYSICAL_BOTH")
+
+
+class TestStageCSecurityClearancePriority(unittest.TestCase):
+    """Scenario 3: Security clearance classifier priority and contradiction checking."""
+
+    def test_top_secret_classified_first(self):
+        """Top Secret security clearance required -> TOP_SECRET."""
+        self.assertEqual(classify_security_clearance("Top Secret security clearance required"), "TOP_SECRET")
+        self.assertEqual(classify_security_clearance("Valid Secret clearance required"), "SECRET")
+        self.assertEqual(classify_security_clearance("Reliability status screening required"), "RELIABILITY")
+
+    def test_top_secret_vs_secret_for_same_scope_is_true_conflict(self):
+        """Top Secret vs Secret for same scope across documents -> TRUE CONFLICT."""
+        normalized = {
+            "requirements": [
+                {
+                    "req_id": "M1",
+                    "category": "Mandatory",
+                    "description": "Category 1: Resources must hold valid Secret security clearance.",
+                    "source_refs": [{"source_doc": "Main_RFP.pdf"}]
+                },
+                {
+                    "req_id": "M1",
+                    "category": "Mandatory",
+                    "description": "Category 1: Resources must hold valid Top Secret security clearance.",
+                    "source_refs": [{"source_doc": "Addendum_2.pdf"}]
+                }
+            ]
+        }
+        pkg_files = ["Main_RFP.pdf", "Addendum_2.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        mand_conflicts = [c for c in conflicts if c.get("conflict_type") == "MANDATORY_REQUIREMENT_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
+        self.assertEqual(len(mand_conflicts), 1)
+        self.assertEqual(mand_conflicts[0]["source_validity"], "PHYSICAL_BOTH")
+
+    def test_top_secret_for_cat1_vs_secret_for_cat2_no_conflict(self):
+        """Top Secret for Category 1 vs Secret for Category 2 -> NO CONFLICT."""
+        normalized = {
+            "requirements": [
+                {
+                    "req_id": "M1",
+                    "category": "Mandatory",
+                    "description": "Category 1: Resources must hold valid Top Secret security clearance.",
+                    "source_refs": [{"source_doc": "Appendix_B1.docx"}]
+                },
+                {
+                    "req_id": "M2",
+                    "category": "Mandatory",
+                    "description": "Category 2: Resources must hold valid Secret security clearance.",
+                    "source_refs": [{"source_doc": "Appendix_B2.docx"}]
+                }
+            ]
+        }
+        pkg_files = ["Appendix_B1.docx", "Appendix_B2.docx"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        mand_conflicts = [c for c in conflicts if c.get("conflict_type") == "MANDATORY_REQUIREMENT_CONFLICT"]
+        self.assertEqual(len(mand_conflicts), 0)
+
+
+class TestStageCInsuranceAmountNormalization(unittest.TestCase):
+    """Scenario 4: Monetary amount parsing and like-with-like insurance reconciliation."""
+
+    def test_monetary_amount_extraction(self):
+        self.assertEqual(extract_monetary_amount("CGL coverage of $2,000,000"), 2000000.0)
+        self.assertEqual(extract_monetary_amount("CGL insurance minimum $2M including bodily injury"), 2000000.0)
+        self.assertEqual(extract_monetary_amount("CGL coverage of $5M"), 5000000.0)
+        self.assertEqual(extract_monetary_amount("Coverage of CAD 5,000,000"), 5000000.0)
+
+    def test_matching_monetary_limits_with_differing_prose_no_conflict(self):
+        """CGL coverage of $2,000,000 vs CGL insurance minimum $2M including bodily injury -> NO CONFLICT."""
+        normalized = {
+            "commercial_clauses": [
+                {"topic": "Commercial General Liability Insurance", "details": "CGL coverage of $2,000,000", "source_doc": "Agreement.docx"},
+                {"topic": "Commercial General Liability", "details": "CGL insurance minimum $2M including bodily injury", "source_doc": "Addendum_1.pdf"}
+            ]
+        }
+        pkg_files = ["Agreement.docx", "Addendum_1.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        ins_conflicts = [c for c in conflicts if c.get("conflict_type") == "COMMERCIAL_TERM_CONFLICT"]
+        self.assertEqual(len(ins_conflicts), 0)
+
+    def test_differing_monetary_limits_same_class_is_true_conflict(self):
+        """CGL coverage of $2M vs CGL coverage of $5M -> TRUE CONFLICT."""
+        normalized = {
+            "commercial_clauses": [
+                {"topic": "Commercial General Liability Insurance", "details": "CGL coverage of $2M", "source_doc": "Agreement.docx"},
+                {"topic": "Commercial General Liability Insurance", "details": "CGL coverage of $5M", "source_doc": "Addendum_2.pdf"}
+            ]
+        }
+        pkg_files = ["Agreement.docx", "Addendum_2.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        ins_conflicts = [c for c in conflicts if c.get("conflict_type") == "COMMERCIAL_TERM_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
+        self.assertEqual(len(ins_conflicts), 1)
+        self.assertEqual(ins_conflicts[0]["source_validity"], "PHYSICAL_BOTH")
 
     def test_distinct_insurance_classes_no_conflict(self):
         """Commercial General Liability $2M vs Professional Liability / E&O $5M -> NO CONFLICT."""
@@ -87,23 +229,9 @@ class TestStageCLikeWithLikeInsuranceComparison(unittest.TestCase):
         ins_conflicts = [c for c in conflicts if c.get("conflict_type") == "COMMERCIAL_TERM_CONFLICT"]
         self.assertEqual(len(ins_conflicts), 0)
 
-    def test_same_insurance_class_contradiction_is_true_conflict(self):
-        """Commercial General Liability $2M vs Commercial General Liability $5M across docs -> TRUE CONFLICT."""
-        normalized = {
-            "commercial_clauses": [
-                {"topic": "Commercial General Liability Insurance", "details": "$2,000,000 commercial general liability policy", "source_doc": "Agreement.docx"},
-                {"topic": "Commercial General Liability Insurance", "details": "$5,000,000 commercial general liability policy", "source_doc": "Addendum_2.pdf"}
-            ]
-        }
-        pkg_files = ["Agreement.docx", "Addendum_2.pdf"]
-        conflicts = detect_document_conflicts(normalized, pkg_files)
-        ins_conflicts = [c for c in conflicts if c.get("conflict_type") == "COMMERCIAL_TERM_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
-        self.assertEqual(len(ins_conflicts), 1)
-        self.assertEqual(ins_conflicts[0]["source_validity"], "PHYSICAL_BOTH")
-
 
 class TestStageCSameDocumentSameMilestoneDates(unittest.TestCase):
-    """Scenario 3: Same physical document containing differing dates for the same semantic milestone."""
+    """Scenario 5: Same physical document containing differing dates for the same semantic milestone."""
 
     def test_same_document_differing_dates_is_review_item(self):
         """Bid Closing Date 2026-09-15 vs Bid Closing Date 2026-09-30 in same document -> REVIEW_ITEM."""
@@ -122,7 +250,7 @@ class TestStageCSameDocumentSameMilestoneDates(unittest.TestCase):
 
 
 class TestStageCPositiveTrueConflicts(unittest.TestCase):
-    """Scenario 4: Positive tests ensuring legitimate contradictions are captured as TRUE_CONFLICT."""
+    """Scenario 6: Positive tests ensuring legitimate contradictions are captured as TRUE_CONFLICT."""
 
     def test_positive_a_closing_date_contradiction_across_docs(self):
         """Positive Case A: Bid Closing Date 2026-09-15 vs Bid Closing Date 2026-09-30 across docs -> TRUE CONFLICT."""
@@ -170,21 +298,6 @@ class TestStageCPositiveTrueConflicts(unittest.TestCase):
         self.assertEqual(len(env_conflicts), 1)
         self.assertEqual(env_conflicts[0]["source_validity"], "PHYSICAL_BOTH")
 
-    def test_positive_d_insurance_requirement_contradiction(self):
-        """Positive Case D: Commercial general liability $2M vs $5M -> TRUE CONFLICT."""
-        normalized = {
-            "commercial_clauses": [
-                {"topic": "Commercial General Liability Insurance", "details": "$2,000,000 commercial general liability policy", "source_doc": "Agreement.docx"},
-                {"topic": "Commercial General Liability Insurance", "details": "$5,000,000 commercial general liability policy", "source_doc": "Addendum_2.pdf"}
-            ]
-        }
-        pkg_files = ["Agreement.docx", "Addendum_2.pdf"]
-        conflicts = detect_document_conflicts(normalized, pkg_files)
-
-        ins_conflicts = [c for c in conflicts if c.get("conflict_type") == "COMMERCIAL_TERM_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
-        self.assertEqual(len(ins_conflicts), 1)
-        self.assertEqual(ins_conflicts[0]["source_validity"], "PHYSICAL_BOTH")
-
     def test_positive_e_page_limit_contradiction(self):
         """Positive Case E: Page limit 10 pages vs Page limit 15 pages for same section -> TRUE CONFLICT."""
         normalized = {
@@ -202,7 +315,7 @@ class TestStageCPositiveTrueConflicts(unittest.TestCase):
 
 
 class TestStageCSourceValidityAndProvenance(unittest.TestCase):
-    """Scenario 5: Source validity classifications and synthetic reference downgrades."""
+    """Scenario 7: Source validity classifications and synthetic reference downgrades."""
 
     def test_physical_both_when_both_filenames_resolve_to_physical_files(self):
         src_a = {"doc": "RFP.pdf", "text": "2026-09-15"}
@@ -246,7 +359,7 @@ class TestStageCSourceValidityAndProvenance(unittest.TestCase):
 
 
 class TestBankOfCanadaStageCReplay(unittest.TestCase):
-    """Scenario 6: Replay refined Stage C reconciliation against frozen Bank of Canada normalized facts."""
+    """Scenario 8: Replay refined Stage C reconciliation against frozen Bank of Canada normalized facts."""
 
     def test_bank_of_canada_frozen_replay(self):
         fixture_path = os.path.join(

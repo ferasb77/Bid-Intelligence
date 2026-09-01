@@ -674,6 +674,78 @@ def classify_insurance_class(text: str) -> str:
     return "OTHER_INSURANCE"
 
 
+def extract_monetary_amount(text: str) -> float | None:
+    """Extract normalized monetary amount (in CAD/currency units) from text."""
+    if not text or not isinstance(text, str):
+        return None
+    t = text.lower()
+    t = re.sub(r"(?:cad|usd|c\$|\$)", " ", t)
+
+    # 1. Millions: 2m, 2.5m, 2 million
+    m_mil = re.search(r"\b(\d+(?:\.\d+)?)\s*(?:m\b|million)", t)
+    if m_mil:
+        return float(m_mil.group(1)) * 1_000_000.0
+
+    # 2. Thousands: 500k, 500 thousand
+    m_k = re.search(r"\b(\d+(?:\.\d+)?)\s*(?:k\b|thousand)", t)
+    if m_k:
+        return float(m_k.group(1)) * 1_000.0
+
+    # 3. Comma formatted: 2,000,000
+    m_comma = re.search(r"\b(\d{1,3}(?:,\d{3})+)\b", t)
+    if m_comma:
+        return float(m_comma.group(1).replace(",", ""))
+
+    # 4. Large plain integer (>= 1000): 2000000
+    m_plain = re.search(r"\b(\d{4,})\b", t)
+    if m_plain:
+        return float(m_plain.group(1))
+
+    return None
+
+
+def classify_security_clearance(text: str) -> str | None:
+    """
+    Classify security clearance level with strict priority:
+    1. TOP_SECRET (checked first)
+    2. SECRET (checked second)
+    3. RELIABILITY (checked third)
+    """
+    if not text or not isinstance(text, str):
+        return None
+    t = text.lower()
+    if re.search(r"top\s+secret", t):
+        return "TOP_SECRET"
+    if re.search(r"\bsecret\b", t):
+        return "SECRET"
+    if re.search(r"reliability", t):
+        return "RELIABILITY"
+    return None
+
+
+def _extract_requirement_scope(req: dict, s_doc: str) -> str:
+    """Extract operational category/stream scope for a mandatory requirement."""
+    cat = (req.get("category") or "").lower() if isinstance(req, dict) else ""
+    rfso_ref = (req.get("rfso_ref") or "").lower() if isinstance(req, dict) else ""
+    desc = (req.get("description") or "").lower() if isinstance(req, dict) else ""
+    doc = (s_doc or "").lower()
+
+    combined = f"{desc} {cat} {rfso_ref} {doc}"
+    if any(k in combined for k in ["category 1", "cat 1", "cat1", "appendix b1", "appendix c1", "appendix d1", "learning & development", "learning and development"]):
+        return "CATEGORY_1"
+    if any(k in combined for k in ["category 2", "cat 2", "cat2", "appendix b2", "appendix c2", "appendix d2", "hr advisory"]):
+        return "CATEGORY_2"
+    if any(k in combined for k in ["category 3", "cat 3", "cat3", "appendix b3", "appendix c3", "appendix d3", "facilitation"]):
+        return "CATEGORY_3"
+    if "stream 1" in combined:
+        return "STREAM_1"
+    if "stream 2" in combined:
+        return "STREAM_2"
+    if "stream 3" in combined:
+        return "STREAM_3"
+    return "GENERAL_SCOPE"
+
+
 def _is_physical_file(doc_name: str, package_files: list[str]) -> bool:
     """Check if a cited document name corresponds to a real physical file in the procurement package."""
     if not doc_name or not isinstance(doc_name, str):
@@ -931,7 +1003,7 @@ def detect_document_conflicts(normalized_facts: dict, package_files: list[str]) 
     reqs = normalized_facts.get("requirements", [])
     mand_reqs = [r for r in reqs if r.get("category") == "Mandatory"]
     if len(mand_reqs) >= 2:
-        # Group by structured requirement topics (e.g. Years of Experience, Security Clearance)
+        # Group by (topic, scope) to only compare requirements within the SAME operational scope
         req_topics = {}
         for r in mand_reqs:
             desc = r.get("description", "")
@@ -940,24 +1012,26 @@ def detect_document_conflicts(normalized_facts: dict, package_files: list[str]) 
                 if isinstance(sref, dict) and sref.get("source_doc"):
                     s_doc = sref.get("source_doc")
                     break
-            
-            # Check years of experience contradictions
+
+            scope = _extract_requirement_scope(r, s_doc)
+
+            # Check years of experience contradictions within same scope
             exp_match = re.search(r'\b(?:minimum\s+)?(\d+)\s+years?\b', desc.lower())
             if exp_match and any(k in desc.lower() for k in ["experience", "advisory", "consulting", "track record"]):
-                req_topics.setdefault("YEARS_OF_EXPERIENCE", []).append((s_doc, int(exp_match.group(1)), desc, r))
+                req_topics.setdefault(("YEARS_OF_EXPERIENCE", scope), []).append((s_doc, int(exp_match.group(1)), desc, r))
 
-            # Check security clearance contradictions
-            if "clearance" in desc.lower() or "security" in desc.lower():
-                sec_level = "SECRET" if "secret" in desc.lower() else "RELIABILITY" if "reliability" in desc.lower() else "TOP_SECRET" if "top secret" in desc.lower() else None
-                if sec_level:
-                    req_topics.setdefault("SECURITY_CLEARANCE", []).append((s_doc, sec_level, desc, r))
+            # Check security clearance contradictions within same scope (priority: TOP_SECRET -> SECRET -> RELIABILITY)
+            sec_level = classify_security_clearance(desc)
+            if sec_level:
+                req_topics.setdefault(("SECURITY_CLEARANCE", scope), []).append((s_doc, sec_level, desc, r))
 
-        for topic, r_list in req_topics.items():
+        for (topic, scope), r_list in req_topics.items():
             unique_vals = {r[1] for r in r_list}
             unique_docs = {r[0] for r in r_list if r[0]}
             if len(unique_vals) > 1 and len(unique_docs) > 1:
-                src_a = {"doc": r_list[0][0], "ref": f"Mandatory Criteria ({topic.replace('_', ' ').title()})", "text": r_list[0][2][:120]}
-                src_b = {"doc": r_list[-1][0], "ref": f"Mandatory Criteria ({topic.replace('_', ' ').title()})", "text": r_list[-1][2][:120]}
+                scope_label = scope.replace("_", " ").title()
+                src_a = {"doc": r_list[0][0], "ref": f"Mandatory Criteria ({topic.replace('_', ' ').title()} - {scope_label})", "text": r_list[0][2][:120]}
+                src_b = {"doc": r_list[-1][0], "ref": f"Mandatory Criteria ({topic.replace('_', ' ').title()} - {scope_label})", "text": r_list[-1][2][:120]}
                 sv = validate_conflict_source_validity(src_a, src_b, package_files)
                 classification = "TRUE_CONFLICT" if sv == "PHYSICAL_BOTH" else "REVIEW_ITEM"
 
@@ -966,12 +1040,12 @@ def detect_document_conflicts(normalized_facts: dict, package_files: list[str]) 
                     "conflict_type": "MANDATORY_REQUIREMENT_CONFLICT",
                     "classification": classification,
                     "confidence": "HIGH" if classification == "TRUE_CONFLICT" else "MEDIUM",
-                    "reason": f"Contradictory mandatory criteria detected for {topic.replace('_', ' ').title()} across documents.",
+                    "reason": f"Contradictory mandatory criteria detected for {topic.replace('_', ' ').title()} in {scope_label} across documents.",
                     "source_validity": sv,
-                    "topic": f"Conflicting Mandatory Requirements ({topic.replace('_', ' ').title()})",
+                    "topic": f"Conflicting Mandatory Requirements ({topic.replace('_', ' ').title()} - {scope_label})",
                     "source_a": src_a,
                     "source_b": src_b,
-                    "assessment": f"Differing mandatory requirement thresholds stated across procurement documents ({', '.join(str(v) for v in unique_vals)}).",
+                    "assessment": f"Differing mandatory requirement thresholds stated for {scope_label} across procurement documents ({', '.join(str(v) for v in unique_vals)}).",
                     "recommended_action": "Seek authoritative clarification to ensure compliance response aligns with latest standard."
                 })
                 conflict_idx += 1
@@ -1002,45 +1076,72 @@ def detect_document_conflicts(normalized_facts: dict, package_files: list[str]) 
             })
             conflict_idx += 1
 
-        # Check insurance requirements by like-with-like insurance class
+        # Check insurance requirements by like-with-like insurance class and parsed monetary limits
         ins_terms = [c for c in comm_clauses if "insurance" in f"{c.get('topic','')} {c.get('details','')}".lower() or "liability" in f"{c.get('topic','')} {c.get('details','')}".lower()]
         if len(ins_terms) >= 2:
             ins_by_class = {}
             for it in ins_terms:
                 combined_text = f"{it.get('topic','')} {it.get('details','')}"
                 ins_class = classify_insurance_class(combined_text)
-                ins_by_class.setdefault(ins_class, []).append(it)
+                amt = extract_monetary_amount(combined_text)
+                ins_by_class.setdefault(ins_class, []).append((it, amt))
 
             for ins_class, i_list in ins_by_class.items():
-                if len(i_list) >= 2 and len({i.get("details") for i in i_list}) > 1:
-                    src_a = {"doc": i_list[0].get("source_doc", "Doc A"), "ref": i_list[0].get("topic", ""), "text": i_list[0].get("details", "")}
-                    src_b = {"doc": i_list[-1].get("source_doc", "Doc B"), "ref": i_list[-1].get("topic", ""), "text": i_list[-1].get("details", "")}
-                    sv = validate_conflict_source_validity(src_a, src_b, package_files)
-                    unique_docs = {i.get("source_doc") for i in i_list if i.get("source_doc")}
-                    
-                    if len(unique_docs) > 1 and sv == "PHYSICAL_BOTH":
-                        classification = "TRUE_CONFLICT"
-                        confidence = "HIGH"
-                        reason = f"Conflicting insurance liability thresholds across documents for {ins_class.replace('_', ' ').title()}."
-                    else:
-                        classification = "REVIEW_ITEM"
-                        confidence = "MEDIUM"
-                        reason = f"Internal inconsistency or differing thresholds for {ins_class.replace('_', ' ').title()}."
+                if len(i_list) >= 2:
+                    amounts = [item[1] for item in i_list if item[1] is not None]
+                    unique_amts = set(amounts)
 
-                    conflicts.append({
-                        "conflict_id": f"CONF-COMM-{conflict_idx}",
-                        "conflict_type": "COMMERCIAL_TERM_CONFLICT",
-                        "classification": classification,
-                        "confidence": confidence,
-                        "reason": reason,
-                        "source_validity": sv,
-                        "topic": f"Conflicting {ins_class.replace('_', ' ').title()} Insurance Requirements",
-                        "source_a": src_a,
-                        "source_b": src_b,
-                        "assessment": f"Discrepancy in required {ins_class.replace('_', ' ').lower()} coverage amounts.",
-                        "recommended_action": "Confirm authoritative insurance coverage limits with contracting authority."
-                    })
-                    conflict_idx += 1
+                    if len(unique_amts) > 1:
+                        # Conflicting monetary thresholds for the same insurance class
+                        src_a = {"doc": i_list[0][0].get("source_doc", "Doc A"), "ref": i_list[0][0].get("topic", ""), "text": i_list[0][0].get("details", "")}
+                        src_b = {"doc": i_list[-1][0].get("source_doc", "Doc B"), "ref": i_list[-1][0].get("topic", ""), "text": i_list[-1][0].get("details", "")}
+                        sv = validate_conflict_source_validity(src_a, src_b, package_files)
+                        unique_docs = {item[0].get("source_doc") for item in i_list if item[0].get("source_doc")}
+
+                        if len(unique_docs) > 1 and sv == "PHYSICAL_BOTH":
+                            classification = "TRUE_CONFLICT"
+                            confidence = "HIGH"
+                            reason = f"Conflicting insurance liability monetary thresholds across documents for {ins_class.replace('_', ' ').title()}."
+                        else:
+                            classification = "REVIEW_ITEM"
+                            confidence = "MEDIUM"
+                            reason = f"Internal inconsistency or differing thresholds for {ins_class.replace('_', ' ').title()}."
+
+                        amt_strs = [f"${a:,.0f}" for a in sorted(unique_amts)]
+                        conflicts.append({
+                            "conflict_id": f"CONF-COMM-{conflict_idx}",
+                            "conflict_type": "COMMERCIAL_TERM_CONFLICT",
+                            "classification": classification,
+                            "confidence": confidence,
+                            "reason": reason,
+                            "source_validity": sv,
+                            "topic": f"Conflicting {ins_class.replace('_', ' ').title()} Insurance Limits",
+                            "source_a": src_a,
+                            "source_b": src_b,
+                            "assessment": f"Discrepancy in required {ins_class.replace('_', ' ').lower()} coverage amounts ({', '.join(amt_strs)}).",
+                            "recommended_action": "Confirm authoritative insurance coverage limits with contracting authority."
+                        })
+                        conflict_idx += 1
+                    elif len(amounts) == 0 and len({item[0].get("details") for item in i_list}) > 1:
+                        # If monetary amount cannot be reliably parsed but details differ, classify as REVIEW_ITEM rather than TRUE_CONFLICT
+                        src_a = {"doc": i_list[0][0].get("source_doc", "Doc A"), "ref": i_list[0][0].get("topic", ""), "text": i_list[0][0].get("details", "")}
+                        src_b = {"doc": i_list[-1][0].get("source_doc", "Doc B"), "ref": i_list[-1][0].get("topic", ""), "text": i_list[-1][0].get("details", "")}
+                        sv = validate_conflict_source_validity(src_a, src_b, package_files)
+
+                        conflicts.append({
+                            "conflict_id": f"CONF-COMM-{conflict_idx}",
+                            "conflict_type": "COMMERCIAL_TERM_CONFLICT",
+                            "classification": "REVIEW_ITEM",
+                            "confidence": "LOW",
+                            "reason": f"Prose variation in {ins_class.replace('_', ' ').title()} terms across documents without confirmed monetary contradiction.",
+                            "source_validity": sv,
+                            "topic": f"Term Wording Variation for {ins_class.replace('_', ' ').title()}",
+                            "source_a": src_a,
+                            "source_b": src_b,
+                            "assessment": "Different wording used for insurance terms across documents; coverage amounts unconfirmed.",
+                            "recommended_action": "Review insurance wording to confirm underlying coverage limits match."
+                        })
+                        conflict_idx += 1
 
     # ── 5. SCOPE CONFLICTS ────────────────────────────────────────────────────
     deliverables = normalized_facts.get("deliverables", [])

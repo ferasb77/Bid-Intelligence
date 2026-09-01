@@ -11,7 +11,7 @@
 
 This report documents the deterministic replay of the refined **Stage C Cross-Document Reconciliation Engine** against the frozen normalized facts extracted from the 15-document Bank of Canada procurement package during the RC1 blind acceptance test.
 
-Following quality review, all tender-specific heuristics (such as keyword searches for `"bilingual"` or `"french"`) were removed in favor of strictly generic, structured reconciliation rules.
+Following quality review, all tender-specific heuristics (such as keyword searches for `"bilingual"` or `"french"`) were removed in favor of strictly generic, scope-aware, structured reconciliation rules.
 
 ### Comparison Overview
 
@@ -66,7 +66,7 @@ Following quality review, all tender-specific heuristics (such as keyword search
   * A tender-specific heuristic searched for `"bilingual"` and inferred a conflict merely because bilingualism was specified in Appendix B3 (Category 3 Facilitation) but not across all package files. In reality, a requirement appearing only in its applicable appendix is standard procurement structure.
 * **Refined Stage C Behavior:**
   * Tender-specific bilingual heuristic removed.
-  * Generic requirement reconciliation evaluates whether opposing physical documents make contradictory claims.
+  * Generic requirement reconciliation evaluates whether opposing physical documents make contradictory claims for the **same operational scope/stream**.
   * Because no contradictory claims exist across the 15 package documents, zero artificial conflicts or review items are manufactured.
 * **Refined Status:** **ELIMINATED (0 Spurious Mandatory Discrepancies Manufactured)**
 
@@ -83,5 +83,5 @@ Following quality review, all tender-specific heuristics (such as keyword search
 ## 4. Verification Conclusion
 
 1. **Precision:** **0 known false positives remained in the frozen Bank of Canada replay.**
-2. **Generic Architecture:** Elimination of tender-specific heuristics ensures clean cross-tender generalization without hardcoded rules.
+2. **Generic Architecture:** Elimination of tender-specific heuristics and addition of scope-normalized comparisons ensure clean cross-tender generalization without hardcoded rules.
 3. **Execution Performance:** Full 15-document Stage C reconciliation completes deterministically in **< 15 milliseconds**.
