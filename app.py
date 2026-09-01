@@ -8,11 +8,18 @@ from database import (init_db, get_all_bids, get_bid, create_bid, update_bid, de
                       get_documents, upsert_document, delete_document, save_upload,
                       get_document_versions, create_expected_document,
                       get_outline, upsert_section, delete_section,
-                      get_readiness)
+                      get_readiness, get_bid_brief, upsert_bid_brief)
 from config import get_api_key, api_key_configured
 from pages_extra import (page_content_library, page_proposal_analyzer,
-    page_coach_roster, page_clarifications, page_section_drafter,
-    page_submission_assembler, page_debrief, page_exec_dashboard)
+    page_team_roster, page_clarifications, page_section_drafter,
+    page_submission_assembler, page_exec_dashboard)
+from pages.stage_understand import page_understand
+from pages.stage_decide import page_decide
+from pages.stage_build import page_build
+from pages.stage_check import page_check
+from pages.stage_submit import page_submit
+from pages.stage_debrief import page_debrief
+from pages.settings_firm import page_settings_firm
 from pdf_export import generate_compliance_pdf
 from brand import dashboard_brand_html, sidebar_brand_html
 from components.ui import (inject_css, stage_badge, status_badge, priority_badge,
@@ -50,13 +57,20 @@ with st.sidebar:
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
-    for label, key in {"🏠  Dashboard": "dashboard", "📋  All Bids": "all_bids",
-                   "➕  New Bid": "new_bid", "📚  Content Library": "content_library",
-                   "🏋  Coach Roster": "coach_roster",
-                   "📊  Executive View": "exec_dashboard"}.items():
+    # ── Global Navigation ──
+    for label, key in {
+        "🏠  Dashboard": "dashboard",
+        "📋  Bids Directory": "all_bids",
+        "➕  New Bid Ingestion": "new_bid",
+        "📚  Content Library": "content_library",
+        "👥  Team & Resources": "team_roster",
+        "📊  Executive View": "exec_dashboard",
+        "⚙️  Firm Profile & Settings": "settings_firm",
+    }.items():
         if st.button(label, key=f"nav_{key}", use_container_width=True):
             go(key)
 
+    # ── Active Bid Navigation (5-Stage Decision Workflow) ──
     if st.session_state.active_bid:
         bid = get_bid(st.session_state.active_bid)
         if bid:
@@ -66,22 +80,23 @@ with st.sidebar:
                         f'<span style="font-weight:400;color:#A9A69D">{bid["title"][:38]}{"…" if len(bid["title"])>38 else ""}</span></div>',
                         unsafe_allow_html=True)
             st.markdown("")
-            for label, key in {
-                "📊  Overview":          "bid_overview",
-                "✅  Compliance Matrix": "compliance",
-                "📁  Documents":         "documents",
-                "☑️  Tasks":             "tasks",
-                "📦  Deliverables":      "deliverables",
-                "📝  Proposal Outline":  "outline",
-                "🤖  AI Analyst":        "ai_analyst",
-                "❓  Clarifications":    "clarifications",
-                "✍  Section Drafter":   "section_drafter",
-                "🔬  Proposal Analyzer": "proposal_analyzer",
-                "📤  Submission":        "submission_assembler",
-                "🏆  Debrief":           "debrief",
-            }.items():
+
+            stages_nav = {
+                "💡  1. UNDERSTAND": "stage_understand",
+                "⚖️  2. DECIDE":     "stage_decide",
+                "🛠️  3. BUILD":      "stage_build",
+                "🔍  4. CHECK":      "stage_check",
+                "🚀  5. SUBMIT":     "stage_submit",
+            }
+
+            # Reveal Debrief contextually once submitted or closed
+            if bid.get("stage") in ("Submitted", "Won", "Lost", "Withdrawn", "No Bid"):
+                stages_nav["🏆  Debrief"] = "stage_debrief"
+
+            for label, key in stages_nav.items():
                 if st.button(label, key=f"nav_{key}", use_container_width=True):
                     go(key)
+
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
             if st.button("← All Bids", use_container_width=True):
                 st.session_state.active_bid = None
@@ -132,7 +147,7 @@ def page_dashboard():
             c2.markdown(days_label(days_until(b.get("submission_deadline"))), unsafe_allow_html=True)
             c3.markdown(readiness_bar(pct), unsafe_allow_html=True)
             if c4.button("Open", key=f"urg_{b['id']}"):
-                go("bid_overview", b["id"])
+                go("stage_understand", b["id"])
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
     st.markdown("### Pipeline")
@@ -150,7 +165,7 @@ def page_dashboard():
             c3.markdown(_deadline_label(b), unsafe_allow_html=True)
             c4.markdown(readiness_bar(pct) if b["req_count"] else '<span style="color:#6E6C66;font-size:.75rem">No requirements</span>', unsafe_allow_html=True)
             if c5.button("Open", key=f"dash_{b['id']}"):
-                go("bid_overview", b["id"])
+                go("stage_understand", b["id"])
         st.markdown("")
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -173,7 +188,7 @@ def page_all_bids():
         c3.markdown(f'<span style="color:#6E6C66;font-size:.72rem">{b.get("submission_deadline") or "—"}</span>', unsafe_allow_html=True)
         c4.markdown(readiness_bar(pct) if b["req_count"] else '<span style="color:#6E6C66;font-size:.75rem">No requirements</span>', unsafe_allow_html=True)
         if c5.button("Open →", key=f"all_{b['id']}"):
-            go("bid_overview", b["id"])
+            go("stage_understand", b["id"])
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -317,6 +332,9 @@ def _render_extraction_review():
             "stage":stage,"sensitivity":sens,"owner":owner,"value_cad":val or None,
             "submission_deadline":sub_dl or None,"clarification_deadline":clar_dl or None,"notes":notes})
         save_upload(bid_id, fname, fb)
+        brief_data = extracted.get("brief") or {}
+        brief_data["bid_id"] = bid_id
+        upsert_bid_brief(brief_data)
         for r in reqs:
             upsert_requirement({**r,"id":None,"bid_id":bid_id,"notes":r.get("notes") or ""})
         for d in docs:
@@ -325,7 +343,7 @@ def _render_extraction_review():
             upsert_section({**s,"id":None,"bid_id":bid_id})
         st.session_state["extraction"] = None
         st.session_state["extraction_file"] = None
-        go("bid_overview", bid_id)
+        go("stage_understand", bid_id)
     if c2.button("✕  Start Over", use_container_width=True):
         st.session_state["extraction"] = None
         st.session_state["extraction_file"] = None
@@ -2056,43 +2074,36 @@ def _services_pdf(bid, dels):
 page  = st.session_state.page
 bid_id = st.session_state.active_bid
 
-if   page == "dashboard":
+# Global pages
+if page == "dashboard":
     page_dashboard()
-elif page == "content_library":
-    page_content_library()
-elif page == "coach_roster":
-    page_coach_roster()
-elif page == "exec_dashboard":
-    page_exec_dashboard()
 elif page == "all_bids":
     page_all_bids()
 elif page == "new_bid":
     page_new_bid()
+elif page == "content_library":
+    page_content_library()
+elif page in ("team_roster", "coach_roster"):
+    page_team_roster()
+elif page == "exec_dashboard":
+    page_exec_dashboard()
+elif page == "settings_firm":
+    page_settings_firm()
+
+# Active bid pages (5 workflow stages + contextual debrief + backward compatibility)
 elif bid_id is None:
     go("dashboard")
-elif page == "bid_overview":
-    page_bid_overview(bid_id)
-elif page == "compliance":
-    page_compliance(bid_id)
-elif page == "tasks":
-    page_tasks(bid_id)
-elif page == "documents":
-    page_documents(bid_id)
-elif page == "outline":
-    page_outline(bid_id)
-elif page == "ai_analyst":
-    page_ai_analyst(bid_id)
-elif page == "deliverables":
-    page_deliverables(bid_id)
-elif page == "clarifications":
-    page_clarifications(bid_id)
-elif page == "section_drafter":
-    page_section_drafter(bid_id)
-elif page == "proposal_analyzer":
-    page_proposal_analyzer(bid_id)
-elif page == "submission_assembler":
-    page_submission_assembler(bid_id)
-elif page == "debrief":
+elif page in ("stage_understand", "bid_overview"):
+    page_understand(bid_id)
+elif page in ("stage_decide", "clarifications", "ai_analyst"):
+    page_decide(bid_id)
+elif page in ("stage_build", "outline", "section_drafter", "tasks", "documents", "deliverables"):
+    page_build(bid_id)
+elif page in ("stage_check", "compliance", "proposal_analyzer"):
+    page_check(bid_id)
+elif page in ("stage_submit", "submission_assembler"):
+    page_submit(bid_id)
+elif page in ("stage_debrief", "debrief"):
     page_debrief(bid_id)
 else:
     go("dashboard")

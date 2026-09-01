@@ -15,11 +15,11 @@ from components.ui import (days_until,
 from config import api_key_configured
 
 LIB_CATEGORIES = [
-    "Coaching Philosophy", "Methodology", "Case Study",
-    "Team Qualification", "IDEA Statement", "ESG Statement",
-    "Reconciliation Statement", "Executive Summary",
-    "Sector Experience", "Reference", "CV Summary",
-    "Pricing Structure", "Other",
+    "Methodology", "Case Study", "Executive Summary",
+    "Team Qualification", "Technical Architecture", "Governance",
+    "Quality Assurance", "IDEA Statement", "ESG Statement",
+    "Reconciliation Statement", "Sector Experience", "Reference",
+    "CV Summary", "Pricing Structure", "Other",
 ]
 CLAR_STATUSES   = ["Draft", "Submitted", "Answered", "Changes Required", "Closed"]
 CLAR_PRIORITIES = ["Critical", "High", "Medium", "Low"]
@@ -375,12 +375,15 @@ def page_proposal_analyzer(bid_id):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# COACH ROSTER
+# TEAM & RESOURCE LIBRARY
 # ═══════════════════════════════════════════════════════════════════════════════
-def page_coach_roster():
+def page_team_roster():
     coaches = get_coaches()
-    st.markdown("# Coach Roster")
+    st.markdown("# Team & Resource Library")
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="info-box">Directory of key personnel, subject matter experts, and delivery resources '
+                'with verified credentials, industry sectors, security clearances, and availability for tender submissions.</div>',
+                unsafe_allow_html=True)
 
     if coaches:
         avail = sum(1 for c in coaches if c.get("availability")=="Available")
@@ -389,20 +392,21 @@ def page_coach_roster():
             if c.get("languages"):
                 langs.update(lang.strip() for lang in c["languages"].split(","))
         c1,c2,c3 = st.columns(3)
-        c1.metric("Total Coaches", len(coaches))
-        c2.metric("Available", avail)
+        c1.metric("Total Team Members", len(coaches))
+        c2.metric("Available for Deployment", avail)
         c3.metric("Languages Covered", len(langs))
         st.markdown("")
 
         for coach in coaches:
             avail_col = {"Available":"#27AE60","Partially Available":"#E67E22",
                          "Unavailable":"#C0392B"}.get(coach.get("availability",""),"#6E6C66")
-            with st.expander(f"**{coach['name']}**  ·  {coach.get('credentials','') or ''}  ·  "
-                             f"{coach.get('icf_level','') or ''}"):
+            cred_str = f" · {coach.get('credentials','')}" if coach.get('credentials') else ""
+            desig_str = f" · {coach.get('icf_level','')}" if coach.get('icf_level') else ""
+            with st.expander(f"**{coach['name']}**{cred_str}{desig_str}"):
                 c1,c2,c3 = st.columns(3)
-                c1.markdown(f"**Sectors:** {coach.get('sectors') or '—'}")
+                c1.markdown(f"**Sectors / Domains:** {coach.get('sectors') or '—'}")
                 c1.markdown(f"**Languages:** {coach.get('languages') or '—'}")
-                c2.markdown(f"**Location:** {coach.get('location') or '—'}")
+                c2.markdown(f"**Location / Base:** {coach.get('location') or '—'}")
                 c2.markdown(f'**Availability:** <span style="color:{avail_col}">'
                             f'{coach.get("availability","—")}</span>',
                             unsafe_allow_html=True)
@@ -415,15 +419,16 @@ def page_coach_roster():
                                 f'{coach["cv_summary"]}</div>', unsafe_allow_html=True)
                 if coach.get("reference_contact"):
                     st.markdown(f'<span style="font-size:.75rem;color:#C9A96E">'
-                                f'Reference: {coach["reference_contact"]}</span>',
+                                f'Client Reference: {coach["reference_contact"]}</span>',
                                 unsafe_allow_html=True)
                 if st.button("✏ Edit", key=f"ec_{coach['id']}"):
                     st.session_state["editing_coach"] = coach["id"]
                     st.rerun()
     else:
-        st.markdown('<div class="empty-state">No coaches yet. Run the Proposal Analyzer on past '
-                    'proposals to auto-populate, or add manually below.</div>',
+        st.markdown('<div class="empty-state">No team members registered yet. Add key personnel below or ingest from past proposals.</div>',
                     unsafe_allow_html=True)
+
+page_coach_roster = page_team_roster
 
     eid = st.session_state.get("editing_coach")
     if eid:
@@ -1708,13 +1713,14 @@ def page_debrief(bid_id):
 def page_exec_dashboard():
     from database import (get_all_bids, get_requirements, get_tasks,
                           get_clarifications, get_debriefs, get_coaches,
-                          get_documents)
+                          get_documents, get_firm_profile)
     from datetime import date
 
+    firm_prof = get_firm_profile()
     st.markdown("# Executive Dashboard")
     st.markdown(
         f'<div style="font-size:.82rem;color:#A9A69D;margin-bottom:.5rem">'
-        f'Phoenix Consulting International  ·  '
+        f'{firm_prof.get("company_name", "Enable My Growth")}  ·  '
         f'Bid Intelligence  ·  '
         f'{date.today().strftime("%B %d, %Y")}</div>',
         unsafe_allow_html=True)

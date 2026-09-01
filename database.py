@@ -76,14 +76,28 @@ def get_requirements(bid_id):
 
 def upsert_requirement(data):
     sb = get_client()
-    keys = ["req_id","category","description","rfso_ref","weight",
-            "evidence","owner","deadline","status","notes"]
-    if data.get("id"):
-        clean = {k: data.get(k) for k in keys}
-        sb.table("requirements").update(clean).eq("id", data["id"]).execute()
-    else:
-        clean = {k: data.get(k) for k in ["bid_id"] + keys}
-        sb.table("requirements").insert(clean).execute()
+    keys_with_qual = ["req_id","category","description","rfso_ref","weight",
+                      "evidence","owner","deadline","status","notes",
+                      "qual_status","gap_action","qual_notes"]
+    keys_basic = ["req_id","category","description","rfso_ref","weight",
+                  "evidence","owner","deadline","status","notes"]
+
+    def _do_upsert(keys):
+        if data.get("id"):
+            clean = {k: data.get(k) for k in keys if k in data}
+            sb.table("requirements").update(clean).eq("id", data["id"]).execute()
+        else:
+            clean = {k: data.get(k) for k in ["bid_id"] + keys if k in data or k == "bid_id"}
+            sb.table("requirements").insert(clean).execute()
+
+    try:
+        _do_upsert(keys_with_qual)
+    except Exception as e:
+        err = str(e).lower()
+        if "column" in err or "schema" in err or "qual_" in err or "gap_action" in err or "pgrst" in err:
+            _do_upsert(keys_basic)
+        else:
+            raise
 
 def delete_requirement(req_id):
     get_client().table("requirements").delete().eq("id", req_id).execute()
@@ -403,3 +417,116 @@ def upsert_debrief(data):
     else:
         sb.table("debriefs").insert(
             {k: data.get(k) for k in ["bid_id"] + keys}).execute()
+
+
+# ── Bid Briefs ────────────────────────────────────────────────────────────────
+def get_bid_brief(bid_id: int) -> dict | None:
+    """Retrieve structured Bid Brief for a bid. Returns None if table/record missing."""
+    sb = get_client()
+    try:
+        row = _one(sb.table("bid_briefs").select("*").eq("bid_id", bid_id).execute())
+        return row
+    except Exception:
+        return None
+
+def upsert_bid_brief(data: dict) -> None:
+    """Insert or update structured Bid Brief with fallback."""
+    sb = get_client()
+    import json
+    keys = ["bid_id", "executive_summary", "opportunity_type", "contract_term",
+            "procurement_model", "scope_categories", "deliverables_summary",
+            "qualification_gates", "evaluation_breakdown", "commercial_structure",
+            "contract_risks", "submission_requirements", "key_dates", "source_citations"]
+    
+    clean = {}
+    for k in keys:
+        v = data.get(k)
+        if isinstance(v, (list, dict)):
+            clean[k] = json.dumps(v)
+        else:
+            clean[k] = v
+
+    try:
+        existing = _one(sb.table("bid_briefs").select("id").eq("bid_id", data["bid_id"]).execute())
+        if existing:
+            sb.table("bid_briefs").update(clean).eq("id", existing["id"]).execute()
+        else:
+            sb.table("bid_briefs").insert(clean).execute()
+    except Exception:
+        # Table might not be created yet in older Supabase instances
+        pass
+
+
+# ── Bid Decisions ─────────────────────────────────────────────────────────────
+def get_bid_decision(bid_id: int) -> dict | None:
+    """Retrieve the latest bid pursuit decision record for a bid."""
+    sb = get_client()
+    try:
+        rows = _rows(sb.table("bid_decisions").select("*")
+                     .eq("bid_id", bid_id).order("id", desc=True).limit(1).execute())
+        return rows[0] if rows else None
+    except Exception:
+        return None
+
+def save_bid_decision(data: dict) -> None:
+    """Save an AI recommendation or human pursuit decision."""
+    sb = get_client()
+    import json
+    keys = ["bid_id", "ai_recommendation", "ai_confidence", "overall_score",
+            "dimension_scores", "hard_blockers", "conditions", "win_themes",
+            "red_flags", "human_decision", "override_reason", "decided_by"]
+    
+    clean = {}
+    for k in keys:
+        v = data.get(k)
+        if isinstance(v, (list, dict)):
+            clean[k] = json.dumps(v)
+        else:
+            clean[k] = v
+
+    try:
+        sb.table("bid_decisions").insert(clean).execute()
+    except Exception:
+        pass
+
+
+# ── Firm Profile ──────────────────────────────────────────────────────────────
+DEFAULT_FIRM_PROFILE = {
+    "company_name": "Enable My Growth",
+    "overview": "Specialized consulting and strategic advisory firm delivering high-impact executive, organizational, and technical transformation programs.",
+    "core_capabilities": "Strategic advisory, executive leadership development, organizational design, program delivery, technology enablement, change management.",
+    "key_sectors": "Public Sector, Healthcare, Financial Services, Energy, Non-Profit, Technology.",
+    "languages": "English, French, Arabic",
+    "locations": "Canada, International",
+    "certifications": "ISO 9001, CMC, PMI, PMP, ICF Accredited Practitioners, Professional Engineering",
+    "insurance_defaults": "Commercial General Liability $5,000,000 | Professional Errors & Omissions $2,000,000",
+    "ai_disclosure_policy": "Ethical and transparent AI assistance in research and drafting with rigorous human validation and privacy safeguards.",
+}
+
+def get_firm_profile() -> dict:
+    """Retrieve the configured firm profile or return defaults."""
+    sb = get_client()
+    try:
+        row = _one(sb.table("firm_profiles").select("*").limit(1).execute())
+        if row:
+            return {**DEFAULT_FIRM_PROFILE, **row}
+    except Exception:
+        pass
+    return DEFAULT_FIRM_PROFILE.copy()
+
+def save_firm_profile(data: dict) -> None:
+    """Save or update the global bidding firm profile."""
+    sb = get_client()
+    keys = ["company_name", "overview", "core_capabilities", "key_sectors",
+            "languages", "locations", "certifications", "insurance_defaults",
+            "ai_disclosure_policy"]
+    clean = {k: data.get(k) for k in keys if k in data}
+    try:
+        existing = _one(sb.table("firm_profiles").select("id").limit(1).execute())
+        if existing:
+            sb.table("firm_profiles").update(clean).eq("id", existing["id"]).execute()
+        else:
+            sb.table("firm_profiles").insert(clean).execute()
+    except Exception:
+        pass
+

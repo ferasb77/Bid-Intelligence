@@ -7,6 +7,7 @@ CATEGORIES = ["Mandatory", "Rated", "Financial", "Supporting"]
 SENSITIVITY= ["Standard", "Sensitive"]
 DOC_TYPES  = ["RFP / Source", "Submission", "Supporting", "Reference",
               "Past Proposal", "Financial", "Internal"]
+QUAL_STATUSES = ["PASS", "CONCERN", "FAIL", "UNKNOWN"]
 
 STAGE_COLOURS = {
     "Identified":  "#6E6C66",
@@ -32,6 +33,12 @@ PRIORITY_COLOURS = {
     "High":     "#E67E22",
     "Medium":   "#2980B9",
     "Low":      "#6E6C66",
+}
+QUAL_COLOURS = {
+    "PASS":    "#27AE60",
+    "CONCERN": "#E67E22",
+    "FAIL":    "#C0392B",
+    "UNKNOWN": "#6E6C66",
 }
 
 CSS = """
@@ -99,6 +106,10 @@ div[data-testid="stForm"] { background: #111118; border: 1px solid #292832; bord
     display:inline-block; padding:.1rem .45rem; border-radius:3px;
     font-size:.68rem; font-weight:600;
 }
+.qual-badge {
+    display:inline-block; padding:.15rem .6rem; border-radius:3px;
+    font-size:.72rem; font-weight:700; letter-spacing:.06em;
+}
 
 .section-divider {
     border: none; border-top: 1px solid #292832; margin: 1.2rem 0;
@@ -122,6 +133,11 @@ div[data-testid="stForm"] { background: #111118; border: 1px solid #292832; bord
     padding: .6rem 1rem; margin: .5rem 0; border-radius: 0 4px 4px 0;
     font-size: .85rem; color: #E57373;
 }
+.success-box {
+    background: #0A1A0A; border-left: 3px solid #27AE60;
+    padding: .6rem 1rem; margin: .5rem 0; border-radius: 0 4px 4px 0;
+    font-size: .85rem; color: #81C784;
+}
 
 .row-table { width:100%; border-collapse:collapse; font-size:.82rem; }
 .row-table th {
@@ -133,6 +149,21 @@ div[data-testid="stForm"] { background: #111118; border: 1px solid #292832; bord
 .row-table tr:hover td { background:#16161A; }
 
 .empty-state { text-align:center; color:#6E6C66; padding:2.5rem 1rem; font-size:.9rem; }
+
+/* Stepper Bar */
+.stage-stepper {
+    display: flex; gap: 8px; margin-bottom: 1.2rem; flex-wrap: wrap;
+}
+.step-pill {
+    padding: .4rem .8rem; border-radius: 4px; font-size: .78rem; font-weight: 600;
+    text-decoration: none; border: 1px solid #292832; background: #111118; color: #A9A69D;
+}
+.step-pill.active {
+    background: #C9A96E; color: #0A0A0F; border-color: #C9A96E; font-weight: 700;
+}
+.step-pill.completed {
+    border-color: #27AE60; color: #27AE60;
+}
 
 /* Enable My Growth endorsed-product identity */
 .emg-sidebar-brand { display:flex; align-items:center; gap:10px; padding:12px 8px 6px; }
@@ -165,6 +196,22 @@ def priority_badge(priority):
     c = PRIORITY_COLOURS.get(priority, "#6E6C66")
     return f'<span class="priority-badge" style="background:{c}22;color:{c}">{priority}</span>'
 
+def qual_badge(status):
+    c = QUAL_COLOURS.get(status, "#6E6C66")
+    return f'<span class="qual-badge" style="background:{c}22;color:{c};border:1px solid {c}55">{status}</span>'
+
+def decision_badge(decision):
+    colours = {
+        "GO": "#27AE60",
+        "GO WITH CONDITIONS": "#E67E22",
+        "NO-GO": "#C0392B",
+        "NO GO": "#C0392B",
+        "NEEDS MORE INFORMATION": "#2980B9",
+        "NEEDS MORE INFO": "#2980B9",
+    }
+    col = colours.get(decision.upper(), "#6E6C66")
+    return f'<span style="background:{col};color:#fff;padding:.3rem .9rem;border-radius:4px;font-weight:700;font-size:.9rem">{decision}</span>'
+
 def readiness_bar(pct, colour="#C9A96E"):
     w = min(int(pct), 100)
     col = "#27AE60" if pct >= 80 else ("#E67E22" if pct >= 50 else "#C0392B")
@@ -188,7 +235,7 @@ def days_until(deadline_str):
         return None
     from datetime import date
     try:
-        d = date.fromisoformat(deadline_str)
+        d = date.fromisoformat(deadline_str[:10])
         return (d - date.today()).days
     except Exception:
         return None
