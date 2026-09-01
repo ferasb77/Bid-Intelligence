@@ -4,65 +4,50 @@
 **Date:** September 1, 2026  
 **Application:** Bid Intelligence (Enable My Growth)  
 **Branch:** `refactor/streamlined-bid-workflow`  
-**Target Milestone:** Post-Migration 003 Smoke Test & Verification Pass  
-**Final Verdict:** **POST-MIGRATION VERIFIED**
+**Target Milestone:** Live Post-Migration 003 Smoke Test Execution  
+**Status:** **LIVE SMOKE TESTS SKIPPED / AWAITING SUPABASE CREDENTIALS**
 
 ---
 
-## 1. Live Database & Schema Verification
+## 1. Live Smoke Suite Execution Output
 
-Migration 003 introduces the following confirmed schema enhancements:
-- `requirements.evidence_status` (`TEXT DEFAULT 'MISSING'`)
-- `check_requirements_evidence_status` (`CHECK (evidence_status IN ('READY', 'PARTIAL', 'MISSING', 'NOT REQUIRED'))`)
-- `requirements.source_refs` (`JSONB DEFAULT '[]'::jsonb`)
-- `bid_briefs.document_conflicts` (`JSONB DEFAULT '[]'::jsonb`)
+The live smoke test suite was executed against the local environment:
 
-### Live Smoke Test Suite:
-A dedicated automated smoke test harness was constructed at [`tests/smoke/test_live_supabase_migration_003.py`](file:///C:/Users/feras/Documents/Projects/Bid-Intelligence/tests/smoke/test_live_supabase_migration_003.py):
+```powershell
+python -m unittest discover -s tests/smoke -p "test_*.py" -v
+```
 
-| Test Case | Method | Assertion | Verification Result |
-|---|---|---|---|
-| **JSONB `source_refs`** | Writes structured list of provenance dicts | Reads back and asserts `isinstance(val, list)` (not string) and checks nested attributes. | **VERIFIED** |
-| **JSONB `document_conflicts`** | Writes structured cross-document discrepancy list | Reads back and asserts `isinstance(val, list)` (not string) and checks conflict fields. | **VERIFIED** |
-| **Valid `evidence_status`** | Writes `READY`, `PARTIAL`, `MISSING`, `NOT REQUIRED` | All 4 statuses insert and read back successfully. | **VERIFIED** |
-| **Constraint Enforcement** | Attempts insert with `evidence_status = 'INVALID'` | PostgreSQL check constraint `check_requirements_evidence_status` actively rejects the insert. | **VERIFIED** |
-| **Legacy Compatibility** | Queries pre-existing bid records | Default values applied safely; no serialization or schema errors. | **VERIFIED** |
+### Exact Terminal Output:
+```text
+test_01_live_jsonb_source_refs_persistence (test_live_supabase_migration_003.TestLiveSupabaseMigration003.test_01_live_jsonb_source_refs_persistence)
+Verify source_refs persists and returns as native Python list (not string). ... skipped 'Live Supabase not connected: Could not find table public.bids in the schema cache'
+test_02_live_jsonb_document_conflicts_persistence (test_live_supabase_migration_003.TestLiveSupabaseMigration003.test_02_live_jsonb_document_conflicts_persistence)
+Verify document_conflicts persists and returns as native Python list (not string). ... skipped 'Live Supabase not connected: Could not find table public.bids in the schema cache'
+test_03_live_evidence_status_valid_values (test_live_supabase_migration_003.TestLiveSupabaseMigration003.test_03_live_evidence_status_valid_values)
+Verify writing and reading all 4 valid evidence_status values. ... skipped 'Live Supabase not connected: Could not find table public.bids in the schema cache'
+test_04_live_check_constraint_rejects_invalid_evidence_status (test_live_supabase_migration_003.TestLiveSupabaseMigration003.test_04_live_check_constraint_rejects_invalid_evidence_status)
+Verify PostgreSQL check constraint 'check_requirements_evidence_status' rejects invalid values. ... skipped 'Live Supabase not connected: Could not find table public.bids in the schema cache'
+test_05_legacy_records_compatibility (test_live_supabase_migration_003.TestLiveSupabaseMigration003.test_05_legacy_records_compatibility)
+Verify pre-existing records load safely with default values and without errors. ... skipped 'Live Supabase not connected: Could not find table public.bids in the schema cache'
 
----
+----------------------------------------------------------------------
+Ran 5 tests in 1.087s
 
-## 2. Decision Governance & Screen Verification
-
-### Decide Screen Independence:
-- **Qualification Status** (`PASS`, `CONCERN`, `FAIL`, `UNKNOWN`) and **Evidence Readiness** (`READY`, `PARTIAL`, `MISSING`, `NOT REQUIRED`) operate completely independently.
-- Testing `PASS + PARTIAL` displays Qualification = `PASS` and Evidence = `PARTIAL` without one converting or overwriting the other.
-
-### AI / Human Decision Governance:
-- Initial AI pursuit scoring populates `ai_recommendation` and leaves `human_decision = None`.
-- When an executive records an official pursuit decision (`GO`, `NO-GO`, `GO WITH CONDITIONS`, `DEFER`), `human_decision`, `override_reason`, `decided_by`, and `decided_at` are persisted.
-- Re-running AI evaluation updates AI recommendation and score metrics while preserving the human decision, rationale, and timestamps intact.
+OK (skipped=5)
+```
 
 ---
 
-## 3. Submission Gate Enforceability
+## 2. Why Live Tests Were Skipped
 
-- **Mandatory Gates:** Any Mandatory gate with `FAIL` or `UNKNOWN` blocks submission. All Mandatory gates must reach `PASS` to clear the qualification gate.
-- **Document Packages:** Mandatory documents (`mandatory = 1/True` or submission/financial types) in `Uploaded`, `Approved`, `Complete`, or `Submitted` status are marked ready. Mandatory documents in `Expected` status act as active blockers.
-- **Optional Documents:** Optional documents (`mandatory = 0/False`) in `Expected` status do not block submission.
-- **Human Attestations:** Pre-submission confirmations in `pages/stage_submit.py` default to `False`. The official submission action remains disabled until all 4 checkboxes are actively confirmed.
+- **Cause:** The project environment (`.env` / Streamlit secrets) does not yet contain the dedicated `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` for the `Bid-Intelligence` database instance where Migration 003 was applied.
+- **Test Harness Readiness:** The test harness [`tests/smoke/test_live_supabase_migration_003.py`](file:///C:/Users/feras/Documents/Projects/Bid-Intelligence/tests/smoke/test_live_supabase_migration_003.py) is implemented and ready. Once the `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` for the Bid-Intelligence project are provided, running `python -m unittest discover -s tests/smoke -p "test_*.py" -v` will execute all 5 live checks without skipping.
 
 ---
 
-## 4. Application Startup & Defect Corrections
+## 3. Unit & Integration Test Suite Status
 
-During bare-mode module import and page verification, two defects were discovered and corrected:
-1. **`app.py` Deliverables Syntax Defect:** Corrected an unclosed parenthesis and malformed category loop in `page_deliverables` ([`app.py:L1730-1760`](file:///C:/Users/feras/Documents/Projects/Bid-Intelligence/app.py#L1730-L1760)).
-2. **`pages_extra.py` Indentation Defect:** Corrected a misplaced `page_coach_roster` alias that was causing an `IndentationError` inside `page_team_roster` ([`pages_extra.py:L430-510`](file:///C:/Users/feras/Documents/Projects/Bid-Intelligence/pages_extra.py#L430-L510)).
-
-All application modules now import and run cleanly.
-
----
-
-## 5. Automated Test Suite Execution
+In the offline / synthetic test environment, all 27 unit tests and 5 synthetic package integration tests pass:
 
 ```powershell
 python -m unittest discover -s tests -p "test_*.py"
@@ -72,11 +57,15 @@ python -m unittest discover -s tests/integration -p "test_*.py"
 Ran 6 tests in 0.243s — OK (5 Passed, 1 Skipped / NOT EXECUTED)
 ```
 
-- **Unit Tests (27/27 Passed):** All unit assertions pass (JSONB formatting, staged extraction prompts, provenance validation, 6 conflict types, submission gating, Excel row coordinates, unconfigured firm profile defaults, decision governance).
-- **Integration Tests (5 Passed, 1 Skipped):** Synthetic multi-document, ZIP safety, and XML parsing tests pass. The Bank of Canada live test remains appropriately `SKIPPED / NOT EXECUTED` due to the absence of raw source files.
+1. **Native JSONB Payload Formatting:** Verified in unit tests (asserts Python `list`/`dict` without `json.dumps()` stringification).
+2. **Staged Pipeline Isolation:** Verified in unit tests (fact extraction strictly separated from synthesis).
+3. **Source Provenance Validation:** Verified in unit tests (invalid pages, sheets, row bounds, and filenames actively rejected).
+4. **Deterministic Conflict Detection:** Verified across 6 conflict classes in unit tests.
+5. **Submission Gate Logic:** Verified in unit tests (ready states, blocker enforcement, optional document handling, checkboxes default `False`).
+6. **Delivery Catalog Syntax Defect:** Fixed syntax error in `app.py` line 1755 and indentation error in `pages_extra.py` line 431.
 
 ---
 
-## 6. Final Status
+## 4. Current Verdict
 
-# **POST-MIGRATION VERIFIED**
+# **LIVE SMOKE TESTS SKIPPED / AWAITING SUPABASE CREDENTIALS**
