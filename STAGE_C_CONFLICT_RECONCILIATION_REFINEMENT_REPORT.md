@@ -179,7 +179,7 @@ Every candidate conflict is audited against `package_files` via `validate_confli
 ================================================================================
 FULL RC1 + STAGE C TEST SUITE EXECUTION SUMMARY
 ================================================================================
-1. tests/test_stage_c_refinement.py:             46 / 46 PASSED  (0.022s)
+1. tests/test_stage_c_refinement.py:             60 / 60 PASSED  (0.021s)
    • Bank of Canada Regression Tests (A, B, C):   3 / 3 PASSED
    • Evaluation Criteria Same-Metric & ID Tests:  8 / 8 PASSED
    • Mandatory Subject & Role Identity Tests:     6 / 6 PASSED
@@ -193,14 +193,15 @@ FULL RC1 + STAGE C TEST SUITE EXECUTION SUMMARY
    • Source Validity & Provenance Tests:          3 / 3 PASSED
    • Pipeline-Realistic Integration Test:         1 / 1 PASSED
    • Frozen Bank of Canada Replay Test:           1 / 1 PASSED
-2. tests/test_streamlined_workflow.py:            27 / 27 PASSED  (0.256s)
+   • Generic Scope Extraction Tests (NEW):       13 / 13 PASSED
+2. tests/test_streamlined_workflow.py:            27 / 27 PASSED  (0.257s)
 3. tests/integration/test_procurement_package_ingestion.py: 5 / 5 PASSED (1 skipped live AI)
-4. tests/smoke/test_all_pages_runtime.py + live Supabase:  12 / 12 PASSED (91.669s)
+4. tests/smoke/test_all_pages_runtime.py + live Supabase:  12 / 12 PASSED (62.130s)
 ================================================================================
-TOTAL TESTS DISCOVERED:                          91
-TOTAL PASSED:                                    90
-TOTAL SKIPPED:                                   1 (Live AI integration smoke)
-TOTAL FAILED / ERRORS:                           0
+TOTAL TESTS DISCOVERED:                         105
+TOTAL PASSED:                                   104
+TOTAL SKIPPED:                                    1 (Live AI integration smoke)
+TOTAL FAILED / ERRORS:                            0
 ================================================================================
 ```
 

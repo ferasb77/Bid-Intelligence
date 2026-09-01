@@ -34,7 +34,8 @@ from extractor import (
     _extract_eval_criterion_identity,
     _extract_evaluation_scope,
     _extract_requirement_subject,
-    _extract_deliverable_scope
+    _extract_deliverable_scope,
+    _extract_operational_scope
 )
 
 
@@ -781,6 +782,110 @@ class TestBankOfCanadaStageCReplay(unittest.TestCase):
 
         # 4. Total replayed items = exactly 0 (0 known false positives remain in the frozen Bank of Canada replay)
         self.assertEqual(len(replayed_conflicts), 0, f"Expected 0 conflicts/review items, found: {replayed_conflicts}")
+
+
+class TestStageCGenericScopeExtraction(unittest.TestCase):
+    """
+    Scenario 14: Generic operational scope extraction.
+
+    Verifies that _extract_operational_scope uses only explicit procurement
+    scope markers (Category N, Stream N, Lot N, Work Package N) and never
+    infers a numbered category from subject-matter keywords such as
+    'HR Advisory', 'Facilitation', or 'Learning & Development'.
+
+    Also confirms that bare filename characters like 'd1', 'd2', 'd3' are
+    not treated as scope markers.
+    """
+
+    # A. Service domain without explicit category -> GENERAL_SCOPE
+    def test_a_hr_advisory_without_category_marker_is_general_scope(self):
+        """'HR Advisory Services' without an explicit category -> GENERAL_SCOPE."""
+        self.assertEqual(_extract_operational_scope("HR Advisory Services"), "GENERAL_SCOPE")
+
+    # B. Service domain without explicit category -> GENERAL_SCOPE
+    def test_b_facilitation_without_category_marker_is_general_scope(self):
+        """'Facilitation Services' without an explicit category -> GENERAL_SCOPE."""
+        self.assertEqual(_extract_operational_scope("Facilitation Services"), "GENERAL_SCOPE")
+
+    # C. Service domain without explicit category -> GENERAL_SCOPE
+    def test_c_learning_and_development_without_category_marker_is_general_scope(self):
+        """'Learning & Development Services' without an explicit category -> GENERAL_SCOPE."""
+        self.assertEqual(_extract_operational_scope("Learning & Development Services"), "GENERAL_SCOPE")
+        self.assertEqual(_extract_operational_scope("Learning and Development"), "GENERAL_SCOPE")
+
+    # D. Explicit category wins over any domain keyword in the same text
+    def test_d_category_2_facilitation_is_category_2_not_category_3(self):
+        """'Category 2 - Facilitation Services' -> CATEGORY_2 (not CATEGORY_3)."""
+        result = _extract_operational_scope("Category 2 - Facilitation Services")
+        self.assertEqual(result, "CATEGORY_2")
+
+    # E. Explicit category wins over any domain keyword in the same text
+    def test_e_category_1_hr_advisory_is_category_1_not_category_2(self):
+        """'Category 1 - HR Advisory' -> CATEGORY_1 (not CATEGORY_2)."""
+        result = _extract_operational_scope("Category 1 - HR Advisory")
+        self.assertEqual(result, "CATEGORY_1")
+
+    # F. Stream markers are parsed correctly
+    def test_f_stream_3_learning_development_is_stream_3(self):
+        """'Stream 3 - Learning & Development' -> STREAM_3."""
+        result = _extract_operational_scope("Stream 3 - Learning & Development")
+        self.assertEqual(result, "STREAM_3")
+
+    # G. Bare 'd1' in filename must NOT produce CATEGORY_1
+    def test_g_bare_d1_in_filename_is_not_category_1(self):
+        """Filename 'RFP-2026-026-Appendix-d1-evaluation-criteria.xlsx' -> GENERAL_SCOPE."""
+        result = _extract_operational_scope("evaluation criteria", "RFP-2026-026-Appendix-d1-evaluation-criteria.xlsx")
+        self.assertNotEqual(result, "CATEGORY_1")
+
+    def test_g2_bare_d2_in_filename_is_not_category_2(self):
+        """Filename 'pkg-ref-d2-form.docx' -> GENERAL_SCOPE (not CATEGORY_2)."""
+        result = _extract_operational_scope("rated criteria response form", "pkg-ref-d2-form.docx")
+        self.assertNotEqual(result, "CATEGORY_2")
+
+    def test_g3_bare_d3_in_filename_is_not_category_3(self):
+        """Filename 'section-d3-pricing.xlsx' -> GENERAL_SCOPE (not CATEGORY_3)."""
+        result = _extract_operational_scope("pricing schedule", "section-d3-pricing.xlsx")
+        self.assertNotEqual(result, "CATEGORY_3")
+
+    # Additional positive-path tests for other markers
+    def test_lot_marker_is_recognized(self):
+        """'Lot 2 - Software Development' -> LOT_2."""
+        self.assertEqual(_extract_operational_scope("Lot 2 - Software Development"), "LOT_2")
+
+    def test_work_package_marker_is_recognized(self):
+        """'Work Package 3 requirements' -> WORK_PACKAGE_3."""
+        self.assertEqual(_extract_operational_scope("Work Package 3 requirements"), "WORK_PACKAGE_3")
+
+    def test_service_category_marker_is_recognized(self):
+        """'Service Category 2 evaluation criteria' -> CATEGORY_2."""
+        self.assertEqual(_extract_operational_scope("Service Category 2 evaluation criteria"), "CATEGORY_2")
+
+    # End-to-end: deliverables across different services are scoped GENERAL and do NOT conflict
+    def test_hr_advisory_deliverable_and_facilitation_deliverable_same_qty_no_conflict(self):
+        """HR Advisory 10 sessions vs Facilitation 10 sessions -> NO CONFLICT (both GENERAL_SCOPE, same qty)."""
+        normalized = {
+            "deliverables": [
+                {"title": "HR Advisory Sessions", "description": "HR Advisory sessions: 10 sessions", "source_doc": "SOW.pdf"},
+                {"title": "Facilitation Sessions", "description": "Facilitation sessions: 10 sessions", "source_doc": "SOW.pdf"}
+            ]
+        }
+        pkg_files = ["SOW.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        scope_conflicts = [c for c in conflicts if c.get("conflict_type") == "SCOPE_CONFLICT"]
+        self.assertEqual(len(scope_conflicts), 0)
+
+    def test_hr_advisory_deliverable_and_facilitation_deliverable_diff_qty_no_false_conflict(self):
+        """HR Advisory 10 sessions vs Facilitation 5 sessions -> NO CONFLICT (different deliverable types)."""
+        normalized = {
+            "deliverables": [
+                {"title": "HR Advisory Sessions", "description": "HR Advisory sessions: 10 sessions per year", "source_doc": "SOW.pdf"},
+                {"title": "Facilitation Sessions", "description": "Facilitation sessions: 5 sessions per engagement", "source_doc": "SOW.pdf"}
+            ]
+        }
+        pkg_files = ["SOW.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        scope_conflicts = [c for c in conflicts if c.get("conflict_type") == "SCOPE_CONFLICT"]
+        self.assertEqual(len(scope_conflicts), 0)
 
 
 if __name__ == "__main__":

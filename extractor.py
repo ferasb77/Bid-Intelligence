@@ -865,50 +865,89 @@ def _extract_eval_criterion_identity(ec: dict) -> str | None:
     return None
 
 
-def _extract_evaluation_scope(ec: dict, s_doc: str) -> str:
-    """Extract operational category/stream scope for an evaluation criterion."""
-    stage = (ec.get("stage") or "").lower() if isinstance(ec, dict) else ""
-    criterion = (ec.get("criterion") or ec.get("title") or "").lower() if isinstance(ec, dict) else ""
-    notes = (ec.get("notes") or "").lower() if isinstance(ec, dict) else ""
-    doc = (s_doc or "").lower()
+def _extract_operational_scope(text: str, source_doc: str = "") -> str:
+    """
+    Extract explicit operational scope marker from procurement text and source document name.
 
-    combined = f"{stage} {criterion} {notes} {doc}"
-    if any(k in combined for k in ["category 1", "cat 1", "cat1", "appendix b1", "appendix c1", "appendix d1", "d1", "learning & development", "learning and development"]):
-        return "CATEGORY_1"
-    if any(k in combined for k in ["category 2", "cat 2", "cat2", "appendix b2", "appendix c2", "appendix d2", "d2", "hr advisory"]):
-        return "CATEGORY_2"
-    if any(k in combined for k in ["category 3", "cat 3", "cat3", "appendix b3", "appendix c3", "appendix d3", "d3", "facilitation"]):
-        return "CATEGORY_3"
-    if "stream 1" in combined:
-        return "STREAM_1"
-    if "stream 2" in combined:
-        return "STREAM_2"
-    if "stream 3" in combined:
-        return "STREAM_3"
+    Recognises only explicit procurement scope markers such as:
+        Category 1, Category A, Cat 2, Cat B
+        Stream 1, Workstream 2
+        Lot 1, Lot A
+        Work Package 3
+        Service Category 2
+
+    Does NOT infer scope from subject-matter keywords (e.g. 'HR Advisory',
+    'Facilitation', 'Learning & Development'). Those are GENERAL_SCOPE
+    unless an explicit marker is also present.
+
+    Bare substrings like 'd1', 'd2', 'd3' are ignored because they appear
+    commonly in filenames/identifiers and are not reliable scope indicators.
+    """
+    combined = f"{text} {source_doc}".lower()
+
+    # ── Explicit category markers ─────────────────────────────────────────────
+    # Must be preceded by 'category', 'cat', 'service category' etc. so that
+    # bare 'd1' or 'b2' in a filename or criterion ID are not mismatched.
+    m = re.search(
+        r'\b(?:service\s+)?cat(?:egory)?\s+([a-z0-9]+)\b',
+        combined
+    )
+    if m:
+        marker = m.group(1).upper()
+        # Only accept single-digit / single-letter markers (Category 1, Cat A)
+        if re.match(r'^[0-9A-Z]$', marker):
+            return f"CATEGORY_{marker}"
+        # Also accept two-digit markers (Category 10)
+        if re.match(r'^[0-9]{1,2}$', marker):
+            return f"CATEGORY_{marker}"
+
+    # ── Explicit stream / workstream markers ─────────────────────────────────
+    m = re.search(r'\b(?:work\s*)?stream\s+([a-z0-9]+)\b', combined)
+    if m:
+        marker = m.group(1).upper()
+        if re.match(r'^[0-9A-Z]{1,2}$', marker):
+            return f"STREAM_{marker}"
+
+    # ── Explicit lot markers ──────────────────────────────────────────────────
+    m = re.search(r'\blot\s+([a-z0-9]+)\b', combined)
+    if m:
+        marker = m.group(1).upper()
+        if re.match(r'^[0-9A-Z]{1,2}$', marker):
+            return f"LOT_{marker}"
+
+    # ── Explicit work-package markers ─────────────────────────────────────────
+    m = re.search(r'\bwork\s+package\s+([a-z0-9]+)\b', combined)
+    if m:
+        marker = m.group(1).upper()
+        if re.match(r'^[0-9A-Z]{1,2}$', marker):
+            return f"WORK_PACKAGE_{marker}"
+
     return "GENERAL_SCOPE"
+
+
+def _extract_evaluation_scope(ec: dict, s_doc: str) -> str:
+    """Wrapper: derive operational scope for an evaluation criterion record."""
+    stage = (ec.get("stage") or "") if isinstance(ec, dict) else ""
+    criterion = (ec.get("criterion") or ec.get("title") or "") if isinstance(ec, dict) else ""
+    notes = (ec.get("notes") or "") if isinstance(ec, dict) else ""
+    return _extract_operational_scope(f"{stage} {criterion} {notes}", s_doc)
 
 
 def _extract_requirement_scope(req: dict, s_doc: str) -> str:
-    """Extract operational category/stream scope for a mandatory requirement."""
-    cat = (req.get("category") or "").lower() if isinstance(req, dict) else ""
-    rfso_ref = (req.get("rfso_ref") or "").lower() if isinstance(req, dict) else ""
-    desc = (req.get("description") or "").lower() if isinstance(req, dict) else ""
-    doc = (s_doc or "").lower()
+    """Wrapper: derive operational scope for a mandatory requirement record."""
+    cat = (req.get("category") or "") if isinstance(req, dict) else ""
+    rfso_ref = (req.get("rfso_ref") or "") if isinstance(req, dict) else ""
+    desc = (req.get("description") or "") if isinstance(req, dict) else ""
+    return _extract_operational_scope(f"{desc} {cat} {rfso_ref}", s_doc)
 
-    combined = f"{desc} {cat} {rfso_ref} {doc}"
-    if any(k in combined for k in ["category 1", "cat 1", "cat1", "appendix b1", "appendix c1", "appendix d1", "d1", "learning & development", "learning and development"]):
-        return "CATEGORY_1"
-    if any(k in combined for k in ["category 2", "cat 2", "cat2", "appendix b2", "appendix c2", "appendix d2", "d2", "hr advisory"]):
-        return "CATEGORY_2"
-    if any(k in combined for k in ["category 3", "cat 3", "cat3", "appendix b3", "appendix c3", "appendix d3", "d3", "facilitation"]):
-        return "CATEGORY_3"
-    if "stream 1" in combined:
-        return "STREAM_1"
-    if "stream 2" in combined:
-        return "STREAM_2"
-    if "stream 3" in combined:
-        return "STREAM_3"
-    return "GENERAL_SCOPE"
+
+def _extract_deliverable_scope(d: dict, s_doc: str) -> str:
+    """Wrapper: derive operational scope for a deliverable record."""
+    title = (d.get("title") or d.get("item") or d.get("name") or "") if isinstance(d, dict) else ""
+    desc = (d.get("description") or d.get("details") or "") if isinstance(d, dict) else ""
+    return _extract_operational_scope(f"{title} {desc}", s_doc)
+
+
 
 
 def _extract_requirement_subject(req: dict) -> str:
@@ -981,27 +1020,6 @@ def _extract_requirement_subject(req: dict) -> str:
 
     return "SUBJECT_GENERAL"
 
-
-def _extract_deliverable_scope(d: dict, s_doc: str) -> str:
-    """Extract operational category/stream scope for a deliverable."""
-    title = (d.get("title") or d.get("item") or d.get("name") or "").lower() if isinstance(d, dict) else ""
-    desc = (d.get("description") or d.get("details") or "").lower() if isinstance(d, dict) else ""
-    doc = (s_doc or "").lower()
-
-    combined = f"{title} {desc} {doc}"
-    if any(k in combined for k in ["category 1", "cat 1", "cat1", "appendix b1", "appendix c1", "appendix d1", "d1", "learning & development", "learning and development"]):
-        return "CATEGORY_1"
-    if any(k in combined for k in ["category 2", "cat 2", "cat2", "appendix b2", "appendix c2", "appendix d2", "d2", "hr advisory"]):
-        return "CATEGORY_2"
-    if any(k in combined for k in ["category 3", "cat 3", "cat3", "appendix b3", "appendix c3", "appendix d3", "d3", "facilitation"]):
-        return "CATEGORY_3"
-    if "stream 1" in combined:
-        return "STREAM_1"
-    if "stream 2" in combined:
-        return "STREAM_2"
-    if "stream 3" in combined:
-        return "STREAM_3"
-    return "GENERAL_SCOPE"
 
 
 def _extract_deliverable_identity(d: dict) -> str | None:
