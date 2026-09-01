@@ -121,15 +121,22 @@ def page_understand(bid_id: int):
         for dc in document_conflicts:
             s_a = dc.get("source_a", {}) if isinstance(dc.get("source_a"), dict) else {"doc": "Source A", "text": str(dc.get("source_a",""))}
             s_b = dc.get("source_b", {}) if isinstance(dc.get("source_b"), dict) else {"doc": "Source B", "text": str(dc.get("source_b",""))}
+            classification = dc.get("classification", "TRUE_CONFLICT" if dc.get("conflict_type") else "REVIEW_ITEM")
+            is_review = classification == "REVIEW_ITEM"
+            badge_col = "#E67E22" if is_review else "#C0392B"
+            badge_label = "REVIEW ITEM" if is_review else "TRUE CONFLICT"
+            
             st.markdown(
-                f'<div style="background:#1A0F00;border:1px solid #3A2A00;border-left:4px solid #C0392B;'
+                f'<div style="background:#1A0F00;border:1px solid #3A2A00;border-left:4px solid {badge_col};'
                 f'border-radius:0 4px 4px 0;padding:.7rem 1.1rem;margin:.4rem 0">'
-                f'<span style="color:#C0392B;font-weight:700;font-size:.76rem">[{dc.get("conflict_type","CONFLICT")}]</span> '
+                f'<span style="color:{badge_col};font-weight:700;font-size:.76rem">[{badge_label}]</span> '
+                f'<span style="color:#A9A69D;font-size:.74rem">[{dc.get("conflict_type","CONFLICT")}]</span> '
                 f'<strong>{dc.get("topic","Discrepancy")}</strong>'
                 f'<div style="font-size:.8rem;color:#EDEAE3;margin-top:.3rem">'
                 f'<strong>Source A ({s_a.get("doc","Doc A")}):</strong> {s_a.get("text","")}<br>'
                 f'<strong>Source B ({s_b.get("doc","Doc B")}):</strong> {s_b.get("text","")}'
                 f'</div>'
+                f'{"<div style=font-size:.76rem;color:#C9A96E;margin-top:.2rem><strong>Reason:</strong> " + dc.get("reason","") + "</div>" if dc.get("reason") else ""}'
                 f'<div style="font-size:.76rem;color:#E67E22;margin-top:.3rem"><strong>Assessment:</strong> {dc.get("assessment","")}</div>'
                 f'<div style="font-size:.76rem;color:#27AE60;margin-top:.2rem">💡 <strong>Action:</strong> {dc.get("recommended_action","Submit clarification question")}</div>'
                 f'</div>',

@@ -523,47 +523,218 @@ def validate_source_refs(source_refs: list, package_metadata: dict) -> list[dict
 
 # ── DETERMINISTIC CONFLICT & AMBIGUITY DETECTION ENGINE ───────────────────────
 
+DATE_EVENT_PATTERNS = [
+    # 1. Question / Clarification deadlines (must evaluate before general deadline keywords)
+    ("QUESTION_DEADLINE", [
+        r"question", r"clarification", r"enquir", r"inquir", r"rfi", r"q&a", r"q\s*&\s*a",
+        r"queries", r"questions\s+due", r"last\s+date\s+for\s+questions", r"deadline\s+for\s+questions"
+    ]),
+    # 2. Intent to Bid / Confirmation
+    ("INTENT_TO_BID_DATE", [
+        r"intent\s+to\s+bid", r"bid\s+intent", r"intention\s+to\s+bid", r"confirmation\s+of\s+intent",
+        r"intent\s+deadline", r"intent\s+date", r"opt-in", r"acknowledgement\s+deadline"
+    ]),
+    # 3. Publication / Issue Dates
+    ("PUBLICATION_DATE", [
+        r"solicitation\s+publication", r"publication\s+date", r"date\s+issued", r"posting\s+date",
+        r"date\s+of\s+issue", r"published\s+date", r"rfp\s+issue"
+    ]),
+    # 4. Amendment / Addenda Dates
+    ("AMENDMENT_DATE", [
+        r"amendment\s+no", r"amendment\s+published", r"amendment\s+issued", r"addendum\s+published",
+        r"addendum\s+issued", r"bulletin\s+issued", r"bulletin\s+date"
+    ]),
+    # 5. Experience timeframe / Reference period (not a procurement event)
+    ("EXPERIENCE_TIMEFRAME", [
+        r"recent\s+engagements", r"experience\s+timeframe", r"reference\s+period", r"project\s+period",
+        r"prior\s+experience"
+    ]),
+    # 6. Site visits / Conferences / Walkthroughs
+    ("SITE_VISIT_DATE", [
+        r"site\s+visit", r"site\s+walkthrough", r"bidders\s+conference", r"information\s+session",
+        r"proponents\s+conference", r"mandatory\s+meeting", r"optional\s+meeting", r"walkthrough",
+        r"site\s+inspection", r"site\s+meeting"
+    ]),
+    # 7. Presentations / Demos / Interviews
+    ("PRESENTATION_DATE", [
+        r"presentation", r"interview", r"demonstration", r"demo", r"shortlist", r"oral",
+        r"oral\s+presentation"
+    ]),
+    # 8. Award / Selection
+    ("AWARD_DATE", [
+        r"award", r"selection", r"intent\s+to\s+award", r"notification\s+of\s+award",
+        r"anticipated\s+award", r"target\s+award"
+    ]),
+    # 9. Contract Start
+    ("CONTRACT_START", [
+        r"contract\s+start", r"commencement", r"start\s+date", r"service\s+start",
+        r"effective\s+date", r"work\s+start"
+    ]),
+    # 10. Contract End / Expiry
+    ("CONTRACT_END", [
+        r"contract\s+end", r"completion", r"expiry", r"expiration", r"end\s+date",
+        r"termination\s+date", r"work\s+end"
+    ]),
+    # 11. Proposal Validity
+    ("VALIDITY_DATE", [
+        r"validity", r"valid\s+until", r"proposal\s+valid", r"bid\s+valid",
+        r"irrevocable\s+for"
+    ]),
+    # 12. Submission / Closing Deadlines (Standard Proposal Closing Event)
+    ("SUBMISSION_DEADLINE", [
+        r"submission", r"closing", r"close", r"due\s+date", r"rfp\s+due", r"tender\s+close",
+        r"bid\s+close", r"deadline", r"closing\s+date", r"closing\s+time", r"submission\s+date"
+    ]),
+]
+
+
+def classify_date_milestone(milestone_str: str) -> str:
+    """Classify procurement milestone string into semantic event category."""
+    m = (milestone_str or "").lower().strip()
+    for event_type, patterns in DATE_EVENT_PATTERNS:
+        if any(re.search(pat, m) for pat in patterns):
+            return event_type
+    return "OTHER_DATE"
+
+
+SUBMISSION_DIMENSION_PATTERNS = [
+    ("ENVELOPE_STRUCTURE", [
+        r"separate\s+envelope", r"two-envelope", r"two\s+envelope", r"separate\s+financial",
+        r"separate\s+technical", r"combined\s+proposal", r"single\s+package", r"combined\s+envelope",
+        r"single\s+pdf", r"single\s+combined", r"combined\s+technical\s+and\s+financial",
+        r"separate\s+files\s+per\s+envelope", r"envelope\s+1", r"envelope\s+2"
+    ]),
+    ("PAGE_LIMIT", [
+        r"page\s+limit", r"max\s+pages", r"maximum\s+pages", r"pages\s+maximum", r"page\s+count",
+        r"pages\s*\(\s*excluding", r"page\s+size",
+        r"\b(?:exceed|maximum|limit\s+of|max)\s*(?:of\s*)?\d+\s*pages?\b",
+        r"\b\d+\s*pages?\s*(?:max|limit)\b"
+    ]),
+    ("SUBMISSION_CHANNEL", [
+        r"merx", r"buyandsell", r"electronic\s+bid\s+submission", r"electronic\s+submission",
+        r"portal\s+upload", r"email\s+submission", r"email\s+only", r"\bemail\b", r"courier",
+        r"hardcopy", r"hard\s+copy", r"physical\s+delivery", r"in\s+person", r"mail\s+submission",
+        r"electronic\s+tender"
+    ]),
+    ("PORTAL_REQUIREMENT", [
+        r"supplier\s+registration", r"portal\s+account", r"digital\s+key", r"eprocurement\s+setup",
+        r"merx\s+registration"
+    ]),
+    ("SIGNATURE_REQUIREMENT", [
+        r"authorized\s+signature", r"docusign", r"digital\s+signature", r"signed\s+form",
+        r"duly\s+executed", r"signing\s+officer"
+    ]),
+    ("FILE_FORMAT", [
+        r"excel\s+spreadsheet", r"excel\s+workbook", r"xlsx", r"docx", r"searchable\s+pdf",
+        r"pdf\s+format", r"word\s+format", r"spreadsheet", r"excel", r"\bpdf\b"
+    ]),
+    ("DOCUMENT_REQUIREMENT", [
+        r"appendix", r"submission\s+form", r"questionnaire", r"rate\s+card", r"pricing\s+form",
+        r"certificate\s+of\s+insurance"
+    ]),
+]
+
+
+def classify_submission_rule_dimension(item_str: str, format_str: str = "", details_str: str = "") -> str:
+    """Classify a submission rule into its operational dimension."""
+    combined = f"{item_str} {format_str} {details_str}".lower()
+    for dimension, patterns in SUBMISSION_DIMENSION_PATTERNS:
+        if any(re.search(pat, combined) for pat in patterns):
+            return dimension
+    return "OTHER_SUBMISSION_RULE"
+
+
+def _is_physical_file(doc_name: str, package_files: list[str]) -> bool:
+    """Check if a cited document name corresponds to a real physical file in the procurement package."""
+    if not doc_name or not isinstance(doc_name, str):
+        return False
+    doc_clean = doc_name.strip()
+    if doc_clean in ["General RFP Overview", "Summary", "Executive Brief", "Model Interpretation", "Package Overview", "Doc A", "Doc B"]:
+        return False
+    doc_base = doc_clean.split("/")[-1].split("\\")[-1]
+    for pf in package_files:
+        pf_base = pf.split("/")[-1].split("\\")[-1]
+        if doc_clean == pf or doc_base == pf_base or doc_clean.lower() == pf.lower():
+            return True
+    return False
+
+
+def validate_conflict_source_validity(source_a: dict, source_b: dict, package_files: list[str]) -> str:
+    """Determine source validity: PHYSICAL_BOTH, PHYSICAL_PARTIAL, or SYNTHESIZED."""
+    doc_a = source_a.get("doc", "") if isinstance(source_a, dict) else ""
+    doc_b = source_b.get("doc", "") if isinstance(source_b, dict) else ""
+
+    is_a_phys = _is_physical_file(doc_a, package_files)
+    is_b_phys = _is_physical_file(doc_b, package_files)
+
+    if is_a_phys and is_b_phys:
+        return "PHYSICAL_BOTH"
+    elif is_a_phys or is_b_phys:
+        return "PHYSICAL_PARTIAL"
+    return "SYNTHESIZED"
+
+
 def detect_document_conflicts(normalized_facts: dict, package_files: list[str]) -> list[dict]:
     """
-    Expanded deterministic reconciliation detecting 6 conflict classes:
-    1. MANDATORY_REQUIREMENT_CONFLICT
-    2. DATE_CONFLICT
-    3. EVALUATION_CONFLICT
-    4. SUBMISSION_RULE_CONFLICT
-    5. COMMERCIAL_TERM_CONFLICT
-    6. SCOPE_CONFLICT
+    Refined Stage C Deterministic Cross-Document Reconciliation Engine.
+    Distinguishes:
+      - TRUE_CONFLICT: Incompatible physical statements within the SAME semantic event / dimension.
+      - REVIEW_ITEM: Unresolved scope nuance, attachment gate, or ambiguity.
+      - Suppresses false positives from distinct event dates or complementary file formats.
     """
     conflicts = []
     conflict_idx = 1
 
-    # 1. DATE CONFLICTS (e.g. Addenda revisions vs original deadlines)
+    # ── 1. DATE CONFLICTS ─────────────────────────────────────────────────────
     dates = normalized_facts.get("dates", [])
     if len(dates) >= 2:
+        actionable_milestones = {
+            "SUBMISSION_DEADLINE", "QUESTION_DEADLINE", "SITE_VISIT_DATE",
+            "PRESENTATION_DATE", "AWARD_DATE", "CONTRACT_START", "CONTRACT_END", "VALIDITY_DATE"
+        }
         milestone_map = {}
         for d in dates:
-            m_key = d.get("milestone", "").lower().strip()
-            # Normalize common milestone names
-            if "submission" in m_key or "closing" in m_key or "deadline" in m_key:
-                milestone_map.setdefault("submission_deadline", []).append(d)
-            elif "clarification" in m_key or "question" in m_key or "enquiry" in m_key:
-                milestone_map.setdefault("clarification_deadline", []).append(d)
+            m_key = d.get("milestone", "")
+            event_type = classify_date_milestone(m_key)
+            if event_type in actionable_milestones:
+                milestone_map.setdefault(event_type, []).append(d)
 
-        for m_name, d_list in milestone_map.items():
-            unique_dates = {d.get("date") for d in d_list if d.get("date")}
-            if len(unique_dates) > 1:
-                d_sorted = sorted(d_list, key=lambda x: x.get("source_doc",""))
+        for event_type, d_list in milestone_map.items():
+            # Group by normalized date value
+            dates_by_val = {}
+            for d in d_list:
+                dt_val = d.get("date", "").strip()
+                if dt_val:
+                    dates_by_val.setdefault(dt_val, []).append(d)
+
+            # Cross-document conflict requires different dates from at least 2 distinct documents
+            unique_docs = {d.get("source_doc") for d in d_list if d.get("source_doc")}
+            if len(dates_by_val) > 1 and len(unique_docs) > 1:
+                # Differing dates exist for the exact SAME semantic event across different documents
+                d_sorted = sorted(d_list, key=lambda x: x.get("source_doc", ""))
+                src_a = {"doc": d_sorted[0].get("source_doc", "Doc A"), "ref": d_sorted[0].get("milestone", ""), "text": d_sorted[0].get("date", "")}
+                src_b = {"doc": d_sorted[-1].get("source_doc", "Doc B"), "ref": d_sorted[-1].get("milestone", ""), "text": d_sorted[-1].get("date", "")}
+                
+                sv = validate_conflict_source_validity(src_a, src_b, package_files)
+                classification = "TRUE_CONFLICT" if sv == "PHYSICAL_BOTH" else "REVIEW_ITEM"
+                confidence = "HIGH" if classification == "TRUE_CONFLICT" else "MEDIUM"
+                
                 conflicts.append({
                     "conflict_id": f"CONF-DATE-{conflict_idx}",
                     "conflict_type": "DATE_CONFLICT",
-                    "topic": f"Differing dates for {m_name.replace('_', ' ').title()}",
-                    "source_a": {"doc": d_sorted[0].get("source_doc", "Doc A"), "ref": d_sorted[0].get("milestone", ""), "text": d_sorted[0].get("date", "")},
-                    "source_b": {"doc": d_sorted[-1].get("source_doc", "Doc B"), "ref": d_sorted[-1].get("milestone", ""), "text": d_sorted[-1].get("date", "")},
-                    "assessment": f"Conflicting target dates detected across documents: {', '.join(unique_dates)}.",
+                    "classification": classification,
+                    "confidence": confidence,
+                    "reason": f"Conflicting dates detected for the same semantic milestone ({event_type.replace('_', ' ').title()}) across documents.",
+                    "source_validity": sv,
+                    "topic": f"Differing dates for {event_type.replace('_', ' ').title()}",
+                    "source_a": src_a,
+                    "source_b": src_b,
+                    "assessment": f"Conflicting target dates detected across documents: {', '.join(dates_by_val.keys())}.",
                     "recommended_action": "Verify if the latest Addendum or Bulletin formally extends this deadline."
                 })
                 conflict_idx += 1
 
-    # 2. EVALUATION CONFLICTS (Differing technical / pricing ratios)
+    # ── 2. EVALUATION CONFLICTS ───────────────────────────────────────────────
     eval_criteria = normalized_facts.get("evaluation_criteria", [])
     if len(eval_criteria) >= 2:
         tech_weights = []
@@ -572,88 +743,257 @@ def detect_document_conflicts(normalized_facts: dict, package_files: list[str]) 
             wt = ec.get("weight", "")
             if "tech" in stg or "rated" in stg:
                 tech_weights.append((ec.get("source_doc", "Document"), wt))
-        
+
         unique_wts = {tw[1] for tw in tech_weights if tw[1]}
         if len(unique_wts) > 1:
+            src_a = {"doc": tech_weights[0][0], "ref": "Technical Weight", "text": tech_weights[0][1]}
+            src_b = {"doc": tech_weights[-1][0], "ref": "Technical Weight", "text": tech_weights[-1][1]}
+            sv = validate_conflict_source_validity(src_a, src_b, package_files)
+            classification = "TRUE_CONFLICT" if sv == "PHYSICAL_BOTH" else "REVIEW_ITEM"
+            confidence = "HIGH" if classification == "TRUE_CONFLICT" else "MEDIUM"
+
             conflicts.append({
                 "conflict_id": f"CONF-EVAL-{conflict_idx}",
                 "conflict_type": "EVALUATION_CONFLICT",
+                "classification": classification,
+                "confidence": confidence,
+                "reason": "Evaluation breakdown specifies contradictory technical scoring weights across documents.",
+                "source_validity": sv,
                 "topic": "Differing Technical Evaluation Weights Across Documents",
-                "source_a": {"doc": tech_weights[0][0], "ref": "Technical Weight", "text": tech_weights[0][1]},
-                "source_b": {"doc": tech_weights[-1][0], "ref": "Technical Weight", "text": tech_weights[-1][1]},
+                "source_a": src_a,
+                "source_b": src_b,
                 "assessment": f"Evaluation breakdown specifies differing technical scoring ratios ({', '.join(unique_wts)}).",
                 "recommended_action": "Submit clarification to confirm authoritative evaluation weighting formula."
             })
             conflict_idx += 1
 
-    # 3. SUBMISSION RULE CONFLICTS (e.g. envelope separation, formats)
+    # ── 3. SUBMISSION RULE CONFLICTS ──────────────────────────────────────────
     sub_rules = normalized_facts.get("submission_rules", [])
     if len(sub_rules) >= 2:
-        formats = [sr.get("format") for sr in sub_rules if sr.get("format")]
-        if any("separate" in str(f).lower() for f in formats) and any("single" in str(f).lower() or "combined" in str(f).lower() for f in formats):
-            conflicts.append({
-                "conflict_id": f"CONF-SUB-{conflict_idx}",
-                "conflict_type": "SUBMISSION_RULE_CONFLICT",
-                "topic": "Envelope / Document Separation Contradiction",
-                "source_a": {"doc": sub_rules[0].get("source_doc", "Doc A"), "ref": "Submission Rules", "text": str(sub_rules[0].get("format",""))},
-                "source_b": {"doc": sub_rules[-1].get("source_doc", "Doc B"), "ref": "Submission Rules", "text": str(sub_rules[-1].get("format",""))},
-                "assessment": "One document indicates separate technical/financial files while another suggests combined submission.",
-                "recommended_action": "Always separate Financial Envelope from Technical Proposal to prevent mandatory disqualification."
-            })
-            conflict_idx += 1
+        dim_rules = {}
+        for sr in sub_rules:
+            dim = classify_submission_rule_dimension(sr.get("item", ""), sr.get("format", ""), sr.get("details", ""))
+            dim_rules.setdefault(dim, []).append(sr)
 
-    # 4. MANDATORY REQUIREMENT CONFLICTS (e.g. language/clearance rules across docs)
+        # Dimension A: ENVELOPE_STRUCTURE (Separate vs Combined)
+        env_rules = dim_rules.get("ENVELOPE_STRUCTURE", [])
+        if len(env_rules) >= 2:
+            has_sep = any("separate" in f"{r.get('item','')} {r.get('format','')} {r.get('details','')}".lower() for r in env_rules)
+            has_comb = any(k in f"{r.get('item','')} {r.get('format','')} {r.get('details','')}".lower() for k in ["single", "combined", "single package", "single combined", "combined proposal"] for r in env_rules)
+            if has_sep and has_comb:
+                sep_r = next(r for r in env_rules if "separate" in f"{r.get('item','')} {r.get('format','')} {r.get('details','')}".lower())
+                comb_r = next(r for r in env_rules if any(k in f"{r.get('item','')} {r.get('format','')} {r.get('details','')}".lower() for k in ["single", "combined", "single package", "single combined", "combined proposal"]))
+                
+                src_a = {"doc": sep_r.get("source_doc", "Doc A"), "ref": "Submission Rules", "text": str(sep_r.get("format") or sep_r.get("item", ""))}
+                src_b = {"doc": comb_r.get("source_doc", "Doc B"), "ref": "Submission Rules", "text": str(comb_r.get("format") or comb_r.get("item", ""))}
+                sv = validate_conflict_source_validity(src_a, src_b, package_files)
+                classification = "TRUE_CONFLICT" if sv == "PHYSICAL_BOTH" else "REVIEW_ITEM"
+
+                conflicts.append({
+                    "conflict_id": f"CONF-SUB-{conflict_idx}",
+                    "conflict_type": "SUBMISSION_RULE_CONFLICT",
+                    "classification": classification,
+                    "confidence": "HIGH" if classification == "TRUE_CONFLICT" else "MEDIUM",
+                    "reason": "Contradictory envelope separation instructions (separate vs combined submission).",
+                    "source_validity": sv,
+                    "topic": "Envelope / Document Separation Contradiction",
+                    "source_a": src_a,
+                    "source_b": src_b,
+                    "assessment": "One document indicates separate technical/financial files while another suggests combined submission.",
+                    "recommended_action": "Always separate Financial Envelope from Technical Proposal to prevent mandatory disqualification."
+                })
+                conflict_idx += 1
+
+        # Dimension B: SUBMISSION_CHANNEL (e.g. MERX vs Email only)
+        chan_rules = dim_rules.get("SUBMISSION_CHANNEL", [])
+        if len(chan_rules) >= 2:
+            has_portal = any(k in f"{r.get('item','')} {r.get('format','')} {r.get('details','')}".lower() for k in ["merx", "buyandsell", "portal", "electronic bid submission"] for r in chan_rules)
+            has_email_only = any(k in f"{r.get('item','')} {r.get('format','')} {r.get('details','')}".lower() for k in ["email only", "email submission only", "via email only", "courier only", "hardcopy only"] for r in chan_rules)
+            if has_portal and has_email_only:
+                port_r = next(r for r in chan_rules if any(k in f"{r.get('item','')} {r.get('format','')} {r.get('details','')}".lower() for k in ["merx", "buyandsell", "portal", "electronic bid submission"]))
+                email_r = next(r for r in chan_rules if any(k in f"{r.get('item','')} {r.get('format','')} {r.get('details','')}".lower() for k in ["email only", "email submission only", "via email only", "courier only", "hardcopy only"]))
+                
+                src_a = {"doc": port_r.get("source_doc", "Doc A"), "ref": "Submission Channel", "text": str(port_r.get("format") or port_r.get("details", ""))}
+                src_b = {"doc": email_r.get("source_doc", "Doc B"), "ref": "Submission Channel", "text": str(email_r.get("format") or email_r.get("details", ""))}
+                sv = validate_conflict_source_validity(src_a, src_b, package_files)
+                classification = "TRUE_CONFLICT" if sv == "PHYSICAL_BOTH" else "REVIEW_ITEM"
+
+                conflicts.append({
+                    "conflict_id": f"CONF-SUB-{conflict_idx}",
+                    "conflict_type": "SUBMISSION_RULE_CONFLICT",
+                    "classification": classification,
+                    "confidence": "HIGH" if classification == "TRUE_CONFLICT" else "MEDIUM",
+                    "reason": "Contradictory transmission channels specified across procurement documents.",
+                    "source_validity": sv,
+                    "topic": "Conflicting Submission Channels (Portal vs Email/Hardcopy)",
+                    "source_a": src_a,
+                    "source_b": src_b,
+                    "assessment": "Documents specify conflicting submission channels (portal upload vs direct email/hardcopy).",
+                    "recommended_action": "Verify authoritative submission channel with contracting authority."
+                })
+                conflict_idx += 1
+
+        # Dimension C: PAGE_LIMIT (e.g. 10 pages vs 15 pages for the same scope)
+        page_rules = dim_rules.get("PAGE_LIMIT", [])
+        if len(page_rules) >= 2:
+            scope_limits = {}
+            for pr in page_rules:
+                combined = f"{pr.get('item','')} {pr.get('format','')} {pr.get('details','')}".lower()
+                doc = pr.get("source_doc", "Doc")
+                
+                # Ignore per-sample or per-resume sub-caps
+                if any(k in combined for k in ["per sample", "per resume", "per individual", "per profile", "sample of", "samples of"]):
+                    continue
+                
+                # Determine scope category
+                scope = "GENERAL_PROPOSAL"
+                if "d1" in doc.lower() or "category 1" in combined:
+                    scope = "CATEGORY_1"
+                elif "d2" in doc.lower() or "category 2" in combined:
+                    scope = "CATEGORY_2"
+                elif "d3" in doc.lower() or "category 3" in combined:
+                    scope = "CATEGORY_3"
+                    
+                match = re.search(r'\b(?:exceed|maximum|limit\s+of|max)\s*(?:of\s*)?(\d+)\s*pages?\b', combined) or re.search(r'\b(\d+)\s*pages?\s*(?:max|limit)\b', combined)
+                if not match:
+                    match = re.search(r'\b(\d+)\s*pages?\b', combined)
+                if match:
+                    scope_limits.setdefault(scope, []).append((doc, int(match.group(1)), pr))
+
+            for scope, p_list in scope_limits.items():
+                unique_limits = {p[1] for p in p_list}
+                unique_docs = {p[0] for p in p_list}
+                if len(unique_limits) > 1 and len(unique_docs) > 1:
+                    src_a = {"doc": p_list[0][0], "ref": f"Page Limit ({scope})", "text": f"{p_list[0][1]} pages"}
+                    src_b = {"doc": p_list[-1][0], "ref": f"Page Limit ({scope})", "text": f"{p_list[-1][1]} pages"}
+                    sv = validate_conflict_source_validity(src_a, src_b, package_files)
+                    classification = "TRUE_CONFLICT" if sv == "PHYSICAL_BOTH" else "REVIEW_ITEM"
+
+                    conflicts.append({
+                        "conflict_id": f"CONF-SUB-{conflict_idx}",
+                        "conflict_type": "SUBMISSION_RULE_CONFLICT",
+                        "classification": classification,
+                        "confidence": "HIGH" if classification == "TRUE_CONFLICT" else "MEDIUM",
+                        "reason": f"Contradictory maximum page limits specified for {scope.replace('_', ' ').title()}.",
+                        "source_validity": sv,
+                        "topic": f"Differing Page Limits for {scope.replace('_', ' ').title()}",
+                        "source_a": src_a,
+                        "source_b": src_b,
+                        "assessment": f"Conflicting page limit thresholds detected ({', '.join(str(u) for u in unique_limits)} pages).",
+                        "recommended_action": "Strictly comply with the most restrictive page limit unless clarified."
+                    })
+                    conflict_idx += 1
+
+    # ── 4. MANDATORY REQUIREMENT CONFLICTS & SCOPE REVIEW ITEMS ───────────────
     reqs = normalized_facts.get("requirements", [])
     mand_reqs = [r for r in reqs if r.get("category") == "Mandatory"]
-    # Check for bilingual / security discrepancies
-    bilingual_reqs = [r for r in mand_reqs if "bilingual" in r.get("description","").lower() or "french" in r.get("description","").lower()]
+    bilingual_reqs = [r for r in mand_reqs if "bilingual" in r.get("description", "").lower() or "french" in r.get("description", "").lower()]
     if bilingual_reqs:
-        # Check if bilingualism is only in one specific appendix or not in main RFP
         docs_with_bilingual = {ref.get("source_doc") for r in bilingual_reqs for ref in r.get("source_refs", []) if ref.get("source_doc")}
         all_pkg_docs = set(package_files)
         if len(docs_with_bilingual) > 0 and len(docs_with_bilingual) < len(all_pkg_docs) and len(all_pkg_docs) > 1:
+            src_doc = list(docs_with_bilingual)[0]
+            src_a = {"doc": src_doc, "ref": "Mandatory Gate", "text": bilingual_reqs[0].get("description", "")[:120]}
+            src_b = {"doc": "Package Overview", "ref": "General Scope", "text": "Language requirement appears stream-specific to this attachment and is not highlighted in general package overview."}
+            
+            # Since source_b is an overview observation and not an opposing physical contradictory file,
+            # this MUST be classified as REVIEW_ITEM / AMBIGUITY with PHYSICAL_PARTIAL validity.
             conflicts.append({
                 "conflict_id": f"CONF-MAND-{conflict_idx}",
                 "conflict_type": "MANDATORY_REQUIREMENT_CONFLICT",
+                "classification": "REVIEW_ITEM",
+                "confidence": "MEDIUM",
+                "reason": "Specific attachment contains a qualification gate not emphasized in the general overview. Confirm scope/application before bid decision.",
+                "source_validity": "PHYSICAL_PARTIAL",
                 "topic": "Mandatory Language / Capability Specified in Specific Attachment",
-                "source_a": {"doc": list(docs_with_bilingual)[0], "ref": "Mandatory Gate", "text": bilingual_reqs[0].get("description", "")[:120]},
-                "source_b": {"doc": "General RFP Overview", "ref": "General Scope", "text": "Language requirements not highlighted in main scope summary"},
+                "source_a": src_a,
+                "source_b": src_b,
                 "assessment": "Mandatory bilingualism or specialized qualification applies to specific work streams/categories.",
                 "recommended_action": "Confirm whether bilingual capability is mandatory for all streams or category-specific."
             })
             conflict_idx += 1
 
-    # 5. COMMERCIAL TERM CONFLICTS
+    # ── 5. COMMERCIAL TERM CONFLICTS ──────────────────────────────────────────
     comm_clauses = normalized_facts.get("commercial_clauses", [])
     if len(comm_clauses) >= 2:
-        panel_terms = [c for c in comm_clauses if "panel" in c.get("topic","").lower() or "maximum" in c.get("topic","").lower()]
+        # Check panel vendor caps
+        panel_terms = [c for c in comm_clauses if "panel" in c.get("topic", "").lower() or "maximum" in c.get("topic", "").lower()]
         if len(panel_terms) >= 2 and len({p.get("details") for p in panel_terms}) > 1:
+            src_a = {"doc": panel_terms[0].get("source_doc", "Doc A"), "ref": panel_terms[0].get("topic", ""), "text": panel_terms[0].get("details", "")}
+            src_b = {"doc": panel_terms[-1].get("source_doc", "Doc B"), "ref": panel_terms[-1].get("topic", ""), "text": panel_terms[-1].get("details", "")}
+            sv = validate_conflict_source_validity(src_a, src_b, package_files)
+            classification = "TRUE_CONFLICT" if sv == "PHYSICAL_BOTH" else "REVIEW_ITEM"
+
             conflicts.append({
                 "conflict_id": f"CONF-COMM-{conflict_idx}",
                 "conflict_type": "COMMERCIAL_TERM_CONFLICT",
+                "classification": classification,
+                "confidence": "HIGH" if classification == "TRUE_CONFLICT" else "MEDIUM",
+                "reason": "Contradictory commercial panel maximums or award caps specified across documents.",
+                "source_validity": sv,
                 "topic": "Differing Commercial Panel Maximums or Rate Caps",
-                "source_a": {"doc": panel_terms[0].get("source_doc", "Doc A"), "ref": panel_terms[0].get("topic", ""), "text": panel_terms[0].get("details", "")},
-                "source_b": {"doc": panel_terms[-1].get("source_doc", "Doc B"), "ref": panel_terms[-1].get("topic", ""), "text": panel_terms[-1].get("details", "")},
+                "source_a": src_a,
+                "source_b": src_b,
                 "assessment": "Discrepancy in panel size caps or rate limitations across procurement documents.",
                 "recommended_action": "Verify maximum vendor award counts per category."
             })
             conflict_idx += 1
 
-    # 6. SCOPE CONFLICTS
+        # Check insurance requirements
+        ins_terms = [c for c in comm_clauses if "insurance" in c.get("topic", "").lower() or "liability" in c.get("topic", "").lower()]
+        if len(ins_terms) >= 2 and len({i.get("details") for i in ins_terms}) > 1:
+            src_a = {"doc": ins_terms[0].get("source_doc", "Doc A"), "ref": ins_terms[0].get("topic", ""), "text": ins_terms[0].get("details", "")}
+            src_b = {"doc": ins_terms[-1].get("source_doc", "Doc B"), "ref": ins_terms[-1].get("topic", ""), "text": ins_terms[-1].get("details", "")}
+            sv = validate_conflict_source_validity(src_a, src_b, package_files)
+            classification = "TRUE_CONFLICT" if sv == "PHYSICAL_BOTH" else "REVIEW_ITEM"
+
+            conflicts.append({
+                "conflict_id": f"CONF-COMM-{conflict_idx}",
+                "conflict_type": "COMMERCIAL_TERM_CONFLICT",
+                "classification": classification,
+                "confidence": "HIGH" if classification == "TRUE_CONFLICT" else "MEDIUM",
+                "reason": "Conflicting commercial insurance liability thresholds across documents.",
+                "source_validity": sv,
+                "topic": "Conflicting Commercial Insurance Requirements",
+                "source_a": src_a,
+                "source_b": src_b,
+                "assessment": "Discrepancy in required commercial general liability coverage amounts.",
+                "recommended_action": "Confirm authoritative insurance coverage limits with contracting authority."
+            })
+            conflict_idx += 1
+
+    # ── 6. SCOPE CONFLICTS ────────────────────────────────────────────────────
     deliverables = normalized_facts.get("deliverables", [])
     if len(deliverables) >= 2:
-        cohort_delivs = [d for d in deliverables if "cohort" in d.get("title","").lower() or "session" in d.get("title","").lower()]
+        cohort_delivs = [d for d in deliverables if "cohort" in d.get("title", "").lower() or "session" in d.get("title", "").lower()]
         if len(cohort_delivs) >= 2 and len({c.get("description") for c in cohort_delivs}) > 1:
+            src_a = {"doc": cohort_delivs[0].get("source_doc", "Doc A"), "ref": "Deliverables SOW", "text": cohort_delivs[0].get("description", "")}
+            src_b = {"doc": cohort_delivs[-1].get("source_doc", "Doc B"), "ref": "Schedule Table", "text": cohort_delivs[-1].get("description", "")}
+            sv = validate_conflict_source_validity(src_a, src_b, package_files)
+            classification = "TRUE_CONFLICT" if sv == "PHYSICAL_BOTH" else "REVIEW_ITEM"
+
             conflicts.append({
                 "conflict_id": f"CONF-SCOPE-{conflict_idx}",
                 "conflict_type": "SCOPE_CONFLICT",
+                "classification": classification,
+                "confidence": "HIGH" if classification == "TRUE_CONFLICT" else "MEDIUM",
+                "reason": "Conflicting deliverable quantities or session counts across documents.",
+                "source_validity": sv,
                 "topic": "Deliverable Volume / Cohort Sizing Discrepancy",
-                "source_a": {"doc": cohort_delivs[0].get("source_doc", "Doc A"), "ref": "Deliverables SOW", "text": cohort_delivs[0].get("description", "")},
-                "source_b": {"doc": cohort_delivs[-1].get("source_doc", "Doc B"), "ref": "Schedule Table", "text": cohort_delivs[-1].get("description", "")},
+                "source_a": src_a,
+                "source_b": src_b,
                 "assessment": "Differing volume counts or delivery session quantities between SOW and pricing schedule.",
                 "recommended_action": "Seek written clarification on authoritative cohort baseline for pricing."
             })
             conflict_idx += 1
+
+    # ── 7. FINAL SOURCE VALIDITY ENFORCEMENT ──────────────────────────────────
+    for c in conflicts:
+        sv = validate_conflict_source_validity(c.get("source_a", {}), c.get("source_b", {}), package_files)
+        c["source_validity"] = sv
+        if sv != "PHYSICAL_BOTH" and c.get("classification") == "TRUE_CONFLICT":
+            c["classification"] = "REVIEW_ITEM"
+            c["confidence"] = "MEDIUM"
 
     return conflicts
 
