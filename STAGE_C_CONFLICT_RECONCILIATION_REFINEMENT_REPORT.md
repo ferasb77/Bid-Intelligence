@@ -179,14 +179,14 @@ Every candidate conflict is audited against `package_files` via `validate_confli
 ================================================================================
 FULL RC1 + STAGE C TEST SUITE EXECUTION SUMMARY
 ================================================================================
-1. tests/test_stage_c_refinement.py:             38 / 38 PASSED  (0.015s)
+1. tests/test_stage_c_refinement.py:             46 / 46 PASSED  (0.022s)
    • Bank of Canada Regression Tests (A, B, C):   3 / 3 PASSED
-   • Evaluation Criteria Same-Metric & Regex Tests: 4 / 4 PASSED
-   • Mandatory Subject & Role Identity Tests:     4 / 4 PASSED
+   • Evaluation Criteria Same-Metric & ID Tests:  8 / 8 PASSED
+   • Mandatory Subject & Role Identity Tests:     6 / 6 PASSED
    • Source-Aware Opposing Pair Selection Tests:  7 / 7 PASSED
    • Internal Commercial/Insurance/Deliverable Tests: 3 / 3 PASSED
    • Submission Dimension Precedence Tests:       3 / 3 PASSED
-   • Scope Deliverable Identity Tests:            2 / 2 PASSED
+   • Scope Deliverable Identity & Scope Tests:    4 / 4 PASSED
    • Commercial Cap Normalization Tests:          3 / 3 PASSED
    • Security Clearance Priority Tests:           1 / 1 PASSED
    • Insurance Monetary Normalization Tests:      4 / 4 PASSED
@@ -195,10 +195,10 @@ FULL RC1 + STAGE C TEST SUITE EXECUTION SUMMARY
    • Frozen Bank of Canada Replay Test:           1 / 1 PASSED
 2. tests/test_streamlined_workflow.py:            27 / 27 PASSED  (0.256s)
 3. tests/integration/test_procurement_package_ingestion.py: 5 / 5 PASSED (1 skipped live AI)
-4. tests/smoke/test_all_pages_runtime.py + live Supabase:  12 / 12 PASSED (67.628s)
+4. tests/smoke/test_all_pages_runtime.py + live Supabase:  12 / 12 PASSED (91.669s)
 ================================================================================
-TOTAL TESTS DISCOVERED:                          83
-TOTAL PASSED:                                    82
+TOTAL TESTS DISCOVERED:                          91
+TOTAL PASSED:                                    90
 TOTAL SKIPPED:                                   1 (Live AI integration smoke)
 TOTAL FAILED / ERRORS:                           0
 ================================================================================

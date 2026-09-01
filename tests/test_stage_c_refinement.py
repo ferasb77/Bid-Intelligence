@@ -2,11 +2,11 @@
 Stage C Cross-Document Reconciliation Refinement Test Suite.
 Verifies:
 1. Bank of Canada Regression Cases (False positive date and submission dimension suppression; removal of tender-specific heuristics).
-2. Evaluation Criteria Same-Metric Normalization (Overall weight split vs individual criteria vs non-conflicting distinct criteria; regex fix for R1/CR1/TC2).
-3. Mandatory Requirement Subject Identity (Role-scoped experience & clearance comparison; PM vs Facilitator = NO CONFLICT; PM vs PM = TRUE CONFLICT).
+2. Evaluation Criteria Same-Metric Normalization (Explicit ID precedence, pipeline-realistic stage strings, category-scoped weighting).
+3. Mandatory Requirement Subject Identity (Role-scoped experience & clearance comparison; M1 vs M2 corporate criteria isolation).
 4. Source-Aware Opposing Pair Selection & Internal Inconsistency Handling (Envelope, channel, commercial caps, insurance, deliverables).
 5. Submission Dimension Precedence (Portal registration vs submission channel).
-6. Scope / Deliverable Conflict Identity (Leadership cohort vs Coaching = NO CONFLICT; Cohorts 20 vs 12 = TRUE CONFLICT).
+6. Scope / Deliverable Conflict Identity & Operational Scope (Like-with-like deliverable type & category scope).
 7. Panel / Commercial Cap Normalization (Panel vendors vs Annual rate increase = NO CONFLICT; Panel 5 vs 8 = TRUE CONFLICT).
 8. Security Clearance Priority & Contradictions (TOP_SECRET -> SECRET -> RELIABILITY).
 9. Insurance Monetary Amount Normalization & Year Safety ($2M vs $2,000,000 = NO CONFLICT; 2026 ignored).
@@ -31,7 +31,10 @@ from extractor import (
     detect_document_conflicts,
     reconcile_package_facts,
     normalize_package_facts,
-    _extract_eval_criterion_identity
+    _extract_eval_criterion_identity,
+    _extract_evaluation_scope,
+    _extract_requirement_subject,
+    _extract_deliverable_scope
 )
 
 
@@ -82,7 +85,7 @@ class TestStageCBankOfCanadaRegression(unittest.TestCase):
 
 
 class TestStageCEvaluationCriteriaIdentity(unittest.TestCase):
-    """Scenario 2: Evaluation criteria comparison on same metric only."""
+    """Scenario 2: Evaluation criteria comparison on same metric & explicit ID only."""
 
     def test_overall_technical_weight_contradiction_is_true_conflict(self):
         """Overall Technical Weight = 75% vs Overall Technical Weight = 70% -> TRUE_CONFLICT."""
@@ -129,6 +132,58 @@ class TestStageCEvaluationCriteriaIdentity(unittest.TestCase):
         self.assertEqual(_extract_eval_criterion_identity({"criterion_id": "R1"}), "CRITERION_R1")
         self.assertEqual(_extract_eval_criterion_identity({"criterion_id": "CR1"}), "CRITERION_CR1")
         self.assertEqual(_extract_eval_criterion_identity({"criterion_id": "TC2"}), "CRITERION_TC2")
+
+    def test_r1_vs_r2_same_broad_keyword_no_conflict(self):
+        """Pipeline-realistic stage strings: R1 - Methodology vs R2 - Technical Approach -> NO CONFLICT."""
+        normalized = {
+            "evaluation_criteria": [
+                {"stage": "R1 - Methodology", "weight": "20 points", "threshold": "70%", "notes": "", "source_doc": "Main_RFP.pdf"},
+                {"stage": "R2 - Technical Approach", "weight": "30 points", "threshold": "70%", "notes": "", "source_doc": "Main_RFP.pdf"}
+            ]
+        }
+        pkg_files = ["Main_RFP.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        eval_conflicts = [c for c in conflicts if c.get("conflict_type") == "EVALUATION_CONFLICT"]
+        self.assertEqual(len(eval_conflicts), 0)
+
+    def test_same_r1_differing_weights_is_true_conflict(self):
+        """Pipeline-realistic stage strings: R1 - Methodology = 20 vs R1 - Methodology = 30 across docs -> TRUE_CONFLICT."""
+        normalized = {
+            "evaluation_criteria": [
+                {"stage": "R1 - Methodology", "weight": "20 points", "threshold": "70%", "notes": "", "source_doc": "Main_RFP.pdf"},
+                {"stage": "R1 - Methodology", "weight": "30 points", "threshold": "70%", "notes": "", "source_doc": "Addendum_1.pdf"}
+            ]
+        }
+        pkg_files = ["Main_RFP.pdf", "Addendum_1.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        eval_conflicts = [c for c in conflicts if c.get("conflict_type") == "EVALUATION_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
+        self.assertEqual(len(eval_conflicts), 1)
+
+    def test_same_criterion_across_different_categories_no_conflict(self):
+        """Category 1 Methodology = 30 vs Category 2 Methodology = 25 -> NO CONFLICT."""
+        normalized = {
+            "evaluation_criteria": [
+                {"stage": "Category 1 Technical Evaluation", "criterion": "Technical Methodology", "weight": "30 points", "source_doc": "Main_RFP.pdf"},
+                {"stage": "Category 2 Technical Evaluation", "criterion": "Technical Methodology", "weight": "25 points", "source_doc": "Main_RFP.pdf"}
+            ]
+        }
+        pkg_files = ["Main_RFP.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        eval_conflicts = [c for c in conflicts if c.get("conflict_type") == "EVALUATION_CONFLICT"]
+        self.assertEqual(len(eval_conflicts), 0)
+
+    def test_same_criterion_same_category_differing_weights_is_true_conflict(self):
+        """Category 1 Methodology = 30 vs Category 1 Addendum Methodology = 25 -> TRUE_CONFLICT."""
+        normalized = {
+            "evaluation_criteria": [
+                {"stage": "Category 1 Technical Evaluation", "criterion": "Technical Methodology", "weight": "30 points", "source_doc": "Main_RFP.pdf"},
+                {"stage": "Category 1 Technical Evaluation", "criterion": "Technical Methodology", "weight": "25 points", "source_doc": "Addendum_1.pdf"}
+            ]
+        }
+        pkg_files = ["Main_RFP.pdf", "Addendum_1.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        eval_conflicts = [c for c in conflicts if c.get("conflict_type") == "EVALUATION_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
+        self.assertEqual(len(eval_conflicts), 1)
 
 
 class TestStageCMandatorySubjectIdentity(unittest.TestCase):
@@ -222,6 +277,52 @@ class TestStageCMandatorySubjectIdentity(unittest.TestCase):
             ]
         }
         pkg_files = ["Main_RFP.pdf", "Addendum_1.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        mand_conflicts = [c for c in conflicts if c.get("conflict_type") == "MANDATORY_REQUIREMENT_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
+        self.assertEqual(len(mand_conflicts), 1)
+
+    def test_m1_corporate_experience_vs_m2_corporate_experience_no_conflict(self):
+        """M1 Firm must have 10 years consulting experience vs M2 Firm must have 5 years training experience -> NO CONFLICT."""
+        normalized = {
+            "requirements": [
+                {
+                    "req_id": "M1",
+                    "category": "Mandatory",
+                    "description": "M1: Firm must have minimum 10 years consulting experience.",
+                    "source_refs": [{"source_doc": "Main_RFP.pdf"}]
+                },
+                {
+                    "req_id": "M2",
+                    "category": "Mandatory",
+                    "description": "M2: Firm must have minimum 5 years training experience.",
+                    "source_refs": [{"source_doc": "Main_RFP.pdf"}]
+                }
+            ]
+        }
+        pkg_files = ["Main_RFP.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        mand_conflicts = [c for c in conflicts if c.get("conflict_type") == "MANDATORY_REQUIREMENT_CONFLICT"]
+        self.assertEqual(len(mand_conflicts), 0)
+
+    def test_same_m1_differing_threshold_is_true_conflict(self):
+        """M1 Firm 10 years experience vs M1 Addendum 7 years experience -> TRUE_CONFLICT."""
+        normalized = {
+            "requirements": [
+                {
+                    "req_id": "M1",
+                    "category": "Mandatory",
+                    "description": "M1: Firm must have minimum 10 years experience in public sector advisory.",
+                    "source_refs": [{"source_doc": "Main_RFP.pdf"}]
+                },
+                {
+                    "req_id": "M1",
+                    "category": "Mandatory",
+                    "description": "M1: Firm must have minimum 7 years experience in public sector advisory.",
+                    "source_refs": [{"source_doc": "Addendum_1.docx"}]
+                }
+            ]
+        }
+        pkg_files = ["Main_RFP.pdf", "Addendum_1.docx"]
         conflicts = detect_document_conflicts(normalized, pkg_files)
         mand_conflicts = [c for c in conflicts if c.get("conflict_type") == "MANDATORY_REQUIREMENT_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
         self.assertEqual(len(mand_conflicts), 1)
@@ -407,7 +508,7 @@ class TestStageCSubmissionDimensionPrecedence(unittest.TestCase):
 
 
 class TestStageCScopeDeliverableIdentity(unittest.TestCase):
-    """Scenario 7: Like-with-like deliverable reconciliation."""
+    """Scenario 7: Like-with-like deliverable reconciliation with category scoping."""
 
     def test_different_deliverable_types_no_conflict(self):
         """Leadership cohort: 20 participants vs Executive coaching: 10 sessions -> NO CONFLICT."""
@@ -431,6 +532,32 @@ class TestStageCScopeDeliverableIdentity(unittest.TestCase):
             ]
         }
         pkg_files = ["SOW.pdf", "Pricing_Schedule.xlsx"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        scope_conflicts = [c for c in conflicts if c.get("conflict_type") == "SCOPE_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
+        self.assertEqual(len(scope_conflicts), 1)
+
+    def test_same_deliverable_different_categories_no_conflict(self):
+        """Category 1 Leadership Cohorts (12 cohorts) vs Category 2 Leadership Cohorts (20 cohorts) -> NO CONFLICT."""
+        normalized = {
+            "deliverables": [
+                {"title": "Leadership Cohorts", "description": "Category 1 Leadership Cohorts: 12 cohorts to be delivered", "source_doc": "SOW.pdf"},
+                {"title": "Leadership Cohorts", "description": "Category 2 Leadership Cohorts: 20 cohorts to be delivered", "source_doc": "SOW.pdf"}
+            ]
+        }
+        pkg_files = ["SOW.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        scope_conflicts = [c for c in conflicts if c.get("conflict_type") == "SCOPE_CONFLICT"]
+        self.assertEqual(len(scope_conflicts), 0)
+
+    def test_same_deliverable_same_category_differing_quantity_is_true_conflict(self):
+        """Category 1 Leadership Cohorts (12 cohorts) vs Category 1 Addendum Leadership Cohorts (20 cohorts) -> TRUE_CONFLICT."""
+        normalized = {
+            "deliverables": [
+                {"title": "Leadership Cohorts", "description": "Category 1 Leadership Cohorts: 12 cohorts to be delivered", "source_doc": "SOW.pdf"},
+                {"title": "Leadership Cohorts", "description": "Category 1 Leadership Cohorts: 20 cohorts to be delivered", "source_doc": "Addendum_1.pdf"}
+            ]
+        }
+        pkg_files = ["SOW.pdf", "Addendum_1.pdf"]
         conflicts = detect_document_conflicts(normalized, pkg_files)
         scope_conflicts = [c for c in conflicts if c.get("conflict_type") == "SCOPE_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
         self.assertEqual(len(scope_conflicts), 1)

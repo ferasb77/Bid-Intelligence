@@ -806,24 +806,40 @@ def classify_security_clearance(text: str) -> str | None:
 
 
 def _extract_eval_criterion_identity(ec: dict) -> str | None:
-    """Extract normalized identity for evaluation criterion to ensure like-with-like comparison."""
+    """
+    Extract normalized evaluation criterion identity, prioritizing explicit IDs before broad keywords.
+    Extracts explicit IDs from stage / criterion / title / notes / criterion_id.
+    """
     if not isinstance(ec, dict):
         return None
-    stage = (ec.get("stage") or "").lower()
-    title = (ec.get("criterion") or ec.get("title") or ec.get("name") or ec.get("item") or "").lower()
-    desc = (ec.get("description") or "").lower()
-    cid = (ec.get("criterion_id") or ec.get("id") or "").strip().upper()
-    combined = f"{stage} {title} {desc} {cid}".lower()
+    stage = (ec.get("stage") or "").strip()
+    title = (ec.get("criterion") or ec.get("title") or ec.get("name") or ec.get("item") or "").strip()
+    desc = (ec.get("description") or ec.get("notes") or "").strip()
+    cid = (ec.get("criterion_id") or ec.get("id") or "").strip()
 
-    # 1. Overall technical vs financial ratio / score
+    combined = f"{cid} {stage} {title} {desc}".lower()
+
+    # 1. Explicit criterion identifier (e.g. R1, R2, CR1, CR2, TC1, TC2, RT1, PR1)
+    # Check cid field first
+    if cid and re.match(r'^(?:R|CR|TC|RT|PR|M)\d+$', cid, re.IGNORECASE):
+        return f"CRITERION_{cid.upper()}"
+
+    # Search for explicit criterion marker at word boundary in cid, stage, or title
+    id_match = re.search(r'\b(R\d+|CR\d+|TC\d+|RT\d+|PR\d+)\b', f"{cid} {stage} {title}", re.IGNORECASE)
+    if id_match:
+        return f"CRITERION_{id_match.group(1).upper()}"
+
+    # 2. Overall technical vs financial ratio / score
     if any(k in combined for k in ["overall technical weight", "overall ratio", "technical / financial", "tech / fin", "technical ratio", "weighting ratio", "70/30", "80/20", "75/25", "technical score", "technical weight", "rated score", "technical points"]):
         return "OVERALL_TECHNICAL_WEIGHT"
-    if "overall" in stage and any(k in stage for k in ["tech", "rated", "weight"]):
+    if "overall" in stage.lower() and any(k in stage.lower() for k in ["tech", "rated"]):
         return "OVERALL_TECHNICAL_WEIGHT"
-    if "overall technical" in title or title in ["overall technical weight", "technical score", "technical weight"]:
+    if "overall" in stage.lower() and any(k in stage.lower() for k in ["finan", "price", "cost", "commercial"]):
+        return "OVERALL_FINANCIAL_WEIGHT"
+    if "overall technical" in title.lower() or title.lower() in ["overall technical weight", "technical score", "technical weight"]:
         return "OVERALL_TECHNICAL_WEIGHT"
 
-    # 2. Specific criteria identity
+    # 3. Specific semantic criteria identity (only when no explicit identifier exists)
     if any(k in combined for k in ["methodology", "technical approach", "work plan", "approach"]):
         return "CRITERION_METHODOLOGY"
     if any(k in combined for k in ["team", "key personnel", "staff experience", "team experience", "resource qualifications"]):
@@ -839,16 +855,37 @@ def _extract_eval_criterion_identity(ec: dict) -> str | None:
     if any(k in combined for k in ["esg", "sustainability", "environmental"]):
         return "CRITERION_ESG_WEIGHT"
 
-    # Specific identifier (e.g. R1, R2, CR1, CR2, TC1, TC2)
-    if cid and re.match(r'^(?:R|CR|TC)\d+$', cid):
-        return f"CRITERION_{cid}"
-
-    # Specific title if not generic
-    if title and len(title) > 3 and not any(title == g for g in ["rated criteria", "technical criteria", "mandatory criteria", "evaluation", "rated", "technical"]):
-        clean_title = re.sub(r'[^a-z0-9]+', '_', title).strip('_').upper()
+    # 4. Specific title if not generic
+    cand_title = title or stage
+    cand_lower = cand_title.lower()
+    if cand_lower and len(cand_lower) > 3 and not any(cand_lower == g for g in ["rated criteria", "technical criteria", "mandatory criteria", "evaluation", "rated", "technical", "stage"]):
+        clean_title = re.sub(r'[^a-z0-9]+', '_', cand_lower).strip('_').upper()
         return f"CRITERION_TITLE_{clean_title}"
 
     return None
+
+
+def _extract_evaluation_scope(ec: dict, s_doc: str) -> str:
+    """Extract operational category/stream scope for an evaluation criterion."""
+    stage = (ec.get("stage") or "").lower() if isinstance(ec, dict) else ""
+    criterion = (ec.get("criterion") or ec.get("title") or "").lower() if isinstance(ec, dict) else ""
+    notes = (ec.get("notes") or "").lower() if isinstance(ec, dict) else ""
+    doc = (s_doc or "").lower()
+
+    combined = f"{stage} {criterion} {notes} {doc}"
+    if any(k in combined for k in ["category 1", "cat 1", "cat1", "appendix b1", "appendix c1", "appendix d1", "d1", "learning & development", "learning and development"]):
+        return "CATEGORY_1"
+    if any(k in combined for k in ["category 2", "cat 2", "cat2", "appendix b2", "appendix c2", "appendix d2", "d2", "hr advisory"]):
+        return "CATEGORY_2"
+    if any(k in combined for k in ["category 3", "cat 3", "cat3", "appendix b3", "appendix c3", "appendix d3", "d3", "facilitation"]):
+        return "CATEGORY_3"
+    if "stream 1" in combined:
+        return "STREAM_1"
+    if "stream 2" in combined:
+        return "STREAM_2"
+    if "stream 3" in combined:
+        return "STREAM_3"
+    return "GENERAL_SCOPE"
 
 
 def _extract_requirement_scope(req: dict, s_doc: str) -> str:
@@ -859,11 +896,11 @@ def _extract_requirement_scope(req: dict, s_doc: str) -> str:
     doc = (s_doc or "").lower()
 
     combined = f"{desc} {cat} {rfso_ref} {doc}"
-    if any(k in combined for k in ["category 1", "cat 1", "cat1", "appendix b1", "appendix c1", "appendix d1", "learning & development", "learning and development"]):
+    if any(k in combined for k in ["category 1", "cat 1", "cat1", "appendix b1", "appendix c1", "appendix d1", "d1", "learning & development", "learning and development"]):
         return "CATEGORY_1"
-    if any(k in combined for k in ["category 2", "cat 2", "cat2", "appendix b2", "appendix c2", "appendix d2", "hr advisory"]):
+    if any(k in combined for k in ["category 2", "cat 2", "cat2", "appendix b2", "appendix c2", "appendix d2", "d2", "hr advisory"]):
         return "CATEGORY_2"
-    if any(k in combined for k in ["category 3", "cat 3", "cat3", "appendix b3", "appendix c3", "appendix d3", "facilitation"]):
+    if any(k in combined for k in ["category 3", "cat 3", "cat3", "appendix b3", "appendix c3", "appendix d3", "d3", "facilitation"]):
         return "CATEGORY_3"
     if "stream 1" in combined:
         return "STREAM_1"
@@ -875,14 +912,21 @@ def _extract_requirement_scope(req: dict, s_doc: str) -> str:
 
 
 def _extract_requirement_subject(req: dict) -> str:
-    """Extract normalized role / subject / criterion identity for mandatory requirement."""
-    desc = (req.get("description") or "").lower() if isinstance(req, dict) else ""
-    title = (req.get("title") or req.get("item") or req.get("name") or "").lower() if isinstance(req, dict) else ""
-    rfso = (req.get("rfso_ref") or "").lower() if isinstance(req, dict) else ""
-    req_id = (req.get("req_id") or "").lower() if isinstance(req, dict) else ""
+    """
+    Extract normalized role / subject / criterion identity for mandatory requirement.
+    Preserves role precedence, prioritizes explicit requirement IDs and subject domains
+    before falling back to generic corporate subject.
+    """
+    if not isinstance(req, dict):
+        return "SUBJECT_GENERAL"
+
+    desc = (req.get("description") or "").lower()
+    title = (req.get("title") or req.get("item") or req.get("name") or "").lower()
+    rfso = (req.get("rfso_ref") or "").lower()
+    req_id = (req.get("req_id") or "").lower()
     combined = f"{req_id} {title} {rfso} {desc}"
 
-    # Roles / Personnel subjects
+    # 1. Role identities take semantic precedence where present
     if any(k in combined for k in ["project manager", "project lead", "engagement lead", "team lead", "pm role"]):
         return "ROLE_PROJECT_MANAGER"
     if any(k in combined for k in ["facilitator", "session facilitator", "lead facilitator"]):
@@ -895,15 +939,69 @@ def _extract_requirement_subject(req: dict) -> str:
         return "ROLE_CONSULTANT"
     if any(k in combined for k in ["instructional designer", "learning specialist"]):
         return "ROLE_INSTRUCTIONAL_DESIGNER"
-    if any(k in combined for k in ["bidder", "proponent", "firm", "corporate", "vendor track record", "organization"]):
-        return "SUBJECT_BIDDER_CORPORATE"
 
-    # Specific RFSO / Requirement reference marker (e.g. M1, M2, M3, M4, M5, CR1, etc.)
-    m_id = re.search(r'\b(m\d+|cr\d+|mandatory\s+\d+)\b', combined)
+    # 2. Explicit requirement ID or RFSO reference marker (e.g. M1, M2, M3, M4, M5, CR1)
+    m_id = re.search(r'\b(m\d+|cr\d+|mandatory\s+\d+|r\d+)\b', f"{req_id} {rfso} {title} {desc[:40]}")
     if m_id:
         return f"REF_{m_id.group(1).upper()}"
 
+    if req_id and len(req_id) <= 8 and re.match(r'^[a-z0-9_\-]+$', req_id):
+        return f"REF_{req_id.upper()}"
+
+    # 3. Normalized requirement subject/domain
+    if any(k in combined for k in ["consulting", "advisory", "management consulting"]):
+        return "SUBJECT_CONSULTING_EXPERIENCE"
+    if any(k in combined for k in ["training", "learning", "curriculum", "course delivery"]):
+        return "SUBJECT_TRAINING_EXPERIENCE"
+    if any(k in combined for k in ["coaching", "executive development"]):
+        return "SUBJECT_COACHING_EXPERIENCE"
+    if any(k in combined for k in ["audit", "accounting", "financial review"]):
+        return "SUBJECT_AUDIT_EXPERIENCE"
+    if any(k in combined for k in ["software", "application development", "it systems"]):
+        return "SUBJECT_IT_EXPERIENCE"
+    if any(k in combined for k in ["cybersecurity", "information security"]):
+        return "SUBJECT_CYBERSECURITY"
+    if any(k in combined for k in ["financial capability", "annual revenue", "financial stability", "bank reference"]):
+        return "SUBJECT_FINANCIAL_CAPABILITY"
+    if any(k in combined for k in ["litigation", "legal proceeding", "insolvency"]):
+        return "SUBJECT_LITIGATION"
+    if any(k in combined for k in ["bilingual", "french"]):
+        return "SUBJECT_BILINGUAL"
+    if any(k in combined for k in ["iso", "quality assurance", "quality management"]):
+        return "SUBJECT_QUALITY_MANAGEMENT"
+
+    # 4. Specific title if not generic
+    if title and len(title) > 3 and not any(title == g for g in ["mandatory", "mandatory criteria", "mandatory requirement", "qualification"]):
+        clean_title = re.sub(r'[^a-z0-9]+', '_', title).strip('_').upper()
+        return f"SUBJECT_TITLE_{clean_title}"
+
+    # 5. General corporate fallback
+    if any(k in combined for k in ["bidder", "proponent", "firm", "corporate", "vendor track record", "organization"]):
+        return "SUBJECT_BIDDER_CORPORATE"
+
     return "SUBJECT_GENERAL"
+
+
+def _extract_deliverable_scope(d: dict, s_doc: str) -> str:
+    """Extract operational category/stream scope for a deliverable."""
+    title = (d.get("title") or d.get("item") or d.get("name") or "").lower() if isinstance(d, dict) else ""
+    desc = (d.get("description") or d.get("details") or "").lower() if isinstance(d, dict) else ""
+    doc = (s_doc or "").lower()
+
+    combined = f"{title} {desc} {doc}"
+    if any(k in combined for k in ["category 1", "cat 1", "cat1", "appendix b1", "appendix c1", "appendix d1", "d1", "learning & development", "learning and development"]):
+        return "CATEGORY_1"
+    if any(k in combined for k in ["category 2", "cat 2", "cat2", "appendix b2", "appendix c2", "appendix d2", "d2", "hr advisory"]):
+        return "CATEGORY_2"
+    if any(k in combined for k in ["category 3", "cat 3", "cat3", "appendix b3", "appendix c3", "appendix d3", "d3", "facilitation"]):
+        return "CATEGORY_3"
+    if "stream 1" in combined:
+        return "STREAM_1"
+    if "stream 2" in combined:
+        return "STREAM_2"
+    if "stream 3" in combined:
+        return "STREAM_3"
+    return "GENERAL_SCOPE"
 
 
 def _extract_deliverable_identity(d: dict) -> str | None:
@@ -929,7 +1027,10 @@ def _extract_deliverable_quantity(d: dict) -> tuple[float, str] | None:
     title = (d.get("title") or d.get("item") or "").lower() if isinstance(d, dict) else ""
     combined = f"{title} {desc}"
 
-    m = re.search(r'\b(\d+(?:\.\d+)?)\s*(?:training\s+|leadership\s+|executive\s+|facilitation\s+)*(cohorts?|sessions?|participants?|hours?|workshops?|deliverables?|reports?)\b', combined)
+    # Strip category / stream / appendix prefixes so category numbers (e.g. Category 1) are not mistaken for quantities
+    clean_combined = re.sub(r'\b(?:category|cat|stream|appendix|annex|envelope|item|req|m|cr|r)\s*[a-z0-9]+\b', '', combined, flags=re.IGNORECASE)
+
+    m = re.search(r'\b(\d+(?:\.\d+)?)\s*(?:training\s+|leadership\s+|executive\s+|facilitation\s+)*(cohorts?|sessions?|participants?|hours?|workshops?|deliverables?|reports?)\b', clean_combined)
     if m:
         qty = float(m.group(1))
         unit = m.group(2).rstrip('s')
@@ -1061,17 +1162,21 @@ def detect_document_conflicts(normalized_facts: dict, package_files: list[str]) 
     if len(eval_criteria) >= 2:
         eval_by_identity = {}
         for ec in eval_criteria:
+            s_doc = ec.get("source_doc", "Document")
             ident = _extract_eval_criterion_identity(ec)
+            scope = _extract_evaluation_scope(ec, s_doc)
             if ident:
                 wt = str(ec.get("weight") or ec.get("points") or "").strip()
                 if wt:
-                    s_doc = ec.get("source_doc", "Document")
-                    eval_by_identity.setdefault(ident, []).append((s_doc, wt, ec))
+                    eval_by_identity.setdefault((ident, scope), []).append((s_doc, wt, ec))
 
-        for ident, ec_list in eval_by_identity.items():
+        for (ident, scope), ec_list in eval_by_identity.items():
             doc_vals = {}
             for item in ec_list:
                 doc_vals.setdefault(item[0], set()).add(item[1])
+
+            scope_suffix = f" ({scope.replace('_', ' ').title()})" if scope != "GENERAL_SCOPE" else ""
+            ident_label = f"{ident.replace('CRITERION_', '').replace('_', ' ').title()}{scope_suffix}"
 
             # Internal
             for s_doc, vals in doc_vals.items():
@@ -1079,17 +1184,17 @@ def detect_document_conflicts(normalized_facts: dict, package_files: list[str]) 
                     internal_list = [item for item in ec_list if item[0] == s_doc]
                     pair = select_opposing_pair(internal_list, lambda x: x[1])
                     if pair:
-                        src_a = {"doc": s_doc, "ref": ident.replace('_', ' ').title(), "text": pair[0][1]}
-                        src_b = {"doc": s_doc, "ref": ident.replace('_', ' ').title(), "text": pair[1][1]}
+                        src_a = {"doc": s_doc, "ref": ident_label, "text": pair[0][1]}
+                        src_b = {"doc": s_doc, "ref": ident_label, "text": pair[1][1]}
                         sv = validate_conflict_source_validity(src_a, src_b, package_files)
                         conflicts.append({
                             "conflict_id": f"CONF-EVAL-{conflict_idx}",
                             "conflict_type": "EVALUATION_CONFLICT",
                             "classification": "REVIEW_ITEM",
                             "confidence": "HIGH" if sv == "PHYSICAL_BOTH" else "MEDIUM",
-                            "reason": f"Internal source inconsistency: same document ({s_doc}) contains differing scoring values for {ident.replace('_', ' ').title()}.",
+                            "reason": f"Internal source inconsistency: same document ({s_doc}) contains differing scoring values for {ident_label}.",
                             "source_validity": sv,
-                            "topic": f"Internal Discrepancy for {ident.replace('_', ' ').title()} in {s_doc}",
+                            "topic": f"Internal Discrepancy for {ident_label} in {s_doc}",
                             "source_a": src_a,
                             "source_b": src_b,
                             "assessment": f"Differing scoring values within {s_doc}: {', '.join(sorted(vals))}.",
@@ -1103,8 +1208,8 @@ def detect_document_conflicts(normalized_facts: dict, package_files: list[str]) 
                 cross_candidates = [item for item in ec_list if item[0] in single_val_docs]
                 cross_pair = select_opposing_pair(cross_candidates, lambda x: x[1], source_fn=lambda x: x[0], require_different_sources=True)
                 if cross_pair:
-                    src_a = {"doc": cross_pair[0][0], "ref": ident.replace('_', ' ').title(), "text": cross_pair[0][1]}
-                    src_b = {"doc": cross_pair[1][0], "ref": ident.replace('_', ' ').title(), "text": cross_pair[1][1]}
+                    src_a = {"doc": cross_pair[0][0], "ref": ident_label, "text": cross_pair[0][1]}
+                    src_b = {"doc": cross_pair[1][0], "ref": ident_label, "text": cross_pair[1][1]}
                     sv = validate_conflict_source_validity(src_a, src_b, package_files)
                     classification = "TRUE_CONFLICT" if sv == "PHYSICAL_BOTH" and src_a["doc"] != src_b["doc"] else "REVIEW_ITEM"
                     unique_wts = sorted(set(single_val_docs.values()))
@@ -1113,9 +1218,9 @@ def detect_document_conflicts(normalized_facts: dict, package_files: list[str]) 
                         "conflict_type": "EVALUATION_CONFLICT",
                         "classification": classification,
                         "confidence": "HIGH" if classification == "TRUE_CONFLICT" else "MEDIUM",
-                        "reason": f"Evaluation breakdown specifies contradictory scoring weights for {ident.replace('_', ' ').title()} across documents.",
+                        "reason": f"Evaluation breakdown specifies contradictory scoring weights for {ident_label} across documents.",
                         "source_validity": sv,
-                        "topic": f"Differing Evaluation Scoring Weights for {ident.replace('_', ' ').title()}",
+                        "topic": f"Differing Evaluation Scoring Weights for {ident_label}",
                         "source_a": src_a,
                         "source_b": src_b,
                         "assessment": f"Evaluation breakdown specifies differing scoring weights ({', '.join(unique_wts)}).",
@@ -1601,14 +1706,17 @@ def detect_document_conflicts(normalized_facts: dict, package_files: list[str]) 
             if d_ident and qty_unit:
                 qty, unit = qty_unit
                 s_doc = d.get("source_doc", "Doc")
-                deliv_groups.setdefault((d_ident, unit), []).append((s_doc, qty, d))
+                d_scope = _extract_deliverable_scope(d, s_doc)
+                deliv_groups.setdefault((d_ident, d_scope, unit), []).append((s_doc, qty, d))
 
-        for (d_ident, unit), d_list in deliv_groups.items():
+        for (d_ident, d_scope, unit), d_list in deliv_groups.items():
             doc_vals = {}
             for item in d_list:
                 doc_vals.setdefault(item[0], set()).add(item[1])
 
             deliv_title = d_ident.replace('DELIVERABLE_', '').replace('_', ' ').title()
+            scope_suffix = f" ({d_scope.replace('_', ' ').title()})" if d_scope != "GENERAL_SCOPE" else ""
+            topic_label = f"{deliv_title}{scope_suffix}"
 
             # Internal inconsistencies
             for s_doc, vals in doc_vals.items():
@@ -1617,17 +1725,17 @@ def detect_document_conflicts(normalized_facts: dict, package_files: list[str]) 
                     pair = select_opposing_pair(internal_list, lambda x: x[1])
                     if pair:
                         c_a, c_b = pair
-                        src_a = {"doc": s_doc, "ref": f"Deliverables ({deliv_title})", "text": c_a[2].get("description", "")}
-                        src_b = {"doc": s_doc, "ref": f"Deliverables ({deliv_title})", "text": c_b[2].get("description", "")}
+                        src_a = {"doc": s_doc, "ref": f"Deliverables ({topic_label})", "text": c_a[2].get("description", "")}
+                        src_b = {"doc": s_doc, "ref": f"Deliverables ({topic_label})", "text": c_b[2].get("description", "")}
                         sv = validate_conflict_source_validity(src_a, src_b, package_files)
                         conflicts.append({
                             "conflict_id": f"CONF-SCOPE-{conflict_idx}",
                             "conflict_type": "SCOPE_CONFLICT",
                             "classification": "REVIEW_ITEM",
                             "confidence": "HIGH" if sv == "PHYSICAL_BOTH" else "MEDIUM",
-                            "reason": f"Internal source inconsistency: same document ({s_doc}) contains differing deliverable quantities for {deliv_title}.",
+                            "reason": f"Internal source inconsistency: same document ({s_doc}) contains differing deliverable quantities for {topic_label}.",
                             "source_validity": sv,
-                            "topic": f"Internal Discrepancy for {deliv_title} in {s_doc}",
+                            "topic": f"Internal Discrepancy for {topic_label} in {s_doc}",
                             "source_a": src_a,
                             "source_b": src_b,
                             "assessment": f"Differing volume counts within {s_doc} ({', '.join(str(q) for q in sorted(vals))} {unit}s).",
@@ -1642,8 +1750,8 @@ def detect_document_conflicts(normalized_facts: dict, package_files: list[str]) 
                 cross_pair = select_opposing_pair(cross_candidates, lambda x: x[1], source_fn=lambda x: x[0], require_different_sources=True)
                 if cross_pair:
                     c_a, c_b = cross_pair
-                    src_a = {"doc": c_a[0], "ref": f"Deliverables ({deliv_title})", "text": c_a[2].get("description", "")}
-                    src_b = {"doc": c_b[0], "ref": f"Deliverables ({deliv_title})", "text": c_b[2].get("description", "")}
+                    src_a = {"doc": c_a[0], "ref": f"Deliverables ({topic_label})", "text": c_a[2].get("description", "")}
+                    src_b = {"doc": c_b[0], "ref": f"Deliverables ({topic_label})", "text": c_b[2].get("description", "")}
                     sv = validate_conflict_source_validity(src_a, src_b, package_files)
                     classification = "TRUE_CONFLICT" if sv == "PHYSICAL_BOTH" and src_a["doc"] != src_b["doc"] else "REVIEW_ITEM"
                     unique_qtys = sorted(set(single_val_docs.values()))
@@ -1652,9 +1760,9 @@ def detect_document_conflicts(normalized_facts: dict, package_files: list[str]) 
                         "conflict_type": "SCOPE_CONFLICT",
                         "classification": classification,
                         "confidence": "HIGH" if classification == "TRUE_CONFLICT" else "MEDIUM",
-                        "reason": f"Conflicting deliverable quantities specified for {deliv_title} across documents.",
+                        "reason": f"Conflicting deliverable quantities specified for {topic_label} across documents.",
                         "source_validity": sv,
-                        "topic": f"Deliverable Volume Discrepancy ({deliv_title})",
+                        "topic": f"Deliverable Volume Discrepancy ({topic_label})",
                         "source_a": src_a,
                         "source_b": src_b,
                         "assessment": f"Differing volume counts across documents ({', '.join(str(q) for q in unique_qtys)} {unit}s).",
