@@ -1,10 +1,12 @@
 """
 Stage C Cross-Document Reconciliation Refinement Test Suite.
 Verifies:
-1. Bank of Canada Regression Cases (False positive date and submission dimension suppression).
+1. Bank of Canada Regression Cases (False positive date and submission dimension suppression; removal of tender-specific heuristics).
 2. Positive True Conflict Cases (Contradictory dates, submission channels, envelope separation, insurance, page limits).
-3. Source Validity & Provenance Grounding (Physical vs Synthesized vs Partial).
-4. Frozen Bank of Canada Reconciliation Replay.
+3. Like-with-Like Insurance Comparison (Distinct classes = NO CONFLICT; same class = TRUE CONFLICT).
+4. Same-Document Same-Milestone Date Inconsistencies (Classified as REVIEW_ITEM).
+5. Source Validity & Provenance Grounding (Physical vs Synthesized vs Partial).
+6. Frozen Bank of Canada Reconciliation Replay.
 """
 import os
 import json
@@ -13,6 +15,7 @@ import unittest
 from extractor import (
     classify_date_milestone,
     classify_submission_rule_dimension,
+    classify_insurance_class,
     validate_conflict_source_validity,
     detect_document_conflicts,
     reconcile_package_facts
@@ -20,7 +23,7 @@ from extractor import (
 
 
 class TestStageCBankOfCanadaRegression(unittest.TestCase):
-    """Scenario 1: Regression tests ensuring RC1 false positives are eliminated."""
+    """Scenario 1: Regression tests ensuring RC1 false positives and tender-specific heuristics are eliminated."""
 
     def test_regression_a_question_deadline_vs_bid_closing_suppressed(self):
         """TEST A: Question Acceptance Deadline 2026-09-10 vs Bid Closing Date 2026-09-30 -> NO TRUE CONFLICT."""
@@ -33,7 +36,7 @@ class TestStageCBankOfCanadaRegression(unittest.TestCase):
         pkg_files = ["abstract.pdf"]
         conflicts = detect_document_conflicts(normalized, pkg_files)
         # Must NOT generate a DATE_CONFLICT for distinct sequential milestones
-        date_conflicts = [c for c in conflicts if c.get("conflict_type") == "DATE_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
+        date_conflicts = [c for c in conflicts if c.get("conflict_type") == "DATE_CONFLICT"]
         self.assertEqual(len(date_conflicts), 0)
 
     def test_regression_b_electronic_submission_vs_excel_format_suppressed(self):
@@ -47,11 +50,11 @@ class TestStageCBankOfCanadaRegression(unittest.TestCase):
         pkg_files = ["abstract.pdf", "Appendix_E.xlsx"]
         conflicts = detect_document_conflicts(normalized, pkg_files)
         # Must NOT generate SUBMISSION_RULE_CONFLICT for complementary rules across different dimensions
-        sub_conflicts = [c for c in conflicts if c.get("conflict_type") == "SUBMISSION_RULE_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
+        sub_conflicts = [c for c in conflicts if c.get("conflict_type") == "SUBMISSION_RULE_CONFLICT"]
         self.assertEqual(len(sub_conflicts), 0)
 
-    def test_regression_c_bilingual_attachment_vs_overview_omission_is_review_item(self):
-        """TEST C: Appendix B3 bilingual requirement vs General RFP Overview omission -> REVIEW ITEM / AMBIGUITY (not TRUE_CONFLICT)."""
+    def test_regression_c_attachment_specific_requirement_not_spurious_conflict(self):
+        """TEST C: Requirement in specific attachment without contradiction is normal procurement structure -> 0 conflicts."""
         normalized = {
             "requirements": [
                 {
@@ -64,20 +67,65 @@ class TestStageCBankOfCanadaRegression(unittest.TestCase):
         }
         pkg_files = ["abstract.pdf", "Appendix_B3.xlsx", "Appendix_A.docx"]
         conflicts = detect_document_conflicts(normalized, pkg_files)
-        
-        self.assertTrue(len(conflicts) > 0)
-        mand_item = next((c for c in conflicts if c.get("conflict_type") == "MANDATORY_REQUIREMENT_CONFLICT"), None)
-        self.assertIsNotNone(mand_item)
-        self.assertEqual(mand_item.get("classification"), "REVIEW_ITEM")
-        self.assertEqual(mand_item.get("source_validity"), "PHYSICAL_PARTIAL")
-        self.assertNotEqual(mand_item.get("classification"), "TRUE_CONFLICT")
+        # No artificial ambiguity or conflict manufactured from standard appendix structure
+        self.assertEqual(len(conflicts), 0)
+
+
+class TestStageCLikeWithLikeInsuranceComparison(unittest.TestCase):
+    """Scenario 2: Like-with-like insurance comparison logic."""
+
+    def test_distinct_insurance_classes_no_conflict(self):
+        """Commercial General Liability $2M vs Professional Liability / E&O $5M -> NO CONFLICT."""
+        normalized = {
+            "commercial_clauses": [
+                {"topic": "Commercial General Liability Insurance", "details": "$2,000,000 commercial general liability policy", "source_doc": "Agreement.docx"},
+                {"topic": "Professional Liability / Errors & Omissions", "details": "$5,000,000 professional liability policy", "source_doc": "Addendum_2.pdf"}
+            ]
+        }
+        pkg_files = ["Agreement.docx", "Addendum_2.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        ins_conflicts = [c for c in conflicts if c.get("conflict_type") == "COMMERCIAL_TERM_CONFLICT"]
+        self.assertEqual(len(ins_conflicts), 0)
+
+    def test_same_insurance_class_contradiction_is_true_conflict(self):
+        """Commercial General Liability $2M vs Commercial General Liability $5M across docs -> TRUE CONFLICT."""
+        normalized = {
+            "commercial_clauses": [
+                {"topic": "Commercial General Liability Insurance", "details": "$2,000,000 commercial general liability policy", "source_doc": "Agreement.docx"},
+                {"topic": "Commercial General Liability Insurance", "details": "$5,000,000 commercial general liability policy", "source_doc": "Addendum_2.pdf"}
+            ]
+        }
+        pkg_files = ["Agreement.docx", "Addendum_2.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        ins_conflicts = [c for c in conflicts if c.get("conflict_type") == "COMMERCIAL_TERM_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
+        self.assertEqual(len(ins_conflicts), 1)
+        self.assertEqual(ins_conflicts[0]["source_validity"], "PHYSICAL_BOTH")
+
+
+class TestStageCSameDocumentSameMilestoneDates(unittest.TestCase):
+    """Scenario 3: Same physical document containing differing dates for the same semantic milestone."""
+
+    def test_same_document_differing_dates_is_review_item(self):
+        """Bid Closing Date 2026-09-15 vs Bid Closing Date 2026-09-30 in same document -> REVIEW_ITEM."""
+        normalized = {
+            "dates": [
+                {"milestone": "Bid Closing Date", "date": "2026-09-15", "source_doc": "Main_RFP.pdf"},
+                {"milestone": "Bid Closing Date", "date": "2026-09-30", "source_doc": "Main_RFP.pdf"}
+            ]
+        }
+        pkg_files = ["Main_RFP.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(conflicts[0]["classification"], "REVIEW_ITEM")
+        self.assertEqual(conflicts[0]["source_validity"], "PHYSICAL_BOTH")
+        self.assertIn("Internal source inconsistency", conflicts[0]["reason"])
 
 
 class TestStageCPositiveTrueConflicts(unittest.TestCase):
-    """Scenario 2: Positive tests ensuring legitimate contradictions are captured as TRUE_CONFLICT."""
+    """Scenario 4: Positive tests ensuring legitimate contradictions are captured as TRUE_CONFLICT."""
 
-    def test_positive_a_closing_date_contradiction(self):
-        """Positive Case A: Bid Closing Date 2026-09-15 vs Bid Closing Date 2026-09-30 -> TRUE CONFLICT."""
+    def test_positive_a_closing_date_contradiction_across_docs(self):
+        """Positive Case A: Bid Closing Date 2026-09-15 vs Bid Closing Date 2026-09-30 across docs -> TRUE CONFLICT."""
         normalized = {
             "dates": [
                 {"milestone": "Bid Closing Date", "date": "2026-09-15", "source_doc": "Main_RFP.pdf"},
@@ -123,7 +171,7 @@ class TestStageCPositiveTrueConflicts(unittest.TestCase):
         self.assertEqual(env_conflicts[0]["source_validity"], "PHYSICAL_BOTH")
 
     def test_positive_d_insurance_requirement_contradiction(self):
-        """Positive Case D: Insurance requirement $2M vs Insurance requirement $5M -> TRUE CONFLICT."""
+        """Positive Case D: Commercial general liability $2M vs $5M -> TRUE CONFLICT."""
         normalized = {
             "commercial_clauses": [
                 {"topic": "Commercial General Liability Insurance", "details": "$2,000,000 commercial general liability policy", "source_doc": "Agreement.docx"},
@@ -154,9 +202,9 @@ class TestStageCPositiveTrueConflicts(unittest.TestCase):
 
 
 class TestStageCSourceValidityAndProvenance(unittest.TestCase):
-    """Scenario 3: Source validity classifications and synthetic reference downgrades."""
+    """Scenario 5: Source validity classifications and synthetic reference downgrades."""
 
-    def test_physical_both_allows_true_conflict(self):
+    def test_physical_both_when_both_filenames_resolve_to_physical_files(self):
         src_a = {"doc": "RFP.pdf", "text": "2026-09-15"}
         src_b = {"doc": "Addendum.pdf", "text": "2026-09-30"}
         pkg_files = ["RFP.pdf", "Addendum.pdf"]
@@ -198,7 +246,7 @@ class TestStageCSourceValidityAndProvenance(unittest.TestCase):
 
 
 class TestBankOfCanadaStageCReplay(unittest.TestCase):
-    """Scenario 4: Replay refined Stage C reconciliation against frozen Bank of Canada normalized facts."""
+    """Scenario 6: Replay refined Stage C reconciliation against frozen Bank of Canada normalized facts."""
 
     def test_bank_of_canada_frozen_replay(self):
         fixture_path = os.path.join(
@@ -238,16 +286,12 @@ class TestBankOfCanadaStageCReplay(unittest.TestCase):
         sub_conflicts = [c for c in replayed_conflicts if c.get("conflict_type") == "SUBMISSION_RULE_CONFLICT"]
         self.assertEqual(len(sub_conflicts), 0, f"Expected 0 submission conflicts, found: {sub_conflicts}")
 
-        # 3. Valid scope/bilingualism review item CONF-MAND-3 must be retained as REVIEW_ITEM
-        mand_items = [c for c in replayed_conflicts if c.get("conflict_type") == "MANDATORY_REQUIREMENT_CONFLICT"]
-        self.assertEqual(len(mand_items), 1, f"Expected 1 mandatory review item, found: {mand_items}")
-        self.assertEqual(mand_items[0].get("classification"), "REVIEW_ITEM")
-        self.assertEqual(mand_items[0].get("source_validity"), "PHYSICAL_PARTIAL")
+        # 3. Tender-specific bilingual heuristic eliminated; generic logic produces 0 spurious mandatory conflicts
+        mand_conflicts = [c for c in replayed_conflicts if c.get("conflict_type") == "MANDATORY_REQUIREMENT_CONFLICT"]
+        self.assertEqual(len(mand_conflicts), 0, f"Expected 0 mandatory conflicts, found: {mand_conflicts}")
 
-        # 4. Total replayed items = exactly 1 review item, 0 true conflicts
-        true_conflicts = [c for c in replayed_conflicts if c.get("classification") == "TRUE_CONFLICT"]
-        self.assertEqual(len(true_conflicts), 0)
-        self.assertEqual(len(replayed_conflicts), 1)
+        # 4. Total replayed items = exactly 0 (0 known false positives remain in the frozen Bank of Canada replay)
+        self.assertEqual(len(replayed_conflicts), 0, f"Expected 0 conflicts/review items, found: {replayed_conflicts}")
 
 
 if __name__ == "__main__":

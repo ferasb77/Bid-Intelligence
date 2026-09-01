@@ -208,7 +208,13 @@ class TestExpandedDeterministicConflictDetection(unittest.TestCase):
                 {
                     "req_id": "M1",
                     "category": "Mandatory",
-                    "description": "All team resources must be fully bilingual in English and French.",
+                    "description": "Minimum 5 years of organizational advisory experience required.",
+                    "source_refs": [{"source_doc": "Main_RFP.pdf"}]
+                },
+                {
+                    "req_id": "M1",
+                    "category": "Mandatory",
+                    "description": "Minimum 8 years of organizational advisory experience required.",
                     "source_refs": [{"source_doc": "Appendix_C.xlsx"}]
                 }
             ]

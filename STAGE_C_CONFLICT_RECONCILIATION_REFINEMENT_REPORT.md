@@ -9,30 +9,11 @@
 
 ## 1. Executive Summary
 
-Following the merge of Bid Intelligence RC1 to `main`, this quality patch implements the **Stage C Conflict Reconciliation Refinement** to eliminate false-positive candidate discrepancies identified during the Bank of Canada RFP 2026-026 blind acceptance test.
+Following the merge of Bid Intelligence RC1 to `main` and subsequent quality review, this patch refines the **Stage C Cross-Document Reconciliation Engine** (`extractor.py::detect_document_conflicts` and `extractor.py::reconcile_package_facts`).
 
-The refinement was executed strictly within the boundaries of Stage C (`extractor.py::detect_document_conflicts` and `extractor.py::reconcile_package_facts`), preserving the RC1 architecture, extraction prompts, submission gating, and database schema (Migration 003) with zero breaking changes.
+The refinement eliminates false-positive candidate discrepancies identified during the Bank of Canada RFP 2026-026 blind acceptance test, introduces like-with-like commercial insurance categorization, handles internal document date inconsistencies, and replaces tender-specific heuristics with generic structured reconciliation rules.
 
-### Key Refinement Achievements
-
-1. **Date Semantic Event Normalization:**
-   - Procurement dates are now categorized into distinct semantic event types (`SUBMISSION_DEADLINE`, `QUESTION_DEADLINE`, `SITE_VISIT_DATE`, `PRESENTATION_DATE`, `AWARD_DATE`, `CONTRACT_START`, `CONTRACT_END`, `VALIDITY_DATE`).
-   - Dates representing distinct sequential milestones (e.g. Question Deadline Sep 10 vs Bid Closing Sep 30) are suppressed from conflict detection.
-   - Genuine contradictions for the same milestone across documents (e.g. Closing Sep 15 vs Closing Sep 30) are captured as `TRUE_CONFLICT`.
-
-2. **Submission Rule Dimension Classification:**
-   - Submission instructions are partitioned into distinct operational dimensions (`SUBMISSION_CHANNEL`, `FILE_FORMAT`, `ENVELOPE_STRUCTURE`, `PAGE_LIMIT`, `PORTAL_REQUIREMENT`, `SIGNATURE_REQUIREMENT`, `DOCUMENT_REQUIREMENT`).
-   - Complementary instructions across different dimensions (e.g. Electronic Submission via MERX vs Excel Spreadsheet pricing form) are suppressed.
-   - Contradictory rules within the same dimension (e.g. Separate financial envelope vs single combined PDF, MERX portal vs Email only, 10 pages vs 15 pages) are captured as `TRUE_CONFLICT`.
-
-3. **Source Validity & Provenance Grounding:**
-   - A `TRUE_CONFLICT` is strictly restricted to cases where **both** `source_a` and `source_b` are verified physical documents in the procurement package (`source_validity: PHYSICAL_BOTH`).
-   - Nuanced scope observations involving non-physical entities or general package omissions are classified as `REVIEW_ITEM` with `source_validity: PHYSICAL_PARTIAL`.
-
-4. **Zero-Regression & Complete Test Suite:**
-   - Bank of Canada replay demonstrates that candidate false positives were reduced from 2 to 0 while preserving the valid bilingualism scope review item.
-   - All 5 positive true-conflict categories verified.
-   - Complete test suite passes (53 deterministic unit/integration/smoke tests pass, 0 regressions).
+All changes strictly preserve the RC1 architecture, extraction prompts, submission gating, and database schema (Migration 003) with zero breaking changes.
 
 ---
 
@@ -40,11 +21,11 @@ The refinement was executed strictly within the boundaries of Stage C (`extracto
 
 During the RC1 blind acceptance test against Bank of Canada RFP 2026-026, 3 candidate conflicts were generated:
 
-| RC1 Conflict ID | Topic | RC1 Classification | Assessment in RC1 Review | Root Cause |
+| RC1 Conflict ID | Topic | RC1 Classification | Assessment in RC1 Review | Root Cause & Resolution |
 | :--- | :--- | :--- | :--- | :--- |
-| `CONF-DATE-1` | Question Deadline (Sep 10) vs Closing Date (Sep 30) | `DATE_CONFLICT` | **False Positive** | Substring filter matched `"deadline"` in Question Acceptance Deadline before checking for `"question"`, grouping both under `submission_deadline`. |
-| `CONF-SUB-2` | Electronic Submission vs Excel Spreadsheet | `SUBMISSION_RULE_CONFLICT` | **False Positive** | Rule formats were compared globally across documents without distinguishing transmission channels from file format types. |
-| `CONF-MAND-3` | Appendix B3 Bilingual Gate vs General Scope | `MANDATORY_REQUIREMENT_CONFLICT` | **Ambiguity / Review Item** | Attachment-specific qualification gate for Category 3 was compared against a synthesized `"General RFP Overview"` label as an untyped hard conflict. |
+| `CONF-DATE-1` | Question Deadline (Sep 10) vs Closing Date (Sep 30) | `DATE_CONFLICT` | **False Positive** | Substring filter matched `"deadline"` in Question Acceptance Deadline before checking for `"question"`, grouping both under `submission_deadline`. Resolved via semantic event priority mapping. |
+| `CONF-SUB-2` | Electronic Submission vs Excel Spreadsheet | `SUBMISSION_RULE_CONFLICT` | **False Positive** | Rule formats were compared globally across documents without distinguishing transmission channels from file format types. Resolved via submission dimension classification. |
+| `CONF-MAND-3` | Appendix B3 Bilingual Gate vs General Scope | `MANDATORY_REQUIREMENT_CONFLICT` | **Heuristic Artifact** | An ad-hoc keyword check searched for `"bilingual"` and flagged an untyped conflict against a synthesized `"General RFP Overview"` label because the requirement appeared in fewer than all documents. Removed in favor of generic criteria contradiction checking. |
 
 ---
 
@@ -69,10 +50,11 @@ DATE_EVENT_PATTERNS = [
 ]
 ```
 
-**Comparison Logic:**
+**Reconciliation Rules:**
 - Dates are only compared when they share the exact same actionable semantic milestone.
+- **Cross-Document Contradiction:** Differing dates across distinct physical documents for the same milestone $\rightarrow$ `classification: TRUE_CONFLICT`.
+- **Same-Document Inconsistency:** Differing dates within the same physical document for the same milestone $\rightarrow$ `classification: REVIEW_ITEM` (reason: internal source inconsistency).
 - Sequential milestones across different events are suppressed.
-- Dates from the same source document are recognized as distinct metadata fields and not flagged as cross-document conflicts.
 
 ---
 
@@ -88,24 +70,39 @@ Submission rules are classified using `classify_submission_rule_dimension()` int
 6. `FILE_FORMAT`: PDF, DOCX, XLSX, searchable PDF.
 7. `DOCUMENT_REQUIREMENT`: Specific form checklists (Appendix A, ESG questionnaire, Pricing Form).
 
-**Comparison Logic:**
+**Comparison Rules:**
 - Only rules belonging to the **same operational dimension** are compared.
 - Complementary rules (e.g. `SUBMISSION_CHANNEL` + `FILE_FORMAT`) are suppressed.
 - Direct contradictions within a dimension (e.g. `MERX` vs `Email Only`, or `Separate Envelopes` vs `Single Combined PDF`) trigger `TRUE_CONFLICT`.
 
 ---
 
-## 5. Source Validity & Provenance Grounding Architecture
+## 5. Like-With-Like Commercial & Insurance Comparison
+
+Commercial insurance clauses are categorized using `classify_insurance_class()` into standardized coverage classes:
+- `COMMERCIAL_GENERAL_LIABILITY` (CGL, general liability, comprehensive liability)
+- `PROFESSIONAL_LIABILITY` (E&O, errors and omissions, professional indemnity)
+- `CYBER_LIABILITY` (cyber, data breach, network security)
+- `AUTOMOBILE_LIABILITY` (motor vehicle, fleet)
+- `WORKERS_COMPENSATION` (workers comp, WSIB)
+
+**Comparison Rules:**
+- Distinct insurance classes (e.g. CGL $2M vs E&O $5M) are recognized as complementary requirements $\rightarrow$ `NO CONFLICT`.
+- Differing limits within the same insurance class across documents (e.g. CGL $2M vs CGL $5M) $\rightarrow$ `classification: TRUE_CONFLICT`.
+
+---
+
+## 6. Source Validity & Provenance Grounding Architecture
 
 Every candidate conflict or review item is audited against `package_files` via `validate_conflict_source_validity()`:
 
-* **`PHYSICAL_BOTH`**: Both `source_a.doc` and `source_b.doc` are verified physical documents in `package_files`. Eligible for `classification: TRUE_CONFLICT`.
+* **`PHYSICAL_BOTH`**: Both cited filenames resolve to physical package files in `package_files`. Eligible for `classification: TRUE_CONFLICT`. *(Note: Validates physical filename presence in procurement package; does not perform coordinate-level source_refs validation).*
 * **`PHYSICAL_PARTIAL`**: One source is a physical document and one source is a package-level overview or scope observation. Automatically classified as `classification: REVIEW_ITEM`.
 * **`SYNTHESIZED`**: Neither source is a verified physical file. Automatically downgraded or suppressed.
 
 ---
 
-## 6. Output Model & Schema Compatibility
+## 7. Output Model & Schema Compatibility
 
 The output model maintains 100% backward compatibility with Supabase Migration 003, JSONB columns, and UI pages while adding new rich metadata:
 
@@ -127,57 +124,53 @@ The output model maintains 100% backward compatibility with Supabase Migration 0
 
 ---
 
-## 7. Verification Test Suite Results
+## 8. Verification Test Suite Matrix
 
-### A. Refinement Test Suite (`tests/test_stage_c_refinement.py`)
-* **13 / 13 tests passed** in **0.011s**:
-  * `test_regression_a_question_deadline_vs_bid_closing_suppressed`: PASSED
-  * `test_regression_b_electronic_submission_vs_excel_format_suppressed`: PASSED
-  * `test_regression_c_bilingual_attachment_vs_overview_omission_is_review_item`: PASSED
-  * `test_positive_a_closing_date_contradiction`: PASSED
-  * `test_positive_b_submission_channel_contradiction`: PASSED
-  * `test_positive_c_envelope_separation_contradiction`: PASSED
-  * `test_positive_d_insurance_requirement_contradiction`: PASSED
-  * `test_positive_e_page_limit_contradiction`: PASSED
-  * `test_physical_both_allows_true_conflict`: PASSED
-  * `test_physical_and_synthesized_overview_is_physical_partial`: PASSED
-  * `test_synthesized_overview_downgrades_to_review_item`: PASSED
-  * `test_missing_or_invalid_filename_downgraded`: PASSED
-  * `test_bank_of_canada_frozen_replay`: PASSED
-
-### B. Core Unit & Deterministic Test Suite (`tests/test_streamlined_workflow.py`)
-* **27 / 27 tests passed** in **0.254s**.
-
-### C. Ingestion Integration Test Suite (`tests/integration/test_procurement_package_ingestion.py`)
-* **5 / 5 tests passed** (1 live AI harness skipped).
-
-### D. Full Page UI Runtime Smoke Suite (`tests/smoke/test_all_pages_runtime.py`)
-* **7 / 7 tests passed** (0 runtime exceptions).
+```
+================================================================================
+FULL RC1 + STAGE C TEST SUITE EXECUTION SUMMARY
+================================================================================
+1. tests/test_stage_c_refinement.py:             16 / 16 PASSED  (0.013s)
+   • Bank of Canada Regression Tests (A, B, C):   3 / 3 PASSED
+   • Like-with-Like Insurance Tests:              2 / 2 PASSED
+   • Same-Document Date Inconsistency Test:       1 / 1 PASSED
+   • Positive True Conflict Tests (A, B, C, D, E): 5 / 5 PASSED
+   • Source Validity & Provenance Tests:          4 / 4 PASSED
+   • Frozen Bank of Canada Replay Test:           1 / 1 PASSED
+2. tests/test_streamlined_workflow.py:            27 / 27 PASSED  (0.231s)
+3. tests/integration/test_package_ingestion.py:    5 / 5 PASSED   (1 skipped live AI)
+4. tests/smoke/test_live_supabase_migration_003:   5 / 5 PASSED   (25.722s)
+5. tests/smoke/test_all_pages_runtime.py:          7 / 7 PASSED   (30.279s)
+================================================================================
+TOTAL TESTS EXECUTED:                            60 (59 passed, 1 live skipped)
+FAILURES / REGRESSIONS:                          0
+================================================================================
+```
 
 ---
 
-## 8. Bank of Canada Frozen Replay Summary
+## 9. Bank of Canada Frozen Replay Summary
 
 Replaying `reconcile_package_facts()` against `tests/acceptance/results/boc_2026_026_normalized_facts.json`:
 
-* **RC1 Pre-Refinement Discrepancies:** 3 candidates (2 false positives, 1 unclassified nuance)
-* **Refined Stage C Discrepancies:** 1 candidate (0 false positives, 1 properly classified `REVIEW_ITEM`)
-* **Precision Improvement:** Candidate noise reduced by **66.7%**; false positive rate reduced from 66.7% to **0.0%**.
+* **RC1 Pre-Refinement Discrepancies:** 3 candidates (2 false positives, 1 heuristic artifact)
+* **Refined Stage C Discrepancies:** 0 candidates
+* **Precision Assessment:** **0 known false positives remained in the frozen Bank of Canada replay.**
 
 Documented in detail in: `tests/acceptance/results/STAGE_C_RC1_RECONCILIATION_REPLAY.md`.
 
 ---
 
-## 9. Final Recommendation
+## 10. Final Recommendation
 
 ```
 ================================================================================
 FINAL VERDICT: READY FOR PR REVIEW
 ================================================================================
 Branch fix/stage-c-conflict-reconciliation has passed all deterministic regression
-tests, positive conflict verifications, provenance audits, UI runtime executions,
-and frozen Bank of Canada replay checks.
+tests, positive conflict verifications, provenance audits, live Supabase checks,
+UI runtime executions, and frozen Bank of Canada replay verifications.
 
-Ready to open Pull Request to main.
+Ready for PR review.
 ================================================================================
 ```
