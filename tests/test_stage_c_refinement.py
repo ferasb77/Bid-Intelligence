@@ -2,16 +2,17 @@
 Stage C Cross-Document Reconciliation Refinement Test Suite.
 Verifies:
 1. Bank of Canada Regression Cases (False positive date and submission dimension suppression; removal of tender-specific heuristics).
-2. Evaluation Criteria Same-Metric Normalization (Overall weight split vs individual criteria vs non-conflicting distinct criteria).
+2. Evaluation Criteria Same-Metric Normalization (Overall weight split vs individual criteria vs non-conflicting distinct criteria; regex fix for R1/CR1/TC2).
 3. Mandatory Requirement Subject Identity (Role-scoped experience & clearance comparison; PM vs Facilitator = NO CONFLICT; PM vs PM = TRUE CONFLICT).
-4. Source-Aware Opposing Pair Selection (Cross-document TRUE_CONFLICT vs internal inconsistency REVIEW_ITEM).
+4. Source-Aware Opposing Pair Selection & Internal Inconsistency Handling (Envelope, channel, commercial caps, insurance, deliverables).
 5. Submission Dimension Precedence (Portal registration vs submission channel).
 6. Scope / Deliverable Conflict Identity (Leadership cohort vs Coaching = NO CONFLICT; Cohorts 20 vs 12 = TRUE CONFLICT).
 7. Panel / Commercial Cap Normalization (Panel vendors vs Annual rate increase = NO CONFLICT; Panel 5 vs 8 = TRUE CONFLICT).
 8. Security Clearance Priority & Contradictions (TOP_SECRET -> SECRET -> RELIABILITY).
 9. Insurance Monetary Amount Normalization & Year Safety ($2M vs $2,000,000 = NO CONFLICT; 2026 ignored).
 10. Source Validity & Provenance Grounding (Physical vs Synthesized vs Partial).
-11. Frozen Bank of Canada Reconciliation Replay (Replays to empty list []).
+11. Pipeline-Realistic Integration Test (Raw document facts -> normalize_package_facts -> reconcile_package_facts preserving deliverable source identity).
+12. Frozen Bank of Canada Reconciliation Replay (Replays to empty list []).
 """
 import os
 import json
@@ -28,7 +29,9 @@ from extractor import (
     select_opposing_pair,
     validate_conflict_source_validity,
     detect_document_conflicts,
-    reconcile_package_facts
+    reconcile_package_facts,
+    normalize_package_facts,
+    _extract_eval_criterion_identity
 )
 
 
@@ -120,6 +123,12 @@ class TestStageCEvaluationCriteriaIdentity(unittest.TestCase):
         conflicts = detect_document_conflicts(normalized, pkg_files)
         eval_conflicts = [c for c in conflicts if c.get("conflict_type") == "EVALUATION_CONFLICT"]
         self.assertEqual(len(eval_conflicts), 0)
+
+    def test_evaluation_criterion_id_regex_recognition(self):
+        """Verify R1, CR1, TC2 criterion IDs are properly recognized without character class bugs."""
+        self.assertEqual(_extract_eval_criterion_identity({"criterion_id": "R1"}), "CRITERION_R1")
+        self.assertEqual(_extract_eval_criterion_identity({"criterion_id": "CR1"}), "CRITERION_CR1")
+        self.assertEqual(_extract_eval_criterion_identity({"criterion_id": "TC2"}), "CRITERION_TC2")
 
 
 class TestStageCMandatorySubjectIdentity(unittest.TestCase):
@@ -253,9 +262,116 @@ class TestStageCSourceAwareOpposingPairSelection(unittest.TestCase):
         self.assertNotEqual(true_conflicts[0]["source_a"]["doc"], true_conflicts[0]["source_b"]["doc"])
         self.assertNotEqual(true_conflicts[0]["source_a"]["text"], true_conflicts[0]["source_b"]["text"])
 
+    def test_same_file_envelope_contradiction_is_review_item(self):
+        """A.pdf: 'financial response separate' + A.pdf: 'technical and financial combined' -> REVIEW_ITEM."""
+        normalized = {
+            "submission_rules": [
+                {"item": "Financial Envelope", "format": "Separate Envelopes", "details": "financial response separate", "source_doc": "A.pdf"},
+                {"item": "Proposal Structure", "format": "Single Combined PDF", "details": "technical and financial combined", "source_doc": "A.pdf"}
+            ]
+        }
+        pkg_files = ["A.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(conflicts[0]["classification"], "REVIEW_ITEM")
+        self.assertEqual(conflicts[0]["source_a"]["doc"], "A.pdf")
+        self.assertEqual(conflicts[0]["source_b"]["doc"], "A.pdf")
+
+    def test_cross_file_envelope_contradiction_is_true_conflict(self):
+        """A.pdf: 'financial response separate' + B.pdf: 'technical and financial combined' -> TRUE_CONFLICT."""
+        normalized = {
+            "submission_rules": [
+                {"item": "Financial Envelope", "format": "Separate Envelopes", "details": "financial response separate", "source_doc": "A.pdf"},
+                {"item": "Proposal Structure", "format": "Single Combined PDF", "details": "technical and financial combined", "source_doc": "B.pdf"}
+            ]
+        }
+        pkg_files = ["A.pdf", "B.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        true_conflicts = [c for c in conflicts if c.get("classification") == "TRUE_CONFLICT"]
+        self.assertEqual(len(true_conflicts), 1)
+        self.assertEqual(true_conflicts[0]["source_a"]["doc"], "A.pdf")
+        self.assertEqual(true_conflicts[0]["source_b"]["doc"], "B.pdf")
+
+    def test_same_file_submission_channel_contradiction_is_review_item(self):
+        """A.pdf: 'submit through MERX' + A.pdf: 'email only' -> REVIEW_ITEM."""
+        normalized = {
+            "submission_rules": [
+                {"item": "Bid Submission", "format": "Electronic", "details": "Upload bid through MERX", "source_doc": "A.pdf"},
+                {"item": "Transmission Channel", "format": "Email", "details": "Submit proposal by email only", "source_doc": "A.pdf"}
+            ]
+        }
+        pkg_files = ["A.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(conflicts[0]["classification"], "REVIEW_ITEM")
+
+    def test_cross_file_submission_channel_contradiction_is_true_conflict(self):
+        """A.pdf: 'submit through MERX' + B.pdf: 'email only' -> TRUE_CONFLICT."""
+        normalized = {
+            "submission_rules": [
+                {"item": "Bid Submission", "format": "Electronic", "details": "Upload bid through MERX", "source_doc": "A.pdf"},
+                {"item": "Transmission Channel", "format": "Email", "details": "Submit proposal by email only", "source_doc": "B.pdf"}
+            ]
+        }
+        pkg_files = ["A.pdf", "B.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        true_conflicts = [c for c in conflicts if c.get("classification") == "TRUE_CONFLICT"]
+        self.assertEqual(len(true_conflicts), 1)
+        self.assertEqual(true_conflicts[0]["source_a"]["doc"], "A.pdf")
+        self.assertEqual(true_conflicts[0]["source_b"]["doc"], "B.pdf")
+
+
+class TestStageCInternalInconsistencies(unittest.TestCase):
+    """Scenario 5: Explicit same-document REVIEW_ITEM handling for commercial caps, insurance, and deliverables."""
+
+    def test_same_file_insurance_discrepancy_is_review_item(self):
+        """Agreement.pdf: CGL $2M + CGL $5M -> REVIEW_ITEM."""
+        normalized = {
+            "commercial_clauses": [
+                {"topic": "Commercial General Liability Insurance", "details": "CGL coverage of $2M", "source_doc": "Agreement.pdf"},
+                {"topic": "Commercial General Liability Insurance", "details": "CGL coverage of $5M", "source_doc": "Agreement.pdf"}
+            ]
+        }
+        pkg_files = ["Agreement.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(conflicts[0]["classification"], "REVIEW_ITEM")
+        self.assertEqual(conflicts[0]["source_a"]["doc"], "Agreement.pdf")
+        self.assertEqual(conflicts[0]["source_b"]["doc"], "Agreement.pdf")
+
+    def test_same_file_panel_cap_discrepancy_is_review_item(self):
+        """RFP.pdf: panel max 5 + panel max 8 -> REVIEW_ITEM."""
+        normalized = {
+            "commercial_clauses": [
+                {"topic": "Panel Vendor Cap", "details": "Maximum panel vendors: 5", "source_doc": "RFP.pdf"},
+                {"topic": "Panel Vendor Cap", "details": "Maximum panel vendors: 8", "source_doc": "RFP.pdf"}
+            ]
+        }
+        pkg_files = ["RFP.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(conflicts[0]["classification"], "REVIEW_ITEM")
+        self.assertEqual(conflicts[0]["source_a"]["doc"], "RFP.pdf")
+        self.assertEqual(conflicts[0]["source_b"]["doc"], "RFP.pdf")
+
+    def test_same_file_deliverable_quantity_discrepancy_is_review_item(self):
+        """SOW.pdf: Leadership cohorts = 12 + Leadership cohorts = 20 -> REVIEW_ITEM."""
+        normalized = {
+            "deliverables": [
+                {"title": "Leadership Cohorts", "description": "Leadership cohorts: 12 cohorts to be delivered", "source_doc": "SOW.pdf"},
+                {"title": "Leadership Cohorts", "description": "Leadership cohorts: 20 cohorts to be delivered", "source_doc": "SOW.pdf"}
+            ]
+        }
+        pkg_files = ["SOW.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(conflicts[0]["classification"], "REVIEW_ITEM")
+        self.assertEqual(conflicts[0]["source_a"]["doc"], "SOW.pdf")
+        self.assertEqual(conflicts[0]["source_b"]["doc"], "SOW.pdf")
+
 
 class TestStageCSubmissionDimensionPrecedence(unittest.TestCase):
-    """Scenario 5: Precedence of PORTAL_REQUIREMENT over SUBMISSION_CHANNEL."""
+    """Scenario 6: Precedence of PORTAL_REQUIREMENT over SUBMISSION_CHANNEL."""
 
     def test_dimension_classification_precedence(self):
         """Verify dimension precedence classification."""
@@ -291,7 +407,7 @@ class TestStageCSubmissionDimensionPrecedence(unittest.TestCase):
 
 
 class TestStageCScopeDeliverableIdentity(unittest.TestCase):
-    """Scenario 6: Like-with-like deliverable reconciliation."""
+    """Scenario 7: Like-with-like deliverable reconciliation."""
 
     def test_different_deliverable_types_no_conflict(self):
         """Leadership cohort: 20 participants vs Executive coaching: 10 sessions -> NO CONFLICT."""
@@ -321,7 +437,7 @@ class TestStageCScopeDeliverableIdentity(unittest.TestCase):
 
 
 class TestStageCCommercialCapNormalization(unittest.TestCase):
-    """Scenario 7: Commercial term cap classification and reconciliation."""
+    """Scenario 8: Commercial term cap classification and reconciliation."""
 
     def test_commercial_topic_classification(self):
         self.assertEqual(classify_commercial_topic("Panel Size", "Maximum panel vendors: 5"), "PANEL_VENDOR_CAP")
@@ -356,7 +472,7 @@ class TestStageCCommercialCapNormalization(unittest.TestCase):
 
 
 class TestStageCSecurityClearancePriority(unittest.TestCase):
-    """Scenario 8: Security clearance classifier priority and contradiction checking."""
+    """Scenario 9: Security clearance classifier priority and contradiction checking."""
 
     def test_top_secret_classified_first(self):
         """Top Secret security clearance required -> TOP_SECRET."""
@@ -366,7 +482,7 @@ class TestStageCSecurityClearancePriority(unittest.TestCase):
 
 
 class TestStageCInsuranceAmountNormalization(unittest.TestCase):
-    """Scenario 9: Monetary amount parsing, year protection, and like-with-like insurance reconciliation."""
+    """Scenario 10: Monetary amount parsing, year protection, and like-with-like insurance reconciliation."""
 
     def test_monetary_amount_extraction(self):
         self.assertEqual(extract_monetary_amount("CGL coverage of $2,000,000"), 2000000.0)
@@ -410,7 +526,7 @@ class TestStageCInsuranceAmountNormalization(unittest.TestCase):
 
 
 class TestStageCSourceValidityAndProvenance(unittest.TestCase):
-    """Scenario 10: Source validity classifications and synthetic reference downgrades."""
+    """Scenario 11: Source validity classifications and synthetic reference downgrades."""
 
     def test_physical_both_when_both_filenames_resolve_to_physical_files(self):
         src_a = {"doc": "RFP.pdf", "text": "2026-09-15"}
@@ -440,8 +556,59 @@ class TestStageCSourceValidityAndProvenance(unittest.TestCase):
         self.assertEqual(conflicts[0]["source_validity"], "PHYSICAL_PARTIAL")
 
 
+class TestStageCPipelineRealisticIntegration(unittest.TestCase):
+    """Scenario 12: Pipeline-realistic end-to-end fact flow from raw document facts through normalization to reconciliation."""
+
+    def test_deliverable_source_identity_survives_normalization_to_reconciliation(self):
+        """Verify deliverable objects tagged in document facts retain source_doc through normalization and Stage C."""
+        doc1_facts = {
+            "doc_metadata": {"title": "SOW Statement of Work"},
+            "deliverables": [
+                {"title": "Leadership Cohorts", "description": "Deliver 20 leadership training cohorts", "source_doc": "SOW_Main.pdf"}
+            ],
+            "requirements": [],
+            "dates": [],
+            "evaluation_criteria": [],
+            "submission_rules": [],
+            "commercial_clauses": []
+        }
+        doc2_facts = {
+            "doc_metadata": {"title": "Pricing & Deliverables Schedule"},
+            "deliverables": [
+                {"title": "Leadership Cohorts", "description": "Deliver 12 leadership training cohorts", "source_doc": "Pricing_Schedule.xlsx"}
+            ],
+            "requirements": [],
+            "dates": [],
+            "evaluation_criteria": [],
+            "submission_rules": [],
+            "commercial_clauses": []
+        }
+
+        pkg_metadata = {
+            "files": ["SOW_Main.pdf", "Pricing_Schedule.xlsx"],
+            "page_counts": {"SOW_Main.pdf": 10},
+            "sheet_names": {"Pricing_Schedule.xlsx": ["Sheet1"]}
+        }
+
+        # Run Stage B normalization
+        normalized = normalize_package_facts([doc1_facts, doc2_facts], pkg_metadata)
+
+        # Verify source_doc preserved on deliverables
+        self.assertEqual(len(normalized["deliverables"]), 2)
+        self.assertEqual(normalized["deliverables"][0]["source_doc"], "SOW_Main.pdf")
+        self.assertEqual(normalized["deliverables"][1]["source_doc"], "Pricing_Schedule.xlsx")
+
+        # Run Stage C reconciliation
+        conflicts = reconcile_package_facts(normalized, pkg_metadata["files"])
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(conflicts[0]["conflict_type"], "SCOPE_CONFLICT")
+        self.assertEqual(conflicts[0]["classification"], "TRUE_CONFLICT")
+        self.assertEqual(conflicts[0]["source_a"]["doc"], "SOW_Main.pdf")
+        self.assertEqual(conflicts[0]["source_b"]["doc"], "Pricing_Schedule.xlsx")
+
+
 class TestBankOfCanadaStageCReplay(unittest.TestCase):
-    """Scenario 11: Replay refined Stage C reconciliation against frozen Bank of Canada normalized facts."""
+    """Scenario 13: Replay refined Stage C reconciliation against frozen Bank of Canada normalized facts."""
 
     def test_bank_of_canada_frozen_replay(self):
         fixture_path = os.path.join(

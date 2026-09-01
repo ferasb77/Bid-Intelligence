@@ -179,24 +179,26 @@ Every candidate conflict is audited against `package_files` via `validate_confli
 ================================================================================
 FULL RC1 + STAGE C TEST SUITE EXECUTION SUMMARY
 ================================================================================
-1. tests/test_stage_c_refinement.py:             29 / 29 PASSED  (0.018s)
+1. tests/test_stage_c_refinement.py:             38 / 38 PASSED  (0.015s)
    • Bank of Canada Regression Tests (A, B, C):   3 / 3 PASSED
-   • Evaluation Criteria Same-Metric Tests:       3 / 3 PASSED
+   • Evaluation Criteria Same-Metric & Regex Tests: 4 / 4 PASSED
    • Mandatory Subject & Role Identity Tests:     4 / 4 PASSED
-   • Source-Aware Opposing Pair Selection Tests:  2 / 2 PASSED
+   • Source-Aware Opposing Pair Selection Tests:  7 / 7 PASSED
+   • Internal Commercial/Insurance/Deliverable Tests: 3 / 3 PASSED
    • Submission Dimension Precedence Tests:       3 / 3 PASSED
    • Scope Deliverable Identity Tests:            2 / 2 PASSED
    • Commercial Cap Normalization Tests:          3 / 3 PASSED
    • Security Clearance Priority Tests:           1 / 1 PASSED
    • Insurance Monetary Normalization Tests:      4 / 4 PASSED
    • Source Validity & Provenance Tests:          3 / 3 PASSED
+   • Pipeline-Realistic Integration Test:         1 / 1 PASSED
    • Frozen Bank of Canada Replay Test:           1 / 1 PASSED
 2. tests/test_streamlined_workflow.py:            27 / 27 PASSED  (0.256s)
 3. tests/integration/test_procurement_package_ingestion.py: 5 / 5 PASSED (1 skipped live AI)
-4. tests/smoke/test_all_pages_runtime.py + live Supabase:  12 / 12 PASSED (69.948s)
+4. tests/smoke/test_all_pages_runtime.py + live Supabase:  12 / 12 PASSED (67.628s)
 ================================================================================
-TOTAL TESTS DISCOVERED:                          74
-TOTAL PASSED:                                    73
+TOTAL TESTS DISCOVERED:                          83
+TOTAL PASSED:                                    82
 TOTAL SKIPPED:                                   1 (Live AI integration smoke)
 TOTAL FAILED / ERRORS:                           0
 ================================================================================
@@ -220,14 +222,14 @@ Documented in detail in: `tests/acceptance/results/STAGE_C_RC1_RECONCILIATION_RE
 
 ```
 ================================================================================
-FINAL VERDICT: READY FOR PR RE-REVIEW
+FINAL VERDICT: READY FOR FINAL PR APPROVAL
 ================================================================================
 Branch fix/stage-c-conflict-reconciliation has passed all deterministic regression
 tests, evaluation metric isolation tests, mandatory subject identity checks,
-source-aware pair selection verifications, submission precedence tests, deliverable
-scope tests, commercial cap tests, live Supabase checks, and the frozen Bank of
-Canada replay.
+source-aware pair selection verifications, internal inconsistency handling for
+envelopes, channels, commercial terms, insurance and deliverables, pipeline-realistic
+integration tests, live Supabase checks, and the frozen Bank of Canada replay.
 
-Ready for PR re-review.
+Ready for final PR approval.
 ================================================================================
 ```
