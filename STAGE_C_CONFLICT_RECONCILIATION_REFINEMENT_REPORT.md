@@ -3,24 +3,24 @@
 **Project:** Bid Intelligence  
 **Branch:** `fix/stage-c-conflict-reconciliation`  
 **Base Commit:** `089546e709500bfc68c265e50e494cad109bc9ae` (Bid Intelligence RC1 on `main`)  
-**Status:** **READY FOR PR REVIEW**
+**Status:** **READY FOR PR RE-REVIEW**
 
 ---
 
 ## 1. Executive Summary
 
-Following the merge of Bid Intelligence RC1 to `main` and subsequent quality reviews, this patch refines the **Stage C Cross-Document Reconciliation Engine** (`extractor.py::detect_document_conflicts` and `extractor.py::reconcile_package_facts`).
+Following the initial PR review for Stage C cross-document reconciliation, this patch remediates all code review findings across `extractor.py::detect_document_conflicts` and `extractor.py::reconcile_package_facts`.
 
-The refinement:
-1. Eliminates false-positive candidate discrepancies identified during the Bank of Canada RFP 2026-026 blind acceptance test.
-2. Implements **opposing source pair selection** (`select_opposing_pair`), ensuring `source_a.text != source_b.text` and displaying the actual contradictory values when 3+ records exist with duplicates.
-3. Introduces mandatory requirement **scope normalization** so differing criteria across distinct service categories (e.g. Category 1 vs Category 2) are recognized as complementary rather than contradictory.
-4. Implements strict priority-ordered **security clearance classification** (`TOP_SECRET` $\rightarrow$ `SECRET` $\rightarrow$ `RELIABILITY`).
-5. Introduces normalized **monetary amount extraction** for commercial insurance limits with safety guards against treating unrelated years (e.g. 2026) as amounts.
-6. Handles **internal document date inconsistencies** as `REVIEW_ITEM`.
-7. Audits conflict citations against physical package files.
+Key remediations implemented:
+1. **Evaluation Criteria — Compare Same Metric Only:** Only compare weights and point allocations when records represent the *same* normalized evaluation metric or criterion identity (overall technical weight, specific criterion identity, e.g., methodology, team experience, corporate track record). Distinct criteria (e.g. Technical Approach 30 pts vs Team Experience 20 pts) are not compared.
+2. **Mandatory Requirement Subject Identity:** Requirements are partitioned not only by operational category/stream scope but also by normalized role/subject identity (`ROLE_PROJECT_MANAGER`, `ROLE_FACILITATOR`, `ROLE_EXECUTIVE_COACH`, `SUBJECT_BIDDER_CORPORATE`, or specific requirement references). Different thresholds for different roles within the same category are recognized as complementary.
+3. **Source-Aware Opposing Pair Selection:** `select_opposing_pair()` enforces that selected opposing records belong to different physical documents (`source_a.doc != source_b.doc`) for cross-document `TRUE_CONFLICT`. If contradictory values exist within the same document, they are isolated as internal inconsistencies (`REVIEW_ITEM`).
+4. **Submission Dimension Precedence:** `PORTAL_REQUIREMENT` patterns (e.g. `"merx registration required"`, `"maintain a MERX account"`) evaluate strictly before generic `SUBMISSION_CHANNEL` patterns (e.g. `"merx"`), avoiding spurious channel conflicts against email-only transmission.
+5. **Scope / Deliverable Identity Normalization:** Deliverables are reconciled like-with-like based on deliverable identity and normalized `(quantity, unit)`. Distinct deliverable types (e.g. Leadership cohort: 20 participants vs Executive coaching: 10 sessions) produce no conflict.
+6. **Panel & Commercial Cap Normalization:** Commercial terms are partitioned by specific commercial topic (`PANEL_VENDOR_CAP`, `RATE_CAP`, `ANNUAL_ESCALATION_CAP`, `CONTRACT_VALUE_CAP`, `INSURANCE_REQUIREMENT`, `OTHER_COMMERCIAL_TERM`). Differing types of commercial caps are not compared against each other.
+7. **Documentation Integrity:** All local Windows file URIs have been removed from committed release documentation.
 
-All changes strictly preserve the RC1 architecture, extraction prompts, submission gating, and database schema (Migration 003) with zero breaking changes.
+All changes strictly preserve the RC1 architecture, extraction prompts, submission gating, and database schema (Migration 003).
 
 ---
 
@@ -36,140 +36,140 @@ During the RC1 blind acceptance test against Bank of Canada RFP 2026-026, 3 cand
 
 ---
 
-## 3. Opposing Source Pair Selection (`select_opposing_pair`)
+## 3. Source-Aware Opposing Pair Selection (`select_opposing_pair`)
 
-In previous implementations, detectors selected `source_a` and `source_b` using the first and last elements (`list[0]` and `list[-1]`). In multi-source packages with 3+ records containing duplicate values (e.g., Doc A: Sep 15, Doc B: Sep 30, Doc C: Sep 15), this could result in `source_a` and `source_b` both displaying `"Sep 15"` even though a contradiction existed in Doc B.
+In multi-source packages with 3+ records containing duplicate values (e.g., Doc A: 10 pages, Doc B: 15 pages, Doc C: 10 pages), detectors must guarantee that `source_a` and `source_b` display differing values AND originate from differing physical documents.
 
-The deterministic helper [`select_opposing_pair()`](file:///C:/Users/feras/Documents/Projects/Bid-Intelligence/extractor.py#L707) groups candidate records by their normalized comparison values and selects two records with differing values:
+The helper in `extractor.py::select_opposing_pair` supports source awareness:
 
 ```python
-def select_opposing_pair(records: list, value_fn) -> tuple | None:
+def select_opposing_pair(
+    records: list,
+    value_fn,
+    source_fn=None,
+    require_different_sources: bool = False
+) -> tuple | None:
     """
     Find two records record_a and record_b such that value_fn(record_a) != value_fn(record_b).
-    Returns (record_a, record_b) or None if fewer than 2 distinct values exist.
+    If require_different_sources=True and source_fn is provided, also enforces source_fn(record_a) != source_fn(record_b).
+    Returns (record_a, record_b) or None if no such pair exists.
     """
 ```
 
-**Applied Across All Detectors:**
-- `DATE_CONFLICT`: Selects records representing differing target dates.
-- `EVALUATION_CONFLICT`: Selects records representing contradictory technical weights.
-- `PAGE_LIMIT`: Selects records representing differing page limit numbers.
-- `MANDATORY_REQUIREMENT_CONFLICT`: Selects records representing differing experience years or clearance levels within the same category.
-- `COMMERCIAL_TERM_CONFLICT`: Selects records representing differing panel caps or insurance limits.
-- `SCOPE_CONFLICT`: Selects records representing differing deliverable/cohort counts.
+**Applied Across All Reconciliation Modules:**
+- `DATE_CONFLICT`: Selects records representing differing dates across distinct documents; same-document date discrepancies are isolated as `REVIEW_ITEM`.
+- `EVALUATION_CONFLICT`: Selects records representing differing weights for the exact same evaluation metric.
+- `PAGE_LIMIT`: Selects records representing differing page limits across distinct files.
+- `MANDATORY_REQUIREMENT_CONFLICT`: Selects records representing differing thresholds for the same role/subject within the same category.
+- `COMMERCIAL_TERM_CONFLICT`: Selects records representing differing caps or insurance limits for the same commercial term.
+- `SCOPE_CONFLICT`: Selects records representing differing deliverable quantities for the same deliverable identity.
 
-For every conflict, `source_a.text != source_b.text` is guaranteed.
+For every cross-document `TRUE_CONFLICT`, `source_a.text != source_b.text` AND `source_a.doc != source_b.doc` are guaranteed.
 
 ---
 
-## 4. Semantic Event Model (Date Classification)
+## 4. Evaluation Criteria — Same Metric Only
 
-Dates extracted in Stage B are classified using priority-ordered regex patterns in `classify_date_milestone()`:
-
-```python
-DATE_EVENT_PATTERNS = [
-    ("QUESTION_DEADLINE", [r"question", r"clarification", r"enquir", r"inquir", r"rfi", r"q&a", ...]),
-    ("INTENT_TO_BID_DATE", [r"intent\s+to\s+bid", r"bid\s+intent", r"confirmation\s+of\s+intent", ...]),
-    ("PUBLICATION_DATE", [r"solicitation\s+publication", r"publication\s+date", r"date\s+issued", ...]),
-    ("AMENDMENT_DATE", [r"amendment\s+no", r"amendment\s+published", r"addendum\s+published", ...]),
-    ("EXPERIENCE_TIMEFRAME", [r"recent\s+engagements", r"experience\s+timeframe", ...]),
-    ("SITE_VISIT_DATE", [r"site\s+visit", r"site\s+walkthrough", r"bidders\s+conference", ...]),
-    ("PRESENTATION_DATE", [r"presentation", r"interview", r"demonstration", r"oral", ...]),
-    ("AWARD_DATE", [r"award", r"selection", r"intent\s+to\s+award", r"notification\s+of\s+award", ...]),
-    ("CONTRACT_START", [r"contract\s+start", r"commencement", r"start\s+date", ...]),
-    ("CONTRACT_END", [r"contract\s+end", r"completion", r"expiry", r"expiration", ...]),
-    ("VALIDITY_DATE", [r"validity", r"valid\s+until", r"proposal\s+valid", ...]),
-    ("SUBMISSION_DEADLINE", [r"submission", r"closing", r"due\s+date", r"rfp\s+due", r"tender\s+close", ...])
-]
-```
+Evaluation criteria are normalized using `_extract_eval_criterion_identity()`:
+- `OVERALL_TECHNICAL_WEIGHT`: Overall technical/financial ratio (e.g. 70/30 vs 75/25, or 75 pts vs 70 pts total technical score).
+- `CRITERION_METHODOLOGY`: Technical approach, methodology, work plan.
+- `CRITERION_TEAM_EXPERIENCE`: Team experience, key personnel, resource qualifications.
+- `CRITERION_CORPORATE_EXPERIENCE`: Firm track record, past performance, company experience.
+- `CRITERION_FINANCIAL_WEIGHT`: Pricing, cost, financial scoring weight.
+- `CRITERION_PRESENTATION_WEIGHT`: Interview, oral presentation, demonstration.
+- `CRITERION_INDIGENOUS_WEIGHT`: Procurement strategy for Indigenous business (PSAB / PSIB).
+- `CRITERION_ESG_WEIGHT`: Sustainability, environmental score.
 
 **Reconciliation Rules:**
-- Dates are only compared when they share the exact same actionable semantic milestone.
-- **Cross-Document Contradiction:** Differing dates across distinct physical documents for the same milestone $\rightarrow$ `classification: TRUE_CONFLICT`.
-- **Same-Document Inconsistency:** Differing dates within the same physical document for the same milestone $\rightarrow$ `classification: REVIEW_ITEM` (reason: internal source inconsistency).
-- Sequential milestones across different events are suppressed.
+- Technical Approach = 30 points vs Team Experience = 20 points $\rightarrow$ `NO CONFLICT` (distinct criteria).
+- Overall Technical Weight = 75% vs Overall Technical Weight = 70% $\rightarrow$ `TRUE_CONFLICT` (same metric).
+- Criterion Methodology = 25 points vs Methodology = 30 points $\rightarrow$ `TRUE_CONFLICT` (same criterion).
 
 ---
 
-## 5. Mandatory Requirement Scope Normalization & Clearance Priority
+## 5. Mandatory Requirement Subject Identity & Clearance Priority
 
-### A. Scope Normalization
-Requirements are partitioned by operational scope using `_extract_requirement_scope()`:
-- `CATEGORY_1`, `CATEGORY_2`, `CATEGORY_3`, `STREAM_1`, `STREAM_2`, `STREAM_3`, or `GENERAL_SCOPE`.
+### A. Scope and Subject Normalization
+Requirements are partitioned by operational scope (`_extract_requirement_scope()`) and role/subject identity (`_extract_requirement_subject()`):
+- **Scopes:** `CATEGORY_1`, `CATEGORY_2`, `CATEGORY_3`, `STREAM_1`, `STREAM_2`, `STREAM_3`, `GENERAL_SCOPE`.
+- **Subjects:** `ROLE_PROJECT_MANAGER`, `ROLE_FACILITATOR`, `ROLE_EXECUTIVE_COACH`, `ROLE_SENIOR_ADVISOR`, `ROLE_CONSULTANT`, `ROLE_INSTRUCTIONAL_DESIGNER`, `SUBJECT_BIDDER_CORPORATE`, or specific requirement references (`REF_M1`, `REF_M2`).
 
-Thresholds (e.g. years of experience or certifications) are only compared when they apply to the **same operational scope**:
-- Category 1 (5 years) vs Category 2 (10 years) $\rightarrow$ `NO CONFLICT` (independent work streams).
-- Category 1 (5 years) vs Category 1 Addendum (10 years) $\rightarrow$ `TRUE CONFLICT` (direct contradiction).
+**Reconciliation Rules:**
+- Category 1 Project Manager (10 yrs) vs Category 1 Facilitator (5 yrs) $\rightarrow$ `NO CONFLICT` (different roles).
+- Category 1 Project Manager (10 yrs) vs Category 1 Addendum Project Manager (7 yrs) $\rightarrow$ `TRUE_CONFLICT` (same role, same category).
+- Project Manager (Secret) vs Consultant (Reliability) $\rightarrow$ `NO CONFLICT` (different roles).
+- Project Manager (Secret) vs Project Manager (Top Secret) $\rightarrow$ `TRUE_CONFLICT` (same role).
 
 ### B. Security Clearance Priority
-Clearance requirements are classified with strict priority:
+Clearance levels are classified using `classify_security_clearance()` with strict priority:
 1. `TOP_SECRET` (checked first)
 2. `SECRET` (checked second)
 3. `RELIABILITY` (checked third)
 
 ---
 
-## 6. Dimension Normalization Model (Submission Rules)
+## 6. Dimension Normalization Model & Precedence (Submission Rules)
 
-Submission rules are classified using `classify_submission_rule_dimension()` into operational dimensions:
+Submission rules are classified using `classify_submission_rule_dimension()` with strict pattern precedence:
 
 1. `ENVELOPE_STRUCTURE`: Separate vs Combined proposal packages.
 2. `PAGE_LIMIT`: Response page caps (excluding per-sample, resume, or profile sub-caps; partitioned by service category).
-3. `SUBMISSION_CHANNEL`: MERX / BuyAndSell portal upload vs Direct Email vs Physical Courier.
-4. `PORTAL_REQUIREMENT`: Vendor registration, e-procurement digital keys.
+3. `PORTAL_REQUIREMENT`: Vendor registration, MERX account setup, digital keys (evaluated *before* generic submission channel patterns).
+4. `SUBMISSION_CHANNEL`: Portal bid upload vs Email submission only vs Physical courier delivery.
 5. `SIGNATURE_REQUIREMENT`: Authorized signing officer, digital signatures.
 6. `FILE_FORMAT`: PDF, DOCX, XLSX, searchable PDF.
 7. `DOCUMENT_REQUIREMENT`: Specific form checklists (Appendix A, ESG questionnaire, Pricing Form).
 
----
-
-## 7. Like-With-Like Commercial & Insurance Normalization
-
-Commercial insurance clauses are categorized using `classify_insurance_class()` into standardized coverage classes:
-- `COMMERCIAL_GENERAL_LIABILITY` (CGL, general liability, comprehensive liability)
-- `PROFESSIONAL_LIABILITY` (E&O, errors and omissions, professional indemnity)
-- `CYBER_LIABILITY` (cyber, data breach, network security)
-- `AUTOMOBILE_LIABILITY` (motor vehicle, fleet)
-- `WORKERS_COMPENSATION` (workers comp, WSIB)
-
-### Monetary Limit Parsing & Year Protection
-Monetary thresholds are extracted via `extract_monetary_amount()`:
-- `$2,000,000` and `$2M including bodily injury` both normalize to `2000000.0` $\rightarrow$ `NO CONFLICT`.
-- `$2M` vs `$5M` within the same insurance class $\rightarrow$ `classification: TRUE_CONFLICT`.
-- Isolated 4-digit integers such as `"Policy effective in 2026"` or `"RFP 2026-026"` are **NOT** normalized as monetary limits.
-- If amounts cannot be reliably parsed but wording varies $\rightarrow$ `classification: REVIEW_ITEM` (no spurious `TRUE_CONFLICT` based purely on prose differences).
+**Reconciliation Rules:**
+- `"MERX registration required"` $\rightarrow$ `PORTAL_REQUIREMENT`.
+- `"MERX registration required"` + `"Submit proposal by email only"` $\rightarrow$ `NO CONFLICT` (portal setup does not contradict email transmission).
+- `"Upload bid through MERX"` + `"Submit proposal by email only"` $\rightarrow$ `TRUE_CONFLICT` (contradictory transmission channels).
 
 ---
 
-## 8. Source Validity & Provenance Grounding Architecture
+## 7. Like-With-Like Commercial Caps & Insurance Normalization
 
-Every candidate conflict or review item is audited against `package_files` via `validate_conflict_source_validity()`:
+### A. Commercial Cap Normalization
+Commercial clauses are classified into standardized topics via `classify_commercial_topic()`:
+- `PANEL_VENDOR_CAP`: Maximum standing offer suppliers or panel awards.
+- `RATE_CAP`: Maximum per diem or hourly rate caps.
+- `ANNUAL_ESCALATION_CAP`: Maximum annual rate increase percentage.
+- `CONTRACT_VALUE_CAP`: Maximum total expenditure or contract ceiling.
+- `INSURANCE_REQUIREMENT`: Commercial insurance coverage.
+- `OTHER_COMMERCIAL_TERM`: General commercial conditions.
 
-* **`PHYSICAL_BOTH`**: Both cited filenames resolve to physical package files in `package_files`. Eligible for `classification: TRUE_CONFLICT`. *(Note: Validates physical filename presence in procurement package; does not perform coordinate-level source_refs validation).*
+**Reconciliation Rules:**
+- Max panel vendors = 5 vs Max annual rate increase = 3% $\rightarrow$ `NO CONFLICT` (differing commercial topics).
+- Max panel vendors = 5 vs Max panel vendors = 8 $\rightarrow$ `TRUE_CONFLICT` (contradictory panel caps).
+
+### B. Insurance Coverage & Monetary Limit Parsing
+Insurance clauses are classified via `classify_insurance_class()` (`COMMERCIAL_GENERAL_LIABILITY`, `PROFESSIONAL_LIABILITY`, `CYBER_LIABILITY`, `AUTOMOBILE_LIABILITY`, `WORKERS_COMPENSATION`).
+- Monetary limits are parsed using `extract_monetary_amount()`: `$2M` and `$2,000,000` both normalize to `2000000.0` $\rightarrow$ `NO CONFLICT`.
+- CGL `$2M` vs CGL `$5M` $\rightarrow$ `TRUE_CONFLICT`.
+- Isolated years (e.g. `"Policy effective in 2026"`, `"RFP 2026-026"`) are protected from being parsed as monetary amounts.
+
+---
+
+## 8. Like-With-Like Deliverable Scope Reconciliation
+
+Deliverables are normalized by identity (`_extract_deliverable_identity()`) and quantity/unit (`_extract_deliverable_quantity()`):
+- `DELIVERABLE_COHORT`: Training cohorts, leadership cohorts.
+- `DELIVERABLE_EXECUTIVE_COACHING`: Executive coaching sessions/hours.
+- `DELIVERABLE_WORKSHOP`: Workshops, seminars.
+- `DELIVERABLE_ADVISORY_REPORT`: Advisory assessments, evaluation reports.
+
+**Reconciliation Rules:**
+- Leadership cohort (20 participants) vs Executive coaching (10 sessions) $\rightarrow$ `NO CONFLICT` (distinct deliverable types).
+- Leadership cohorts (20 cohorts) vs Leadership cohorts (12 cohorts) $\rightarrow$ `TRUE_CONFLICT` (differing quantities for the same deliverable).
+
+---
+
+## 9. Source Validity & Provenance Grounding Architecture
+
+Every candidate conflict is audited against `package_files` via `validate_conflict_source_validity()`:
+* **`PHYSICAL_BOTH`**: Both cited filenames resolve to physical files in `package_files`. Eligible for `classification: TRUE_CONFLICT`.
 * **`PHYSICAL_PARTIAL`**: One source is a physical document and one source is a package-level overview or scope observation. Automatically classified as `classification: REVIEW_ITEM`.
 * **`SYNTHESIZED`**: Neither source is a verified physical file. Automatically downgraded or suppressed.
-
----
-
-## 9. Output Model & Schema Compatibility
-
-The output model maintains 100% backward compatibility with Supabase Migration 003, JSONB columns, and UI pages while adding new rich metadata:
-
-```json
-{
-  "conflict_id": "CONF-DATE-1",
-  "conflict_type": "DATE_CONFLICT",
-  "classification": "TRUE_CONFLICT",
-  "confidence": "HIGH",
-  "reason": "Conflicting dates detected for the same semantic milestone (Submission Deadline) across documents.",
-  "source_validity": "PHYSICAL_BOTH",
-  "topic": "Differing dates for Submission Deadline",
-  "source_a": {"doc": "Main_RFP.pdf", "ref": "Bid Closing Date", "text": "2026-09-15"},
-  "source_b": {"doc": "Addendum_1.pdf", "ref": "Bid Closing Date", "text": "2026-09-30"},
-  "assessment": "Conflicting target dates detected: 2026-09-15, 2026-09-30.",
-  "recommended_action": "Verify if an addendum or revision formally clarifies the authoritative date."
-}
-```
 
 ---
 
@@ -179,23 +179,24 @@ The output model maintains 100% backward compatibility with Supabase Migration 0
 ================================================================================
 FULL RC1 + STAGE C TEST SUITE EXECUTION SUMMARY
 ================================================================================
-1. tests/test_stage_c_refinement.py:             27 / 27 PASSED  (0.014s)
+1. tests/test_stage_c_refinement.py:             29 / 29 PASSED  (0.018s)
    • Bank of Canada Regression Tests (A, B, C):   3 / 3 PASSED
-   • Mandatory Scope Normalization Tests:         2 / 2 PASSED
-   • Security Clearance Priority Tests:           3 / 3 PASSED
-   • Insurance Monetary Normalization Tests:      5 / 5 PASSED
-   • Multi-Source Opposing Pair Selection Tests:  4 / 4 PASSED
-   • Same-Document Date Inconsistency Test:       1 / 1 PASSED
-   • Positive True Conflict Tests (A, B, C, E):   4 / 4 PASSED
-   • Source Validity & Provenance Tests:          4 / 4 PASSED
+   • Evaluation Criteria Same-Metric Tests:       3 / 3 PASSED
+   • Mandatory Subject & Role Identity Tests:     4 / 4 PASSED
+   • Source-Aware Opposing Pair Selection Tests:  2 / 2 PASSED
+   • Submission Dimension Precedence Tests:       3 / 3 PASSED
+   • Scope Deliverable Identity Tests:            2 / 2 PASSED
+   • Commercial Cap Normalization Tests:          3 / 3 PASSED
+   • Security Clearance Priority Tests:           1 / 1 PASSED
+   • Insurance Monetary Normalization Tests:      4 / 4 PASSED
+   • Source Validity & Provenance Tests:          3 / 3 PASSED
    • Frozen Bank of Canada Replay Test:           1 / 1 PASSED
-2. tests/test_streamlined_workflow.py:            27 / 27 PASSED  (0.254s)
-3. tests/integration/test_package_ingestion.py:    5 / 5 PASSED   (1 skipped live AI)
-4. tests/smoke/test_live_supabase_migration_003:   5 / 5 PASSED   (36.616s)
-5. tests/smoke/test_all_pages_runtime.py:          7 / 7 PASSED   (55.601s)
+2. tests/test_streamlined_workflow.py:            27 / 27 PASSED  (0.256s)
+3. tests/integration/test_procurement_package_ingestion.py: 5 / 5 PASSED (1 skipped live AI)
+4. tests/smoke/test_all_pages_runtime.py + live Supabase:  12 / 12 PASSED (69.948s)
 ================================================================================
-TOTAL TESTS DISCOVERED:                          72
-TOTAL PASSED:                                    71
+TOTAL TESTS DISCOVERED:                          74
+TOTAL PASSED:                                    73
 TOTAL SKIPPED:                                   1 (Live AI integration smoke)
 TOTAL FAILED / ERRORS:                           0
 ================================================================================
@@ -208,24 +209,25 @@ TOTAL FAILED / ERRORS:                           0
 Replaying `reconcile_package_facts()` against `tests/acceptance/results/boc_2026_026_normalized_facts.json`:
 
 * **RC1 Pre-Refinement Discrepancies:** 3 candidates (2 false positives, 1 heuristic artifact)
-* **Refined Stage C Discrepancies:** 0 candidates
+* **Refined Stage C Discrepancies:** 0 candidates (`[]`)
 * **Precision Assessment:** **0 known false positives remained in the frozen Bank of Canada replay.**
 
 Documented in detail in: `tests/acceptance/results/STAGE_C_RC1_RECONCILIATION_REPLAY.md`.
 
 ---
 
-## 12. Final Recommendation
+## 12. Final Verdict
 
 ```
 ================================================================================
-FINAL VERDICT: READY FOR PR REVIEW
+FINAL VERDICT: READY FOR PR RE-REVIEW
 ================================================================================
 Branch fix/stage-c-conflict-reconciliation has passed all deterministic regression
-tests, opposing pair selection tests, scope normalization tests, security clearance
-priority verifications, monetary parsing safety tests, provenance audits, live
-Supabase checks, UI runtime executions, and frozen Bank of Canada replay verifications.
+tests, evaluation metric isolation tests, mandatory subject identity checks,
+source-aware pair selection verifications, submission precedence tests, deliverable
+scope tests, commercial cap tests, live Supabase checks, and the frozen Bank of
+Canada replay.
 
-Ready for PR review.
+Ready for PR re-review.
 ================================================================================
 ```

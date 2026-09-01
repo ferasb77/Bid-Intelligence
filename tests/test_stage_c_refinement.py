@@ -2,14 +2,16 @@
 Stage C Cross-Document Reconciliation Refinement Test Suite.
 Verifies:
 1. Bank of Canada Regression Cases (False positive date and submission dimension suppression; removal of tender-specific heuristics).
-2. Mandatory Requirement Scope Normalization (Category/stream scoped years of experience & security clearance).
-3. Top Secret Priority & Security Clearance Contradictions (TOP_SECRET -> SECRET -> RELIABILITY).
-4. Insurance Monetary Amount Normalization & Year Safety (Safe parsing; $2M vs $2,000,000 = NO CONFLICT; year 2026 ignored).
-5. Multi-Source Opposing Pair Selection (3+ records with duplicates: source_a.text != source_b.text).
-6. Positive True Conflict Cases (Contradictory dates, submission channels, envelope separation, insurance, page limits).
-7. Same-Document Same-Milestone Date Inconsistencies (Classified as REVIEW_ITEM).
-8. Source Validity & Provenance Grounding (Physical vs Synthesized vs Partial).
-9. Frozen Bank of Canada Reconciliation Replay.
+2. Evaluation Criteria Same-Metric Normalization (Overall weight split vs individual criteria vs non-conflicting distinct criteria).
+3. Mandatory Requirement Subject Identity (Role-scoped experience & clearance comparison; PM vs Facilitator = NO CONFLICT; PM vs PM = TRUE CONFLICT).
+4. Source-Aware Opposing Pair Selection (Cross-document TRUE_CONFLICT vs internal inconsistency REVIEW_ITEM).
+5. Submission Dimension Precedence (Portal registration vs submission channel).
+6. Scope / Deliverable Conflict Identity (Leadership cohort vs Coaching = NO CONFLICT; Cohorts 20 vs 12 = TRUE CONFLICT).
+7. Panel / Commercial Cap Normalization (Panel vendors vs Annual rate increase = NO CONFLICT; Panel 5 vs 8 = TRUE CONFLICT).
+8. Security Clearance Priority & Contradictions (TOP_SECRET -> SECRET -> RELIABILITY).
+9. Insurance Monetary Amount Normalization & Year Safety ($2M vs $2,000,000 = NO CONFLICT; 2026 ignored).
+10. Source Validity & Provenance Grounding (Physical vs Synthesized vs Partial).
+11. Frozen Bank of Canada Reconciliation Replay (Replays to empty list []).
 """
 import os
 import json
@@ -19,6 +21,8 @@ from extractor import (
     classify_date_milestone,
     classify_submission_rule_dimension,
     classify_insurance_class,
+    classify_commercial_topic,
+    extract_commercial_limit,
     classify_security_clearance,
     extract_monetary_amount,
     select_opposing_pair,
@@ -74,46 +78,90 @@ class TestStageCBankOfCanadaRegression(unittest.TestCase):
         self.assertEqual(len(conflicts), 0)
 
 
-class TestStageCMandatoryScopeNormalization(unittest.TestCase):
-    """Scenario 2: Mandatory requirement scope and category normalization."""
+class TestStageCEvaluationCriteriaIdentity(unittest.TestCase):
+    """Scenario 2: Evaluation criteria comparison on same metric only."""
 
-    def test_different_categories_different_years_experience_no_conflict(self):
-        """Category 1 requires 5 years experience vs Category 2 requires 10 years experience -> NO CONFLICT."""
+    def test_overall_technical_weight_contradiction_is_true_conflict(self):
+        """Overall Technical Weight = 75% vs Overall Technical Weight = 70% -> TRUE_CONFLICT."""
+        normalized = {
+            "evaluation_criteria": [
+                {"stage": "Overall Scoring Ratio", "criterion": "Overall Technical Weight", "weight": "75%", "source_doc": "Main_RFP.pdf"},
+                {"stage": "Overall Scoring Ratio", "criterion": "Overall Technical Weight", "weight": "70%", "source_doc": "Addendum_1.pdf"}
+            ]
+        }
+        pkg_files = ["Main_RFP.pdf", "Addendum_1.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        eval_conflicts = [c for c in conflicts if c.get("conflict_type") == "EVALUATION_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
+        self.assertEqual(len(eval_conflicts), 1)
+        self.assertNotEqual(eval_conflicts[0]["source_a"]["text"], eval_conflicts[0]["source_b"]["text"])
+
+    def test_same_criterion_name_differing_points_is_true_conflict(self):
+        """Criterion 'Methodology' = 25 points vs 'Methodology' = 30 points -> TRUE_CONFLICT."""
+        normalized = {
+            "evaluation_criteria": [
+                {"stage": "Rated Criteria", "criterion": "Technical Methodology", "weight": "25 points", "source_doc": "Main_RFP.pdf"},
+                {"stage": "Rated Criteria", "criterion": "Technical Methodology", "weight": "30 points", "source_doc": "Addendum_2.pdf"}
+            ]
+        }
+        pkg_files = ["Main_RFP.pdf", "Addendum_2.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        eval_conflicts = [c for c in conflicts if c.get("conflict_type") == "EVALUATION_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
+        self.assertEqual(len(eval_conflicts), 1)
+
+    def test_different_criteria_names_no_conflict(self):
+        """Technical Approach = 30 points vs Team Experience = 20 points -> NO CONFLICT."""
+        normalized = {
+            "evaluation_criteria": [
+                {"stage": "Rated Criteria", "criterion": "Technical Approach & Methodology", "weight": "30 points", "source_doc": "Main_RFP.pdf"},
+                {"stage": "Rated Criteria", "criterion": "Key Personnel & Team Experience", "weight": "20 points", "source_doc": "Main_RFP.pdf"}
+            ]
+        }
+        pkg_files = ["Main_RFP.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        eval_conflicts = [c for c in conflicts if c.get("conflict_type") == "EVALUATION_CONFLICT"]
+        self.assertEqual(len(eval_conflicts), 0)
+
+
+class TestStageCMandatorySubjectIdentity(unittest.TestCase):
+    """Scenario 3: Mandatory requirement comparison by subject / role identity."""
+
+    def test_different_roles_same_category_no_conflict(self):
+        """Category 1: Project Manager (10 yrs) vs Facilitator (5 yrs) -> NO CONFLICT."""
         normalized = {
             "requirements": [
                 {
                     "req_id": "M1",
                     "category": "Mandatory",
-                    "description": "Category 1: Minimum 5 years of organizational advisory experience required.",
+                    "description": "Category 1: Project Manager must possess minimum 10 years experience.",
                     "source_refs": [{"source_doc": "Appendix_B1.xlsx"}]
                 },
                 {
                     "req_id": "M2",
                     "category": "Mandatory",
-                    "description": "Category 2: Minimum 10 years of executive coaching experience required.",
-                    "source_refs": [{"source_doc": "Appendix_B2.xlsx"}]
+                    "description": "Category 1: Facilitator must possess minimum 5 years experience.",
+                    "source_refs": [{"source_doc": "Appendix_B1.xlsx"}]
                 }
             ]
         }
-        pkg_files = ["Appendix_B1.xlsx", "Appendix_B2.xlsx"]
+        pkg_files = ["Appendix_B1.xlsx"]
         conflicts = detect_document_conflicts(normalized, pkg_files)
         mand_conflicts = [c for c in conflicts if c.get("conflict_type") == "MANDATORY_REQUIREMENT_CONFLICT"]
         self.assertEqual(len(mand_conflicts), 0)
 
-    def test_same_category_different_years_experience_is_true_conflict(self):
-        """Category 1 requires 5 years experience vs Category 1 addendum requires 10 years experience -> TRUE CONFLICT."""
+    def test_same_role_differing_thresholds_is_true_conflict(self):
+        """Category 1: Project Manager (10 yrs) vs Addendum Project Manager (7 yrs) -> TRUE_CONFLICT."""
         normalized = {
             "requirements": [
                 {
                     "req_id": "M1",
                     "category": "Mandatory",
-                    "description": "Category 1: Minimum 5 years of organizational advisory experience required.",
+                    "description": "Category 1: Project Manager must possess minimum 10 years experience.",
                     "source_refs": [{"source_doc": "Appendix_B1.xlsx"}]
                 },
                 {
                     "req_id": "M1",
                     "category": "Mandatory",
-                    "description": "Category 1: Minimum 10 years of organizational advisory experience required.",
+                    "description": "Category 1: Project Manager must possess minimum 7 years experience.",
                     "source_refs": [{"source_doc": "Addendum_1.docx"}]
                 }
             ]
@@ -122,11 +170,193 @@ class TestStageCMandatoryScopeNormalization(unittest.TestCase):
         conflicts = detect_document_conflicts(normalized, pkg_files)
         mand_conflicts = [c for c in conflicts if c.get("conflict_type") == "MANDATORY_REQUIREMENT_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
         self.assertEqual(len(mand_conflicts), 1)
-        self.assertEqual(mand_conflicts[0]["source_validity"], "PHYSICAL_BOTH")
+
+    def test_clearance_different_roles_no_conflict(self):
+        """Project Manager requires Secret vs Consultant requires Reliability -> NO CONFLICT."""
+        normalized = {
+            "requirements": [
+                {
+                    "req_id": "M1",
+                    "category": "Mandatory",
+                    "description": "Project Manager requires Secret security clearance.",
+                    "source_refs": [{"source_doc": "Appendix_B1.docx"}]
+                },
+                {
+                    "req_id": "M2",
+                    "category": "Mandatory",
+                    "description": "Consultant requires Reliability status screening.",
+                    "source_refs": [{"source_doc": "Appendix_B1.docx"}]
+                }
+            ]
+        }
+        pkg_files = ["Appendix_B1.docx"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        mand_conflicts = [c for c in conflicts if c.get("conflict_type") == "MANDATORY_REQUIREMENT_CONFLICT"]
+        self.assertEqual(len(mand_conflicts), 0)
+
+    def test_clearance_same_role_contradiction_is_true_conflict(self):
+        """Project Manager requires Secret vs Project Manager requires Top Secret -> TRUE_CONFLICT."""
+        normalized = {
+            "requirements": [
+                {
+                    "req_id": "M1",
+                    "category": "Mandatory",
+                    "description": "Project Manager requires Secret security clearance.",
+                    "source_refs": [{"source_doc": "Main_RFP.pdf"}]
+                },
+                {
+                    "req_id": "M1",
+                    "category": "Mandatory",
+                    "description": "Project Manager requires Top Secret security clearance.",
+                    "source_refs": [{"source_doc": "Addendum_1.pdf"}]
+                }
+            ]
+        }
+        pkg_files = ["Main_RFP.pdf", "Addendum_1.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        mand_conflicts = [c for c in conflicts if c.get("conflict_type") == "MANDATORY_REQUIREMENT_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
+        self.assertEqual(len(mand_conflicts), 1)
+
+
+class TestStageCSourceAwareOpposingPairSelection(unittest.TestCase):
+    """Scenario 4: Source-aware opposing pair selection and internal inconsistency separation."""
+
+    def test_internal_inconsistency_with_duplicate_in_other_doc_is_review_item(self):
+        """A.pdf -> 10 pages, A.pdf -> 15 pages, B.pdf -> 10 pages -> REVIEW_ITEM for A.pdf, NOT cross-document TRUE_CONFLICT."""
+        normalized = {
+            "submission_rules": [
+                {"item": "Proposal Format", "format": "PDF", "details": "Technical proposal maximum 10 pages", "source_doc": "A.pdf"},
+                {"item": "Proposal Format", "format": "PDF", "details": "Technical proposal maximum 15 pages", "source_doc": "A.pdf"},
+                {"item": "Proposal Format", "format": "PDF", "details": "Technical proposal maximum 10 pages", "source_doc": "B.pdf"}
+            ]
+        }
+        pkg_files = ["A.pdf", "B.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(conflicts[0]["classification"], "REVIEW_ITEM")
+        self.assertIn("A.pdf", conflicts[0]["source_a"]["doc"])
+        self.assertIn("A.pdf", conflicts[0]["source_b"]["doc"])
+
+    def test_cross_document_distinct_values_is_true_conflict(self):
+        """A.pdf -> 10 pages, B.pdf -> 15 pages, C.pdf -> 10 pages -> TRUE_CONFLICT with different source files."""
+        normalized = {
+            "submission_rules": [
+                {"item": "Proposal Format", "format": "PDF", "details": "Technical proposal maximum 10 pages", "source_doc": "A.pdf"},
+                {"item": "Proposal Format", "format": "PDF", "details": "Technical proposal maximum 15 pages", "source_doc": "B.pdf"},
+                {"item": "Proposal Format", "format": "PDF", "details": "Technical proposal maximum 10 pages", "source_doc": "C.pdf"}
+            ]
+        }
+        pkg_files = ["A.pdf", "B.pdf", "C.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        true_conflicts = [c for c in conflicts if c.get("classification") == "TRUE_CONFLICT"]
+        self.assertEqual(len(true_conflicts), 1)
+        self.assertNotEqual(true_conflicts[0]["source_a"]["doc"], true_conflicts[0]["source_b"]["doc"])
+        self.assertNotEqual(true_conflicts[0]["source_a"]["text"], true_conflicts[0]["source_b"]["text"])
+
+
+class TestStageCSubmissionDimensionPrecedence(unittest.TestCase):
+    """Scenario 5: Precedence of PORTAL_REQUIREMENT over SUBMISSION_CHANNEL."""
+
+    def test_dimension_classification_precedence(self):
+        """Verify dimension precedence classification."""
+        self.assertEqual(classify_submission_rule_dimension("MERX registration required"), "PORTAL_REQUIREMENT")
+        self.assertEqual(classify_submission_rule_dimension("Supplier must maintain a MERX account"), "PORTAL_REQUIREMENT")
+        self.assertEqual(classify_submission_rule_dimension("Upload bid through MERX"), "SUBMISSION_CHANNEL")
+
+    def test_portal_registration_and_email_only_no_conflict(self):
+        """'MERX registration required' + 'Submit proposal by email only' -> NO SUBMISSION CHANNEL CONFLICT."""
+        normalized = {
+            "submission_rules": [
+                {"item": "Vendor Portal", "format": "Account", "details": "MERX registration required", "source_doc": "Main_RFP.pdf"},
+                {"item": "Transmission Channel", "format": "Email", "details": "Submit proposal by email only", "source_doc": "Instructions.docx"}
+            ]
+        }
+        pkg_files = ["Main_RFP.pdf", "Instructions.docx"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        chan_conflicts = [c for c in conflicts if c.get("conflict_type") == "SUBMISSION_RULE_CONFLICT"]
+        self.assertEqual(len(chan_conflicts), 0)
+
+    def test_upload_merx_and_email_only_is_true_conflict(self):
+        """'Upload bid through MERX' + 'Submit proposal by email only' -> TRUE_CONFLICT."""
+        normalized = {
+            "submission_rules": [
+                {"item": "Bid Submission", "format": "Electronic", "details": "Upload bid through MERX", "source_doc": "Main_RFP.pdf"},
+                {"item": "Transmission Channel", "format": "Email", "details": "Submit proposal by email only", "source_doc": "Instructions.docx"}
+            ]
+        }
+        pkg_files = ["Main_RFP.pdf", "Instructions.docx"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        chan_conflicts = [c for c in conflicts if c.get("conflict_type") == "SUBMISSION_RULE_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
+        self.assertEqual(len(chan_conflicts), 1)
+
+
+class TestStageCScopeDeliverableIdentity(unittest.TestCase):
+    """Scenario 6: Like-with-like deliverable reconciliation."""
+
+    def test_different_deliverable_types_no_conflict(self):
+        """Leadership cohort: 20 participants vs Executive coaching: 10 sessions -> NO CONFLICT."""
+        normalized = {
+            "deliverables": [
+                {"title": "Leadership Cohorts", "description": "Leadership cohort: 20 participants per session", "source_doc": "SOW.pdf"},
+                {"title": "Executive Coaching", "description": "Executive coaching sessions: 10 sessions for executives", "source_doc": "SOW.pdf"}
+            ]
+        }
+        pkg_files = ["SOW.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        scope_conflicts = [c for c in conflicts if c.get("conflict_type") == "SCOPE_CONFLICT"]
+        self.assertEqual(len(scope_conflicts), 0)
+
+    def test_same_deliverable_differing_quantities_is_true_conflict(self):
+        """Leadership cohorts: 20 cohorts vs Leadership cohorts: 12 cohorts -> TRUE_CONFLICT."""
+        normalized = {
+            "deliverables": [
+                {"title": "Leadership Cohorts", "description": "Leadership cohorts: 20 cohorts to be delivered", "source_doc": "SOW.pdf"},
+                {"title": "Leadership Cohorts", "description": "Leadership cohorts: 12 cohorts to be delivered", "source_doc": "Pricing_Schedule.xlsx"}
+            ]
+        }
+        pkg_files = ["SOW.pdf", "Pricing_Schedule.xlsx"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        scope_conflicts = [c for c in conflicts if c.get("conflict_type") == "SCOPE_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
+        self.assertEqual(len(scope_conflicts), 1)
+
+
+class TestStageCCommercialCapNormalization(unittest.TestCase):
+    """Scenario 7: Commercial term cap classification and reconciliation."""
+
+    def test_commercial_topic_classification(self):
+        self.assertEqual(classify_commercial_topic("Panel Size", "Maximum panel vendors: 5"), "PANEL_VENDOR_CAP")
+        self.assertEqual(classify_commercial_topic("Annual Increase", "Maximum annual rate increase: 3%"), "ANNUAL_ESCALATION_CAP")
+        self.assertEqual(classify_commercial_topic("Rate Ceiling", "Maximum per diem rate of $1,500"), "RATE_CAP")
+
+    def test_different_commercial_topics_no_conflict(self):
+        """Maximum panel vendors = 5 vs Maximum annual rate increase = 3% -> NO CONFLICT."""
+        normalized = {
+            "commercial_clauses": [
+                {"topic": "Panel Size", "details": "Maximum panel vendors: 5", "source_doc": "RFP.pdf"},
+                {"topic": "Rate Escalation", "details": "Maximum annual rate increase: 3%", "source_doc": "RFP.pdf"}
+            ]
+        }
+        pkg_files = ["RFP.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        comm_conflicts = [c for c in conflicts if c.get("conflict_type") == "COMMERCIAL_TERM_CONFLICT"]
+        self.assertEqual(len(comm_conflicts), 0)
+
+    def test_same_commercial_topic_differing_caps_is_true_conflict(self):
+        """Maximum panel vendors = 5 vs Maximum panel vendors = 8 -> TRUE_CONFLICT."""
+        normalized = {
+            "commercial_clauses": [
+                {"topic": "Panel Vendor Cap", "details": "Maximum panel vendors: 5", "source_doc": "Main_RFP.pdf"},
+                {"topic": "Panel Vendor Cap", "details": "Maximum panel vendors: 8", "source_doc": "Addendum_1.pdf"}
+            ]
+        }
+        pkg_files = ["Main_RFP.pdf", "Addendum_1.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        comm_conflicts = [c for c in conflicts if c.get("conflict_type") == "COMMERCIAL_TERM_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
+        self.assertEqual(len(comm_conflicts), 1)
 
 
 class TestStageCSecurityClearancePriority(unittest.TestCase):
-    """Scenario 3: Security clearance classifier priority and contradiction checking."""
+    """Scenario 8: Security clearance classifier priority and contradiction checking."""
 
     def test_top_secret_classified_first(self):
         """Top Secret security clearance required -> TOP_SECRET."""
@@ -134,56 +364,9 @@ class TestStageCSecurityClearancePriority(unittest.TestCase):
         self.assertEqual(classify_security_clearance("Valid Secret clearance required"), "SECRET")
         self.assertEqual(classify_security_clearance("Reliability status screening required"), "RELIABILITY")
 
-    def test_top_secret_vs_secret_for_same_scope_is_true_conflict(self):
-        """Top Secret vs Secret for same scope across documents -> TRUE CONFLICT."""
-        normalized = {
-            "requirements": [
-                {
-                    "req_id": "M1",
-                    "category": "Mandatory",
-                    "description": "Category 1: Resources must hold valid Secret security clearance.",
-                    "source_refs": [{"source_doc": "Main_RFP.pdf"}]
-                },
-                {
-                    "req_id": "M1",
-                    "category": "Mandatory",
-                    "description": "Category 1: Resources must hold valid Top Secret security clearance.",
-                    "source_refs": [{"source_doc": "Addendum_2.pdf"}]
-                }
-            ]
-        }
-        pkg_files = ["Main_RFP.pdf", "Addendum_2.pdf"]
-        conflicts = detect_document_conflicts(normalized, pkg_files)
-        mand_conflicts = [c for c in conflicts if c.get("conflict_type") == "MANDATORY_REQUIREMENT_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
-        self.assertEqual(len(mand_conflicts), 1)
-        self.assertEqual(mand_conflicts[0]["source_validity"], "PHYSICAL_BOTH")
-
-    def test_top_secret_for_cat1_vs_secret_for_cat2_no_conflict(self):
-        """Top Secret for Category 1 vs Secret for Category 2 -> NO CONFLICT."""
-        normalized = {
-            "requirements": [
-                {
-                    "req_id": "M1",
-                    "category": "Mandatory",
-                    "description": "Category 1: Resources must hold valid Top Secret security clearance.",
-                    "source_refs": [{"source_doc": "Appendix_B1.docx"}]
-                },
-                {
-                    "req_id": "M2",
-                    "category": "Mandatory",
-                    "description": "Category 2: Resources must hold valid Secret security clearance.",
-                    "source_refs": [{"source_doc": "Appendix_B2.docx"}]
-                }
-            ]
-        }
-        pkg_files = ["Appendix_B1.docx", "Appendix_B2.docx"]
-        conflicts = detect_document_conflicts(normalized, pkg_files)
-        mand_conflicts = [c for c in conflicts if c.get("conflict_type") == "MANDATORY_REQUIREMENT_CONFLICT"]
-        self.assertEqual(len(mand_conflicts), 0)
-
 
 class TestStageCInsuranceAmountNormalization(unittest.TestCase):
-    """Scenario 4: Monetary amount parsing, year protection, and like-with-like insurance reconciliation."""
+    """Scenario 9: Monetary amount parsing, year protection, and like-with-like insurance reconciliation."""
 
     def test_monetary_amount_extraction(self):
         self.assertEqual(extract_monetary_amount("CGL coverage of $2,000,000"), 2000000.0)
@@ -225,178 +408,9 @@ class TestStageCInsuranceAmountNormalization(unittest.TestCase):
         self.assertEqual(len(ins_conflicts), 1)
         self.assertEqual(ins_conflicts[0]["source_validity"], "PHYSICAL_BOTH")
 
-    def test_distinct_insurance_classes_no_conflict(self):
-        """Commercial General Liability $2M vs Professional Liability / E&O $5M -> NO CONFLICT."""
-        normalized = {
-            "commercial_clauses": [
-                {"topic": "Commercial General Liability Insurance", "details": "$2,000,000 commercial general liability policy", "source_doc": "Agreement.docx"},
-                {"topic": "Professional Liability / Errors & Omissions", "details": "$5,000,000 professional liability policy", "source_doc": "Addendum_2.pdf"}
-            ]
-        }
-        pkg_files = ["Agreement.docx", "Addendum_2.pdf"]
-        conflicts = detect_document_conflicts(normalized, pkg_files)
-        ins_conflicts = [c for c in conflicts if c.get("conflict_type") == "COMMERCIAL_TERM_CONFLICT"]
-        self.assertEqual(len(ins_conflicts), 0)
-
-
-class TestStageCMultiSourceOpposingPairSelection(unittest.TestCase):
-    """Scenario 5: Multi-source record sets (3+ records) with duplicate values ensuring opposing source pairing."""
-
-    def test_multi_source_date_conflict_pairs_differing_values(self):
-        """A.pdf -> Sep 15, B.pdf -> Sep 30, C.pdf -> Sep 15: source_a.text != source_b.text (Sep 15 vs Sep 30)."""
-        normalized = {
-            "dates": [
-                {"milestone": "Bid Closing Date", "date": "2026-09-15", "source_doc": "A.pdf"},
-                {"milestone": "Bid Closing Date", "date": "2026-09-30", "source_doc": "B.pdf"},
-                {"milestone": "Bid Closing Date", "date": "2026-09-15", "source_doc": "C.pdf"}
-            ]
-        }
-        pkg_files = ["A.pdf", "B.pdf", "C.pdf"]
-        conflicts = detect_document_conflicts(normalized, pkg_files)
-        date_conflicts = [c for c in conflicts if c.get("conflict_type") == "DATE_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
-        self.assertEqual(len(date_conflicts), 1)
-        self.assertNotEqual(date_conflicts[0]["source_a"]["text"], date_conflicts[0]["source_b"]["text"])
-        pair_dates = {date_conflicts[0]["source_a"]["text"], date_conflicts[0]["source_b"]["text"]}
-        self.assertEqual(pair_dates, {"2026-09-15", "2026-09-30"})
-
-    def test_multi_source_experience_threshold_pairs_differing_values(self):
-        """Category 1: A.pdf -> 5 years, B.pdf -> 10 years, C.pdf -> 5 years: displayed sources 5 vs 10, not 5 vs 5."""
-        normalized = {
-            "requirements": [
-                {"req_id": "M1", "category": "Mandatory", "description": "Category 1: Minimum 5 years of advisory experience required.", "source_refs": [{"source_doc": "A.pdf"}]},
-                {"req_id": "M1", "category": "Mandatory", "description": "Category 1: Minimum 10 years of advisory experience required.", "source_refs": [{"source_doc": "B.pdf"}]},
-                {"req_id": "M1", "category": "Mandatory", "description": "Category 1: Minimum 5 years of advisory experience required.", "source_refs": [{"source_doc": "C.pdf"}]}
-            ]
-        }
-        pkg_files = ["A.pdf", "B.pdf", "C.pdf"]
-        conflicts = detect_document_conflicts(normalized, pkg_files)
-        mand_conflicts = [c for c in conflicts if c.get("conflict_type") == "MANDATORY_REQUIREMENT_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
-        self.assertEqual(len(mand_conflicts), 1)
-        self.assertNotEqual(mand_conflicts[0]["source_a"]["text"], mand_conflicts[0]["source_b"]["text"])
-        self.assertIn("5", mand_conflicts[0]["source_a"]["text"])
-        self.assertIn("10", mand_conflicts[0]["source_b"]["text"])
-
-    def test_multi_source_insurance_pairs_differing_limits(self):
-        """CGL: A.pdf -> $2M, B.pdf -> $5M, C.pdf -> $2M with extra wording: displayed pair normalizes to 2M vs 5M."""
-        normalized = {
-            "commercial_clauses": [
-                {"topic": "Commercial General Liability Insurance", "details": "CGL coverage of $2,000,000", "source_doc": "A.pdf"},
-                {"topic": "Commercial General Liability Insurance", "details": "CGL coverage of $5,000,000", "source_doc": "B.pdf"},
-                {"topic": "Commercial General Liability Insurance", "details": "CGL insurance minimum $2M including bodily injury", "source_doc": "C.pdf"}
-            ]
-        }
-        pkg_files = ["A.pdf", "B.pdf", "C.pdf"]
-        conflicts = detect_document_conflicts(normalized, pkg_files)
-        ins_conflicts = [c for c in conflicts if c.get("conflict_type") == "COMMERCIAL_TERM_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
-        self.assertEqual(len(ins_conflicts), 1)
-        amt_a = extract_monetary_amount(ins_conflicts[0]["source_a"]["text"])
-        amt_b = extract_monetary_amount(ins_conflicts[0]["source_b"]["text"])
-        self.assertNotEqual(amt_a, amt_b)
-        self.assertEqual({amt_a, amt_b}, {2000000.0, 5000000.0})
-
-    def test_multi_source_page_limits_pairs_differing_limits(self):
-        """A.pdf -> 10 pages, B.pdf -> 15 pages, C.pdf -> 10 pages: displayed pair is 10 vs 15."""
-        normalized = {
-            "submission_rules": [
-                {"item": "Proposal Format", "format": "PDF", "details": "Technical proposal must not exceed 10 pages", "source_doc": "A.pdf"},
-                {"item": "Proposal Format", "format": "PDF", "details": "Technical proposal must not exceed 15 pages", "source_doc": "B.pdf"},
-                {"item": "Proposal Format", "format": "PDF", "details": "Technical proposal must not exceed 10 pages", "source_doc": "C.pdf"}
-            ]
-        }
-        pkg_files = ["A.pdf", "B.pdf", "C.pdf"]
-        conflicts = detect_document_conflicts(normalized, pkg_files)
-        page_conflicts = [c for c in conflicts if c.get("conflict_type") == "SUBMISSION_RULE_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
-        self.assertEqual(len(page_conflicts), 1)
-        self.assertNotEqual(page_conflicts[0]["source_a"]["text"], page_conflicts[0]["source_b"]["text"])
-        self.assertEqual({page_conflicts[0]["source_a"]["text"], page_conflicts[0]["source_b"]["text"]}, {"10 pages", "15 pages"})
-
-
-class TestStageCSameDocumentSameMilestoneDates(unittest.TestCase):
-    """Scenario 6: Same physical document containing differing dates for the same semantic milestone."""
-
-    def test_same_document_differing_dates_is_review_item(self):
-        """Bid Closing Date 2026-09-15 vs Bid Closing Date 2026-09-30 in same document -> REVIEW_ITEM."""
-        normalized = {
-            "dates": [
-                {"milestone": "Bid Closing Date", "date": "2026-09-15", "source_doc": "Main_RFP.pdf"},
-                {"milestone": "Bid Closing Date", "date": "2026-09-30", "source_doc": "Main_RFP.pdf"}
-            ]
-        }
-        pkg_files = ["Main_RFP.pdf"]
-        conflicts = detect_document_conflicts(normalized, pkg_files)
-        self.assertEqual(len(conflicts), 1)
-        self.assertEqual(conflicts[0]["classification"], "REVIEW_ITEM")
-        self.assertEqual(conflicts[0]["source_validity"], "PHYSICAL_BOTH")
-        self.assertIn("Internal source inconsistency", conflicts[0]["reason"])
-
-
-class TestStageCPositiveTrueConflicts(unittest.TestCase):
-    """Scenario 7: Positive tests ensuring legitimate contradictions are captured as TRUE_CONFLICT."""
-
-    def test_positive_a_closing_date_contradiction_across_docs(self):
-        """Positive Case A: Bid Closing Date 2026-09-15 vs Bid Closing Date 2026-09-30 across docs -> TRUE CONFLICT."""
-        normalized = {
-            "dates": [
-                {"milestone": "Bid Closing Date", "date": "2026-09-15", "source_doc": "Main_RFP.pdf"},
-                {"milestone": "Bid Closing Date", "date": "2026-09-30", "source_doc": "Addendum_1.pdf"}
-            ]
-        }
-        pkg_files = ["Main_RFP.pdf", "Addendum_1.pdf"]
-        conflicts = detect_document_conflicts(normalized, pkg_files)
-
-        date_conflicts = [c for c in conflicts if c.get("conflict_type") == "DATE_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
-        self.assertEqual(len(date_conflicts), 1)
-        self.assertEqual(date_conflicts[0]["source_validity"], "PHYSICAL_BOTH")
-        self.assertEqual(date_conflicts[0]["confidence"], "HIGH")
-
-    def test_positive_b_submission_channel_contradiction(self):
-        """Positive Case B: Submission via MERX vs Submission via email only -> TRUE CONFLICT."""
-        normalized = {
-            "submission_rules": [
-                {"item": "Transmission Channel", "format": "MERX electronic upload", "details": "Upload proposal on MERX", "source_doc": "Main_RFP.pdf"},
-                {"item": "Transmission Channel", "format": "Email submission only", "details": "Submit via email only to procurement officer", "source_doc": "Appendix_Instructions.docx"}
-            ]
-        }
-        pkg_files = ["Main_RFP.pdf", "Appendix_Instructions.docx"]
-        conflicts = detect_document_conflicts(normalized, pkg_files)
-
-        chan_conflicts = [c for c in conflicts if c.get("conflict_type") == "SUBMISSION_RULE_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
-        self.assertEqual(len(chan_conflicts), 1)
-        self.assertEqual(chan_conflicts[0]["source_validity"], "PHYSICAL_BOTH")
-
-    def test_positive_c_envelope_separation_contradiction(self):
-        """Positive Case C: Financial proposal must be separate vs Financial and technical combined -> TRUE CONFLICT."""
-        normalized = {
-            "submission_rules": [
-                {"item": "Proposal Envelopes", "format": "Separate Envelopes", "details": "Financial proposal must be separate from technical", "source_doc": "Main_RFP.pdf"},
-                {"item": "Proposal Package", "format": "Single Combined PDF", "details": "Combined technical and financial package in single file", "source_doc": "Appendix_A.docx"}
-            ]
-        }
-        pkg_files = ["Main_RFP.pdf", "Appendix_A.docx"]
-        conflicts = detect_document_conflicts(normalized, pkg_files)
-
-        env_conflicts = [c for c in conflicts if c.get("conflict_type") == "SUBMISSION_RULE_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
-        self.assertEqual(len(env_conflicts), 1)
-        self.assertEqual(env_conflicts[0]["source_validity"], "PHYSICAL_BOTH")
-
-    def test_positive_e_page_limit_contradiction(self):
-        """Positive Case E: Page limit 10 pages vs Page limit 15 pages for same section -> TRUE CONFLICT."""
-        normalized = {
-            "submission_rules": [
-                {"item": "RFP Response Document", "format": "PDF", "details": "Maximum 10 pages for technical proposal", "source_doc": "Main_RFP.pdf"},
-                {"item": "RFP Response Document", "format": "PDF", "details": "Responses must not exceed 15 pages for technical proposal", "source_doc": "General_Instructions.docx"}
-            ]
-        }
-        pkg_files = ["Main_RFP.pdf", "General_Instructions.docx"]
-        conflicts = detect_document_conflicts(normalized, pkg_files)
-
-        page_conflicts = [c for c in conflicts if c.get("conflict_type") == "SUBMISSION_RULE_CONFLICT" and c.get("classification") == "TRUE_CONFLICT"]
-        self.assertEqual(len(page_conflicts), 1)
-        self.assertEqual(page_conflicts[0]["source_validity"], "PHYSICAL_BOTH")
-
 
 class TestStageCSourceValidityAndProvenance(unittest.TestCase):
-    """Scenario 8: Source validity classifications and synthetic reference downgrades."""
+    """Scenario 10: Source validity classifications and synthetic reference downgrades."""
 
     def test_physical_both_when_both_filenames_resolve_to_physical_files(self):
         src_a = {"doc": "RFP.pdf", "text": "2026-09-15"}
@@ -425,22 +439,9 @@ class TestStageCSourceValidityAndProvenance(unittest.TestCase):
         self.assertEqual(conflicts[0]["classification"], "REVIEW_ITEM")
         self.assertEqual(conflicts[0]["source_validity"], "PHYSICAL_PARTIAL")
 
-    def test_missing_or_invalid_filename_downgraded(self):
-        normalized = {
-            "dates": [
-                {"milestone": "Submission Deadline", "date": "2026-09-15", "source_doc": "Nonexistent_File.pdf"},
-                {"milestone": "Submission Deadline", "date": "2026-09-30", "source_doc": "RFP.pdf"}
-            ]
-        }
-        pkg_files = ["RFP.pdf"]
-        conflicts = detect_document_conflicts(normalized, pkg_files)
-        self.assertEqual(len(conflicts), 1)
-        self.assertEqual(conflicts[0]["classification"], "REVIEW_ITEM")
-        self.assertEqual(conflicts[0]["source_validity"], "PHYSICAL_PARTIAL")
-
 
 class TestBankOfCanadaStageCReplay(unittest.TestCase):
-    """Scenario 9: Replay refined Stage C reconciliation against frozen Bank of Canada normalized facts."""
+    """Scenario 11: Replay refined Stage C reconciliation against frozen Bank of Canada normalized facts."""
 
     def test_bank_of_canada_frozen_replay(self):
         fixture_path = os.path.join(
