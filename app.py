@@ -63,7 +63,6 @@ with st.sidebar:
         "📋  Bids Directory": "all_bids",
         "➕  New Bid Ingestion": "new_bid",
         "📚  Content Library": "content_library",
-        "👥  Team & Resources": "team_roster",
         "📊  Executive View": "exec_dashboard",
         "⚙️  Firm Profile & Settings": "settings_firm",
     }.items():
@@ -109,11 +108,11 @@ with st.sidebar:
 def _deadline_label(bid: dict) -> str:
     """
     Return a deadline label for a bid, suppressing countdown if the bid
-    is already Submitted, Won, or Lost.
+    is already Submitted, Won, Lost, Withdrawn, or No Bid.
     """
     stage = bid.get("stage", "")
-    if stage in ("Submitted", "Won", "Lost"):
-        colour = {"Won": "#27AE60", "Lost": "#C0392B"}.get(stage, "#2471A3")
+    if stage in ("Submitted", "Won", "Lost", "Withdrawn", "No Bid"):
+        colour = {"Won": "#27AE60", "Lost": "#C0392B", "Withdrawn": "#7F8C8D", "No Bid": "#555555"}.get(stage, "#2471A3")
         return f'<span style="color:{colour};font-size:.78rem">✓ {stage}</span>'
     return days_label(days_until(bid.get("submission_deadline")))
 
@@ -124,13 +123,16 @@ def page_dashboard():
     submitted = [b for b in bids if b["stage"] == "Submitted"]
     won       = [b for b in bids if b["stage"] == "Won"]
     lost      = [b for b in bids if b["stage"] == "Lost"]
+    withdrawn = [b for b in bids if b["stage"] == "Withdrawn"]
+    nobid     = [b for b in bids if b["stage"] == "No Bid"]
     urgent    = [b for b in active if (days_until(b.get("submission_deadline")) or 999) <= 14]
 
     c1,c2,c3,c4 = st.columns(4)
     c1.markdown(metric_card("Active Bids", len(active), f"{len(bids)} total"), unsafe_allow_html=True)
     c2.markdown(metric_card("Submitted", len(submitted), "awaiting outcome"), unsafe_allow_html=True)
-    wr = f"{round(len(won)/(len(won)+len(lost))*100)}%" if (won or lost) else "—"
-    c3.markdown(metric_card("Win Rate", wr, f"{len(won)}W / {len(lost)}L"), unsafe_allow_html=True)
+    closed_decided = len(won) + len(lost)
+    wr = f"{round(len(won)/closed_decided*100)}%" if closed_decided else "—"
+    c3.markdown(metric_card("Win Rate", wr, f"{len(won)}W / {len(lost)}L ({len(withdrawn)} Withdrawn)"), unsafe_allow_html=True)
     c4.markdown(metric_card("Deadlines ≤14d", len(urgent), "need attention"), unsafe_allow_html=True)
     st.markdown("")
 
@@ -219,25 +221,54 @@ def page_new_bid():
         return
 
     # Upload
-    st.markdown("### Upload RFP")
-    st.markdown('<div class="info-box">Upload the RFP or tender document. Claude will extract the bid details, deadlines, compliance matrix, and proposal outline automatically.</div>', unsafe_allow_html=True)
-    uploaded = st.file_uploader("Drop RFP here (PDF, DOCX, TXT)", type=["pdf","docx","doc","txt"], label_visibility="collapsed")
-    if uploaded:
-        fb = uploaded.read()
-        st.markdown(f'<div class="info-box">📄 <strong>{uploaded.name}</strong> — {len(fb)//1024} KB ready to extract.</div>', unsafe_allow_html=True)
-        if st.button("🔍  Extract with Claude AI →", use_container_width=True, type="primary"):
+    st.markdown("### Upload Procurement Package")
+    st.markdown(
+        '<div class="info-box">'
+        'Upload your complete procurement package (Main RFP, Appendices, Workbooks, Addenda, or a ZIP archive). '
+        'Supported formats: <strong>PDF, DOCX, XLSX, TXT, ZIP</strong>. Claude will analyze all documents as a unified package, '
+        'reconcile cross-document conflicts, extract the compliance matrix with source traceability, and synthesize the executive Bid Brief.'
+        '</div>',
+        unsafe_allow_html=True
+    )
+    from extractor import extract_procurement_package, unpack_procurement_package
+    uploaded_files = st.file_uploader(
+        "Upload procurement documents or ZIP archive",
+        type=["pdf", "docx", "doc", "xlsx", "xls", "txt", "zip"],
+        accept_multiple_files=True,
+        key="pkg_uploader"
+    )
+
+    if uploaded_files:
+        raw_tuples = [(f.name, f.read()) for f in uploaded_files]
+        pkg_files, pkg_warnings = unpack_procurement_package(raw_tuples)
+
+        if pkg_warnings:
+            for w in pkg_warnings:
+                st.markdown(f'<div class="warn-box">⚠️ {w}</div>', unsafe_allow_html=True)
+
+        st.markdown(
+            f'<div style="background:#111118;border:1px solid #292832;border-radius:6px;padding:.8rem 1.1rem;margin-bottom:.8rem">'
+            f'<strong>📦 Procurement Package Loaded:</strong> {len(pkg_files)} supported file(s) ready to extract.'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+        for fn, fb in pkg_files:
+            st.markdown(f'<span style="font-size:.78rem;color:#A9A69D">📄 <strong>{fn}</strong> ({len(fb)//1024} KB)</span>', unsafe_allow_html=True)
+
+        st.markdown("")
+        if st.button("🔍 Analyze Complete Package with Claude AI →", use_container_width=True, type="primary"):
             if not st.session_state.get("anthropic_api_key"):
                 st.error("Add your Anthropic API key first.")
             else:
-                with st.spinner("Reading RFP and extracting structure… 15–30 seconds"):
+                with st.spinner(f"Reading and reconciling {len(pkg_files)} procurement document(s)… 20–40s"):
                     try:
-                        result, model_used = extract_rfp(fb, uploaded.name, st.session_state["anthropic_api_key"])
+                        result, model_used = extract_procurement_package(pkg_files, st.session_state["anthropic_api_key"])
                         st.session_state["extraction"] = result
-                        st.session_state["extraction_file"] = {"bytes": fb, "name": uploaded.name}
+                        st.session_state["extraction_pkg_files"] = pkg_files
                         st.session_state["model_used"] = model_used
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Extraction failed: {e}")
+                        st.error(f"Package extraction failed: {e}")
                         st.markdown('<div class="warn-box">Check that your Anthropic API key is valid (starts with sk-ant-).</div>', unsafe_allow_html=True)
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
@@ -262,22 +293,34 @@ def page_new_bid():
                     bid_id = create_bid({"title":title,"client":client,"file_number":file_no,
                         "stage":stage,"sensitivity":sens,"owner":owner,"value_cad":val or None,
                         "submission_deadline":sub_dl or None,"clarification_deadline":clar_dl or None,"notes":notes})
-                    go("bid_overview", bid_id)
+                    go("stage_understand", bid_id)
                 else:
                     st.error("Title and Client required.")
 
 def _render_extraction_review():
     extracted = st.session_state["extraction"]
-    fb        = st.session_state["extraction_file"]["bytes"]
-    fname     = st.session_state["extraction_file"]["name"]
-    model_used= st.session_state.get("model_used","claude-sonnet-4-6")
+    pkg_files = st.session_state.get("extraction_pkg_files", [])
+    model_used= st.session_state.get("model_used","claude-haiku-4-5-20251001")
     bid   = extracted.get("bid",{})
+    brief = extracted.get("brief",{})
     reqs  = extracted.get("requirements",[])
     docs  = extracted.get("documents",[])
     secs  = extracted.get("outline",[])
+    conflicts = brief.get("document_conflicts", [])
 
-    st.markdown("## Review Extracted Information")
-    st.markdown(f'<div class="info-box">Extracted using <strong>{model_used}</strong>. Review and edit, then click <strong>Create Bid</strong>.</div>', unsafe_allow_html=True)
+    st.markdown("## Review Extracted Package Intelligence")
+    st.markdown(f'<div class="info-box">Synthesized from <strong>{len(pkg_files)} document(s)</strong> using <strong>{model_used}</strong>. Review and edit before creating bid.</div>', unsafe_allow_html=True)
+
+    if conflicts:
+        st.markdown("### ⚠️ Cross-Document Discrepancies Detected")
+        for dc in conflicts:
+            st.markdown(
+                f'<div class="warn-box">'
+                f'<strong>[{dc.get("conflict_type","CONFLICT")}] {dc.get("topic","Discrepancy")}</strong>'
+                f'<br>{dc.get("assessment","")}'
+                f'</div>',
+                unsafe_allow_html=True
+            )
 
     st.markdown("### Bid Details")
     c1,c2 = st.columns(2)
@@ -324,29 +367,41 @@ def _render_extraction_review():
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
     c1,c2 = st.columns([2,1])
-    if c1.button("✅  Create Bid with Extracted Data", use_container_width=True, type="primary"):
+    if c1.button("✅  Create Bid with Extracted Package", use_container_width=True, type="primary"):
         if not title or not client:
             st.error("Title and Client are required.")
             return
         bid_id = create_bid({"title":title,"client":client,"file_number":file_no,
             "stage":stage,"sensitivity":sens,"owner":owner,"value_cad":val or None,
             "submission_deadline":sub_dl or None,"clarification_deadline":clar_dl or None,"notes":notes})
-        save_upload(bid_id, fname, fb)
+        
+        # Save all package files
+        for fn, fb in pkg_files:
+            save_upload(bid_id, fn, fb)
+            
         brief_data = extracted.get("brief") or {}
         brief_data["bid_id"] = bid_id
         upsert_bid_brief(brief_data)
         for r in reqs:
-            upsert_requirement({**r,"id":None,"bid_id":bid_id,"notes":r.get("notes") or ""})
+            upsert_requirement({
+                **r,
+                "id": None,
+                "bid_id": bid_id,
+                "qual_status": r.get("qual_status", "UNKNOWN"),
+                "evidence_status": r.get("evidence_status", "MISSING"),
+                "source_refs": r.get("source_refs", []),
+                "notes": r.get("notes") or ""
+            })
         for d in docs:
             upsert_document({**d,"id":None,"bid_id":bid_id,"file_path":None})
         for s in secs:
             upsert_section({**s,"id":None,"bid_id":bid_id})
         st.session_state["extraction"] = None
-        st.session_state["extraction_file"] = None
+        st.session_state["extraction_pkg_files"] = None
         go("stage_understand", bid_id)
     if c2.button("✕  Start Over", use_container_width=True):
         st.session_state["extraction"] = None
-        st.session_state["extraction_file"] = None
+        st.session_state["extraction_pkg_files"] = None
         st.rerun()
 
 # ═════════════════════════════════════════════════════════════════════════════

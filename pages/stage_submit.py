@@ -109,6 +109,23 @@ def page_submit(bid_id: int):
     chk3 = st.checkbox("All formal tender addenda and Q&A bulletins acknowledged", value=True)
     chk4 = st.checkbox("Authorized executive sign-off confirmed", value=True)
 
+    # ── CRITICAL BLOCKER AGGREGATION ──────────────────────────────────────────
+    critical_blockers = []
+    if m_fail > 0:
+        critical_blockers.append(f"{m_fail} Mandatory Qualification Gate(s) marked as FAIL")
+    if m_unknown > 0:
+        critical_blockers.append(f"{m_unknown} Mandatory Qualification Gate(s) remain UNKNOWN (Unverified)")
+    if docs_missing > 0:
+        critical_blockers.append(f"{docs_missing} Required Submission Document(s) missing or not uploaded")
+    if not chk1:
+        critical_blockers.append("Technical/Financial proposal separation verification unchecked")
+    if not chk2:
+        critical_blockers.append("Mandatory qualification criteria confirmation unchecked")
+    if not chk3:
+        critical_blockers.append("Tender addenda & bulletins acknowledgement unchecked")
+    if not chk4:
+        critical_blockers.append("Executive sign-off confirmation unchecked")
+
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
     # ── FORMAL SUBMISSION ACTION ──────────────────────────────────────────────
@@ -125,18 +142,37 @@ def page_submit(bid_id: int):
             st.session_state.page = "stage_debrief"
             st.rerun()
     else:
-        st.markdown(
-            '<div style="font-size:.82rem;color:#A9A69D;margin-bottom:.8rem">'
-            'Once you have uploaded or emailed the proposal package through the official procurement portal, '
-            'mark this bid as officially submitted to lock proposal status and activate the post-submission debrief.'
-            '</div>',
-            unsafe_allow_html=True
-        )
-        if st.button("✅ Mark Bid as Officially Submitted", use_container_width=True, type="primary", key="btn_mark_sub"):
-            update_bid(bid_id, {
-                **bid,
-                "stage": "Submitted"
-            })
-            st.success("Bid officially marked as Submitted!")
-            st.session_state.page = "stage_debrief"
-            st.rerun()
+        if critical_blockers:
+            st.markdown(
+                f'<div class="warn-box" style="border-left:4px solid #C0392B">'
+                f'⛔ <strong>SUBMISSION BLOCKED:</strong> The following {len(critical_blockers)} critical issue(s) prevent official submission:'
+                f'<ul style="margin-top:.4rem;margin-bottom:0;padding-left:1.2rem">'
+                + "".join(f"<li>{cb}</li>" for cb in critical_blockers) +
+                f'</ul>'
+                f'<div style="font-size:.78rem;color:#A9A69D;margin-top:.5rem">All mandatory blockers, missing documents, and verifications must be satisfied before submission can be executed.</div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+            st.button("🔒 Submission Blocked (Resolve Gates Above)", disabled=True, use_container_width=True, key="btn_mark_sub_disabled")
+        else:
+            st.markdown(
+                '<div class="success-box">'
+                '✅ <strong>ALL GATES CLEARED:</strong> All mandatory requirements are verified, required submission files are uploaded, and final confirmations are checked.'
+                '</div>',
+                unsafe_allow_html=True
+            )
+            st.markdown(
+                '<div style="font-size:.82rem;color:#A9A69D;margin-bottom:.8rem">'
+                'Once you have uploaded or emailed the proposal package through the official procurement portal, '
+                'mark this bid as officially submitted to lock proposal status and activate the post-submission debrief.'
+                '</div>',
+                unsafe_allow_html=True
+            )
+            if st.button("✅ Mark Bid as Officially Submitted", use_container_width=True, type="primary", key="btn_mark_sub"):
+                update_bid(bid_id, {
+                    **bid,
+                    "stage": "Submitted"
+                })
+                st.success("Bid officially marked as Submitted!")
+                st.session_state.page = "stage_debrief"
+                st.rerun()

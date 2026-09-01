@@ -21,13 +21,28 @@ def page_settings_firm():
         unsafe_allow_html=True
     )
 
-    profile = get_firm_profile()
+    # Display Unconfigured Notice if key fields are empty
+    unconfigured = []
+    if not profile.get("core_capabilities"): unconfigured.append("Core Capabilities")
+    if not profile.get("certifications"): unconfigured.append("Certifications & Accreditations")
+    if not profile.get("languages"): unconfigured.append("Languages Supported")
+    if not profile.get("insurance_defaults"): unconfigured.append("Insurance Defaults")
+    if not profile.get("locations"): unconfigured.append("Operating Locations")
+    if not profile.get("key_sectors"): unconfigured.append("Key Sectors")
+
+    if unconfigured:
+        st.markdown(
+            f'<div class="warn-box">⚠️ <strong>Unconfigured Fields:</strong> {", ".join(unconfigured)} are currently unconfigured. '
+            'Please fill them in below to enable accurate AI fit assessment without false assumptions.</div>',
+            unsafe_allow_html=True
+        )
 
     with st.form("firm_profile_form"):
         st.markdown("### 🏢 Organization Identity")
         c1, c2 = st.columns(2)
         company_name = c1.text_input("Bidding Entity / Company Name *", value=profile.get("company_name", "Enable My Growth"))
-        locations = c2.text_input("Primary Operating Locations / Jurisdictions", value=profile.get("locations", "Canada, International"))
+        locations = c2.text_input("Primary Operating Locations / Jurisdictions", value=profile.get("locations", ""),
+                                 placeholder="e.g. Canada, International, United States...")
 
         overview = st.text_area("Corporate Overview & Value Proposition", value=profile.get("overview", ""), height=80,
                                 placeholder="Describe your firm's core focus, history, and client value proposition...")
@@ -37,19 +52,21 @@ def page_settings_firm():
                                placeholder="e.g. Strategic advisory, program delivery, technology enablement, change management...")
 
         c_s1, c_s2 = st.columns(2)
-        key_sectors = c_s1.text_input("Key Sectors / Client Domains", value=profile.get("key_sectors", "Public Sector, Healthcare, Financial Services, Non-Profit"))
-        languages = c_s2.text_input("Languages Supported", value=profile.get("languages", "English, French"))
+        key_sectors = c_s1.text_input("Key Sectors / Client Domains", value=profile.get("key_sectors", ""),
+                                      placeholder="e.g. Public Sector, Healthcare, Financial Services, Non-Profit...")
+        languages = c_s2.text_input("Languages Supported", value=profile.get("languages", ""),
+                                    placeholder="e.g. English, French...")
 
         st.markdown("### 🛡️ Credentials, Clearances & Insurance Defaults")
         c_c1, c_c2 = st.columns(2)
         certs = c_c1.text_area("Certifications, Accreditations & Designations", value=profile.get("certifications", ""), height=70,
-                               placeholder="e.g. ISO 9001, CMC, PMI, PMP, Security Clearances...")
+                               placeholder="e.g. ISO 9001, CMC, PMI, PMP, Security Clearances (leave blank if none)...")
         ins = c_c2.text_area("Standard Insurance Coverage & Limits", value=profile.get("insurance_defaults", ""), height=70,
                              placeholder="e.g. Commercial General Liability $5,000,000 | Professional E&O $2,000,000...")
 
         st.markdown("### 🤖 Ethical AI Usage & Disclosure Policy")
         ai_pol = st.text_area("AI Transparency & Disclosure Statement", value=profile.get("ai_disclosure_policy", ""), height=60,
-                             placeholder="Standard disclosure for tender submissions regarding ethical AI usage...")
+                             placeholder="Standard disclosure template for tender submissions regarding ethical AI usage...")
 
         if st.form_submit_button("Save Firm Profile", use_container_width=True, type="primary"):
             save_firm_profile({

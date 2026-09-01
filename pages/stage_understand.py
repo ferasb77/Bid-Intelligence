@@ -107,6 +107,36 @@ def page_understand(bid_id: int):
     k4.markdown(metric_card("Procurement Model", proc_model[:22], f"Lead: {bid.get('owner') or 'Unassigned'}"), unsafe_allow_html=True)
     st.markdown("")
 
+    # ── SECTION A0: CROSS-DOCUMENT CONFLICTS & DISCREPANCIES ──────────────────
+    document_conflicts = _ensure_list(brief_row.get("document_conflicts"))
+    if document_conflicts:
+        st.markdown("### ⚠️ Document Discrepancies & Cross-Document Conflicts")
+        st.markdown(
+            '<div class="warn-box">'
+            '<strong>Discrepancies Detected Across Procurement Package:</strong> Contradictions or differing instructions were identified between source documents. '
+            'Review these discrepancies and submit formal clarification questions before the enquiry deadline.'
+            '</div>',
+            unsafe_allow_html=True
+        )
+        for dc in document_conflicts:
+            s_a = dc.get("source_a", {}) if isinstance(dc.get("source_a"), dict) else {"doc": "Source A", "text": str(dc.get("source_a",""))}
+            s_b = dc.get("source_b", {}) if isinstance(dc.get("source_b"), dict) else {"doc": "Source B", "text": str(dc.get("source_b",""))}
+            st.markdown(
+                f'<div style="background:#1A0F00;border:1px solid #3A2A00;border-left:4px solid #C0392B;'
+                f'border-radius:0 4px 4px 0;padding:.7rem 1.1rem;margin:.4rem 0">'
+                f'<span style="color:#C0392B;font-weight:700;font-size:.76rem">[{dc.get("conflict_type","CONFLICT")}]</span> '
+                f'<strong>{dc.get("topic","Discrepancy")}</strong>'
+                f'<div style="font-size:.8rem;color:#EDEAE3;margin-top:.3rem">'
+                f'<strong>Source A ({s_a.get("doc","Doc A")}):</strong> {s_a.get("text","")}<br>'
+                f'<strong>Source B ({s_b.get("doc","Doc B")}):</strong> {s_b.get("text","")}'
+                f'</div>'
+                f'<div style="font-size:.76rem;color:#E67E22;margin-top:.3rem"><strong>Assessment:</strong> {dc.get("assessment","")}</div>'
+                f'<div style="font-size:.76rem;color:#27AE60;margin-top:.2rem">💡 <strong>Action:</strong> {dc.get("recommended_action","Submit clarification question")}</div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+        st.markdown("")
+
     # ── SECTION A: EXECUTIVE SUMMARY ──────────────────────────────────────────
     st.markdown("### 💡 Executive Synthesis: What Is the Buyer Procuring?")
     st.markdown(
@@ -161,7 +191,25 @@ def page_understand(bid_id: int):
         unsafe_allow_html=True
     )
 
-    if qual_gates:
+    from components.ui import qual_badge, evidence_badge
+    mand_canonical = [r for r in reqs if r.get("category") == "Mandatory"]
+    if mand_canonical:
+        for idx, r in enumerate(mand_canonical, 1):
+            ref_str = f' <span style="font-size:.72rem;color:#6E6C66">({r.get("rfso_ref","Gate")})</span>' if r.get("rfso_ref") else ""
+            q_status = r.get("qual_status", "UNKNOWN")
+            e_status = r.get("evidence_status", "MISSING")
+            st.markdown(
+                f'<div style="background:#1A0F00;border:1px solid #3A2A00;border-left:3px solid #E67E22;'
+                f'border-radius:0 4px 4px 0;padding:.6rem 1rem;margin:.35rem 0;font-size:.85rem">'
+                f'<div style="display:flex;justify-content:space-between;align-items:center">'
+                f'<span style="color:#E67E22;font-weight:700">GATE #{idx} [{r.get("req_id","M")}]</span>'
+                f'<span>{qual_badge(q_status)} {evidence_badge(e_status)}</span>'
+                f'</div>'
+                f'<div style="margin-top:.2rem;color:#EDEAE3">{r.get("description","")}{ref_str}</div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+    elif qual_gates:
         for idx, g in enumerate(qual_gates, 1):
             ref_str = f' <span style="font-size:.72rem;color:#6E6C66">({g.get("rfp_ref","Ref")})</span>' if g.get("rfp_ref") else ""
             st.markdown(

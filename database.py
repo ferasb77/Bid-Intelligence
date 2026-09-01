@@ -76,26 +76,50 @@ def get_requirements(bid_id):
 
 def upsert_requirement(data):
     sb = get_client()
+    import json
+    keys_with_integrity = ["req_id","category","description","rfso_ref","weight",
+                           "evidence","owner","deadline","status","notes",
+                           "qual_status","gap_action","qual_notes",
+                           "evidence_status","source_refs"]
     keys_with_qual = ["req_id","category","description","rfso_ref","weight",
                       "evidence","owner","deadline","status","notes",
                       "qual_status","gap_action","qual_notes"]
     keys_basic = ["req_id","category","description","rfso_ref","weight",
                   "evidence","owner","deadline","status","notes"]
 
+    def _format_payload(keys):
+        clean = {}
+        for k in keys:
+            if k in data:
+                v = data.get(k)
+                if k == "source_refs" and isinstance(v, (list, dict)):
+                    clean[k] = json.dumps(v)
+                else:
+                    clean[k] = v
+        return clean
+
     def _do_upsert(keys):
+        clean = _format_payload(keys)
         if data.get("id"):
-            clean = {k: data.get(k) for k in keys if k in data}
             sb.table("requirements").update(clean).eq("id", data["id"]).execute()
         else:
-            clean = {k: data.get(k) for k in ["bid_id"] + keys if k in data or k == "bid_id"}
+            if "bid_id" in data:
+                clean["bid_id"] = data["bid_id"]
             sb.table("requirements").insert(clean).execute()
 
     try:
-        _do_upsert(keys_with_qual)
+        _do_upsert(keys_with_integrity)
     except Exception as e:
         err = str(e).lower()
-        if "column" in err or "schema" in err or "qual_" in err or "gap_action" in err or "pgrst" in err:
-            _do_upsert(keys_basic)
+        if any(w in err for w in ["column", "schema", "evidence_status", "source_refs", "pgrst"]):
+            try:
+                _do_upsert(keys_with_qual)
+            except Exception as e2:
+                err2 = str(e2).lower()
+                if any(w in err2 for w in ["column", "schema", "qual_", "gap_action", "pgrst"]):
+                    _do_upsert(keys_basic)
+                else:
+                    raise
         else:
             raise
 
@@ -436,7 +460,8 @@ def upsert_bid_brief(data: dict) -> None:
     keys = ["bid_id", "executive_summary", "opportunity_type", "contract_term",
             "procurement_model", "scope_categories", "deliverables_summary",
             "qualification_gates", "evaluation_breakdown", "commercial_structure",
-            "contract_risks", "submission_requirements", "key_dates", "source_citations"]
+            "contract_risks", "submission_requirements", "key_dates", "source_citations",
+            "document_conflicts"]
     
     clean = {}
     for k in keys:
@@ -453,8 +478,16 @@ def upsert_bid_brief(data: dict) -> None:
         else:
             sb.table("bid_briefs").insert(clean).execute()
     except Exception:
-        # Table might not be created yet in older Supabase instances
-        pass
+        # If document_conflicts column missing, fallback without it
+        try:
+            clean_fallback = {k: v for k, v in clean.items() if k != "document_conflicts"}
+            existing = _one(sb.table("bid_briefs").select("id").eq("bid_id", data["bid_id"]).execute())
+            if existing:
+                sb.table("bid_briefs").update(clean_fallback).eq("id", existing["id"]).execute()
+            else:
+                sb.table("bid_briefs").insert(clean_fallback).execute()
+        except Exception:
+            pass
 
 
 # ── Bid Decisions ─────────────────────────────────────────────────────────────
@@ -474,33 +507,39 @@ def save_bid_decision(data: dict) -> None:
     import json
     keys = ["bid_id", "ai_recommendation", "ai_confidence", "overall_score",
             "dimension_scores", "hard_blockers", "conditions", "win_themes",
-            "red_flags", "human_decision", "override_reason", "decided_by"]
+            "red_flags", "human_decision", "override_reason", "decided_by", "decided_at"]
     
     clean = {}
     for k in keys:
-        v = data.get(k)
-        if isinstance(v, (list, dict)):
-            clean[k] = json.dumps(v)
-        else:
-            clean[k] = v
+        if k in data:
+            v = data.get(k)
+            if isinstance(v, (list, dict)):
+                clean[k] = json.dumps(v)
+            else:
+                clean[k] = v
 
     try:
         sb.table("bid_decisions").insert(clean).execute()
     except Exception:
-        pass
+        # Fallback if decided_at column is not yet present
+        try:
+            clean_fallback = {k: v for k, v in clean.items() if k != "decided_at"}
+            sb.table("bid_decisions").insert(clean_fallback).execute()
+        except Exception:
+            pass
 
 
 # ── Firm Profile ──────────────────────────────────────────────────────────────
 DEFAULT_FIRM_PROFILE = {
     "company_name": "Enable My Growth",
-    "overview": "Specialized consulting and strategic advisory firm delivering high-impact executive, organizational, and technical transformation programs.",
-    "core_capabilities": "Strategic advisory, executive leadership development, organizational design, program delivery, technology enablement, change management.",
-    "key_sectors": "Public Sector, Healthcare, Financial Services, Energy, Non-Profit, Technology.",
-    "languages": "English, French, Arabic",
-    "locations": "Canada, International",
-    "certifications": "ISO 9001, CMC, PMI, PMP, ICF Accredited Practitioners, Professional Engineering",
-    "insurance_defaults": "Commercial General Liability $5,000,000 | Professional Errors & Omissions $2,000,000",
-    "ai_disclosure_policy": "Ethical and transparent AI assistance in research and drafting with rigorous human validation and privacy safeguards.",
+    "overview": "",
+    "core_capabilities": "",
+    "key_sectors": "",
+    "languages": "",
+    "locations": "",
+    "certifications": "",
+    "insurance_defaults": "",
+    "ai_disclosure_policy": "[TEMPLATE — NOT CONFIGURED] Transparent and governed AI assistance with mandatory human accountable review, strict confidentiality safeguards, and zero client data retention for model training.",
 }
 
 def get_firm_profile() -> dict:

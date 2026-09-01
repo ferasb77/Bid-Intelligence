@@ -9,14 +9,15 @@ Answers:
 """
 import json
 import streamlit as st
+from datetime import datetime
 from database import (get_bid, get_requirements, upsert_requirement,
                       get_clarifications, upsert_clarification, delete_clarification,
                       get_bid_decision, save_bid_decision, get_firm_profile,
-                      update_bid)
+                      get_bid_brief, update_bid)
 from analyst import generate_clarification_questions, bid_no_bid_score
 from config import api_key_configured
-from components.ui import (qual_badge, decision_badge, days_until, days_label,
-                           metric_card, QUAL_STATUSES, CATEGORIES)
+from components.ui import (qual_badge, evidence_badge, decision_badge, days_until, days_label,
+                           metric_card, QUAL_STATUSES, EVIDENCE_STATUSES, CATEGORIES)
 
 
 def page_decide(bid_id: int):
@@ -29,13 +30,16 @@ def page_decide(bid_id: int):
     clars = get_clarifications(bid_id)
     latest_decision = get_bid_decision(bid_id)
     firm_profile = get_firm_profile()
+    brief_row = get_bid_brief(bid_id) or {}
 
     st.markdown('<div style="font-size:.72rem;color:#C9A96E;text-transform:uppercase;letter-spacing:.12em;font-weight:600">STAGE 2 · DECIDE</div>', unsafe_allow_html=True)
-    c1, c2 = st.columns([4, 1.2])
+    c1, c2 = st.columns([3.8, 1.4])
     c1.markdown(f"# Qualification & Bid Decision")
     c1.markdown(f'<div style="font-size:1rem;color:#A9A69D">{bid["client"]} — {bid["title"]}</div>', unsafe_allow_html=True)
     if latest_decision and latest_decision.get("human_decision"):
         c2.markdown(f'<div style="text-align:right;padding-top:.5rem">{decision_badge(latest_decision["human_decision"])}</div>', unsafe_allow_html=True)
+    else:
+        c2.markdown('<div style="text-align:right;padding-top:.7rem"><span style="background:#111118;border:1px solid #353129;color:#A9A69D;padding:.3rem .7rem;border-radius:4px;font-size:.78rem;font-weight:600">Decision: Not Yet Recorded</span></div>', unsafe_allow_html=True)
 
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
 
@@ -113,13 +117,13 @@ def page_decide(bid_id: int):
         if not filtered_reqs:
             st.markdown('<div class="empty-state">No requirements match the selected filter.</div>', unsafe_allow_html=True)
         else:
-            hcols = st.columns([0.8, 0.9, 3.2, 1.3, 1.8, 1.6, 0.6])
-            for h, hc in zip(["ID", "Category", "Requirement & Ref", "Our Status", "Evidence / Capability", "Gap / Action", ""], hcols):
+            hcols = st.columns([0.7, 0.9, 2.8, 1.2, 1.3, 1.6, 1.5, 0.5])
+            for h, hc in zip(["ID", "Category", "Requirement & Ref", "Qualification", "Evidence Readiness", "Evidence Details", "Gap / Action", ""], hcols):
                 hc.markdown(f'<span style="font-size:.68rem;color:#6E6C66;font-weight:700;text-transform:uppercase">{h}</span>', unsafe_allow_html=True)
             st.markdown('<hr class="section-divider" style="margin:.2rem 0">', unsafe_allow_html=True)
 
             for req in filtered_reqs:
-                c1, c2, c3, c4, c5, c6, c7 = st.columns([0.8, 0.9, 3.2, 1.3, 1.8, 1.6, 0.6])
+                c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([0.7, 0.9, 2.8, 1.2, 1.3, 1.6, 1.5, 0.5])
                 c1.markdown(f'<span style="font-size:.82rem;color:#C9A96E;font-weight:700">{req.get("req_id","—")}</span>', unsafe_allow_html=True)
                 c2.markdown(f'<span style="font-size:.78rem;color:#A9A69D">{req.get("category","")}</span>', unsafe_allow_html=True)
 
@@ -129,10 +133,13 @@ def page_decide(bid_id: int):
                 current_q = req.get("qual_status", "UNKNOWN")
                 c4.markdown(qual_badge(current_q), unsafe_allow_html=True)
 
-                c5.markdown(f'<span style="font-size:.78rem;color:#A9A69D">{req.get("evidence") or "No evidence linked"}</span>', unsafe_allow_html=True)
-                c6.markdown(f'<span style="font-size:.78rem;color:#EDEAE3">{req.get("gap_action") or "—"}</span>', unsafe_allow_html=True)
+                current_e = req.get("evidence_status", "MISSING")
+                c5.markdown(evidence_badge(current_e), unsafe_allow_html=True)
 
-                if c7.button("✏", key=f"eq_{req['id']}", help="Update qualification status & evidence"):
+                c6.markdown(f'<span style="font-size:.78rem;color:#A9A69D">{req.get("evidence") or "No evidence linked"}</span>', unsafe_allow_html=True)
+                c7.markdown(f'<span style="font-size:.78rem;color:#EDEAE3">{req.get("gap_action") or "—"}</span>', unsafe_allow_html=True)
+
+                if c8.button("✏", key=f"eq_{req['id']}", help="Update qualification status & evidence"):
                     st.session_state["editing_qual_id"] = req["id"]
                     st.rerun()
 
@@ -146,11 +153,14 @@ def page_decide(bid_id: int):
                 st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
                 st.markdown(f"### ✏️ Assess Requirement: {target_req.get('req_id','')} — {target_req.get('description','')[:50]}")
                 with st.form("edit_qual_form"):
-                    c1, c2 = st.columns([1, 2])
+                    c1, c2, c3 = st.columns([1, 1, 1.5])
                     new_qstat = c1.selectbox("Qualification Status *", QUAL_STATUSES,
                                              index=QUAL_STATUSES.index(target_req.get("qual_status", "UNKNOWN"))
                                              if target_req.get("qual_status") in QUAL_STATUSES else 3)
-                    new_owner = c2.text_input("Assigned Owner", value=target_req.get("owner") or "")
+                    new_estat = c2.selectbox("Evidence Readiness *", EVIDENCE_STATUSES,
+                                             index=EVIDENCE_STATUSES.index(target_req.get("evidence_status", "MISSING"))
+                                             if target_req.get("evidence_status") in EVIDENCE_STATUSES else 2)
+                    new_owner = c3.text_input("Assigned Owner", value=target_req.get("owner") or "")
                     new_evidence = st.text_area("Linked Evidence & Qualifications", value=target_req.get("evidence") or "", height=70,
                                                 placeholder="e.g. Reference projects 2023-2025, ISO certifications, key expert CVs")
                     new_gap = st.text_area("Gap / Remediation Action Required", value=target_req.get("gap_action") or "", height=60,
@@ -162,6 +172,7 @@ def page_decide(bid_id: int):
                         upsert_requirement({
                             **target_req,
                             "qual_status": new_qstat,
+                            "evidence_status": new_estat,
                             "owner": new_owner,
                             "evidence": new_evidence,
                             "gap_action": new_gap,
@@ -218,35 +229,28 @@ def page_decide(bid_id: int):
                                     "bid_id": bid_id,
                                     "question_id": q.get("id", ""),
                                     "question": q.get("question", ""),
-                                    "rationale": f"{q.get('rationale','')} | Risk: {q.get('risk_if_unanswered','')}",
+                                    "rfp_reference": q.get("rfp_reference", ""),
+                                    "rationale": q.get("strategic_rationale", ""),
                                     "priority": q.get("priority", "Medium"),
-                                    "linked_req_ids": ", ".join(q.get("relates_to", [])),
+                                    "category": q.get("category", "General"),
                                     "status": "Draft",
-                                    "notes": f"Category: {q.get('category','General')}"
                                 })
-                            st.success(f"Generated and saved {len(cq_res.get('questions', []))} clarification questions.")
+                            st.success(f"Generated {len(cq_res.get('questions',[]))} strategic clarification questions.")
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Generation failed: {e}")
+                            st.error(f"Clarification generation failed: {e}")
 
-        # List saved questions
+        # List existing clarifications
         if clars:
-            st.markdown(f"#### Clarification Tracker ({len(clars)} questions)")
-            for q in clars:
-                pri = q.get("priority", "Medium")
-                pri_col = {"Critical": "#C0392B", "High": "#E67E22", "Medium": "#C9A96E"}.get(pri, "#6E6C66")
-                with st.expander(f"**{q.get('question_id','')}** · {q.get('question','')[:80]}…"):
-                    st.markdown(f"**Question:** {q.get('question','')}")
-                    if q.get("rationale"):
-                        st.markdown(f'<div style="font-size:.78rem;color:#A9A69D;font-style:italic">Internal Rationale: {q["rationale"]}</div>', unsafe_allow_html=True)
-                    if q.get("answer"):
-                        st.markdown(f'<div class="success-box"><strong>Answer:</strong> {q["answer"]}</div>', unsafe_allow_html=True)
-
-                    c_q1, c_q2 = st.columns([3, 1])
-                    new_ans = c_q1.text_input("Record Client Answer", value=q.get("answer") or "", key=f"ans_{q['id']}")
-                    if c_q2.button("Save Answer", key=f"save_ans_{q['id']}"):
-                        upsert_clarification({**q, "answer": new_ans, "status": "Answered" if new_ans else q.get("status", "Draft")})
-                        st.rerun()
+            st.markdown(f"#### Logged Clarification Inquiries ({len(clars)})")
+            for c_ in clars:
+                st.markdown(
+                    f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;padding:.6rem 1rem;margin:.3rem 0">'
+                    f'<strong>{c_.get("question_id","Q")}</strong>: {c_.get("question","")}'
+                    f'<br><span style="font-size:.75rem;color:#A9A69D">Ref: {c_.get("rfp_reference","—")} · Priority: {c_.get("priority","Medium")} · Status: {c_.get("status","Draft")}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
         else:
             st.markdown('<div class="empty-state">No clarification questions tracked yet.</div>', unsafe_allow_html=True)
 
@@ -258,7 +262,7 @@ def page_decide(bid_id: int):
         st.markdown(
             '<div style="font-size:.82rem;color:#A9A69D;margin-bottom:.8rem">'
             'Combine AI multi-dimensional pursuit scoring with accountable executive judgment. '
-            'Human commercial judgment remains the ultimate authority.'
+            'Human commercial judgment remains the ultimate authority. <strong>The AI recommendation never replaces or creates an official human decision.</strong>'
             '</div>',
             unsafe_allow_html=True
         )
@@ -272,6 +276,7 @@ def page_decide(bid_id: int):
                     try:
                         firm_summary = f"{firm_profile.get('company_name','')}: {firm_profile.get('overview','')} Capabilities: {firm_profile.get('core_capabilities','')}"
                         bn_res = bid_no_bid_score(bid, reqs, firm_summary)
+                        existing_dec = get_bid_decision(bid_id)
                         save_bid_decision({
                             "bid_id": bid_id,
                             "ai_recommendation": bn_res.get("recommendation", "NEEDS MORE INFORMATION"),
@@ -282,17 +287,19 @@ def page_decide(bid_id: int):
                             "conditions": bn_res.get("conditions", []),
                             "win_themes": bn_res.get("win_themes", []),
                             "red_flags": bn_res.get("red_flags", []),
-                            "human_decision": latest_decision.get("human_decision") if latest_decision else bn_res.get("recommendation"),
-                            "override_reason": latest_decision.get("override_reason") if latest_decision else "",
-                            "decided_by": bid.get("owner") or "Bid Lead"
+                            # CRITICAL: Preserve existing human decision if present; DO NOT populate with AI recommendation if null!
+                            "human_decision": existing_dec.get("human_decision") if existing_dec else None,
+                            "override_reason": existing_dec.get("override_reason", "") if existing_dec else "",
+                            "decided_by": existing_dec.get("decided_by") if existing_dec else None,
+                            "decided_at": existing_dec.get("decided_at") if existing_dec else None,
                         })
-                        st.success("Pursuit evaluation updated.")
+                        st.success("Pursuit evaluation updated. Official human decision remains unchanged.")
                         st.rerun()
                     except Exception as e:
                         st.error(f"Evaluation failed: {e}")
 
         latest_decision = get_bid_decision(bid_id)
-        if latest_decision:
+        if latest_decision and (latest_decision.get("ai_recommendation") or latest_decision.get("overall_score")):
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
             ai_rec = latest_decision.get("ai_recommendation") or "NEEDS MORE INFORMATION"
             score = latest_decision.get("overall_score") or 0
@@ -326,12 +333,17 @@ def page_decide(bid_id: int):
             # Accountable Human Decision Override
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
             st.markdown("### ✍️ Record Official Pursuit Decision (Human Accountable)")
+            
+            human_dec_recorded = latest_decision.get("human_decision")
+            if not human_dec_recorded:
+                st.markdown('<div class="info-box">ℹ️ <strong>No Official Human Decision Recorded Yet.</strong> Select an option below and submit to record the binding executive pursuit decision.</div>', unsafe_allow_html=True)
+            
             with st.form("human_decision_form"):
                 c_h1, c_h2 = st.columns([1.5, 2.5])
-                current_h = latest_decision.get("human_decision") or ai_rec
+                current_h = human_dec_recorded or "GO"
                 options = ["GO", "GO WITH CONDITIONS", "NO-GO", "NEEDS MORE INFORMATION"]
                 chosen_h = c_h1.selectbox("Official Decision *", options, index=options.index(current_h) if current_h in options else 0)
-                decided_by = c_h2.text_input("Decided By (Proposal Lead / Executive)", value=latest_decision.get("decided_by") or bid.get("owner") or "")
+                decided_by = c_h2.text_input("Decided By (Proposal Lead / Executive) *", value=latest_decision.get("decided_by") or bid.get("owner") or "")
                 override_notes = st.text_area("Decision Rationale & Commercial Justification", value=latest_decision.get("override_reason") or "", height=80,
                                               placeholder="Document rationale, risk tolerance, and conditions agreed by executive leadership...")
 
@@ -341,6 +353,7 @@ def page_decide(bid_id: int):
                         "human_decision": chosen_h,
                         "override_reason": override_notes,
                         "decided_by": decided_by,
+                        "decided_at": datetime.now().isoformat(),
                     })
                     # Update bid stage if NO-GO
                     if chosen_h == "NO-GO":

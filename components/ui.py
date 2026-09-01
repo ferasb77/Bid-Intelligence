@@ -1,6 +1,6 @@
 import streamlit as st
 
-STAGES     = ["Identified", "Qualifying", "In Progress", "Review", "Submitted", "Won", "Lost", "No Bid"]
+STAGES     = ["Identified", "Qualifying", "In Progress", "Review", "Submitted", "Won", "Lost", "Withdrawn", "No Bid"]
 STATUSES   = ["Not Started", "In Progress", "Draft", "In Review", "Complete", "Blocked", "N/A"]
 PRIORITIES = ["Critical", "High", "Medium", "Low"]
 CATEGORIES = ["Mandatory", "Rated", "Financial", "Supporting"]
@@ -8,6 +8,7 @@ SENSITIVITY= ["Standard", "Sensitive"]
 DOC_TYPES  = ["RFP / Source", "Submission", "Supporting", "Reference",
               "Past Proposal", "Financial", "Internal"]
 QUAL_STATUSES = ["PASS", "CONCERN", "FAIL", "UNKNOWN"]
+EVIDENCE_STATUSES = ["READY", "PARTIAL", "MISSING", "NOT REQUIRED"]
 
 STAGE_COLOURS = {
     "Identified":  "#6E6C66",
@@ -17,6 +18,7 @@ STAGE_COLOURS = {
     "Submitted":   "#27AE60",
     "Won":         "#1E8449",
     "Lost":        "#C0392B",
+    "Withdrawn":   "#7F8C8D",
     "No Bid":      "#555555",
 }
 STATUS_COLOURS = {
@@ -39,6 +41,12 @@ QUAL_COLOURS = {
     "CONCERN": "#E67E22",
     "FAIL":    "#C0392B",
     "UNKNOWN": "#6E6C66",
+}
+EVIDENCE_COLOURS = {
+    "READY":        "#27AE60",
+    "PARTIAL":      "#E67E22",
+    "MISSING":      "#C0392B",
+    "NOT REQUIRED": "#6E6C66",
 }
 
 CSS = """
@@ -199,6 +207,10 @@ def priority_badge(priority):
 def qual_badge(status):
     c = QUAL_COLOURS.get(status, "#6E6C66")
     return f'<span class="qual-badge" style="background:{c}22;color:{c};border:1px solid {c}55">{status}</span>'
+
+def evidence_badge(status):
+    c = EVIDENCE_COLOURS.get(status, "#6E6C66")
+    return f'<span class="qual-badge" style="background:{c}22;color:{c};border:1px solid {c}55">Evidence: {status}</span>'
 
 def decision_badge(decision):
     colours = {

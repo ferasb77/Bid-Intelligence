@@ -16,7 +16,7 @@ from analyst import (analyze_proposal_alignment, missing_evidence,
                      compliance_review)
 from extractor import extract_text_from_file
 from config import api_key_configured
-from components.ui import (qual_badge, status_badge, readiness_bar,
+from components.ui import (qual_badge, evidence_badge, status_badge, readiness_bar,
                            metric_card, QUAL_STATUSES)
 
 
@@ -190,7 +190,7 @@ def page_check(bid_id: int):
                 f'<div style="display:flex;justify-content:space-between;align-items:center;background:#111118;'
                 f'border:1px solid #292832;border-radius:4px;padding:.5rem .9rem;margin:.25rem 0">'
                 f'<span><strong style="color:#C9A96E">{r.get("req_id","")}</strong> [{r.get("category","")}] {r.get("description","")[:75]}…</span>'
-                f'<span>{qual_badge(r.get("qual_status","UNKNOWN"))} {status_badge(r.get("status","Not Started"))}</span>'
+                f'<span>{qual_badge(r.get("qual_status","UNKNOWN"))} {evidence_badge(r.get("evidence_status","MISSING"))} {status_badge(r.get("status","Not Started"))}</span>'
                 f'</div>',
                 unsafe_allow_html=True
             )
