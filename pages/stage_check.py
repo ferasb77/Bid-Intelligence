@@ -182,8 +182,8 @@ def page_check(bid_id: int):
 
         # PDF Export
         from pdf_export import generate_compliance_pdf
-        pdf_buf = generate_compliance_pdf(bid, reqs)
-        c_m2.download_button("📥 Export Matrix PDF", data=pdf_buf.getvalue(), file_name=f"compliance_matrix_{bid_id}.pdf", mime="application/pdf", use_container_width=True)
+        pdf_data = generate_compliance_pdf(bid, reqs)
+        c_m2.download_button("📥 Export Matrix PDF", data=pdf_data, file_name=f"compliance_matrix_{bid_id}.pdf", mime="application/pdf", use_container_width=True)
 
         for r in reqs:
             st.markdown(

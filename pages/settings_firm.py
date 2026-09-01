@@ -21,6 +21,8 @@ def page_settings_firm():
         unsafe_allow_html=True
     )
 
+    profile = get_firm_profile()
+
     # Display Unconfigured Notice if key fields are empty
     unconfigured = []
     if not profile.get("core_capabilities"): unconfigured.append("Core Capabilities")

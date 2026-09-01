@@ -20,6 +20,22 @@ from components.ui import (qual_badge, evidence_badge, decision_badge, days_unti
                            metric_card, QUAL_STATUSES, EVIDENCE_STATUSES, CATEGORIES)
 
 
+def _ensure_list(val):
+    if val is None:
+        return []
+    if isinstance(val, list):
+        return val
+    if isinstance(val, str):
+        try:
+            parsed = json.loads(val)
+            if isinstance(parsed, list):
+                return parsed
+        except Exception:
+            pass
+        return [v.strip() for v in val.split("\n") if v.strip()]
+    return []
+
+
 def page_decide(bid_id: int):
     bid = get_bid(bid_id)
     if not bid:

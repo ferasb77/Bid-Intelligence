@@ -234,11 +234,12 @@ def readiness_bar(pct, colour="#C9A96E"):
     <span style="font-size:.75rem;color:{col}">{pct:.0f}% ready</span>
     """
 
-def metric_card(label, value, sub=""):
+def metric_card(label, value, sub="", color=None):
+    style = f" style='color:{color}'" if color else ""
     return f"""
     <div class="metric-card">
       <div class="label">{label}</div>
-      <div class="value">{value}</div>
+      <div class="value"{style}>{value}</div>
       {"<div class='sub'>"+sub+"</div>" if sub else ""}
     </div>"""
 

@@ -15,7 +15,7 @@ from database import (get_bid, get_requirements, get_outline, upsert_section, de
                       get_firm_profile)
 from analyst import draft_proposal_section
 from config import api_key_configured
-from components.ui import (status_badge, priority_badge, readiness_bar,
+from components.ui import (metric_card, status_badge, priority_badge, readiness_bar,
                            STATUSES, PRIORITIES, DOC_TYPES)
 
 
