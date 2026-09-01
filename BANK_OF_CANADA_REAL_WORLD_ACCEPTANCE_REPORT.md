@@ -3,11 +3,14 @@
 **Project:** Bid Intelligence  
 **Repository:** `https://github.com/ferasb77/Bid-Intelligence`  
 **Branch:** `refactor/streamlined-bid-workflow`  
-**Commit:** `0ae6e7a`  
+**Acceptance-Tested Commit:** `22b0363da2372b760cbf0b718aaac1a4018a6fc1`  
+**Post-Acceptance RC Runtime Fix Commit:** `f3b234daf79d1cf0fbaf12f81de4ca90bc0c73f3`  
+**Acceptance Evidence Reconciliation Commit:** `926065bec5f0fb3cfcd4b38c16652da45d8c6aec`  
 **Database:** Live Supabase Production Environment (`https://whonalbdpbubaqhpzrnw.supabase.co`)  
 **Acceptance Case:** Bank of Canada — RFP No. 2026-026 (Talent, Learning and Organizational Development Services)  
 **Execution Timestamp:** 2026-09-01T19:16:39Z  
-**Staged Model Pipeline:** `claude-haiku-4-5-20251001` (Anthropic Staged Engine)
+**Staged Model Pipeline:** `claude-haiku-4-5-20251001` (Anthropic Staged Engine)  
+**Extraction Note:** The Bank of Canada blind extraction was executed on commit `22b0363` and was NOT rerun after subsequent UI runtime fixes or documentation reconciliation.
 
 ---
 
