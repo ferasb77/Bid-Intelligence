@@ -38,6 +38,7 @@ ENV/
 # Local storage and temporary uploads
 uploads/
 *.log
+tests/fixtures/local/
 
 # IDE files
 .vscode/

@@ -1,0 +1,53 @@
+[
+  {
+    "conflict_id": "CONF-DATE-1",
+    "conflict_type": "DATE_CONFLICT",
+    "topic": "Differing dates for Submission Deadline",
+    "source_a": {
+      "doc": "abstract.pdf",
+      "ref": "Question Acceptance Deadline",
+      "text": "2026-09-10"
+    },
+    "source_b": {
+      "doc": "abstract.pdf",
+      "ref": "Bid Closing Date",
+      "text": "2026-09-30"
+    },
+    "assessment": "Conflicting target dates detected across documents: 2026-09-28, 2026-09-10, 2026-09-30.",
+    "recommended_action": "Verify if the latest Addendum or Bulletin formally extends this deadline."
+  },
+  {
+    "conflict_id": "CONF-SUB-2",
+    "conflict_type": "SUBMISSION_RULE_CONFLICT",
+    "topic": "Envelope / Document Separation Contradiction",
+    "source_a": {
+      "doc": "abstract.pdf",
+      "ref": "Submission Rules",
+      "text": "Electronic Bid Submission"
+    },
+    "source_b": {
+      "doc": "OriginalRevision/RFP 2026-026 - Appendix E - Pricing Form.xlsx",
+      "ref": "Submission Rules",
+      "text": "Excel Spreadsheet"
+    },
+    "assessment": "One document indicates separate technical/financial files while another suggests combined submission.",
+    "recommended_action": "Always separate Financial Envelope from Technical Proposal to prevent mandatory disqualification."
+  },
+  {
+    "conflict_id": "CONF-MAND-3",
+    "conflict_type": "MANDATORY_REQUIREMENT_CONFLICT",
+    "topic": "Mandatory Language / Capability Specified in Specific Attachment",
+    "source_a": {
+      "doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx",
+      "ref": "Mandatory Gate",
+      "text": "Bilingualism - Each proposal must provide written confirmation of the ability to provide all services, materials and sol"
+    },
+    "source_b": {
+      "doc": "General RFP Overview",
+      "ref": "General Scope",
+      "text": "Language requirements not highlighted in main scope summary"
+    },
+    "assessment": "Mandatory bilingualism or specialized qualification applies to specific work streams/categories.",
+    "recommended_action": "Confirm whether bilingual capability is mandatory for all streams or category-specific."
+  }
+]

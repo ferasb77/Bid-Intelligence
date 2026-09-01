@@ -19,6 +19,7 @@ import json
 import zipfile
 import xml.etree.ElementTree as ET
 import anthropic
+from config import get_anthropic_client
 
 
 # ── PROMPTS FOR STAGED EXTRACTION ─────────────────────────────────────────────
@@ -687,7 +688,7 @@ def extract_document_facts(doc_text: str, filename: str, api_key: str) -> dict:
     STAGE A: Process document to extract factual procurement data ONLY.
     Does NOT synthesize executive Bid Brief.
     """
-    client = anthropic.Anthropic(api_key=api_key)
+    client = get_anthropic_client(api_key=api_key)
     model = "claude-haiku-4-5-20251001"
 
     text_to_send = doc_text if len(doc_text) < 150000 else (doc_text[:150000] + "\n\n[Document text truncated]")
@@ -798,7 +799,7 @@ def synthesize_bid_brief(normalized_facts: dict, conflicts: list[dict], api_key:
     """
     STAGE D: Synthesize the executive Bid Brief exclusively from the normalized/reconciled facts.
     """
-    client = anthropic.Anthropic(api_key=api_key)
+    client = get_anthropic_client(api_key=api_key)
     model = "claude-haiku-4-5-20251001"
 
     facts_summary = json.dumps({

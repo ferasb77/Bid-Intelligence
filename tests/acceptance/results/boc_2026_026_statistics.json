@@ -1,0 +1,16 @@
+{
+  "source_files": 15,
+  "total_extracted_requirements": 98,
+  "categories": {
+    "Mandatory": 48,
+    "Rated": 39,
+    "Financial": 1,
+    "Supporting": 10
+  },
+  "submission_documents": 15,
+  "total_source_references": 115,
+  "verified_source_references": 115,
+  "unverified_source_references": 0,
+  "detected_conflicts": 3,
+  "total_execution_time_sec": 395.34
+}
