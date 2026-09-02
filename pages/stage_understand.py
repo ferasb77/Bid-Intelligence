@@ -310,7 +310,7 @@ def page_understand(bid_id: int):
                     unsafe_allow_html=True
                 )
         else:
-            st.markdown('<div class="info-box">Required proposal submission documents and format rules.</div>', unsafe_allow_html=True)
+            st.markdown('<div class="info-box">No explicit submission documents were identified in the procurement package.</div>', unsafe_allow_html=True)
 
     with c_dates:
         st.markdown("### 📅 Key Procurement Dates")

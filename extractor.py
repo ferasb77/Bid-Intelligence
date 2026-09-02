@@ -1954,7 +1954,250 @@ def reconcile_package_facts(normalized_facts: dict, package_files: list[str]) ->
     return detect_document_conflicts(normalized_facts, package_files)
 
 
+# -- SUBMISSION DOCUMENT PROJECTION -----------------------------------------
+#
+# PURPOSE
+# -------
+# The documents table drives a file / submission-package checklist that can
+# become a Stage-Submit readiness blocker. Only project a document record when
+# normalized evidence establishes a DISCRETE, INDEPENDENTLY TRACKED submission
+# artefact or package item -- something a bid manager must locate, upload, or
+# sign off as a separate deliverable.
+#
+# DO NOT project:
+#   - fields embedded inside another form/response
+#   - workbook tabs that are part of a parent workbook
+#   - Yes/No response columns
+#   - page / format / font constraints
+#   - portal / process / delivery-mode instructions
+#   - reference-only material
+#   - external-link restrictions
+#   - pricing rules (not independent files)
+#
+# PREFER OMISSION OVER INVENTION.
+# A rule that is not projected remains visible in Stage D / UNDERSTAND
+# via the submission_rules list.
+
+import re as _re
+
+# ---------------------------------------------------------------------------
+# Format-field signals (examined before indicator-word scanning)
+# ---------------------------------------------------------------------------
+
+# Format phrases indicating the item is NOT an independent file.
+# Covers embedded content, form entries, checklist columns, portal containers,
+# and mixed/ambiguous formats (e.g. "Embedded or Separate File").
+_FORMAT_NEGATIVE_PHRASES = frozenset([
+    'form entry',
+    'integrated',
+    'embedded',
+    'proponent response column',
+    'yes/no confirmation',
+    'yes / no confirmation',
+    'yes/no format',
+    'not permitted',
+    'reference only',
+    'for reference',
+    'available for reference',
+    'electronic bid submission',  # portal delivery packaging container, not a file
+])
+
+# Format phrases positively and explicitly establishing an independent file or package.
+_EXPLICIT_INDEPENDENT_FORMAT_PHRASES = frozenset([
+    'separate file',
+    'separate files',
+    'separate submission',
+    'separate document',
+    'single document',
+    'standalone document',
+    'attachment',
+    'attachments',
+    'attached file',
+    'attached files',
+    'attached samples',
+    'pdf',
+    'docx',
+    'xlsx',
+    'xls',
+    'spreadsheet',
+    'excel workbook',
+    'excel spreadsheet',
+    'excel',
+])
+
+# Generic document formats that qualify as independent when paired with
+# a strong standalone submission artifact noun in the item title.
+_GENERIC_DOCUMENT_FORMAT_PHRASES = frozenset([
+    'document',
+    'documents',
+])
+
+# ---------------------------------------------------------------------------
+# Item / details exclusion signals
+# ---------------------------------------------------------------------------
+
+# Phrases in item text that indicate a process or format instruction.
+_PROCESS_ITEM_PHRASES = frozenset([
+    'submit through', 'submit via', 'submitted through', 'submitted via',
+    'submit using', 'submitted using',
+    'electronic submission only', 'portal only', 'online submission',
+    'registration required', 'register on',
+    'no external links', 'external links',
+    'page limit', 'maximum pages', 'not exceed', 'page count',
+    'font size', 'margin',
+    'maximum response length', 'maximum length',
+    'response length', 'response limit',
+    'portal submission', 'online portal',
+    'currency and tax',
+    'assumptions and restrictions',
+    'response format',
+])
+
+# Phrases in details text that reveal reference-only / process intent.
+_PROCESS_DETAILS_PHRASES = frozenset([
+    'not mandatory but available for reference',
+    'available for reference',
+    'for reference only',
+    'reference only',
+    'will not be evaluated',
+    'external to the form will not',
+    'links to websites',
+    'links to external',
+])
+
+# Regex for quantified page/word/item constraints in item text.
+_QUANTITY_CONSTRAINT_RE = _re.compile(
+    r'(?:maximum|max|no more than|not exceed|limit of?)\s+\d+\s*'
+    r'(?:pages?|words?|lines?|items?)',
+    _re.IGNORECASE,
+)
+
+# Regex for workbook tabs or worksheets that are part of another submitted workbook.
+_WORKBOOK_TAB_RE = _re.compile(
+    r"(?i)\b(?:tabs?|worksheets?)\b"
+)
+
+# Strong standalone artifact nouns with morphology (singular / plural alternatives).
+# These represent discrete submission packages/forms even without explicit file format,
+# provided format is generic document, empty, or standalone (and not negative).
+_STRONG_STANDALONE_ARTIFACT_RE = _re.compile(
+    r"(?i)\b(?:"
+    r"forms?|proposals?|questionnaires?|templates?|annex(?:es)?|schedules?|"
+    r"pricing\s+forms?|rate\s+cards?|work\s*plans?"
+    r")\b"
+)
+
+
+def _is_concrete_submission_document(
+    item: str,
+    fmt: str | None = None,
+    details: str | None = None,
+) -> bool:
+    '''
+    Return True only when normalized evidence establishes the rule as a
+    DISCRETE, INDEPENDENTLY TRACKED submission artefact.
+
+    Decision logic (in priority order):
+    1. Empty item -> False.
+    2. Format contains embedded, integrated, form entry, checklist, or mixed marker -> False.
+    3. Workbook tab inside another workbook -> False.
+    4. Item text contains a process/portal/format instruction -> False.
+    5. Item text matches a quantified-constraint pattern -> False.
+    6. Details text reveals reference-only or process intent -> False.
+    7. Format is an explicit independent file/package format -> True.
+    8. Format is generic document (or unspecified) AND item title has strong
+       standalone artifact noun -> True.
+    9. Conservative fallback -> False.
+    '''
+    if not item or not item.strip():
+        return False
+
+    item_lower = item.strip().lower()
+    fmt_lower  = (fmt or '').strip().lower()
+    details_lower = (details or '').strip().lower()
+
+    # Step 2: Hard negative format signals (embedded, form entry, mixed/ambiguous, etc.)
+    if any(p in fmt_lower for p in _FORMAT_NEGATIVE_PHRASES):
+        return False
+
+    # Step 3: Workbook tab that is part of a parent workbook
+    if _WORKBOOK_TAB_RE.search(item):
+        return False
+
+    # Step 4: Process / portal / formatting instruction in item
+    if any(p in item_lower for p in _PROCESS_ITEM_PHRASES):
+        return False
+
+    # Step 5: Quantified constraint in item
+    if _QUANTITY_CONSTRAINT_RE.search(item):
+        return False
+
+    # Step 6: Details reveal reference-only or non-evaluated intent
+    if any(p in details_lower for p in _PROCESS_DETAILS_PHRASES):
+        return False
+
+    # Step 7: Explicit independent file/package format signal
+    if any(p in fmt_lower for p in _EXPLICIT_INDEPENDENT_FORMAT_PHRASES):
+        return True
+
+    # Step 8: Generic document or unspecified format + strong standalone artifact noun
+    if (not fmt_lower or fmt_lower in _GENERIC_DOCUMENT_FORMAT_PHRASES):
+        if _STRONG_STANDALONE_ARTIFACT_RE.search(item):
+            return True
+
+    # Step 9: Conservative fallback
+    return False
+
+
+def build_submission_documents(
+    submission_rules: list[dict],
+    submission_deadline: str | None = None,
+) -> list[dict]:
+    '''
+    SUBMISSION DOCUMENT PROJECTION -- deterministic, provenance-preserving.
+
+    Projects normalized submission rules into document records for the bid
+    registry. Only rules representing a DISCRETE, INDEPENDENTLY TRACKED
+    submission artefact or package item are included.
+
+    mandatory semantics:
+      1   -> REQUIRED
+      0   -> OPTIONAL
+      absent/None -> UNKNOWN (key omitted from record)
+    '''
+    documents = []
+    for sr in (submission_rules or []):
+        if not isinstance(sr, dict):
+            continue
+        item    = (sr.get('item') or '').strip()
+        fmt     = sr.get('format') or ''
+        details = sr.get('details') or ''
+        if not _is_concrete_submission_document(item, fmt, details):
+            continue
+
+        doc_type = (
+            'Financial'
+            if any(kw in item.lower()
+                   for kw in ('pricing', 'financial', 'rate card', 'cost'))
+            else 'Submission'
+        )
+        mandatory = sr.get('mandatory')   # None if absent -- not defaulted
+        doc: dict = {
+            'name':     item,
+            'doc_type': doc_type,
+            'owner':    None,
+            'due_date': submission_deadline,
+            'status':   'Expected',
+            'notes':    details,
+        }
+        if mandatory is not None:
+            doc['mandatory'] = mandatory
+        documents.append(doc)
+    return documents
+
+
 # ── STAGE D: BID BRIEF SYNTHESIS ─────────────────────────────────────────────
+
 
 _REQUIREMENT_FIELDS = (
     "req_id", "category", "description", "rfso_ref",
@@ -2434,25 +2677,16 @@ def extract_procurement_package(package_files: list[tuple[str, bytes]], api_key:
     # Ensure document_conflicts is attached to brief
     brief["document_conflicts"] = conflicts
 
-    # Transform submission rules into documents checklist
-    documents = []
-    for sr in normalized_facts.get("submission_rules", []):
-        documents.append({
-            "name": sr.get("item", "Submission Document"),
-            "doc_type": "Financial" if "financial" in sr.get("item","").lower() or "pricing" in sr.get("item","").lower() else "Submission",
-            "owner": None,
-            "due_date": bid.get("submission_deadline"),
-            "status": "Expected",
-            "mandatory": sr.get("mandatory", 1),
-            "notes": sr.get("details", "")
-        })
-
-    # If no documents generated, create standard default package items
-    if not documents:
-        documents = [
-            {"name": "Technical Proposal.pdf", "doc_type": "Submission", "mandatory": 1, "status": "Expected"},
-            {"name": "Financial Envelope.pdf", "doc_type": "Financial", "mandatory": 1, "status": "Expected"}
-        ]
+    # Build concrete submission documents from normalized submission rules.
+    # Only rules representing explicit submission components are included.
+    # An empty result is a valid state — it means the procurement package
+    # did not establish concrete submission documents in the normalized facts.
+    # The old default of Technical Proposal.pdf / Financial Envelope.pdf is
+    # removed: those names were invented, not sourced from the procurement package.
+    documents = build_submission_documents(
+        normalized_facts.get("submission_rules", []),
+        submission_deadline=bid.get("submission_deadline"),
+    )
 
     result = {
         "bid": bid,
