@@ -92,6 +92,19 @@ STAGE_D_SYNTHESIS_PROMPT = """You are an executive bid director synthesizing a B
 You MUST synthesize ONLY from the supplied normalized facts and detected cross-document conflicts.
 Do NOT invent facts not present in the normalized data model.
 
+CONTRACT WITH THE CONTEXT:
+- The supplied context is the authoritative normalized procurement model. All requirements, dates, evaluation
+  criteria, submission rules, and conflicts have been deterministically extracted and verified.
+- Mandatory requirements are hard procurement gates. Every mandatory requirement must inform your executive
+  reasoning. Do not omit mandatory requirements from qualification_gates.
+- Distinguish procurement requirements (what the buyer demands) from bidder capability (what the bidder holds).
+  Do not convert UNKNOWN bidder capability into PASS.
+- Detected conflicts are unresolved unless the source model explicitly resolves them. Do not silently merge
+  or dismiss TRUE_CONFLICT or REVIEW_ITEM records.
+- Do not invent submission documents, certifications, languages, security clearances, insurance coverage,
+  or pricing facts unless they are explicitly present in the supplied normalized facts.
+- Do not infer organizational capacity or qualifications from blank or internal fields.
+
 Return ONLY valid JSON with this exact schema:
 {
   "bid": {
@@ -143,6 +156,8 @@ Return ONLY valid JSON with this exact schema:
   ]
 }
 """
+
+
 
 
 # ── DOCUMENT TEXT EXTRACTORS & DETERMINISTIC MARKERS ─────────────────────────
@@ -1941,24 +1956,284 @@ def reconcile_package_facts(normalized_facts: dict, package_files: list[str]) ->
 
 # ── STAGE D: BID BRIEF SYNTHESIS ─────────────────────────────────────────────
 
+_REQUIREMENT_FIELDS = (
+    "req_id", "category", "description", "rfso_ref",
+    "weight", "evidence", "source_refs", "qual_status", "evidence_status"
+)
+_SOURCE_REF_FIELDS = ("source_doc", "page", "sheet", "section", "excerpt")
+_EXCERPT_CAP = 500  # characters per excerpt — controls prose size without dropping requirements
+
+
+def _compact_requirement(r: dict) -> dict:
+    """
+    Return a compact but complete requirement record preserving all decision-critical fields.
+    Excerpts are capped at _EXCERPT_CAP characters; no other truncation is applied.
+    """
+    if not isinstance(r, dict):
+        return {}
+    out = {}
+    for f in _REQUIREMENT_FIELDS:
+        if f == "source_refs":
+            srefs = []
+            for sref in (r.get("source_refs") or []):
+                if isinstance(sref, dict):
+                    compact_sref = {k: sref.get(k) for k in _SOURCE_REF_FIELDS}
+                    if compact_sref.get("excerpt") and len(compact_sref["excerpt"]) > _EXCERPT_CAP:
+                        compact_sref["excerpt"] = compact_sref["excerpt"][:_EXCERPT_CAP]
+                    srefs.append(compact_sref)
+            out["source_refs"] = srefs
+        else:
+            if f in r:
+                out[f] = r[f]
+    return out
+
+
+def build_stage_d_context(normalized_facts: dict, conflicts: list[dict]) -> dict:
+    """
+    STAGE D CONTEXT BUILDER — deterministic, lossless.
+
+    Produces the complete evidence model that Stage D (AI synthesis) receives.
+    Never slices or truncates the requirement list.  All Mandatory, Financial,
+    Rated and Supporting requirements are included in full.
+
+    Returns a dict with:
+      - metadata
+      - requirements (categorised sub-keys)
+      - dates, evaluation_criteria, submission_rules, deliverables,
+        commercial_clauses, contract_risks
+      - detected_conflicts
+      - context_integrity (completeness audit trail)
+    """
+    all_reqs = [r for r in (normalized_facts.get("requirements") or []) if isinstance(r, dict)]
+
+    mandatory   = [_compact_requirement(r) for r in all_reqs if r.get("category", "").strip().lower() == "mandatory"]
+    financial   = [_compact_requirement(r) for r in all_reqs if r.get("category", "").strip().lower() == "financial"]
+    rated       = [_compact_requirement(r) for r in all_reqs if r.get("category", "").strip().lower() == "rated"]
+    supporting  = [_compact_requirement(r) for r in all_reqs if r.get("category", "").strip().lower() == "supporting"]
+    # Any category not mapped above is also preserved
+    other       = [_compact_requirement(r) for r in all_reqs
+                   if r.get("category", "").strip().lower() not in ("mandatory", "financial", "rated", "supporting")]
+
+    included_count = len(mandatory) + len(financial) + len(rated) + len(supporting) + len(other)
+    source_count   = len(all_reqs)
+    omitted_count  = source_count - included_count  # must always be 0
+
+    if omitted_count != 0:
+        raise RuntimeError(
+            f"Stage D context builder omitted {omitted_count} requirements — "
+            "silent omission is forbidden. Check _compact_requirement for filter bugs."
+        )
+
+    from collections import Counter
+    cat_counts = Counter(r.get("category", "").strip() for r in all_reqs)
+
+    context = {
+        "metadata": normalized_facts.get("doc_metadata", {}),
+        "requirements": {
+            "mandatory":  mandatory,
+            "financial":  financial,
+            "rated":      rated,
+            "supporting": supporting,
+            **({"other": other} if other else {}),
+        },
+        "dates":               normalized_facts.get("dates", []),
+        "evaluation_criteria": normalized_facts.get("evaluation_criteria", []),
+        "submission_rules":    normalized_facts.get("submission_rules", []),
+        "deliverables":        normalized_facts.get("deliverables", []),
+        "commercial_clauses":  normalized_facts.get("commercial_clauses", []),
+        "contract_risks":      normalized_facts.get("contract_risks", []),
+        "detected_conflicts":  list(conflicts),
+        "context_integrity": {
+            "source_requirement_count":    source_count,
+            "included_requirement_count":  included_count,
+            "counts_by_category":          dict(cat_counts),
+            "omitted_requirement_count":   omitted_count,
+            "all_mandatory_included":      True,
+            "all_financial_included":      True,
+        },
+    }
+    return context
+
+
+def apply_stage_d_authoritative_sections(synth_data: dict, normalized_facts: dict) -> dict:
+    """
+    POST-SYNTHESIS AUTHORITATIVE SECTION APPLICATOR.
+
+    After Stage D AI returns its synthesis, this function deterministically
+    rebuilds evidence-backed structured sections from the normalized facts so
+    that AI omission cannot destroy procurement-critical data.
+
+    Sections replaced deterministically:
+      qualification_gates      <- ALL Mandatory requirements
+      evaluation_breakdown     <- normalized evaluation_criteria
+      submission_requirements  <- normalized submission_rules
+      key_dates                <- normalized dates
+      commercial_structure     <- normalized commercial_clauses
+      contract_risks           <- normalized contract_risks (brief section)
+      deliverables_summary     <- normalized deliverables
+
+    AI-synthesized fields that are preserved unchanged (interpretation only):
+      executive_summary, opportunity_type, contract_term, procurement_model,
+      scope_categories, source_citations, bid fields, outline.
+    """
+    if not isinstance(synth_data, dict):
+        synth_data = {}
+
+    brief = dict(synth_data.get("brief", {}))
+
+    all_reqs = [r for r in (normalized_facts.get("requirements") or []) if isinstance(r, dict)]
+
+    # qualification_gates — ALL Mandatory requirements
+    mandatory_reqs = [r for r in all_reqs if r.get("category", "").strip().lower() == "mandatory"]
+    seen_gates: set[str] = set()
+    gates = []
+    for r in mandatory_reqs:
+        desc = (r.get("description") or "").strip()
+        if not desc or desc in seen_gates:
+            continue
+        seen_gates.add(desc)
+        ref_parts = []
+        for sref in (r.get("source_refs") or []):
+            if isinstance(sref, dict) and sref.get("source_doc"):
+                ref_parts.append(sref["source_doc"])
+        rfp_ref = r.get("rfso_ref") or (", ".join(ref_parts) if ref_parts else None)
+        gates.append({
+            "requirement":          desc,
+            "type":                 "Mandatory Qualification",
+            "rfp_ref":              rfp_ref,
+            "req_id":               r.get("req_id"),
+            "disqualification_risk":"High",
+        })
+    brief["qualification_gates"] = gates
+
+    # evaluation_breakdown — normalized evaluation_criteria
+    eval_criteria = normalized_facts.get("evaluation_criteria", [])
+    seen_eval: set[str] = set()
+    evals = []
+    for ec in eval_criteria:
+        if not isinstance(ec, dict):
+            continue
+        stage = (ec.get("stage") or ec.get("criterion") or "").strip()
+        if not stage or stage in seen_eval:
+            continue
+        seen_eval.add(stage)
+        evals.append({
+            "stage":     stage,
+            "weight":    ec.get("weight") or ec.get("points"),
+            "threshold": ec.get("threshold"),
+            "notes":     ec.get("notes") or ec.get("criterion"),
+        })
+    brief["evaluation_breakdown"] = evals
+
+    # submission_requirements — normalized submission_rules
+    sub_rules = normalized_facts.get("submission_rules", [])
+    seen_sub: set[str] = set()
+    sub_reqs = []
+    for sr in sub_rules:
+        if not isinstance(sr, dict):
+            continue
+        item = (sr.get("item") or "").strip()
+        if not item or item in seen_sub:
+            continue
+        seen_sub.add(item)
+        sub_reqs.append({
+            "item":    item,
+            "format":  sr.get("format"),
+            "details": sr.get("details"),
+        })
+    brief["submission_requirements"] = sub_reqs
+
+    # key_dates — normalized dates
+    dates = normalized_facts.get("dates", [])
+    seen_dates: set[str] = set()
+    key_dates = []
+    for d in dates:
+        if not isinstance(d, dict):
+            continue
+        milestone = (d.get("milestone") or "").strip()
+        date_val  = d.get("date", "")
+        if not milestone or milestone in seen_dates:
+            continue
+        seen_dates.add(milestone)
+        key_dates.append({
+            "milestone": milestone,
+            "date":      date_val,
+        })
+    brief["key_dates"] = key_dates
+
+    # commercial_structure — normalized commercial_clauses
+    comm_clauses = normalized_facts.get("commercial_clauses", [])
+    seen_comm: set[str] = set()
+    comm_struct = []
+    for cc in comm_clauses:
+        if not isinstance(cc, dict):
+            continue
+        topic = (cc.get("topic") or "").strip()
+        if not topic or topic in seen_comm:
+            continue
+        seen_comm.add(topic)
+        comm_struct.append({
+            "topic":   topic,
+            "details": cc.get("details"),
+        })
+    brief["commercial_structure"] = comm_struct
+
+    # contract_risks — normalized contract_risks
+    risks = normalized_facts.get("contract_risks", [])
+    seen_risks: set[str] = set()
+    risk_list = []
+    for risk in risks:
+        if not isinstance(risk, dict):
+            continue
+        risk_title = (risk.get("risk") or risk.get("title") or "").strip()
+        if not risk_title or risk_title in seen_risks:
+            continue
+        seen_risks.add(risk_title)
+        risk_list.append({
+            "risk":     risk_title,
+            "severity": risk.get("severity", "Medium"),
+            "details":  risk.get("details") or risk.get("description"),
+        })
+    brief["contract_risks"] = risk_list
+
+    # deliverables_summary — normalized deliverables
+    deliverables = normalized_facts.get("deliverables", [])
+    seen_deliv: set[str] = set()
+    deliv_summary = []
+    for d in deliverables:
+        if not isinstance(d, dict):
+            continue
+        title = (d.get("title") or d.get("item") or "").strip()
+        if not title or title in seen_deliv:
+            continue
+        seen_deliv.add(title)
+        deliv_summary.append({
+            "title":       title,
+            "description": d.get("description") or d.get("details"),
+            "category":    d.get("category", "Core"),
+        })
+    brief["deliverables_summary"] = deliv_summary
+
+    result = dict(synth_data)
+    result["brief"] = brief
+    return result
+
+
 def synthesize_bid_brief(normalized_facts: dict, conflicts: list[dict], api_key: str) -> dict:
     """
-    STAGE D: Synthesize the executive Bid Brief exclusively from the normalized/reconciled facts.
+    STAGE D: Synthesize the executive Bid Brief from the COMPLETE normalized/reconciled facts.
+
+    Uses build_stage_d_context() to produce a lossless, complete evidence model
+    (no [:15] slicing, no requirement truncation) and apply_stage_d_authoritative_sections()
+    to ensure evidence-backed structured sections cannot be silently omitted by the AI.
     """
     client = get_anthropic_client(api_key=api_key)
     model = "claude-haiku-4-5-20251001"
 
-    facts_summary = json.dumps({
-        "metadata": normalized_facts.get("doc_metadata", {}),
-        "requirements_sample": [r.get("description","")[:150] for r in normalized_facts.get("requirements", [])[:15]],
-        "dates": normalized_facts.get("dates", []),
-        "evaluation": normalized_facts.get("evaluation_criteria", []),
-        "submission_rules": normalized_facts.get("submission_rules", []),
-        "deliverables": normalized_facts.get("deliverables", []),
-        "commercial": normalized_facts.get("commercial_clauses", []),
-        "contract_risks": normalized_facts.get("contract_risks", []),
-        "detected_conflicts": conflicts
-    }, indent=2)
+    # Build the complete, lossless Stage D context
+    stage_d_context = build_stage_d_context(normalized_facts, conflicts)
+
+    facts_summary = json.dumps(stage_d_context, indent=2)
 
     content = [
         {
@@ -1977,7 +2252,12 @@ def synthesize_bid_brief(normalized_facts: dict, conflicts: list[dict], api_key:
     if not isinstance(synth_data, dict):
         synth_data = {}
 
+    # Deterministically apply authoritative evidence-backed sections
+    synth_data = apply_stage_d_authoritative_sections(synth_data, normalized_facts)
+
     return synth_data
+
+
 
 
 # ── MAIN ORCHESTRATOR ─────────────────────────────────────────────────────────
