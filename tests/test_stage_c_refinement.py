@@ -888,5 +888,162 @@ class TestStageCGenericScopeExtraction(unittest.TestCase):
         self.assertEqual(len(scope_conflicts), 0)
 
 
+class TestStageCDateNullSafety(unittest.TestCase):
+    """
+    Tests ensuring Stage C date reconciliation safely handles null, missing,
+    blank, and whitespace date values without raising AttributeError.
+    """
+
+    # A. date=None does not crash
+    def test_null_date_does_not_crash_no_conflict(self):
+        normalized = {
+            "dates": [
+                {
+                    "milestone": "Submission Deadline",
+                    "date": None,
+                    "source_doc": "Main.pdf"
+                }
+            ]
+        }
+        pkg_files = ["Main.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        date_conflicts = [c for c in conflicts if c.get("conflict_type") == "DATE_CONFLICT"]
+        self.assertEqual(len(date_conflicts), 0)
+
+    # B. missing "date" does not crash
+    def test_missing_date_key_does_not_crash_no_conflict(self):
+        normalized = {
+            "dates": [
+                {
+                    "milestone": "Submission Deadline",
+                    "source_doc": "Main.pdf"
+                }
+            ]
+        }
+        pkg_files = ["Main.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        date_conflicts = [c for c in conflicts if c.get("conflict_type") == "DATE_CONFLICT"]
+        self.assertEqual(len(date_conflicts), 0)
+
+    # C. blank date "" does not crash
+    def test_blank_date_does_not_crash_no_conflict(self):
+        normalized = {
+            "dates": [
+                {
+                    "milestone": "Submission Deadline",
+                    "date": "",
+                    "source_doc": "Main.pdf"
+                }
+            ]
+        }
+        pkg_files = ["Main.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        date_conflicts = [c for c in conflicts if c.get("conflict_type") == "DATE_CONFLICT"]
+        self.assertEqual(len(date_conflicts), 0)
+
+    # D. whitespace date "   " does not crash
+    def test_whitespace_date_does_not_crash_no_conflict(self):
+        normalized = {
+            "dates": [
+                {
+                    "milestone": "Submission Deadline",
+                    "date": "   \t\n  ",
+                    "source_doc": "Main.pdf"
+                }
+            ]
+        }
+        pkg_files = ["Main.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        date_conflicts = [c for c in conflicts if c.get("conflict_type") == "DATE_CONFLICT"]
+        self.assertEqual(len(date_conflicts), 0)
+
+    # E. null record alongside valid date -> no conflict caused by null, valid date usable
+    def test_null_date_alongside_valid_date_no_false_conflict(self):
+        normalized = {
+            "dates": [
+                {
+                    "milestone": "Submission Deadline",
+                    "date": None,
+                    "source_doc": "Main.pdf"
+                },
+                {
+                    "milestone": "Submission Deadline",
+                    "date": "2026-10-01",
+                    "source_doc": "Addendum.pdf"
+                }
+            ]
+        }
+        pkg_files = ["Main.pdf", "Addendum.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        date_conflicts = [c for c in conflicts if c.get("conflict_type") == "DATE_CONFLICT"]
+        self.assertEqual(len(date_conflicts), 0)
+
+    # F. two valid identical dates -> no conflict
+    def test_two_valid_identical_dates_no_conflict(self):
+        normalized = {
+            "dates": [
+                {
+                    "milestone": "Submission Deadline",
+                    "date": "2026-10-01",
+                    "source_doc": "Main.pdf"
+                },
+                {
+                    "milestone": "Submission Deadline",
+                    "date": "2026-10-01",
+                    "source_doc": "Addendum.pdf"
+                }
+            ]
+        }
+        pkg_files = ["Main.pdf", "Addendum.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        date_conflicts = [c for c in conflicts if c.get("conflict_type") == "DATE_CONFLICT"]
+        self.assertEqual(len(date_conflicts), 0)
+
+    # G. two valid differing dates across physical documents -> TRUE_CONFLICT
+    def test_two_valid_differing_dates_across_physical_docs_conflict(self):
+        normalized = {
+            "dates": [
+                {
+                    "milestone": "Submission Deadline",
+                    "date": "2026-10-01",
+                    "source_doc": "Main.pdf"
+                },
+                {
+                    "milestone": "Submission Deadline",
+                    "date": "2026-10-15",
+                    "source_doc": "Addendum.pdf"
+                }
+            ]
+        }
+        pkg_files = ["Main.pdf", "Addendum.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        date_conflicts = [c for c in conflicts if c.get("conflict_type") == "DATE_CONFLICT"]
+        self.assertEqual(len(date_conflicts), 1)
+        self.assertEqual(date_conflicts[0]["classification"], "TRUE_CONFLICT")
+        self.assertEqual(date_conflicts[0]["source_validity"], "PHYSICAL_BOTH")
+
+    # H. internal valid differing dates -> REVIEW_ITEM
+    def test_internal_valid_differing_dates_review_item(self):
+        normalized = {
+            "dates": [
+                {
+                    "milestone": "Submission Deadline",
+                    "date": "2026-10-01",
+                    "source_doc": "Main.pdf"
+                },
+                {
+                    "milestone": "Submission Deadline",
+                    "date": "2026-10-15",
+                    "source_doc": "Main.pdf"
+                }
+            ]
+        }
+        pkg_files = ["Main.pdf"]
+        conflicts = detect_document_conflicts(normalized, pkg_files)
+        date_conflicts = [c for c in conflicts if c.get("conflict_type") == "DATE_CONFLICT"]
+        self.assertEqual(len(date_conflicts), 1)
+        self.assertEqual(date_conflicts[0]["classification"], "REVIEW_ITEM")
+
+
 if __name__ == "__main__":
     unittest.main()
