@@ -2,7 +2,7 @@
 
 **Branch:** `fix/submit-state-consistency`  
 **Base:** `main` at `7043c7eb0fccc5ae0ccee9db7c13f23b89a7d27e`  
-**Date:** 2026-09-02  
+**Date:** 2026-09-02 (Finalized)
 
 ---
 
@@ -24,6 +24,9 @@ Stage 5 (SUBMIT) previously suffered from multiple architectural and presentatio
 
 4. **Coerced Mandatory Representation in AI Check:**
    - `submission_readiness_check()` in `analyst.py` coerced `bool(d.get("mandatory"))`, collapsing `None` (UNKNOWN) into `False` (OPTIONAL).
+
+5. **CONCERN Qualification Status Inadvertently Collapsed:**
+   - Earlier prototype code collapsed `CONCERN` into `UNKNOWN` during counting. The evaluator now preserves `CONCERN` as a distinct, first-class qualification state.
 
 This branch completely resolves these contradictions by introducing a pure deterministic submission state evaluator as the single source of truth.
 
@@ -52,6 +55,7 @@ It returns an authoritative dictionary:
     "counts": {
         "mandatory_requirements": int,
         "mandatory_pass": int,
+        "mandatory_concern": int,
         "mandatory_fail": int,
         "mandatory_unknown": int,
         "required_documents": int,
@@ -63,7 +67,10 @@ It returns an authoritative dictionary:
 }
 ```
 
-### Strict Status Invariants
+### Invariant:
+`mandatory_pass + mandatory_concern + mandatory_fail + mandatory_unknown == mandatory_requirements`
+
+### Strict Status Invariants:
 - `if blockers:` `status = "NOT_READY"`, `can_submit = False`
 - `elif warnings:` `status = "READY_WITH_WARNINGS"`, `can_submit = True`
 - `else:` `status = "READY_TO_SUBMIT"`, `can_submit = True`
@@ -78,10 +85,11 @@ There are **zero conditions** where:
 
 ### Blockers:
 1. **Mandatory Qualification Gate FAIL:** Any mandatory requirement with `qual_status == "FAIL"`.
-2. **Mandatory Qualification Gate UNKNOWN / Unverified:** Any mandatory requirement with `qual_status in ("UNKNOWN", None, "")` or missing `qual_status`. UNKNOWN represents unresolved evidence, not an advisory warning.
-3. **Required Submission Document Missing:** Any required submission document (`mandatory` in `(1, True, "1", "true")`) whose status is not in `{"Uploaded", "Approved", "Complete", "Submitted"}`.
-4. **Submission Document with UNKNOWN Mandatory Status:** Any document whose mandatory status is `None`. Since the system cannot know if omission is fatal, it must be resolved prior to submission.
-5. **Unchecked Pre-Submission Attestation:** Any of the four required human attestations that is unchecked (`False`):
+2. **Mandatory Qualification Gate CONCERN:** Any mandatory requirement with `qual_status == "CONCERN"`. Since the final human attestation explicitly certifies that all mandatory qualification criteria are verified with `PASS` status, a `CONCERN` represents an unresolved qualification risk and must be resolved in DECIDE before submission. Blocker message: `"X Mandatory Qualification Gate(s) remain CONCERN and require resolution"`.
+3. **Mandatory Qualification Gate UNKNOWN / Unverified:** Any mandatory requirement with `qual_status in ("UNKNOWN", None, "")` or missing `qual_status`. UNKNOWN represents unresolved evidence, not an advisory warning.
+4. **Required Submission Document Missing:** Any required submission document (`mandatory` in `(1, True, "1", "true")`) whose status is not in `{"Uploaded", "Approved", "Complete", "Submitted"}`.
+5. **Submission Document with UNKNOWN Mandatory Status:** Any document whose mandatory status is `None`. Since the system cannot know if omission is fatal, it must be resolved prior to submission.
+6. **Unchecked Pre-Submission Attestation:** Any of the four required human attestations that is unchecked (`False`):
    - Proposal formatting and separation verified
    - Mandatory qualification criteria verified PASS
    - Tender addenda and bulletins acknowledged
@@ -92,7 +100,7 @@ There are **zero conditions** where:
 
 ---
 
-## 4. Human Resolution of UNKNOWN Mandatory Documents
+## 4. Human Resolution of UNKNOWN Mandatory Documents & DECIDE Guidance
 
 For any submission document whose mandatory status is unestablished (`mandatory=None`), a human resolution interface is provided directly in Stage 5:
 
@@ -101,7 +109,10 @@ For any submission document whose mandatory status is unestablished (`mandatory=
 - Persists resolution directly to the existing `documents.mandatory` column using `upsert_document({"id": doc_id, "mandatory": 1 | 0})`.
 - **No schema modifications, no Migration 004, no new database columns, and no automated guessing.**
 
-For UNKNOWN mandatory requirements, Stage 5 displays guidance directing the user to Stage 2 (DECIDE) where qualification status is governed, preserving Stage 5 as a strict gatekeeper rather than a duplicate qualification editor.
+For mandatory requirements:
+- **CONCERN:** Surfaces distinct guidance: `"X Mandatory Qualification requirement(s) remain CONCERN. Return to Stage 2 (DECIDE) to resolve them before submission."`
+- **UNKNOWN:** Surfaces distinct guidance: `"X Mandatory Qualification requirement(s) remain UNKNOWN. Please return to Stage 2 (DECIDE) to verify PASS / FAIL qualification status."`
+- Stage 5 acts as a strict gatekeeper and directs users back to Stage 2 (DECIDE) where qualification status is governed, rather than duplicating the qualification editor.
 
 ---
 
@@ -119,7 +130,7 @@ In `pages/stage_submit.py`:
 
 ## 6. Verification & Test Suite Matrix
 
-A new dedicated test suite `tests/test_submit_state_consistency.py` implements all required test cases A through M:
+A dedicated test suite `tests/test_submit_state_consistency.py` implements all required test cases:
 
 - **Test A:** Mandatory PASS + required docs ready + all attestations true -> `READY_TO_SUBMIT`, `can_submit=True`
 - **Test B:** Mandatory FAIL -> `NOT_READY`, `can_submit=False`
@@ -134,6 +145,10 @@ A new dedicated test suite `tests/test_submit_state_consistency.py` implements a
 - **Test K:** Synthetic non-blocking warning with no blockers -> `READY_WITH_WARNINGS`, `can_submit=True`
 - **Test L:** Document mandatory resolution persistence (None -> 1, None -> 0)
 - **Test M:** Empty submission documents package with all mandatory requirements PASS -> does not invent blocker
+- **Test Concern A:** Mandatory CONCERN -> `NOT_READY`, `can_submit=False`, `mandatory_concern=1`, `mandatory_unknown=0`
+- **Test Concern B:** Blocker message contains `CONCERN` and does NOT contain `UNKNOWN`
+- **Test Concern C:** Mixed states (PASS, CONCERN, FAIL, UNKNOWN) counts correctly tracked
+- **Test Concern D:** Count invariant: `pass + concern + fail + unknown == mandatory_requirements`
 
 ### Full Regression Results:
 ```
@@ -144,12 +159,12 @@ FULL REGRESSION SUITE
 2. tests/test_streamlined_workflow.py:              27 /  27 PASSED
 3. tests/test_stage_d_completeness.py:              52 /  52 PASSED
 4. tests/test_submission_document_provenance.py:    75 /  75 PASSED
-5. tests/test_submit_state_consistency.py:          13 /  13 PASSED
+5. tests/test_submit_state_consistency.py:          17 /  17 PASSED
 6. tests/integration/:                              5 /   5 PASSED (1 live AI skipped)
 7. tests/smoke/ + live Supabase:                   12 /  12 PASSED
 ================================================================================
-TOTAL DISCOVERED:                                 245
-TOTAL PASSED:                                     244
+TOTAL DISCOVERED:                                 249
+TOTAL PASSED:                                     248
 TOTAL SKIPPED:                                      1 (live AI integration)
 TOTAL FAILED / ERRORS:                              0
 ================================================================================
@@ -161,8 +176,8 @@ TOTAL FAILED / ERRORS:                              0
 
 | File | Changes |
 |---|---|
-| `evaluator.py` | New pure deterministic submission state evaluator defining single source of truth for gate status, blocker aggregation, and invariants. |
-| `pages/stage_submit.py` | Unified Stage 5 rendering from evaluator, eliminated attestation race condition, and added human resolution UI for UNKNOWN document mandatory status. |
+| `evaluator.py` | Deterministic submission state evaluator tracking `mandatory_concern` distinctly, adding CONCERN blocker message, and maintaining count invariants. |
+| `pages/stage_submit.py` | Unified Stage 5 rendering from evaluator, added distinct CONCERN guidance, and provided human resolution UI for UNKNOWN document mandatory status. |
 | `analyst.py` | Corrected mandatory representation in `submission_readiness_check()` to explicitly distinguish `REQUIRED`, `OPTIONAL`, and `UNKNOWN`. |
-| `tests/test_submit_state_consistency.py` | 13 deterministic offline unit tests covering cases A through M. |
+| `tests/test_submit_state_consistency.py` | 17 deterministic offline unit tests covering cases A through M and CONCERN tests A through D. |
 | `SUBMIT_STATE_CONSISTENCY_REPORT.md` | Full architecture and verification report. |

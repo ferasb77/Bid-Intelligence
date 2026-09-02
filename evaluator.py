@@ -50,10 +50,11 @@ def evaluate_submission_state(
 
     Blockers:
     A. Mandatory requirement with qual_status == "FAIL".
-    B. Mandatory requirement with qual_status in ("UNKNOWN", None, "") or missing qual_status.
-    C. Required submission document not in READY_DOC_STATUSES ("Uploaded", "Approved", "Complete", "Submitted").
-    D. Submission document with mandatory status UNKNOWN (mandatory is None).
-    E. Any required attestation that is unchecked (False).
+    B. Mandatory requirement with qual_status == "CONCERN" (requires resolution before submission).
+    C. Mandatory requirement with qual_status in ("UNKNOWN", None, "") or missing qual_status.
+    D. Required submission document not in READY_DOC_STATUSES ("Uploaded", "Approved", "Complete", "Submitted").
+    E. Submission document with mandatory status UNKNOWN (mandatory is None).
+    F. Any required attestation that is unchecked (False).
     """
     req_list = requirements or []
     doc_list = documents or []
@@ -65,6 +66,7 @@ def evaluate_submission_state(
     # 1. Requirements evaluation
     mand_reqs = [r for r in req_list if r.get("category") == "Mandatory"]
     m_pass = 0
+    m_concern = 0
     m_fail = 0
     m_unknown = 0
 
@@ -72,6 +74,8 @@ def evaluate_submission_state(
         qs = r.get("qual_status")
         if qs == "PASS":
             m_pass += 1
+        elif qs == "CONCERN":
+            m_concern += 1
         elif qs == "FAIL":
             m_fail += 1
         else:
@@ -80,6 +84,8 @@ def evaluate_submission_state(
 
     if m_fail > 0:
         blockers.append(f"{m_fail} Mandatory Qualification Gate(s) marked as FAIL")
+    if m_concern > 0:
+        blockers.append(f"{m_concern} Mandatory Qualification Gate(s) remain CONCERN and require resolution")
     if m_unknown > 0:
         blockers.append(f"{m_unknown} Mandatory Qualification Gate(s) remain UNKNOWN (Unverified)")
 
@@ -138,6 +144,7 @@ def evaluate_submission_state(
         "counts": {
             "mandatory_requirements": len(mand_reqs),
             "mandatory_pass": m_pass,
+            "mandatory_concern": m_concern,
             "mandatory_fail": m_fail,
             "mandatory_unknown": m_unknown,
             "required_documents": req_docs_total,

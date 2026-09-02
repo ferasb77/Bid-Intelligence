@@ -214,6 +214,72 @@ class TestSubmissionStateEvaluator(unittest.TestCase):
         self.assertEqual(res["counts"]["required_documents"], 0)
         self.assertEqual(res["counts"]["required_documents_missing"], 0)
 
+    # ── CONCERN Semantics Tests (Section 5 A-D) ──────────────────────────────
+    # A. Mandatory CONCERN, all docs ready, all attestations true:
+    #    NOT_READY, can_submit=False, mandatory_concern==1, mandatory_unknown==0
+    def test_concern_A_mandatory_concern_blocks_submission(self):
+        reqs = [{"category": "Mandatory", "qual_status": "CONCERN"}]
+        docs = [{"doc_type": "Submission", "mandatory": 1, "status": "Uploaded"}]
+        atts = _all_attestations_true()
+
+        res = evaluate_submission_state(reqs, docs, atts)
+        self.assertEqual(res["status"], "NOT_READY")
+        self.assertFalse(res["can_submit"])
+        self.assertEqual(res["counts"]["mandatory_concern"], 1)
+        self.assertEqual(res["counts"]["mandatory_unknown"], 0)
+
+    # B. Mandatory CONCERN blocker text contains CONCERN and does not contain UNKNOWN for that requirement
+    def test_concern_B_blocker_text_contains_concern_not_unknown(self):
+        reqs = [{"category": "Mandatory", "qual_status": "CONCERN"}]
+        docs = [{"doc_type": "Submission", "mandatory": 1, "status": "Uploaded"}]
+        atts = _all_attestations_true()
+
+        res = evaluate_submission_state(reqs, docs, atts)
+        self.assertEqual(len(res["blockers"]), 1)
+        self.assertIn("CONCERN", res["blockers"][0])
+        self.assertNotIn("UNKNOWN", res["blockers"][0])
+
+    # C. Mixed mandatory states: PASS, CONCERN, FAIL, UNKNOWN
+    def test_concern_C_mixed_mandatory_states_counts(self):
+        reqs = [
+            {"category": "Mandatory", "qual_status": "PASS"},
+            {"category": "Mandatory", "qual_status": "CONCERN"},
+            {"category": "Mandatory", "qual_status": "FAIL"},
+            {"category": "Mandatory", "qual_status": "UNKNOWN"},
+        ]
+        docs = [{"doc_type": "Submission", "mandatory": 1, "status": "Uploaded"}]
+        atts = _all_attestations_true()
+
+        res = evaluate_submission_state(reqs, docs, atts)
+        counts = res["counts"]
+        self.assertEqual(counts["mandatory_requirements"], 4)
+        self.assertEqual(counts["mandatory_pass"], 1)
+        self.assertEqual(counts["mandatory_concern"], 1)
+        self.assertEqual(counts["mandatory_fail"], 1)
+        self.assertEqual(counts["mandatory_unknown"], 1)
+
+    # D. Count invariant: pass + concern + fail + unknown == mandatory_requirements
+    def test_concern_D_count_invariant(self):
+        reqs = [
+            {"category": "Mandatory", "qual_status": "PASS"},
+            {"category": "Mandatory", "qual_status": "PASS"},
+            {"category": "Mandatory", "qual_status": "CONCERN"},
+            {"category": "Mandatory", "qual_status": "FAIL"},
+            {"category": "Mandatory", "qual_status": "UNKNOWN"},
+            {"category": "Mandatory"},  # missing qual_status -> counts as UNKNOWN
+            {"category": "Rated", "qual_status": "CONCERN"},  # Non-mandatory must not count
+        ]
+        res = evaluate_submission_state(reqs, [], _all_attestations_true())
+        counts = res["counts"]
+        mand_sum = (
+            counts["mandatory_pass"]
+            + counts["mandatory_concern"]
+            + counts["mandatory_fail"]
+            + counts["mandatory_unknown"]
+        )
+        self.assertEqual(mand_sum, counts["mandatory_requirements"])
+        self.assertEqual(counts["mandatory_requirements"], 6)
+
 
 if __name__ == "__main__":
     unittest.main()

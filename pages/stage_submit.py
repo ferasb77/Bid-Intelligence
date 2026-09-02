@@ -140,6 +140,7 @@ def page_submit(bid_id: int):
         f'<div style="font-size:.8rem;color:#EDEAE3">'
         f'{counts["required_documents_ready"]}/{counts["required_documents"]} required submission files ready'
         f'{" · " + str(counts["unknown_document_mandatory"]) + " unknown mandatory status" if counts["unknown_document_mandatory"] else ""}'
+        f'{" · " + str(counts["mandatory_concern"]) + " concern mandatory reqs" if counts.get("mandatory_concern") else ""}'
         f'{" · " + str(counts["mandatory_unknown"]) + " unverified mandatory reqs" if counts["mandatory_unknown"] else ""}'
         f' · {len(blockers)} blocker(s)'
         f'</div>'
@@ -150,6 +151,13 @@ def page_submit(bid_id: int):
     with c_g2:
         st.markdown(metric_card("Submission Deadline", bid.get("submission_deadline") or "—", days_label(sub_dl)), unsafe_allow_html=True)
     st.markdown("")
+
+    # If there are CONCERN mandatory qualification requirements, provide direct guidance to DECIDE
+    if counts.get("mandatory_concern", 0) > 0:
+        st.warning(
+            f"⚠️ {counts['mandatory_concern']} Mandatory Qualification requirement(s) remain CONCERN. "
+            "Return to Stage 2 (DECIDE) to resolve them before submission."
+        )
 
     # If there are UNKNOWN mandatory qualification requirements, provide direct guidance to DECIDE
     if counts["mandatory_unknown"] > 0:
