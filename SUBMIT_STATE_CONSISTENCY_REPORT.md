@@ -160,7 +160,7 @@ FULL REGRESSION SUITE
 3. tests/test_stage_d_completeness.py:              52 /  52 PASSED
 4. tests/test_submission_document_provenance.py:    75 /  75 PASSED
 5. tests/test_submit_state_consistency.py:          17 /  17 PASSED
-6. tests/integration/:                              5 /   5 PASSED (1 live AI skipped)
+6. tests/integration/:                              5 discovered / 4 passed / 1 skipped (live AI)
 7. tests/smoke/ + live Supabase:                   12 /  12 PASSED
 ================================================================================
 TOTAL DISCOVERED:                                 249
