@@ -1961,16 +1961,32 @@ _REQUIREMENT_FIELDS = (
     "weight", "evidence", "source_refs", "qual_status", "evidence_status"
 )
 _SOURCE_REF_FIELDS = ("source_doc", "page", "sheet", "section", "excerpt")
-_EXCERPT_CAP = 500  # characters per excerpt — controls prose size without dropping requirements
+_EXCERPT_CAP = 500  # characters per source_ref excerpt — size control without dropping requirements
+
+# Conservative preflight limit: serialized JSON characters of the full Stage D context.
+# Claude Haiku has a 200k-token context window; at ~3 chars/token this gives ~600k chars
+# of usable input after subtracting the fixed prompt (~5k chars) and output reservation (8k tokens).
+# We use 580_000 chars as a safe conservative limit.
+_STAGE_D_CONTEXT_CHAR_LIMIT = 580_000
+
+
+class StageDContextTooLargeError(RuntimeError):
+    """
+    Raised when the serialized Stage D context exceeds the safe model input budget.
+
+    This error guarantees:
+    - The context is COMPLETE — no requirements were silently omitted.
+    - The failure is explicit — no partial synthesis attempt is made.
+    """
+    pass
 
 
 def _compact_requirement(r: dict) -> dict:
     """
     Return a compact but complete requirement record preserving all decision-critical fields.
     Excerpts are capped at _EXCERPT_CAP characters; no other truncation is applied.
+    Caller must ensure r is a dict (raises if not).
     """
-    if not isinstance(r, dict):
-        return {}
     out = {}
     for f in _REQUIREMENT_FIELDS:
         if f == "source_refs":
@@ -1990,42 +2006,64 @@ def _compact_requirement(r: dict) -> dict:
 
 def build_stage_d_context(normalized_facts: dict, conflicts: list[dict]) -> dict:
     """
-    STAGE D CONTEXT BUILDER — deterministic, lossless.
+    STAGE D CONTEXT BUILDER — deterministic, lossless, strictly integrity-checked.
 
     Produces the complete evidence model that Stage D (AI synthesis) receives.
     Never slices or truncates the requirement list.  All Mandatory, Financial,
     Rated and Supporting requirements are included in full.
 
-    Returns a dict with:
-      - metadata
-      - requirements (categorised sub-keys)
-      - dates, evaluation_criteria, submission_rules, deliverables,
-        commercial_clauses, contract_risks
-      - detected_conflicts
-      - context_integrity (completeness audit trail)
-    """
-    all_reqs = [r for r in (normalized_facts.get("requirements") or []) if isinstance(r, dict)]
+    Integrity rules:
+    - source_requirement_count is derived from the ORIGINAL list length
+      (including any non-dict entries).
+    - Non-dict entries in the requirements list raise RuntimeError immediately
+      (silent exclusion followed by reporting 0 omissions is forbidden).
+    - all_mandatory_included and all_financial_included are computed from
+      actual source vs included category counts, not hard-coded True.
 
-    mandatory   = [_compact_requirement(r) for r in all_reqs if r.get("category", "").strip().lower() == "mandatory"]
-    financial   = [_compact_requirement(r) for r in all_reqs if r.get("category", "").strip().lower() == "financial"]
-    rated       = [_compact_requirement(r) for r in all_reqs if r.get("category", "").strip().lower() == "rated"]
-    supporting  = [_compact_requirement(r) for r in all_reqs if r.get("category", "").strip().lower() == "supporting"]
-    # Any category not mapped above is also preserved
-    other       = [_compact_requirement(r) for r in all_reqs
-                   if r.get("category", "").strip().lower() not in ("mandatory", "financial", "rated", "supporting")]
+    Returns a dict containing context_integrity with completeness audit data.
+    """
+    raw_reqs = normalized_facts.get("requirements") or []
+    source_count = len(raw_reqs)
+
+    # Strict integrity: non-dict entries are an extraction defect — fail explicitly
+    for idx, r in enumerate(raw_reqs):
+        if not isinstance(r, dict):
+            raise RuntimeError(
+                f"Stage D context integrity failure: requirements[{idx}] is "
+                f"{type(r).__name__!r}, not a dict. "
+                "Non-dict requirement entries must not be silently excluded. "
+                "Fix the upstream normalization stage that produced this entry."
+            )
+
+    mandatory  = [_compact_requirement(r) for r in raw_reqs
+                  if r.get("category", "").strip().lower() == "mandatory"]
+    financial  = [_compact_requirement(r) for r in raw_reqs
+                  if r.get("category", "").strip().lower() == "financial"]
+    rated      = [_compact_requirement(r) for r in raw_reqs
+                  if r.get("category", "").strip().lower() == "rated"]
+    supporting = [_compact_requirement(r) for r in raw_reqs
+                  if r.get("category", "").strip().lower() == "supporting"]
+    other      = [_compact_requirement(r) for r in raw_reqs
+                  if r.get("category", "").strip().lower()
+                  not in ("mandatory", "financial", "rated", "supporting")]
 
     included_count = len(mandatory) + len(financial) + len(rated) + len(supporting) + len(other)
-    source_count   = len(all_reqs)
     omitted_count  = source_count - included_count  # must always be 0
 
     if omitted_count != 0:
         raise RuntimeError(
             f"Stage D context builder omitted {omitted_count} requirements — "
-            "silent omission is forbidden. Check _compact_requirement for filter bugs."
+            "silent omission is forbidden. Check category filter logic for bugs."
         )
 
     from collections import Counter
-    cat_counts = Counter(r.get("category", "").strip() for r in all_reqs)
+    cat_counts = Counter(r.get("category", "").strip() for r in raw_reqs)
+
+    # Compute inclusion flags from actual counts (not hard-coded)
+    src_mandatory = cat_counts.get("Mandatory", 0) + cat_counts.get("mandatory", 0)
+    src_financial = cat_counts.get("Financial", 0) + cat_counts.get("financial", 0)
+    all_mandatory_included = (len(mandatory) == src_mandatory)
+    all_financial_included = (len(financial) == src_financial)
 
     context = {
         "metadata": normalized_facts.get("doc_metadata", {}),
@@ -2048,8 +2086,8 @@ def build_stage_d_context(normalized_facts: dict, conflicts: list[dict]) -> dict
             "included_requirement_count":  included_count,
             "counts_by_category":          dict(cat_counts),
             "omitted_requirement_count":   omitted_count,
-            "all_mandatory_included":      True,
-            "all_financial_included":      True,
+            "all_mandatory_included":      all_mandatory_included,
+            "all_financial_included":      all_financial_included,
         },
     }
     return context
@@ -2063,155 +2101,229 @@ def apply_stage_d_authoritative_sections(synth_data: dict, normalized_facts: dic
     rebuilds evidence-backed structured sections from the normalized facts so
     that AI omission cannot destroy procurement-critical data.
 
+    Deduplication uses material canonical tuple keys so that two entries with
+    the same title/stage/milestone but different data values are BOTH preserved.
+    Only exact duplicates (identical on all canonical fields) are collapsed.
+
     Sections replaced deterministically:
       qualification_gates      <- ALL Mandatory requirements
       evaluation_breakdown     <- normalized evaluation_criteria
       submission_requirements  <- normalized submission_rules
       key_dates                <- normalized dates
       commercial_structure     <- normalized commercial_clauses
-      contract_risks           <- normalized contract_risks (brief section)
+      contract_risks           <- normalized contract_risks
       deliverables_summary     <- normalized deliverables
 
-    AI-synthesized fields that are preserved unchanged (interpretation only):
+    No default values are invented. Fields absent in normalized data are set to None.
+
+    AI-synthesized interpretation fields are preserved unchanged:
       executive_summary, opportunity_type, contract_term, procurement_model,
       scope_categories, source_citations, bid fields, outline.
     """
+    # Robust brief coercion: handle None, [], "", non-dict
     if not isinstance(synth_data, dict):
         synth_data = {}
-
-    brief = dict(synth_data.get("brief", {}))
+    raw_brief = synth_data.get("brief")
+    brief = dict(raw_brief) if isinstance(raw_brief, dict) else {}
 
     all_reqs = [r for r in (normalized_facts.get("requirements") or []) if isinstance(r, dict)]
 
-    # qualification_gates — ALL Mandatory requirements
+    # ── qualification_gates — ALL Mandatory requirements ─────────────────────
+    # Canonical key: (description, rfso_ref, req_id) — preserves same description
+    # from different RFSO refs or different doc versions.
     mandatory_reqs = [r for r in all_reqs if r.get("category", "").strip().lower() == "mandatory"]
-    seen_gates: set[str] = set()
+    seen_gates: set[tuple] = set()
     gates = []
     for r in mandatory_reqs:
-        desc = (r.get("description") or "").strip()
-        if not desc or desc in seen_gates:
+        desc    = (r.get("description") or "").strip()
+        rfso    = r.get("rfso_ref")
+        req_id  = r.get("req_id")
+        canon   = (desc, rfso, req_id)
+        if not desc or canon in seen_gates:
             continue
-        seen_gates.add(desc)
-        ref_parts = []
-        for sref in (r.get("source_refs") or []):
-            if isinstance(sref, dict) and sref.get("source_doc"):
-                ref_parts.append(sref["source_doc"])
-        rfp_ref = r.get("rfso_ref") or (", ".join(ref_parts) if ref_parts else None)
+        seen_gates.add(canon)
+        ref_parts = [
+            sref["source_doc"]
+            for sref in (r.get("source_refs") or [])
+            if isinstance(sref, dict) and sref.get("source_doc")
+        ]
+        rfp_ref = rfso or (", ".join(ref_parts) if ref_parts else None)
         gates.append({
             "requirement":          desc,
             "type":                 "Mandatory Qualification",
             "rfp_ref":              rfp_ref,
-            "req_id":               r.get("req_id"),
+            "req_id":               req_id,
             "disqualification_risk":"High",
         })
     brief["qualification_gates"] = gates
 
-    # evaluation_breakdown — normalized evaluation_criteria
+    # ── evaluation_breakdown — normalized evaluation_criteria ─────────────────
+    # Canonical key: (stage, weight, threshold, notes, first source_doc)
     eval_criteria = normalized_facts.get("evaluation_criteria", [])
-    seen_eval: set[str] = set()
+    seen_eval: set[tuple] = set()
     evals = []
     for ec in eval_criteria:
         if not isinstance(ec, dict):
             continue
-        stage = (ec.get("stage") or ec.get("criterion") or "").strip()
-        if not stage or stage in seen_eval:
+        stage    = (ec.get("stage") or ec.get("criterion") or "").strip()
+        weight   = ec.get("weight") or ec.get("points")
+        thresh   = ec.get("threshold")
+        notes    = ec.get("notes") or ec.get("criterion")
+        src_doc  = None
+        for sref in (ec.get("source_refs") or []):
+            if isinstance(sref, dict) and sref.get("source_doc"):
+                src_doc = sref["source_doc"]
+                break
+        canon = (stage, str(weight), str(thresh), str(notes), src_doc)
+        if not stage or canon in seen_eval:
             continue
-        seen_eval.add(stage)
+        seen_eval.add(canon)
         evals.append({
             "stage":     stage,
-            "weight":    ec.get("weight") or ec.get("points"),
-            "threshold": ec.get("threshold"),
-            "notes":     ec.get("notes") or ec.get("criterion"),
+            "weight":    weight,
+            "threshold": thresh,
+            "notes":     notes,
         })
     brief["evaluation_breakdown"] = evals
 
-    # submission_requirements — normalized submission_rules
+    # ── submission_requirements — normalized submission_rules ─────────────────
+    # Canonical key: (item, format, details, mandatory, first source_doc)
     sub_rules = normalized_facts.get("submission_rules", [])
-    seen_sub: set[str] = set()
+    seen_sub: set[tuple] = set()
     sub_reqs = []
     for sr in sub_rules:
         if not isinstance(sr, dict):
             continue
-        item = (sr.get("item") or "").strip()
-        if not item or item in seen_sub:
+        item    = (sr.get("item") or "").strip()
+        fmt     = sr.get("format")
+        details = sr.get("details")
+        mand    = sr.get("mandatory")
+        src_doc = None
+        for sref in (sr.get("source_refs") or []):
+            if isinstance(sref, dict) and sref.get("source_doc"):
+                src_doc = sref["source_doc"]
+                break
+        canon = (item, str(fmt), str(details), str(mand), src_doc)
+        if not item or canon in seen_sub:
             continue
-        seen_sub.add(item)
+        seen_sub.add(canon)
         sub_reqs.append({
             "item":    item,
-            "format":  sr.get("format"),
-            "details": sr.get("details"),
+            "format":  fmt,
+            "details": details,
         })
     brief["submission_requirements"] = sub_reqs
 
-    # key_dates — normalized dates
+    # ── key_dates — normalized dates ──────────────────────────────────────────
+    # Canonical key: (milestone, date, first source_doc)
+    # Two dates with same milestone label but different values are BOTH preserved.
     dates = normalized_facts.get("dates", [])
-    seen_dates: set[str] = set()
+    seen_dates: set[tuple] = set()
     key_dates = []
     for d in dates:
         if not isinstance(d, dict):
             continue
         milestone = (d.get("milestone") or "").strip()
         date_val  = d.get("date", "")
-        if not milestone or milestone in seen_dates:
+        src_doc   = None
+        for sref in (d.get("source_refs") or []):
+            if isinstance(sref, dict) and sref.get("source_doc"):
+                src_doc = sref["source_doc"]
+                break
+        # If no source_refs, use source_doc field directly
+        if src_doc is None:
+            src_doc = d.get("source_doc")
+        canon = (milestone, str(date_val), src_doc)
+        if not milestone or canon in seen_dates:
             continue
-        seen_dates.add(milestone)
+        seen_dates.add(canon)
         key_dates.append({
-            "milestone": milestone,
-            "date":      date_val,
+            "milestone":  milestone,
+            "date":       date_val,
+            "source_doc": src_doc,
         })
     brief["key_dates"] = key_dates
 
-    # commercial_structure — normalized commercial_clauses
+    # ── commercial_structure — normalized commercial_clauses ──────────────────
+    # Canonical key: (topic, details, first source_doc)
     comm_clauses = normalized_facts.get("commercial_clauses", [])
-    seen_comm: set[str] = set()
+    seen_comm: set[tuple] = set()
     comm_struct = []
     for cc in comm_clauses:
         if not isinstance(cc, dict):
             continue
-        topic = (cc.get("topic") or "").strip()
-        if not topic or topic in seen_comm:
+        topic   = (cc.get("topic") or "").strip()
+        details = cc.get("details")
+        src_doc = None
+        for sref in (cc.get("source_refs") or []):
+            if isinstance(sref, dict) and sref.get("source_doc"):
+                src_doc = sref["source_doc"]
+                break
+        if src_doc is None:
+            src_doc = cc.get("source_doc")
+        canon = (topic, str(details), src_doc)
+        if not topic or canon in seen_comm:
             continue
-        seen_comm.add(topic)
+        seen_comm.add(canon)
         comm_struct.append({
             "topic":   topic,
-            "details": cc.get("details"),
+            "details": details,
         })
     brief["commercial_structure"] = comm_struct
 
-    # contract_risks — normalized contract_risks
+    # ── contract_risks — normalized contract_risks ────────────────────────────
+    # Canonical key: (risk_title, severity, details) — no invented default severity
     risks = normalized_facts.get("contract_risks", [])
-    seen_risks: set[str] = set()
+    seen_risks: set[tuple] = set()
     risk_list = []
     for risk in risks:
         if not isinstance(risk, dict):
             continue
         risk_title = (risk.get("risk") or risk.get("title") or "").strip()
-        if not risk_title or risk_title in seen_risks:
+        severity   = risk.get("severity")          # None if not present — never invent
+        details    = risk.get("details") or risk.get("description")
+        canon      = (risk_title, str(severity), str(details))
+        if not risk_title or canon in seen_risks:
             continue
-        seen_risks.add(risk_title)
-        risk_list.append({
-            "risk":     risk_title,
-            "severity": risk.get("severity", "Medium"),
-            "details":  risk.get("details") or risk.get("description"),
-        })
+        seen_risks.add(canon)
+        entry = {
+            "risk":    risk_title,
+            "details": details,
+        }
+        if severity is not None:
+            entry["severity"] = severity
+        risk_list.append(entry)
     brief["contract_risks"] = risk_list
 
-    # deliverables_summary — normalized deliverables
+    # ── deliverables_summary — normalized deliverables ────────────────────────
+    # Canonical key: (title, description, category, first source_doc)
     deliverables = normalized_facts.get("deliverables", [])
-    seen_deliv: set[str] = set()
+    seen_deliv: set[tuple] = set()
     deliv_summary = []
     for d in deliverables:
         if not isinstance(d, dict):
             continue
-        title = (d.get("title") or d.get("item") or "").strip()
-        if not title or title in seen_deliv:
+        title   = (d.get("title") or d.get("item") or "").strip()
+        desc    = d.get("description") or d.get("details")
+        cat     = d.get("category")    # None if not present — never invent
+        src_doc = None
+        for sref in (d.get("source_refs") or []):
+            if isinstance(sref, dict) and sref.get("source_doc"):
+                src_doc = sref["source_doc"]
+                break
+        if src_doc is None:
+            src_doc = d.get("source_doc")
+        canon = (title, str(desc), str(cat), src_doc)
+        if not title or canon in seen_deliv:
             continue
-        seen_deliv.add(title)
-        deliv_summary.append({
+        seen_deliv.add(canon)
+        entry = {
             "title":       title,
-            "description": d.get("description") or d.get("details"),
-            "category":    d.get("category", "Core"),
-        })
+            "description": desc,
+        }
+        if cat is not None:
+            entry["category"] = cat
+        deliv_summary.append(entry)
     brief["deliverables_summary"] = deliv_summary
 
     result = dict(synth_data)
@@ -2223,22 +2335,38 @@ def synthesize_bid_brief(normalized_facts: dict, conflicts: list[dict], api_key:
     """
     STAGE D: Synthesize the executive Bid Brief from the COMPLETE normalized/reconciled facts.
 
-    Uses build_stage_d_context() to produce a lossless, complete evidence model
-    (no [:15] slicing, no requirement truncation) and apply_stage_d_authoritative_sections()
-    to ensure evidence-backed structured sections cannot be silently omitted by the AI.
+    Pipeline:
+    1. build_stage_d_context()              — lossless, integrity-checked context
+    2. Context-size preflight               — explicit failure before API call if too large
+    3. Anthropic synthesis call             — AI interprets the complete context
+    4. apply_stage_d_authoritative_sections() — ensures structured sections survive AI omission
     """
     client = get_anthropic_client(api_key=api_key)
     model = "claude-haiku-4-5-20251001"
 
-    # Build the complete, lossless Stage D context
+    # Step 1: Build complete, lossless Stage D context
     stage_d_context = build_stage_d_context(normalized_facts, conflicts)
 
+    # Step 2: Context-size preflight — serialize and check BEFORE making the API call
+    prompt_text = STAGE_D_SYNTHESIS_PROMPT + "\n\nNORMALIZED PROCUREMENT FACTS MODEL:\n"
     facts_summary = json.dumps(stage_d_context, indent=2)
+    total_chars = len(prompt_text) + len(facts_summary)
+
+    if total_chars > _STAGE_D_CONTEXT_CHAR_LIMIT:
+        ci = stage_d_context["context_integrity"]
+        raise StageDContextTooLargeError(
+            f"Stage D context is complete but too large for safe synthesis. "
+            f"No requirements were silently omitted. "
+            f"Source requirement count: {ci['source_requirement_count']}. "
+            f"Serialized context size: {total_chars:,} characters "
+            f"(limit: {_STAGE_D_CONTEXT_CHAR_LIMIT:,} characters). "
+            f"Reduce excerpt verbosity or split the package before synthesis."
+        )
 
     content = [
         {
             "type": "text",
-            "text": STAGE_D_SYNTHESIS_PROMPT + "\n\nNORMALIZED PROCUREMENT FACTS MODEL:\n" + facts_summary
+            "text": prompt_text + facts_summary
         }
     ]
 
@@ -2252,11 +2380,10 @@ def synthesize_bid_brief(normalized_facts: dict, conflicts: list[dict], api_key:
     if not isinstance(synth_data, dict):
         synth_data = {}
 
-    # Deterministically apply authoritative evidence-backed sections
+    # Step 4: Deterministically apply authoritative evidence-backed sections
     synth_data = apply_stage_d_authoritative_sections(synth_data, normalized_facts)
 
     return synth_data
-
 
 
 

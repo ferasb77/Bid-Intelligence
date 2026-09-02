@@ -403,5 +403,261 @@ class TestStageDContextBuilderEdgeCases(unittest.TestCase):
         self.assertEqual(len(result["brief"]["qualification_gates"]), 3)
 
 
+
+# ---------------------------------------------------------------------------
+# Scenario 6: Deduplication regression tests (items A-H) and robustness (I-J)
+# ---------------------------------------------------------------------------
+
+class TestStageDDeduplicationRegressions(unittest.TestCase):
+    """
+    Verify that materially distinct normalized facts produce distinct output entries,
+    and that only exact duplicates (identical on all canonical fields) are collapsed.
+    Also verifies no default values are invented for absent fields.
+    """
+
+    def _base_nf(self, **overrides):
+        """Minimal normalized_facts dict, easily overridden per-test."""
+        base = {
+            "requirements":       [],
+            "dates":              [],
+            "evaluation_criteria":[],
+            "submission_rules":   [],
+            "deliverables":       [],
+            "commercial_clauses": [],
+            "contract_risks":     [],
+        }
+        base.update(overrides)
+        return base
+
+    # A: same milestone, different dates -> both preserved
+    def test_A_same_milestone_different_dates_both_preserved(self):
+        nf = self._base_nf(dates=[
+            {"milestone": "Bid Closing", "date": "2026-09-15", "source_doc": "RFP.pdf"},
+            {"milestone": "Bid Closing", "date": "2026-09-30", "source_doc": "Addendum.pdf"},
+        ])
+        result = apply_stage_d_authoritative_sections({}, nf)
+        dates = result["brief"]["key_dates"]
+        date_vals = [d["date"] for d in dates]
+        self.assertIn("2026-09-15", date_vals, "RFP closing date must be preserved")
+        self.assertIn("2026-09-30", date_vals, "Addendum closing date must be preserved")
+        self.assertEqual(len(dates), 2,
+            "Two same-milestone dates with different values must both appear in key_dates")
+
+    # B: same evaluation stage, different weights -> both preserved
+    def test_B_same_eval_stage_different_weights_both_preserved(self):
+        nf = self._base_nf(evaluation_criteria=[
+            {"stage": "Technical", "weight": "70 points", "threshold": "50%",
+             "notes": "Version 1",
+             "source_refs": [{"source_doc": "RFP.pdf", "page": 1}]},
+            {"stage": "Technical", "weight": "60 points", "threshold": "50%",
+             "notes": "Version 2",
+             "source_refs": [{"source_doc": "Addendum.pdf", "page": 1}]},
+        ])
+        result = apply_stage_d_authoritative_sections({}, nf)
+        breakdown = result["brief"]["evaluation_breakdown"]
+        weights = [e["weight"] for e in breakdown]
+        self.assertIn("70 points", weights, "Original weight must be preserved")
+        self.assertIn("60 points", weights, "Addendum weight must be preserved")
+        self.assertEqual(len(breakdown), 2,
+            "Two same-stage criteria with different weights must both appear")
+
+    # C: same submission item, different format/details -> both preserved
+    def test_C_same_submission_item_different_format_both_preserved(self):
+        nf = self._base_nf(submission_rules=[
+            {"item": "Technical Proposal", "format": "PDF",
+             "details": "Max 50 pages", "mandatory": 1},
+            {"item": "Technical Proposal", "format": "DOCX",
+             "details": "Revised per addendum", "mandatory": 1},
+        ])
+        result = apply_stage_d_authoritative_sections({}, nf)
+        sub = result["brief"]["submission_requirements"]
+        fmts = [s["format"] for s in sub]
+        self.assertIn("PDF", fmts, "PDF format must be preserved")
+        self.assertIn("DOCX", fmts, "DOCX format must be preserved")
+        self.assertEqual(len(sub), 2,
+            "Same item with different format/details must produce two submission_requirements")
+
+    # D: same commercial topic, different details -> both preserved
+    def test_D_same_commercial_topic_different_details_both_preserved(self):
+        nf = self._base_nf(commercial_clauses=[
+            {"topic": "Rate Adjustment", "details": "CPI cap 3%", "source_doc": "RFP.pdf"},
+            {"topic": "Rate Adjustment", "details": "CPI cap 5%", "source_doc": "Addendum.pdf"},
+        ])
+        result = apply_stage_d_authoritative_sections({}, nf)
+        comm = result["brief"]["commercial_structure"]
+        details_vals = [c["details"] for c in comm]
+        self.assertIn("CPI cap 3%", details_vals)
+        self.assertIn("CPI cap 5%", details_vals)
+        self.assertEqual(len(comm), 2,
+            "Same topic with different details must produce two commercial_structure entries")
+
+    # E: same deliverable title, different category/details -> both preserved
+    def test_E_same_deliverable_title_different_details_both_preserved(self):
+        nf = self._base_nf(deliverables=[
+            {"title": "Status Report", "description": "Monthly report",
+             "category": "Core", "source_doc": "SOW_v1.pdf"},
+            {"title": "Status Report", "description": "Quarterly summary",
+             "category": "Optional", "source_doc": "SOW_v2.pdf"},
+        ])
+        result = apply_stage_d_authoritative_sections({}, nf)
+        deliv = result["brief"]["deliverables_summary"]
+        descs = [d["description"] for d in deliv]
+        self.assertIn("Monthly report", descs)
+        self.assertIn("Quarterly summary", descs)
+        self.assertEqual(len(deliv), 2,
+            "Same deliverable title with different description/category must produce two entries")
+
+    # F: exact duplicate normalized items may deduplicate
+    def test_F_exact_duplicate_normalized_items_are_collapsed(self):
+        nf = self._base_nf(dates=[
+            {"milestone": "Bid Closing", "date": "2026-09-30", "source_doc": "RFP.pdf"},
+            {"milestone": "Bid Closing", "date": "2026-09-30", "source_doc": "RFP.pdf"},
+        ])
+        result = apply_stage_d_authoritative_sections({}, nf)
+        dates = result["brief"]["key_dates"]
+        self.assertEqual(len(dates), 1,
+            "Identical duplicates on all canonical fields must be collapsed to one entry")
+        self.assertEqual(dates[0]["date"], "2026-09-30")
+
+    # G: missing risk severity -> no invented "Medium"
+    def test_G_missing_risk_severity_not_invented(self):
+        nf = self._base_nf(contract_risks=[
+            {"risk": "Scope Creep", "details": "SOW may expand."}
+            # No "severity" key at all
+        ])
+        result = apply_stage_d_authoritative_sections({}, nf)
+        risk_list = result["brief"]["contract_risks"]
+        self.assertEqual(len(risk_list), 1)
+        self.assertNotIn("severity", risk_list[0],
+            "severity=Medium must not be invented when absent from normalized facts")
+
+    # H: missing deliverable category -> no invented "Core"
+    def test_H_missing_deliverable_category_not_invented(self):
+        nf = self._base_nf(deliverables=[
+            {"title": "Final Report", "description": "End-of-contract deliverable"}
+            # No "category" key
+        ])
+        result = apply_stage_d_authoritative_sections({}, nf)
+        deliv = result["brief"]["deliverables_summary"]
+        self.assertEqual(len(deliv), 1)
+        self.assertNotIn("category", deliv[0],
+            "category=Core must not be invented when absent from normalized facts")
+
+    # I: brief=null / non-dict -> authoritative rebuild succeeds, bid preserved
+    def test_I_brief_non_dict_authoritative_rebuild_succeeds(self):
+        for bad_brief in [None, [], "invalid", 42, {}]:
+            with self.subTest(brief=bad_brief):
+                synth_input = {"bid": {"title": "Test"}, "brief": bad_brief}
+                nf = {
+                    "requirements": [
+                        {"req_id": "M1", "category": "Mandatory",
+                         "description": "Mandatory req 1"}
+                    ],
+                    "dates": [], "evaluation_criteria": [], "submission_rules": [],
+                    "deliverables": [], "commercial_clauses": [], "contract_risks": [],
+                }
+                result = apply_stage_d_authoritative_sections(synth_input, nf)
+                self.assertIsInstance(result["brief"], dict,
+                    "brief must be a dict after authoritative rebuild regardless of AI output")
+                gates = result["brief"]["qualification_gates"]
+                self.assertEqual(len(gates), 1,
+                    "qualification_gates must be populated from normalized facts")
+                self.assertEqual(gates[0]["req_id"], "M1")
+                self.assertEqual(result.get("bid", {}).get("title"), "Test",
+                    "bid-level fields must survive authoritative rebuild")
+
+    # J: malformed requirement entry -> explicit integrity failure
+    def test_J_malformed_requirement_raises_integrity_error(self):
+        nf = {
+            "requirements": [
+                {"req_id": "M1", "category": "Mandatory", "description": "Valid req"},
+                "this is not a dict",  # malformed entry
+            ],
+            "dates": [], "evaluation_criteria": [], "submission_rules": [],
+            "deliverables": [], "commercial_clauses": [], "contract_risks": [],
+        }
+        with self.assertRaises(RuntimeError) as ctx:
+            build_stage_d_context(nf, [])
+        err_msg = str(ctx.exception).lower()
+        self.assertIn("integrity", err_msg,
+            "Error message must reference 'integrity'")
+
+
+# ---------------------------------------------------------------------------
+# Scenario 7: Context-size preflight tests (item K)
+# ---------------------------------------------------------------------------
+
+class TestStageDContextSizePreflight(unittest.TestCase):
+    """
+    K: Verify that an oversized Stage D context triggers StageDContextTooLargeError
+    BEFORE the Anthropic API call, with a message confirming context completeness.
+    """
+
+    def _minimal_nf(self):
+        return {
+            "doc_metadata": {"title": "Test RFP"},
+            "requirements": [
+                {"req_id": "M1", "category": "Mandatory",
+                 "description": "Only mandatory req", "source_refs": []}
+            ],
+            "dates": [], "evaluation_criteria": [], "submission_rules": [],
+            "deliverables": [], "commercial_clauses": [], "contract_risks": [],
+        }
+
+    def test_K_forced_limit_low_raises_StageDContextTooLargeError(self):
+        import extractor as _ext
+        from extractor import StageDContextTooLargeError, synthesize_bid_brief
+        import unittest.mock as mock
+
+        original_limit = _ext._STAGE_D_CONTEXT_CHAR_LIMIT
+        _ext._STAGE_D_CONTEXT_CHAR_LIMIT = 1  # Guarantee overflow on any real context
+        try:
+            with self.assertRaises(StageDContextTooLargeError) as ctx:
+                with mock.patch("extractor.get_anthropic_client"):
+                    synthesize_bid_brief(self._minimal_nf(), [], api_key="test")
+            msg = str(ctx.exception)
+            self.assertIn("complete", msg.lower(),
+                "Error must confirm context is COMPLETE (no silent omission)")
+            self.assertIn("silently omitted", msg.lower(),
+                "Error must confirm no requirements were silently omitted")
+            self.assertIn("source requirement count", msg.lower(),
+                "Error must state the source requirement count")
+            self.assertIn("characters", msg.lower(),
+                "Error must report serialized context size in characters")
+        finally:
+            _ext._STAGE_D_CONTEXT_CHAR_LIMIT = original_limit
+
+    def test_K_preflight_fires_before_api_call(self):
+        """The API must never be called when the preflight limit is exceeded."""
+        import extractor as _ext
+        from extractor import StageDContextTooLargeError, synthesize_bid_brief
+        import unittest.mock as mock
+
+        original_limit = _ext._STAGE_D_CONTEXT_CHAR_LIMIT
+        _ext._STAGE_D_CONTEXT_CHAR_LIMIT = 1
+        try:
+            mock_client = mock.MagicMock()
+            with self.assertRaises(StageDContextTooLargeError):
+                with mock.patch("extractor.get_anthropic_client", return_value=mock_client):
+                    synthesize_bid_brief(self._minimal_nf(), [], api_key="test")
+            mock_client.messages.create.assert_not_called()
+        finally:
+            _ext._STAGE_D_CONTEXT_CHAR_LIMIT = original_limit
+
+    def test_K_normal_limit_does_not_raise_for_small_package(self):
+        """A tiny package must not trigger the preflight under the real limit."""
+        from extractor import synthesize_bid_brief
+        import unittest.mock as mock
+
+        mock_response = mock.MagicMock()
+        mock_response.content = [mock.MagicMock(text="{}")]
+        mock_client = mock.MagicMock()
+        mock_client.messages.create.return_value = mock_response
+
+        with mock.patch("extractor.get_anthropic_client", return_value=mock_client):
+            result = synthesize_bid_brief(self._minimal_nf(), [], api_key="test")
+        self.assertIsInstance(result, dict)
+
+
 if __name__ == "__main__":
     unittest.main()
