@@ -1105,6 +1105,11 @@ def validate_conflict_source_validity(source_a: dict, source_b: dict, package_fi
     return "SYNTHESIZED"
 
 
+def _clean_optional_text(value) -> str:
+    """Return stripped text if value is a non-empty string, else empty string."""
+    return value.strip() if isinstance(value, str) else ""
+
+
 def detect_document_conflicts(normalized_facts: dict, package_files: list[str]) -> list[dict]:
     """
     Refined Stage C Deterministic Cross-Document Reconciliation Engine.
@@ -1134,7 +1139,7 @@ def detect_document_conflicts(normalized_facts: dict, package_files: list[str]) 
             doc_vals = {}
             for d in d_list:
                 s_doc = d.get("source_doc", "Doc")
-                dt = d.get("date", "").strip()
+                dt = _clean_optional_text(d.get("date"))
                 if dt:
                     doc_vals.setdefault(s_doc, set()).add(dt)
 
@@ -1142,7 +1147,7 @@ def detect_document_conflicts(normalized_facts: dict, package_files: list[str]) 
             for s_doc, vals in doc_vals.items():
                 if len(vals) > 1:
                     internal_list = [d for d in d_list if d.get("source_doc") == s_doc]
-                    pair = select_opposing_pair(internal_list, lambda x: x.get("date", "").strip())
+                    pair = select_opposing_pair(internal_list, lambda x: _clean_optional_text(x.get("date")))
                     if pair:
                         d_a, d_b = pair
                         src_a = {"doc": s_doc, "ref": d_a.get("milestone", ""), "text": d_a.get("date", "")}
@@ -1167,7 +1172,7 @@ def detect_document_conflicts(normalized_facts: dict, package_files: list[str]) 
             single_val_docs = {doc: list(vals)[0] for doc, vals in doc_vals.items() if len(vals) == 1}
             if len(set(single_val_docs.values())) > 1:
                 cross_candidates = [d for d in d_list if d.get("source_doc") in single_val_docs]
-                cross_pair = select_opposing_pair(cross_candidates, lambda x: x.get("date", "").strip(), source_fn=lambda x: x.get("source_doc"), require_different_sources=True)
+                cross_pair = select_opposing_pair(cross_candidates, lambda x: _clean_optional_text(x.get("date")), source_fn=lambda x: x.get("source_doc"), require_different_sources=True)
                 if cross_pair:
                     d_a, d_b = cross_pair
                     src_a = {"doc": d_a.get("source_doc", "Doc A"), "ref": d_a.get("milestone", ""), "text": d_a.get("date", "")}
