@@ -1985,10 +1985,12 @@ import re as _re
 # ---------------------------------------------------------------------------
 
 # Format phrases indicating the item is NOT an independent file.
-_FORMAT_EMBEDDED_PHRASES = frozenset([
+# Covers embedded content, form entries, checklist columns, portal containers,
+# and mixed/ambiguous formats (e.g. "Embedded or Separate File").
+_FORMAT_NEGATIVE_PHRASES = frozenset([
     'form entry',
-    'integrated in response',
-    'embedded in response',
+    'integrated',
+    'embedded',
     'proponent response column',
     'yes/no confirmation',
     'yes / no confirmation',
@@ -1997,26 +1999,36 @@ _FORMAT_EMBEDDED_PHRASES = frozenset([
     'reference only',
     'for reference',
     'available for reference',
-    'electronic bid submission',  # portal delivery mode, not a file type
+    'electronic bid submission',  # portal delivery packaging container, not a file
 ])
 
-# Format phrases positively supporting an independently tracked artefact.
-_FORMAT_INDEPENDENT_PHRASES = frozenset([
+# Format phrases positively and explicitly establishing an independent file or package.
+_EXPLICIT_INDEPENDENT_FORMAT_PHRASES = frozenset([
     'separate file',
+    'separate files',
     'separate submission',
     'separate document',
-    'attached',
+    'single document',
+    'standalone document',
     'attachment',
+    'attachments',
+    'attached file',
+    'attached files',
+    'attached samples',
     'pdf',
+    'docx',
     'xlsx',
     'xls',
-    'docx',
     'spreadsheet',
+    'excel workbook',
+    'excel spreadsheet',
     'excel',
-    'signed',
-    'completed form',
-    'separate files',
-    'supporting documentation',
+])
+
+# Generic document formats that qualify as independent when paired with
+# a strong standalone submission artifact noun in the item title.
+_GENERIC_DOCUMENT_FORMAT_PHRASES = frozenset([
+    'document',
 ])
 
 # ---------------------------------------------------------------------------
@@ -2037,6 +2049,7 @@ _PROCESS_ITEM_PHRASES = frozenset([
     'portal submission', 'online portal',
     'currency and tax',
     'assumptions and restrictions',
+    'response format',
 ])
 
 # Phrases in details text that reveal reference-only / process intent.
@@ -2058,77 +2071,20 @@ _QUANTITY_CONSTRAINT_RE = _re.compile(
     _re.IGNORECASE,
 )
 
-# ---------------------------------------------------------------------------
-# Positive artefact-indicator tokens (word-boundary matched)
-# ---------------------------------------------------------------------------
-# Matched with \b so 'form' matches 'Submission Form' but NOT 'information'
-# or 'format'. Overly broad single words (response, submission, document,
-# file, references, appendix) are excluded here -- they require format support.
-
-_ARTEFACT_TOKENS = [
-    'form',
-    'template',
-    'annex',
-    'attachment',
-    'schedule',
-    'proposal',
-    'questionnaire',
-    'declaration',
-    'certification',
-    'statement',
-    'portfolio',
-    'agenda',
-    'report',
-    'letter',
-    'agreement',
-    'contract',
-    'resume',
-    r'\bcv\b',
-    'workplan',
-    'work plan',
-    'pricing form',
-    'rate card',
-    'acknowledgement',
-    'acknowledgment',
-    'confirmation',
-]
-
-_ARTEFACT_TOKEN_RE = _re.compile(
-    r'(?i)\b(?:' + '|'.join(_ARTEFACT_TOKENS) + r')\b'
-)
-
 # Regex for workbook tabs or worksheets that are part of another submitted workbook.
 _WORKBOOK_TAB_RE = _re.compile(
     r"(?i)\b(?:tabs?|worksheets?)\b"
 )
 
-# Tokens that support artefact identity ONLY when format signals independent file.
-_FORMAT_DEPENDENT_TOKENS = [
-    'appendix',
-    'sample',
-    'profile',
-    'envelope',
-    'spreadsheet',
-]
-
-_FORMAT_DEPENDENT_TOKEN_RE = _re.compile(
-    r'(?i)\b(?:' + '|'.join(_FORMAT_DEPENDENT_TOKENS) + r')\b'
+# Strong standalone artifact nouns with morphology (singular / plural alternatives).
+# These represent discrete submission packages/forms even without explicit file format,
+# provided format is generic document, empty, or standalone (and not negative).
+_STRONG_STANDALONE_ARTIFACT_RE = _re.compile(
+    r"(?i)\b(?:"
+    r"forms?|proposals?|questionnaires?|templates?|annex(?:es)?|schedules?|"
+    r"pricing\s+forms?|rate\s+cards?|work\s*plans?"
+    r")\b"
 )
-
-
-def _format_signals_independent(fmt: str) -> bool:
-    fl = (fmt or '').strip().lower()
-    return any(p in fl for p in _FORMAT_INDEPENDENT_PHRASES)
-
-
-def _format_signals_embedded(fmt: str) -> bool:
-    fl = (fmt or '').strip().lower()
-    return any(p in fl for p in _FORMAT_EMBEDDED_PHRASES)
-
-
-def _details_signals_reference_only(details: str) -> bool:
-    dl = (details or '').strip().lower()
-    return any(p in dl for p in _PROCESS_DETAILS_PHRASES)
 
 
 def _is_concrete_submission_document(
@@ -2142,52 +2098,53 @@ def _is_concrete_submission_document(
 
     Decision logic (in priority order):
     1. Empty item -> False.
-    2. Format field signals embedded/non-file content -> False.
+    2. Format contains embedded, integrated, form entry, checklist, or mixed marker -> False.
     3. Workbook tab inside another workbook -> False.
-    4. Item text contains a process/portal phrase -> False.
+    4. Item text contains a process/portal/format instruction -> False.
     5. Item text matches a quantified-constraint pattern -> False.
     6. Details text reveals reference-only or process intent -> False.
-    7. Item text contains a strong artefact token (word-boundary) -> True.
-    8. Item text contains a format-dependent token AND format explicitly
-       signals an independent file -> True.
-    9. Conservative default -> False.
+    7. Format is an explicit independent file/package format -> True.
+    8. Format is generic document (or unspecified) AND item title has strong
+       standalone artifact noun -> True.
+    9. Conservative fallback -> False.
     '''
-    if not item:
+    if not item or not item.strip():
         return False
 
     item_lower = item.strip().lower()
     fmt_lower  = (fmt or '').strip().lower()
+    details_lower = (details or '').strip().lower()
 
-    # Step 2: format field signals embedded content -> exclude
-    if _format_signals_embedded(fmt_lower):
+    # Step 2: Hard negative format signals (embedded, form entry, mixed/ambiguous, etc.)
+    if any(p in fmt_lower for p in _FORMAT_NEGATIVE_PHRASES):
         return False
 
-    # Step 3: workbook tab that is part of a parent workbook -> exclude
+    # Step 3: Workbook tab that is part of a parent workbook
     if _WORKBOOK_TAB_RE.search(item):
         return False
 
-    # Step 4: process/portal phrase in item -> exclude
-    for phrase in _PROCESS_ITEM_PHRASES:
-        if phrase in item_lower:
-            return False
+    # Step 4: Process / portal / formatting instruction in item
+    if any(p in item_lower for p in _PROCESS_ITEM_PHRASES):
+        return False
 
-    # Step 5: quantified constraint in item -> exclude
+    # Step 5: Quantified constraint in item
     if _QUANTITY_CONSTRAINT_RE.search(item):
         return False
 
-    # Step 6: details reveal reference-only intent -> exclude
-    if _details_signals_reference_only(details):
+    # Step 6: Details reveal reference-only or non-evaluated intent
+    if any(p in details_lower for p in _PROCESS_DETAILS_PHRASES):
         return False
 
-    # Step 7: strong artefact token matched at word boundary -> include
-    if _ARTEFACT_TOKEN_RE.search(item):
+    # Step 7: Explicit independent file/package format signal
+    if any(p in fmt_lower for p in _EXPLICIT_INDEPENDENT_FORMAT_PHRASES):
         return True
 
-    # Step 8: format-dependent token + format explicitly says independent file
-    if _FORMAT_DEPENDENT_TOKEN_RE.search(item) and _format_signals_independent(fmt_lower):
-        return True
+    # Step 8: Generic document or unspecified format + strong standalone artifact noun
+    if (not fmt_lower or any(p in fmt_lower for p in _GENERIC_DOCUMENT_FORMAT_PHRASES)):
+        if _STRONG_STANDALONE_ARTIFACT_RE.search(item):
+            return True
 
-    # Step 9: conservative default
+    # Step 9: Conservative fallback
     return False
 
 

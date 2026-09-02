@@ -63,151 +63,191 @@ class TestWordBoundaryMatching(unittest.TestCase):
 
 
 # ============================================================================
-# Part 2: Classifier regression tests A-J (directive items A-J)
+# Part 2: Final generic classifier regression tests (Section 7 A-I)
 # ============================================================================
 
 class TestClassifierRegressions(unittest.TestCase):
     """
-    Classifier regression cases A-J as specified in the scope directive.
+    Final generic classifier regression cases as specified in the scope directive.
     Tests the _is_concrete_submission_document() predicate directly.
     """
 
-    # A: Form Entry format -> not a document (embedded field)
-    def test_A_proponent_information_form_entry_excluded(self):
-        result = _is_concrete_submission_document(
-            "Proponent Information", "Form Entry"
+    # A: item="Response Document", format="Single Document" -> TRUE
+    def test_A_response_document_single_document(self):
+        self.assertTrue(
+            _is_concrete_submission_document("Response Document", "Single Document"),
+            "Response Document with Single Document format must be an independent document",
         )
-        self.assertFalse(result,
-            "Proponent Information with Form Entry is an embedded field, not a document")
 
-    # B: Response Format with page instruction -> not a document
-    def test_B_response_format_page_instruction_excluded(self):
-        result = _is_concrete_submission_document(
-            "Response Format",
-            "PDF / Separate Files",
-            "Responses must not exceed 12 pages excluding resumes",
+    # B: item="Minimum Qualification Requirements Response", format="Separate Submission" -> TRUE
+    def test_B_minimum_qualification_separate_submission(self):
+        self.assertTrue(
+            _is_concrete_submission_document("Minimum Qualification Requirements Response", "Separate Submission"),
+            "Minimum Qualification Requirements Response with Separate Submission must be an independent document",
         )
-        self.assertFalse(result,
-            "Response Format is a formatting/page-limit instruction, not a document")
 
-    # C: RFP Main Document with reference-only details -> excluded
-    def test_C_rfp_main_document_reference_only_excluded(self):
-        result = _is_concrete_submission_document(
-            "RFP Main Document",
-            "Electronic",
-            "Not mandatory but available for reference.",
+    # C: item="Personnel Profiles", format="Separate File" -> TRUE
+    def test_C_personnel_profiles_separate_file(self):
+        self.assertTrue(
+            _is_concrete_submission_document("Personnel Profiles", "Separate File"),
+            "Personnel Profiles with Separate File format must be an independent document",
         )
-        self.assertFalse(result,
-            "Reference-only material must be excluded even if item looks like a document")
 
-    # D: External Links and References with non-evaluated details -> excluded
-    def test_D_external_links_references_excluded(self):
-        result = _is_concrete_submission_document(
-            "External Links and References",
-            "Supporting Documentation",
-            "Links to websites or other information external to the form will not be evaluated.",
+    # D: item="Personnel Profiles", format="Embedded or Separate File" -> FALSE
+    def test_D_personnel_profiles_embedded_or_separate(self):
+        self.assertFalse(
+            _is_concrete_submission_document("Personnel Profiles", "Embedded or Separate File"),
+            "Ambiguous mixed format (Embedded or Separate File) must not be projected as independent file",
         )
-        self.assertFalse(result,
-            "External links instruction with will-not-be-evaluated details must be excluded")
 
-    # E: Key Personnel Profiles with Integrated in response -> NOT an independent file
-    def test_E_key_personnel_profiles_integrated_excluded(self):
-        result = _is_concrete_submission_document(
-            "Key Personnel Profiles", "Integrated in response"
+    # E: item="Thought Leadership Samples", format="Attached Files" -> TRUE
+    def test_E_thought_leadership_attached_files(self):
+        self.assertTrue(
+            _is_concrete_submission_document("Thought Leadership Samples", "Attached Files"),
+            "Thought Leadership Samples with Attached Files format must be an independent document",
         )
-        self.assertFalse(result,
-            "Key Personnel Profiles when integrated in response must not create an independent document")
 
-    # F: Pricing Form XLSX -> concrete document
-    def test_F_pricing_form_xlsx_included(self):
-        result = _is_concrete_submission_document(
-            "Pricing Form", "XLSX"
+    # F: item="Thought Leadership Samples", format="Separate Files or Embedded" -> FALSE
+    def test_F_thought_leadership_separate_or_embedded(self):
+        self.assertFalse(
+            _is_concrete_submission_document("Thought Leadership Samples", "Separate Files or Embedded"),
+            "Ambiguous mixed format (Separate Files or Embedded) must not be projected as independent file",
         )
-        self.assertTrue(result, "Pricing Form in XLSX format is a concrete document")
 
-    # G: Technical Proposal PDF -> concrete document
-    def test_G_technical_proposal_pdf_included(self):
-        result = _is_concrete_submission_document(
-            "Technical Proposal", "PDF"
+    # G: item="Resumes", format="Separate Submission" -> TRUE
+    def test_G_resumes_separate_submission(self):
+        self.assertTrue(
+            _is_concrete_submission_document("Resumes", "Separate Submission"),
+            "Resumes with Separate Submission format must be an independent document",
         )
-        self.assertTrue(result,
-            "Technical Proposal in PDF format is a concrete document")
 
-    # H: Technical Proposal with portal details -> still a concrete document
-    # Process wording in details must NOT erase a clearly named concrete document.
-    def test_H_technical_proposal_portal_details_still_included(self):
-        result = _is_concrete_submission_document(
-            "Technical Proposal",
-            "PDF",
-            "Submit via portal. Max 50 pages.",
+    # H: item="Bilingualism Confirmation", format="Written documentation" -> FALSE
+    def test_H_bilingualism_confirmation_written_doc_excluded(self):
+        self.assertFalse(
+            _is_concrete_submission_document("Bilingualism Confirmation", "Written documentation"),
+            "Written documentation does not establish a standalone file without explicit file evidence",
         )
-        self.assertTrue(result,
-            "A named concrete document must be retained even if details mention the portal")
 
-    # Additional: Conflict of Interest Declaration as Form Entry -> embedded, excluded
+    # I: item="Security Clearance Declaration", format="Written documentation" -> FALSE
+    def test_I_security_clearance_declaration_written_doc_excluded(self):
+        self.assertFalse(
+            _is_concrete_submission_document("Security Clearance Declaration", "Written documentation"),
+            "Written documentation does not establish a standalone file without explicit file evidence",
+        )
+
+    # Supporting Documentation only -> do not assume independent file
+    def test_resumes_supporting_documentation_only_excluded(self):
+        self.assertFalse(
+            _is_concrete_submission_document("Resumes", "Supporting Documentation"),
+            "Supporting documentation format alone does not establish an independent file",
+        )
+
+    # Form Entry format -> not a document (embedded field)
+    def test_proponent_information_form_entry_excluded(self):
+        self.assertFalse(
+            _is_concrete_submission_document("Proponent Information", "Form Entry")
+        )
+
+    # Response Format with page instruction -> not a document
+    def test_response_format_page_instruction_excluded(self):
+        self.assertFalse(
+            _is_concrete_submission_document(
+                "Response Format",
+                "PDF / Separate Files",
+                "Responses must not exceed 12 pages excluding resumes",
+            )
+        )
+
+    # RFP Main Document with reference-only details -> excluded
+    def test_rfp_main_document_reference_only_excluded(self):
+        self.assertFalse(
+            _is_concrete_submission_document(
+                "RFP Main Document",
+                "Electronic",
+                "Not mandatory but available for reference.",
+            )
+        )
+
+    # External Links and References with non-evaluated details -> excluded
+    def test_external_links_references_excluded(self):
+        self.assertFalse(
+            _is_concrete_submission_document(
+                "External Links and References",
+                "Supporting Documentation",
+                "Links to websites or other information external to the form will not be evaluated.",
+            )
+        )
+
+    # Key Personnel Profiles with Integrated in response -> NOT an independent file
+    def test_key_personnel_profiles_integrated_excluded(self):
+        self.assertFalse(
+            _is_concrete_submission_document("Key Personnel Profiles", "Integrated in response")
+        )
+
+    # Pricing Form XLSX -> concrete document
+    def test_pricing_form_xlsx_included(self):
+        self.assertTrue(_is_concrete_submission_document("Pricing Form", "XLSX"))
+
+    # Technical Proposal PDF -> concrete document
+    def test_technical_proposal_pdf_included(self):
+        self.assertTrue(_is_concrete_submission_document("Technical Proposal", "PDF"))
+
+    # Technical Proposal with portal details -> still a concrete document
+    def test_technical_proposal_portal_details_still_included(self):
+        self.assertTrue(
+            _is_concrete_submission_document(
+                "Technical Proposal",
+                "PDF",
+                "Submit via portal. Max 50 pages.",
+            )
+        )
+
+    # Conflict of Interest Declaration as Form Entry -> embedded, excluded
     def test_conflict_of_interest_form_entry_excluded(self):
-        result = _is_concrete_submission_document(
-            "Conflict of Interest Declaration", "Form Entry"
+        self.assertFalse(
+            _is_concrete_submission_document("Conflict of Interest Declaration", "Form Entry")
         )
-        self.assertFalse(result,
-            "Declaration as Form Entry is an embedded field inside another form")
 
-    # Additional: Declaration as Separate File -> independent document
+    # Declaration as Separate File -> independent document
     def test_conflict_of_interest_separate_file_included(self):
-        result = _is_concrete_submission_document(
-            "Conflict of Interest Declaration", "Separate File"
+        self.assertTrue(
+            _is_concrete_submission_document("Conflict of Interest Declaration", "Separate File")
         )
-        self.assertTrue(result,
-            "Declaration as Separate File is an independently tracked document")
 
-    # Additional: ESG Questionnaire -> concrete document
+    # ESG Questionnaire -> concrete document
     def test_esg_questionnaire_response_included(self):
-        result = _is_concrete_submission_document(
-            "ESG Questionnaire Response", "Spreadsheet"
+        self.assertTrue(
+            _is_concrete_submission_document("ESG Questionnaire Response", "Spreadsheet")
         )
-        self.assertTrue(result, "ESG Questionnaire Response is a concrete document")
 
-    # Additional: Security Clearance Declaration as Written documentation -> included
-    def test_security_clearance_declaration_included(self):
-        result = _is_concrete_submission_document(
-            "Security Clearance Declaration",
-            "Written documentation",
-            "Written confirmation of ability to meet clearance requirements",
-        )
-        self.assertTrue(result,
-            "Security Clearance Declaration as written documentation is a concrete document")
-
-    # Additional: Appendix with Separate File format -> included
+    # Appendix with Separate File format -> included
     def test_appendix_separate_file_included(self):
-        result = _is_concrete_submission_document(
-            "Appendix A Submission Form", "Separate File"
+        self.assertTrue(
+            _is_concrete_submission_document("Appendix A Submission Form", "Separate File")
         )
-        self.assertTrue(result)
 
-    # Additional: empty item -> always False
+    # Empty item -> always False
     def test_empty_item_always_false(self):
         self.assertFalse(_is_concrete_submission_document(""))
         self.assertFalse(_is_concrete_submission_document(None))
 
-    # Additional: Response Format page-limit pattern
+    # Response Format and Page Limit pattern
     def test_response_format_and_page_limit_excluded(self):
-        result = _is_concrete_submission_document(
-            "Response Format and Page Limit",
-            "Separate document",
-            "Responses must not exceed twelve (12) pages",
+        self.assertFalse(
+            _is_concrete_submission_document(
+                "Response Format and Page Limit",
+                "Separate document",
+                "Responses must not exceed twelve (12) pages",
+            )
         )
-        self.assertFalse(result,
-            "Combined format-and-page-limit instruction must be excluded")
 
-    # Additional: Workbook tabs inside another workbook -> excluded
+    # Workbook tabs inside another workbook -> excluded
     def test_workbook_tab_excluded(self):
         self.assertFalse(
-            _is_concrete_submission_document("Category Selection Tab", "Excel Spreadsheet"),
-            "Workbook tab must not be projected as an independent document",
+            _is_concrete_submission_document("Category Selection Tab", "Excel Spreadsheet")
         )
         self.assertFalse(
-            _is_concrete_submission_document("Service Category Rate Card Tab", "Excel Spreadsheet"),
-            "Workbook tab must not be projected as an independent document",
+            _is_concrete_submission_document("Service Category Rate Card Tab", "Excel Spreadsheet")
         )
 
 
@@ -436,6 +476,36 @@ class TestBoCFrozenSubmissionReplay(unittest.TestCase):
     def test_boc_rated_criteria_response_form_included(self):
         self.assertIn("Rated Criteria Response Form", self.doc_names,
             "Rated Criteria Response Form is a concrete submission document")
+
+    def test_boc_response_document_included(self):
+        self.assertIn("Response Document", self.doc_names,
+            "Response Document with Single Document format must be included")
+
+    def test_boc_minimum_qualification_requirements_response_included(self):
+        self.assertIn("Minimum Qualification Requirements Response", self.doc_names,
+            "Minimum Qualification Requirements Response with Separate submission format must be included")
+
+    def test_boc_proponent_information_excluded(self):
+        self.assertIn("Proponent Information", self.excluded_names,
+            "Proponent Information with Form Entry must be excluded")
+
+    def test_boc_conflict_of_interest_declaration_excluded(self):
+        self.assertIn("Conflict of Interest Declaration", self.excluded_names,
+            "Conflict of Interest Declaration with Form Entry must be excluded")
+
+    def test_boc_key_personnel_profiles_embedded_or_separate_excluded(self):
+        # Verify no Key Personnel Profiles document is projected
+        profiles_in_docs = any(d["name"] == "Key Personnel Profiles" for d in self.documents)
+        self.assertFalse(profiles_in_docs,
+            "Key Personnel Profiles with embedded or mixed format must be excluded")
+
+    def test_boc_bilingualism_confirmation_written_doc_excluded(self):
+        self.assertIn("Bilingualism Confirmation", self.excluded_names,
+            "Bilingualism Confirmation with only Written documentation format must be excluded")
+
+    def test_boc_security_clearance_declaration_written_doc_excluded(self):
+        self.assertIn("Security Clearance Declaration", self.excluded_names,
+            "Security Clearance Declaration with only Written documentation format must be excluded")
 
     def test_boc_workbook_tabs_excluded(self):
         tab_docs = [d for d in self.documents if "tab" in d["name"].lower()]

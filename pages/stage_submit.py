@@ -93,7 +93,7 @@ def page_submit(bid_id: int):
             elif mand_val in (0, False, "0", "false"):
                 mand_tag = '<span style="color:#6E6C66;font-size:.72rem">[OPTIONAL]</span>'
             else:
-                mand_tag = '<span style="color:#E67E22;font-size:.72rem">[UNKNOWN \u2014 resolve before submission]</span>'
+                mand_tag = '<span style="color:#E67E22;font-size:.72rem">[UNKNOWN \u2014 review status]</span>'
             st.markdown(
                 f'<div style="display:flex;justify-content:space-between;align-items:center;background:#111118;'
                 f'border:1px solid #292832;border-radius:4px;padding:.6rem 1rem;margin:.3rem 0">'
