@@ -484,8 +484,15 @@ def submission_readiness_check(bid: dict, requirements: list,
         f"[{r.get('req_id','')}] {r.get('description','')[:80]} → Status: {r.get('status','')} | Qual: {r.get('qual_status','UNKNOWN')}"
         for r in requirements if r.get('category') == 'Mandatory'
     ]
+    def _format_doc_mand(m):
+        if m in (1, True, "1", "true"):
+            return "REQUIRED"
+        elif m in (0, False, "0", "false"):
+            return "OPTIONAL"
+        return "UNKNOWN"
+
     doc_status = [
-        f"{d.get('name','')} (Mandatory: {bool(d.get('mandatory'))}) → {d.get('status','')}"
+        f"{d.get('name','')} (Mandatory: {_format_doc_mand(d.get('mandatory'))}) → {d.get('status','')}"
         for d in documents if d.get('doc_type') in ('Submission', 'Financial')
     ]
     section_status = [
