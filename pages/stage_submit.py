@@ -93,7 +93,7 @@ def page_submit(bid_id: int):
                 unsafe_allow_html=True
             )
     else:
-        st.markdown('<div class="info-box">No specific submission documents separated. Add submission package files below.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="info-box">No explicit submission documents were identified in the procurement package. Upload submission files below or add them manually.</div>', unsafe_allow_html=True)
 
     with st.expander("➕ Upload / Add Submission Package File"):
         up_file = st.file_uploader("Upload finalized submission document (PDF, DOCX, XLSX, CSV, TXT, ZIP)", type=["pdf", "docx", "xlsx", "csv", "txt", "zip"], key="sub_pkg_file")

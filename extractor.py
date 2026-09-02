@@ -1954,7 +1954,144 @@ def reconcile_package_facts(normalized_facts: dict, package_files: list[str]) ->
     return detect_document_conflicts(normalized_facts, package_files)
 
 
+# ── SUBMISSION DOCUMENT PROJECTION ───────────────────────────────────────────
+
+# Keywords whose presence strongly indicates a concrete submission component.
+# Evaluated case-insensitively against the normalized rule item text.
+_DOCUMENT_INDICATOR_WORDS = frozenset([
+    "form", "template", "appendix", "annex", "attachment", "schedule",
+    "proposal", "response", "submission", "questionnaire", "declaration",
+    "certification", "statement", "profile", "sample", "portfolio",
+    "plan", "agenda", "report", "letter", "agreement", "contract",
+    "resume", "cv", "workplan", "work plan", "work sample", "pricing",
+    "rate card", "tab", "spreadsheet", "document", "file",
+    "confirmation", "acknowledgement", "acknowledgment", "references",
+])
+
+# Keywords that indicate a process/portal instruction, not a concrete document.
+# These are checked first (step 1) and override document-indicator matching.
+_PROCESS_INDICATOR_WORDS = frozenset([
+    "submit through", "submit via", "submitted through", "submitted via",
+    "submit using", "submitted using",
+    "electronic submission only", "portal only", "online submission",
+    "registration required", "register on", "no external links",
+    "page limit", "maximum pages", "not exceed", "page count",
+    "font size", "margin", "formatting", "cover page",
+    "maximum response length", "maximum length",
+    "response length", "response limit",
+    "portal submission", "online portal",
+])
+
+# Item-level patterns indicating a quantified constraint rather than a document.
+# Evaluated before document-indicator word scanning.
+import re as _re
+_QUANTITY_CONSTRAINT_PATTERN = _re.compile(
+    r"(?:maximum|max|no more than|not exceed|limit of?)\s+\d+\s*(?:pages?|words?|lines?|items?)",
+    _re.IGNORECASE,
+)
+
+
+def _is_concrete_submission_document(item: str, details: str | None) -> bool:
+    """
+    Return True when a normalized submission rule represents a concrete,
+    submittable document/component rather than a process instruction or format
+    constraint.
+
+    Decision logic (deterministic, no LLM):
+    1. If any process-instruction phrase appears in the item text -> False.
+    2. If the item matches a quantified-constraint pattern (e.g. "maximum 50
+       pages") -> False.
+    3. If any document-indicator word appears in the item text -> True.
+    4. If the item text alone is ambiguous but details describe a concrete
+       artefact (contains indicator words) -> True.
+    5. Otherwise -> False (conservative: do not invent documents).
+
+    No tender-specific names or appendix labels are hard-coded here.
+    """
+    if not item:
+        return False
+    item_lower = item.strip().lower()
+    details_lower = (details or "").strip().lower()
+
+    # Step 1: explicit process / instruction phrases -> not a document
+    for phrase in _PROCESS_INDICATOR_WORDS:
+        if phrase in item_lower:
+            return False
+
+    # Step 2: quantified constraint pattern ("Maximum 50 pages", etc.) -> not a document
+    if _QUANTITY_CONSTRAINT_PATTERN.search(item):
+        return False
+
+    # Step 3: document indicator in item name -> concrete document
+    for word in _DOCUMENT_INDICATOR_WORDS:
+        if word in item_lower:
+            return True
+
+    # Step 4: document indicator in details (supplementary evidence)
+    for word in _DOCUMENT_INDICATOR_WORDS:
+        if word in details_lower:
+            return True
+
+    # Step 5: conservative default -> not a document
+    return False
+
+
+def build_submission_documents(submission_rules: list[dict],
+                               submission_deadline: str | None = None) -> list[dict]:
+    """
+    SUBMISSION DOCUMENT PROJECTION — deterministic, provenance-preserving.
+
+    Converts normalized submission rules into concrete document records for
+    the bid registry. Only rules that represent an explicitly required or
+    expected submission component are included.
+
+    Rules:
+    - Process instructions (portal links, page limits, font requirements,
+      registration rules) are excluded.
+    - Concrete components (forms, templates, proposals, pricing files,
+      questionnaires, declarations, etc.) are included.
+    - Document name is the normalized item text as-is. ".pdf" or any other
+      extension is NOT appended unless the source text already contains it.
+    - mandatory is taken from the normalized fact. If absent, it is NOT
+      defaulted to 1 — it remains None (unknown).
+    - Empty submission_rules yields an empty list. This is a valid state
+      meaning "no concrete submission documents were established from the
+      normalized facts."
+
+    Returns a list of document dicts suitable for upsert_document().
+    """
+    documents = []
+    for sr in (submission_rules or []):
+        if not isinstance(sr, dict):
+            continue
+        item    = (sr.get("item") or "").strip()
+        details = sr.get("details")
+        if not _is_concrete_submission_document(item, details):
+            continue
+
+        # Preserve name exactly as normalized — do not mutate with ".pdf"
+        doc_type = (
+            "Financial"
+            if any(kw in item.lower() for kw in ("pricing", "financial", "rate card", "cost"))
+            else "Submission"
+        )
+        mandatory = sr.get("mandatory")  # None if absent — not defaulted
+        doc = {
+            "name":     item,
+            "doc_type": doc_type,
+            "owner":    None,
+            "due_date": submission_deadline,
+            "status":   "Expected",
+            "notes":    details or "",
+        }
+        if mandatory is not None:
+            doc["mandatory"] = mandatory
+        documents.append(doc)
+    return documents
+
+
 # ── STAGE D: BID BRIEF SYNTHESIS ─────────────────────────────────────────────
+
 
 _REQUIREMENT_FIELDS = (
     "req_id", "category", "description", "rfso_ref",
@@ -2434,25 +2571,16 @@ def extract_procurement_package(package_files: list[tuple[str, bytes]], api_key:
     # Ensure document_conflicts is attached to brief
     brief["document_conflicts"] = conflicts
 
-    # Transform submission rules into documents checklist
-    documents = []
-    for sr in normalized_facts.get("submission_rules", []):
-        documents.append({
-            "name": sr.get("item", "Submission Document"),
-            "doc_type": "Financial" if "financial" in sr.get("item","").lower() or "pricing" in sr.get("item","").lower() else "Submission",
-            "owner": None,
-            "due_date": bid.get("submission_deadline"),
-            "status": "Expected",
-            "mandatory": sr.get("mandatory", 1),
-            "notes": sr.get("details", "")
-        })
-
-    # If no documents generated, create standard default package items
-    if not documents:
-        documents = [
-            {"name": "Technical Proposal.pdf", "doc_type": "Submission", "mandatory": 1, "status": "Expected"},
-            {"name": "Financial Envelope.pdf", "doc_type": "Financial", "mandatory": 1, "status": "Expected"}
-        ]
+    # Build concrete submission documents from normalized submission rules.
+    # Only rules representing explicit submission components are included.
+    # An empty result is a valid state — it means the procurement package
+    # did not establish concrete submission documents in the normalized facts.
+    # The old default of Technical Proposal.pdf / Financial Envelope.pdf is
+    # removed: those names were invented, not sourced from the procurement package.
+    documents = build_submission_documents(
+        normalized_facts.get("submission_rules", []),
+        submission_deadline=bid.get("submission_deadline"),
+    )
 
     result = {
         "bid": bid,
