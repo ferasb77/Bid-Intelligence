@@ -162,17 +162,17 @@ FULL REGRESSION SUITE
 1. tests/test_stage_c_refinement.py:                60 /  60 PASSED
 2. tests/test_streamlined_workflow.py:              27 /  27 PASSED
 3. tests/test_stage_d_completeness.py:              52 /  52 PASSED
-4. tests/test_submission_document_provenance.py:    69 /  69 PASSED
+4. tests/test_submission_document_provenance.py:    75 /  75 PASSED
    - TestWordBoundaryMatching:                         4 /   4
-   - TestClassifierRegressions (cases A-I & generic): 26 /  26
+   - TestClassifierRegressions (cases A-I, A-F, etc): 32 /  32
    - TestBuildSubmissionDocuments (cases A-H, mand): 15 /  15
    - TestBoCFrozenSubmissionReplay (semantic):       23 /  23
    - TestOrchestratorEmptyDocumentState (mocked):     1 /   1
 5. tests/integration/:                              5 /   5 PASSED (1 live AI skipped)
 6. tests/smoke/ + live Supabase:                   12 /  12 PASSED
 ================================================================================
-TOTAL DISCOVERED:                                 226
-TOTAL PASSED:                                     225
+TOTAL DISCOVERED:                                 232
+TOTAL PASSED:                                     231
 TOTAL SKIPPED:                                      1 (live AI integration)
 TOTAL FAILED / ERRORS:                              0
 ================================================================================

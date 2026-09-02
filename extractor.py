@@ -2029,6 +2029,7 @@ _EXPLICIT_INDEPENDENT_FORMAT_PHRASES = frozenset([
 # a strong standalone submission artifact noun in the item title.
 _GENERIC_DOCUMENT_FORMAT_PHRASES = frozenset([
     'document',
+    'documents',
 ])
 
 # ---------------------------------------------------------------------------
@@ -2140,7 +2141,7 @@ def _is_concrete_submission_document(
         return True
 
     # Step 8: Generic document or unspecified format + strong standalone artifact noun
-    if (not fmt_lower or any(p in fmt_lower for p in _GENERIC_DOCUMENT_FORMAT_PHRASES)):
+    if (not fmt_lower or fmt_lower in _GENERIC_DOCUMENT_FORMAT_PHRASES):
         if _STRONG_STANDALONE_ARTIFACT_RE.search(item):
             return True
 

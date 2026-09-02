@@ -250,6 +250,50 @@ class TestClassifierRegressions(unittest.TestCase):
             _is_concrete_submission_document("Service Category Rate Card Tab", "Excel Spreadsheet")
         )
 
+    # Generic "Document" format boundary-safe tests (Section 2 A-F):
+    # A. item="Technical Proposal", format="Written documentation" -> FALSE
+    def test_generic_doc_A_technical_proposal_written_doc_false(self):
+        self.assertFalse(
+            _is_concrete_submission_document("Technical Proposal", "Written documentation"),
+            "'Written documentation' must not match 'document'",
+        )
+
+    # B. item="ESG Questionnaire", format="Supporting documentation" -> FALSE
+    def test_generic_doc_B_esg_questionnaire_supporting_doc_false(self):
+        self.assertFalse(
+            _is_concrete_submission_document("ESG Questionnaire", "Supporting documentation"),
+            "'Supporting documentation' must not match 'document'",
+        )
+
+    # C. item="Submission Form", format="Written documentation" -> FALSE
+    def test_generic_doc_C_submission_form_written_doc_false(self):
+        self.assertFalse(
+            _is_concrete_submission_document("Submission Form", "Written documentation"),
+            "'Written documentation' must not match 'document'",
+        )
+
+    # D. item="Technical Proposal", format="Document" -> TRUE
+    def test_generic_doc_D_technical_proposal_document_true(self):
+        self.assertTrue(
+            _is_concrete_submission_document("Technical Proposal", "Document"),
+            "Generic 'Document' format paired with strong artifact noun must be TRUE",
+        )
+
+    # E. item="Submission Form", format="Document" -> TRUE
+    def test_generic_doc_E_submission_form_document_true(self):
+        self.assertTrue(
+            _is_concrete_submission_document("Submission Form", "Document"),
+            "Generic 'Document' format paired with strong artifact noun must be TRUE",
+        )
+
+    # F. item="Technical Proposal", format="" -> TRUE
+    def test_generic_doc_F_technical_proposal_unspecified_format_true(self):
+        self.assertTrue(
+            _is_concrete_submission_document("Technical Proposal", ""),
+            "Unspecified format paired with strong standalone artifact noun must be TRUE",
+        )
+
+
 
 # ============================================================================
 # Part 3: build_submission_documents() behavioral tests
