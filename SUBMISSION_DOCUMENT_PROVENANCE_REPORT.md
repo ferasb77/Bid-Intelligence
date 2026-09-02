@@ -2,195 +2,138 @@
 
 **Branch:** `fix/submission-document-provenance`  
 **Base:** `main` at `1caf136353b1853370d2a58b3fd4c5b45ab59bb3`  
-**Date:** 2026-09-02
+**Date:** 2026-09-02 (Updated post review corrections)
 
 ---
 
-## 1. Original Defect: Invented Submission Documents
+## 1. Executive Summary & Defect Remediation
 
-`extract_procurement_package()` created two default document records whenever
-no documents were derived from normalized submission rules:
+Bid Intelligence previously suffered from two major defects regarding submission documents:
 
-```python
-if not documents:
-    documents = [
-        {"name": "Technical Proposal.pdf", "doc_type": "Submission",
-         "mandatory": 1, "status": "Expected"},
-        {"name": "Financial Envelope.pdf", "doc_type": "Financial",
-         "mandatory": 1, "status": "Expected"},
-    ]
-```
+1. **Invented Default Fallback:** `extract_procurement_package()` created manufactured document records (`Technical Proposal.pdf` and `Financial Envelope.pdf`) whenever no documents were produced from normalized facts. These names were hallucinated by the pipeline and lacked source evidence.
+2. **Over-Projection of Rules as Files:** An earlier naive classifier treated almost every submission rule (39 out of 40 in the Bank of Canada fixture) as an independent document. It matched arbitrary substrings (e.g. `"form"` matching inside `"information"` or `"format"`), ignored the structured `format` field, and projected form fields, embedded narrative sections, workbook tabs, and format instructions into the `documents` table.
 
-These names were manufactured by the pipeline itself. They had no basis in any
-source document. For procurement packages that contain explicit submission
-requirements (e.g. named envelopes, specific forms), the invented defaults
-masked the real documents.
-
-Additionally, the old loop over submission rules:
-- Included **every** normalized rule as a document, including process
-  instructions such as "Submit through MERX" or page-limit constraints.
-- Defaulted `mandatory` to `1` for any rule that did not state a mandatory
-  value, inventing a mandatory status.
-- Mutated document names by appending `.pdf` in the fallback.
+Both defects have been eliminated. The pipeline strictly aligns the `documents` table with its intended product semantics: **a checklist of discrete, independently tracked submission files and package deliverables**.
 
 ---
 
-## 2. Semantic Distinction: Document vs. Submission Rule
+## 2. Semantic Framework: Categorizing Submission Rules
 
-A normalized submission rule is a concrete submission **document** when it
-represents a discrete, submittable artefact — a form, questionnaire, proposal,
-declaration, pricing file, signed statement, or similar component.
+To avoid turning every procurement rule into a required file blocker, the system cleanly distinguishes four categories of normalized submission requirements:
 
-A normalized submission rule is a **process/format instruction** when it
-specifies how submission must happen (portal, deadline, registration) or
-constrains the format (page limit, font, margin).
+### A. Independent Submission Documents / Files (Projected)
+Discrete artefacts that a bid team must prepare, upload, or sign off as a standalone deliverable:
+- Standalone forms (e.g., `"Appendix A Submission Form"`, format: `Separate File`)
+- Pricing workbooks (e.g., `"Pricing Form - All Applicable Sections"`, format: `Excel Spreadsheet`)
+- Technical response documents (e.g., `"Rated Criteria Response Form"`, format: `Document`)
+- Standalone questionnaires (e.g., `"ESG Questionnaire Response"`, format: `Spreadsheet`)
+- Standalone written certificates or declarations (e.g., `"Bilingualism Confirmation"`, format: `Written documentation`)
 
-### Examples: NOT documents
+### B. Embedded Response Components (Excluded from Documents Checklist)
+Content required inside another submitted document or form:
+- **Form entries:** `"Proponent Information"`, `"Conflict of Interest Declaration"`, `"Compliance Certifications"`, `"Addenda Acknowledgement"` (format: `Form Entry` inside Appendix A).
+- **Embedded sections:** `"Key Personnel Profiles"`, `"Case Study References"` (format: `Integrated in response` or `Embedded in response`).
+- **Workbook tabs:** `"Category Selection Tab"`, `"Service Category Rate Card Tab"`, `"Evaluated Pricing Scenario Tab"` (individual worksheets within the parent pricing workbook).
+*Note:* These remain fully visible in Stage D synthesis and the Stage 2 (UNDERSTAND) view via the normalized `submission_rules` collection.
 
-| Rule Item | Reason |
-|---|---|
-| "Submit through MERX" | Portal instruction |
-| "Electronic submission only" | Delivery mode instruction |
-| "Maximum response length 50 pages" | Quantified format constraint |
-| "Registration required" | Process prerequisite |
-| "Response Format and Page Limit" | Format constraint |
+### C. Process & Format Instructions (Excluded)
+Directives governing how, where, or under what formatting constraints proposals are submitted:
+- **Delivery mode / portal:** `"Submit through MERX"`, `"Electronic submission only"`, `"Registration required"`.
+- **Portal packaging containers:** `"Envelope 1 - Identity & Proposal"`, `"Envelope 2 - Pricing"` (format: `Electronic Bid Submission` containers on the electronic portal, which hold the component files rather than being files themselves).
+- **Format & page limits:** `"Response Format and Page Limit"`, `"Maximum response length 50 pages"`, font and margin rules.
+- **Checklist columns:** `"Minimum Qualification Response"` (format: `Proponent Response column (Yes/No format)`).
 
-### Examples: Concrete documents
-
-| Rule Item | Classification |
-|---|---|
-| "Technical Proposal" | Submission |
-| "Pricing Form" | Financial |
-| "Appendix A Submission Form" | Submission |
-| "Conflict of Interest Declaration" | Submission |
-| "ESG Questionnaire Response" | Submission |
-| "Addenda Acknowledgement" | Submission |
-
----
-
-## 3. Implementation: `build_submission_documents()`
-
-A new deterministic helper `build_submission_documents(submission_rules,
-submission_deadline)` was added to `extractor.py` with supporting constants
-`_DOCUMENT_INDICATOR_WORDS`, `_PROCESS_INDICATOR_WORDS`, and
-`_QUANTITY_CONSTRAINT_PATTERN`.
-
-### Detection logic (5 steps, no LLM)
-
-1. **Process-phrase check (item)** — If any phrase from
-   `_PROCESS_INDICATOR_WORDS` appears in the item text → excluded.
-
-2. **Quantity-constraint check (item)** — If the item matches the pattern
-   `(maximum|max|...) \d+ (pages|words|...)` → excluded.
-
-3. **Document-indicator word check (item)** — If any word from
-   `_DOCUMENT_INDICATOR_WORDS` appears in the item text → included.
-
-4. **Document-indicator word check (details)** — If the details field
-   contains an indicator word and the item was otherwise ambiguous → included.
-
-5. **Conservative default** — If none of the above match → excluded.
-   No document is invented.
-
-### Provenance rules
-
-- **Name:** The normalized `item` text is used as-is. `.pdf` or any other
-  extension is NOT appended unless the source text already contains it.
-- **mandatory:** Taken from the normalized fact as-is. If absent, the key is
-  omitted from the output record — not defaulted to `1`.
-- **doc_type:** Classified as `Financial` when the item contains `pricing`,
-  `financial`, `rate card`, or `cost`; otherwise `Submission`.
-- **Empty result:** A valid state meaning "no concrete submission documents
-  were established from the normalized facts." The pipeline does not create
-  placeholder documents.
+### D. Reference-Only Material & Restrictions (Excluded)
+- **Reference documents:** `"RFP Main Document"` (details: *"Not mandatory but available for reference"*).
+- **Evaluation restrictions:** `"External Links and References"` (details: *"links external to the form will not be evaluated"*).
+- **Pricing rules:** `"Currency and Tax Treatment"` (rules regarding Canadian dollars and tax inclusion).
 
 ---
 
-## 4. Empty-State Behavior
+## 3. Implementation: Hardened Deterministic Classifier
 
-- `documents = []` is valid throughout the ingestion and database flow.
-  `upsert_document()` is called zero times — no error.
-- UI empty-state messages updated to factual text:
-  - `stage_submit.py`: *"No explicit submission documents were identified in
-    the procurement package. Upload submission files below or add them
-    manually."*
-  - `stage_understand.py`: *"No explicit submission documents were identified
-    in the procurement package."*
-- Neither message implies the bidder should create a technical or financial
-  proposal. No placeholder names are suggested.
+The classifier `_is_concrete_submission_document(item, fmt, details)` and projection function `build_submission_documents(submission_rules, submission_deadline)` in `extractor.py` implement this framework deterministically (no LLM call):
 
----
-
-## 5. Mandatory-Status Handling
-
-| Scenario | Old behavior | New behavior |
-|---|---|---|
-| `mandatory` present = 1 | passed through | passed through |
-| `mandatory` present = 0 | passed through | passed through |
-| `mandatory` absent | defaulted to `1` | key omitted from record |
-
-The `mandatory` key is only written when supported by the normalized facts.
+1. **Word-Boundary Token Matching:**
+   Replaced `if word in item_lower` with compiled regex `` word-boundary tokens (`_ARTEFACT_TOKEN_RE`). This guarantees:
+   - `"form"` matches `"Submission Form"` and `"Pricing Form"`.
+   - `"form"` will **NOT** match `"Proponent Information"` or `"Response Format"`.
+2. **Material Format Evidence:**
+   - **Exclusion triggers:** Phrases like `Form Entry`, `Integrated in response`, `Embedded in response`, `Proponent Response column`, `Yes/No confirmation`, `Electronic Bid Submission`, `Reference only` immediately exclude the item.
+   - **Inclusion triggers:** Format signals like `Separate File`, `Separate Submission`, `Spreadsheet`, `PDF`, `XLSX`, `Written documentation` provide positive evidence for standalone artefacts.
+3. **Workbook Tab Exclusion:**
+   `_WORKBOOK_TAB_RE` (`(?:tabs?|worksheets?)`) prevents individual workbook tabs from spawning separate file checklist records.
+4. **Details Inspection:**
+   Examines `details` for process/reference phrases (`"available for reference"`, `"will not be evaluated"`). If reference-only intent is detected, the item is excluded regardless of title.
+5. **Process wording does not erase named artefacts:**
+   If an item is a clearly named concrete document (e.g., `"Technical Proposal"`, format: `PDF`), mentioning `"Submit via portal"` in the details does not erase the document.
 
 ---
 
-## 6. Bank of Canada Frozen Submission Document Replay
+## 4. End-to-End Handling of Unknown Mandatory Status
 
-**Fixture:** `tests/acceptance/results/boc_2026_026_normalized_facts.json`  
-**No Stage A/B/C re-run. No Anthropic call.**
+Mandatory status is strictly preserved without hallucinated defaults:
 
-| Metric | Value |
-|---|---|
-| Total normalized submission rules | 40 |
-| Classified as concrete documents | 39 |
-| Excluded (non-document process rules) | 1 |
+| Normalized Fact | Database / Record Value | Stage Submit UI Tag | Final Gate Impact |
+|---|---|---|---|
+| `mandatory = 1` | `1` | `[REQUIRED]` (Red) | Blocker if missing |
+| `mandatory = 0` | `0` | `[OPTIONAL]` (Gray) | Non-blocking |
+| `mandatory` absent / `None` | Key omitted (`None`) | `[UNKNOWN — resolve before submission]` (Amber) | Triggers `READY WITH WARNINGS` gate |
 
-**Excluded rule:**
-
-| Item | Reason |
-|---|---|
-| "Response Format and Page Limit" | Combined format/page-limit constraint |
-
-**Notable concrete documents extracted (representative sample):**
-
-| Document Name | doc_type | mandatory |
-|---|---|---|
-| Envelope 1 - Identity & Proposal | Submission | 1 |
-| Envelope 2 - Pricing | Financial | 1 |
-| Appendix A Submission Form | Submission | 1 |
-| Pricing Form - All Applicable Sections | Financial | 1 |
-| Evaluated Pricing Scenario Tab | Financial | 1 |
-| Conflict of Interest Declaration | Submission | 1 |
-| ESG Questionnaire Response | Submission | 0 |
-| Case Study References | Submission | 1 |
-| Bilingualism Confirmation | Submission | 1 |
-| Addenda Acknowledgement | Submission | 1 |
-
-No `Technical Proposal.pdf` or `Financial Envelope.pdf` invented.  
-All mandatory values sourced from normalized facts (no defaulting).  
-No `.pdf` extension appended to any document name.
-
-**Verdict: PASS**
+In `pages/stage_submit.py`:
+- Documents with `mandatory=None` are **not** silently converted to `REQUIRED` (avoiding false blockers).
+- Documents with `mandatory=None` are **not** silently converted to `OPTIONAL` (avoiding accidental submission of missing files).
+- The gate status transitions to `READY WITH WARNINGS (Unverified Gates)` until a human reviewer resolves the status.
 
 ---
 
-## 7. Test Matrix
+## 5. Bank of Canada Frozen Replay (boc_2026_026_normalized_facts.json)
+
+**Source Input:** 40 normalized submission rules. No Stage A/B/C re-run, no Anthropic API call.
+
+### Classified as Discrete Submission Documents (6):
+1. **Appendix A Submission Form** (`Separate File`, mandatory=1, Submission)
+2. **Pricing Form - All Applicable Sections** (`Excel Spreadsheet`, mandatory=1, Financial)
+3. **Rated Criteria Response Form** (`Document`, mandatory=1, Submission)
+4. **ESG Questionnaire Response** (`Spreadsheet`, mandatory=0, Submission)
+5. **Bilingualism Confirmation** (`Written documentation`, mandatory=1, Submission)
+6. **Security Clearance Declaration** (`Written documentation`, mandatory=1, Submission)
+
+### Excluded Non-File Rules (34):
+- **Portal packaging containers (2):** `Envelope 1 - Identity & Proposal`, `Envelope 2 - Pricing` (portal submission containers).
+- **Embedded form fields (4):** `Proponent Information`, `Conflict of Interest Declaration`, `Compliance Certifications`, `Addenda Acknowledgement` (fields inside Appendix A).
+- **Embedded narrative content (6):** `Key Personnel Profiles` (3 instances), `Thought Leadership Samples` (2 instances), `Case Study References` (integrated into proposal response).
+- **Page limit & format rules (3):** `Response Format and Page Limit`, `Response Format`, `Response Document`.
+- **Workbook tabs (4):** `Category Selection Tab`, `Service Category Rate Card Tab`, `Evaluated Pricing Scenario Tab`, `Value-Added Services Tab (Optional)` (sheets inside the pricing workbook).
+- **Checklist / response columns (3):** `Minimum Qualification Requirements Response`, `Minimum Qualification Response`, `Minimum qualification requirements response` (Yes/No table columns).
+- **Reference & links (3):** `RFP Main Document` (reference-only), `External Links`, `External Links and References` (not evaluated).
+- **Supporting documentation notes (6):** `Resumes or Professional Profiles` (3 instances), `Work or Product Samples` (3 instances) when listed as page limit exclusions or embedded samples.
+- **Pricing instructions (3):** `Currency and Tax Treatment`, `Assumptions and Restrictions Documentation`.
+
+*Verdict:* Exact alignment with source truth. No preconceived count assertions.
+
+---
+
+## 6. Verification & Test Suite
 
 ```
 ================================================================================
-FULL REGRESSION SUITE (post-submission-document-provenance)
+FULL REGRESSION SUITE
 ================================================================================
 1. tests/test_stage_c_refinement.py:                60 /  60 PASSED
 2. tests/test_streamlined_workflow.py:              27 /  27 PASSED
 3. tests/test_stage_d_completeness.py:              52 /  52 PASSED
-4. tests/test_submission_document_provenance.py:    35 /  35 PASSED (NEW)
-   TestSubmissionDocumentProvenance (cases A-H):   17 / 17
-   TestIsConcreteSubmissionDocument (predicate):   11 / 11
-   TestBoCFrozenSubmissionReplay:                   7 /  7
+4. tests/test_submission_document_provenance.py:    53 /  53 PASSED (NEW)
+   - TestWordBoundaryMatching (cases I, J):           4 /   4
+   - TestClassifierRegressions (cases A-H, tabs):    15 /  15
+   - TestBuildSubmissionDocuments (cases A-H, mand): 15 /  15
+   - TestBoCFrozenSubmissionReplay (semantic):       18 /  18
+   - TestOrchestratorEmptyDocumentState (mocked):     1 /   1
 5. tests/integration/:                              5 /   5 PASSED (1 live AI skipped)
 6. tests/smoke/ + live Supabase:                   12 /  12 PASSED
 ================================================================================
-TOTAL DISCOVERED:                                 192
-TOTAL PASSED:                                     191
+TOTAL DISCOVERED:                                 210
+TOTAL PASSED:                                     209
 TOTAL SKIPPED:                                      1 (live AI integration)
 TOTAL FAILED / ERRORS:                              0
 ================================================================================
@@ -198,26 +141,12 @@ TOTAL FAILED / ERRORS:                              0
 
 ---
 
-## 8. Files Changed
+## 7. Modified Files
 
-| File | Change |
+| File | Changes |
 |---|---|
-| `extractor.py` | Added `_DOCUMENT_INDICATOR_WORDS`, `_PROCESS_INDICATOR_WORDS`, `_QUANTITY_CONSTRAINT_PATTERN`, `_is_concrete_submission_document()`, `build_submission_documents()`; replaced old document loop + invented-default fallback in `extract_procurement_package()` |
-| `pages/stage_submit.py` | Updated empty-state message to factual text |
-| `pages/stage_understand.py` | Updated empty-state message to factual text |
-| `tests/test_submission_document_provenance.py` | New: 35 deterministic tests covering cases A-H, predicate unit tests, and BoC frozen replay |
-
-Not changed: Stage A, Stage B, Stage C, Stage D, database schema,
-migrations 001/002/003, submission gating doctrine, five-stage workflow,
-RC1 tag, frozen Bank of Canada acceptance artifacts.
-
----
-
-## 9. Known Out-of-Scope Limitation
-
-The BoC fixture contains duplicate submission-rule items that normalize to the
-same item name (e.g. "Key Personnel Profiles" appears three times with
-different formats per envelope). These produce distinct document records since
-their details differ. Deduplication of same-name submission documents across
-envelopes is not addressed in this branch — that is a separate concern for a
-future focused branch.
+| `extractor.py` | Hardened `_is_concrete_submission_document()` with word-boundary regex (``), format-field evidence checking, workbook tab exclusion (`_WORKBOOK_TAB_RE`), and details inspection; `build_submission_documents()` with three-state mandatory semantics (`1`, `0`, `None`). |
+| `pages/stage_submit.py` | Implemented three-state mandatory gate evaluation (`REQUIRED`, `OPTIONAL`, `UNKNOWN — resolve before submission`) and warning gate status for unverified documents. |
+| `pages/stage_understand.py` | Updated empty-state message to factual copy. |
+| `tests/test_submission_document_provenance.py` | Comprehensive offline test suite (53 tests) covering word boundaries, format evidence, mandatory semantics, orchestrator mock, and BoC semantic replay. |
+| `SUBMISSION_DOCUMENT_PROVENANCE_REPORT.md` | Full architecture and semantic classification report. |

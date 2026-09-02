@@ -1954,138 +1954,286 @@ def reconcile_package_facts(normalized_facts: dict, package_files: list[str]) ->
     return detect_document_conflicts(normalized_facts, package_files)
 
 
-# ── SUBMISSION DOCUMENT PROJECTION ───────────────────────────────────────────
+# -- SUBMISSION DOCUMENT PROJECTION -----------------------------------------
+#
+# PURPOSE
+# -------
+# The documents table drives a file / submission-package checklist that can
+# become a Stage-Submit readiness blocker. Only project a document record when
+# normalized evidence establishes a DISCRETE, INDEPENDENTLY TRACKED submission
+# artefact or package item -- something a bid manager must locate, upload, or
+# sign off as a separate deliverable.
+#
+# DO NOT project:
+#   - fields embedded inside another form/response
+#   - workbook tabs that are part of a parent workbook
+#   - Yes/No response columns
+#   - page / format / font constraints
+#   - portal / process / delivery-mode instructions
+#   - reference-only material
+#   - external-link restrictions
+#   - pricing rules (not independent files)
+#
+# PREFER OMISSION OVER INVENTION.
+# A rule that is not projected remains visible in Stage D / UNDERSTAND
+# via the submission_rules list.
 
-# Keywords whose presence strongly indicates a concrete submission component.
-# Evaluated case-insensitively against the normalized rule item text.
-_DOCUMENT_INDICATOR_WORDS = frozenset([
-    "form", "template", "appendix", "annex", "attachment", "schedule",
-    "proposal", "response", "submission", "questionnaire", "declaration",
-    "certification", "statement", "profile", "sample", "portfolio",
-    "plan", "agenda", "report", "letter", "agreement", "contract",
-    "resume", "cv", "workplan", "work plan", "work sample", "pricing",
-    "rate card", "tab", "spreadsheet", "document", "file",
-    "confirmation", "acknowledgement", "acknowledgment", "references",
-])
-
-# Keywords that indicate a process/portal instruction, not a concrete document.
-# These are checked first (step 1) and override document-indicator matching.
-_PROCESS_INDICATOR_WORDS = frozenset([
-    "submit through", "submit via", "submitted through", "submitted via",
-    "submit using", "submitted using",
-    "electronic submission only", "portal only", "online submission",
-    "registration required", "register on", "no external links",
-    "page limit", "maximum pages", "not exceed", "page count",
-    "font size", "margin", "formatting", "cover page",
-    "maximum response length", "maximum length",
-    "response length", "response limit",
-    "portal submission", "online portal",
-])
-
-# Item-level patterns indicating a quantified constraint rather than a document.
-# Evaluated before document-indicator word scanning.
 import re as _re
-_QUANTITY_CONSTRAINT_PATTERN = _re.compile(
-    r"(?:maximum|max|no more than|not exceed|limit of?)\s+\d+\s*(?:pages?|words?|lines?|items?)",
+
+# ---------------------------------------------------------------------------
+# Format-field signals (examined before indicator-word scanning)
+# ---------------------------------------------------------------------------
+
+# Format phrases indicating the item is NOT an independent file.
+_FORMAT_EMBEDDED_PHRASES = frozenset([
+    'form entry',
+    'integrated in response',
+    'embedded in response',
+    'proponent response column',
+    'yes/no confirmation',
+    'yes / no confirmation',
+    'yes/no format',
+    'not permitted',
+    'reference only',
+    'for reference',
+    'available for reference',
+    'electronic bid submission',  # portal delivery mode, not a file type
+])
+
+# Format phrases positively supporting an independently tracked artefact.
+_FORMAT_INDEPENDENT_PHRASES = frozenset([
+    'separate file',
+    'separate submission',
+    'separate document',
+    'attached',
+    'attachment',
+    'pdf',
+    'xlsx',
+    'xls',
+    'docx',
+    'spreadsheet',
+    'excel',
+    'signed',
+    'completed form',
+    'separate files',
+    'supporting documentation',
+])
+
+# ---------------------------------------------------------------------------
+# Item / details exclusion signals
+# ---------------------------------------------------------------------------
+
+# Phrases in item text that indicate a process or format instruction.
+_PROCESS_ITEM_PHRASES = frozenset([
+    'submit through', 'submit via', 'submitted through', 'submitted via',
+    'submit using', 'submitted using',
+    'electronic submission only', 'portal only', 'online submission',
+    'registration required', 'register on',
+    'no external links', 'external links',
+    'page limit', 'maximum pages', 'not exceed', 'page count',
+    'font size', 'margin',
+    'maximum response length', 'maximum length',
+    'response length', 'response limit',
+    'portal submission', 'online portal',
+    'currency and tax',
+    'assumptions and restrictions',
+])
+
+# Phrases in details text that reveal reference-only / process intent.
+_PROCESS_DETAILS_PHRASES = frozenset([
+    'not mandatory but available for reference',
+    'available for reference',
+    'for reference only',
+    'reference only',
+    'will not be evaluated',
+    'external to the form will not',
+    'links to websites',
+    'links to external',
+])
+
+# Regex for quantified page/word/item constraints in item text.
+_QUANTITY_CONSTRAINT_RE = _re.compile(
+    r'(?:maximum|max|no more than|not exceed|limit of?)\s+\d+\s*'
+    r'(?:pages?|words?|lines?|items?)',
     _re.IGNORECASE,
 )
 
+# ---------------------------------------------------------------------------
+# Positive artefact-indicator tokens (word-boundary matched)
+# ---------------------------------------------------------------------------
+# Matched with \b so 'form' matches 'Submission Form' but NOT 'information'
+# or 'format'. Overly broad single words (response, submission, document,
+# file, references, appendix) are excluded here -- they require format support.
 
-def _is_concrete_submission_document(item: str, details: str | None) -> bool:
-    """
-    Return True when a normalized submission rule represents a concrete,
-    submittable document/component rather than a process instruction or format
-    constraint.
+_ARTEFACT_TOKENS = [
+    'form',
+    'template',
+    'annex',
+    'attachment',
+    'schedule',
+    'proposal',
+    'questionnaire',
+    'declaration',
+    'certification',
+    'statement',
+    'portfolio',
+    'agenda',
+    'report',
+    'letter',
+    'agreement',
+    'contract',
+    'resume',
+    r'\bcv\b',
+    'workplan',
+    'work plan',
+    'pricing form',
+    'rate card',
+    'acknowledgement',
+    'acknowledgment',
+    'confirmation',
+]
 
-    Decision logic (deterministic, no LLM):
-    1. If any process-instruction phrase appears in the item text -> False.
-    2. If the item matches a quantified-constraint pattern (e.g. "maximum 50
-       pages") -> False.
-    3. If any document-indicator word appears in the item text -> True.
-    4. If the item text alone is ambiguous but details describe a concrete
-       artefact (contains indicator words) -> True.
-    5. Otherwise -> False (conservative: do not invent documents).
+_ARTEFACT_TOKEN_RE = _re.compile(
+    r'(?i)\b(?:' + '|'.join(_ARTEFACT_TOKENS) + r')\b'
+)
 
-    No tender-specific names or appendix labels are hard-coded here.
-    """
+# Regex for workbook tabs or worksheets that are part of another submitted workbook.
+_WORKBOOK_TAB_RE = _re.compile(
+    r"(?i)\b(?:tabs?|worksheets?)\b"
+)
+
+# Tokens that support artefact identity ONLY when format signals independent file.
+_FORMAT_DEPENDENT_TOKENS = [
+    'appendix',
+    'sample',
+    'profile',
+    'envelope',
+    'spreadsheet',
+]
+
+_FORMAT_DEPENDENT_TOKEN_RE = _re.compile(
+    r'(?i)\b(?:' + '|'.join(_FORMAT_DEPENDENT_TOKENS) + r')\b'
+)
+
+
+def _format_signals_independent(fmt: str) -> bool:
+    fl = (fmt or '').strip().lower()
+    return any(p in fl for p in _FORMAT_INDEPENDENT_PHRASES)
+
+
+def _format_signals_embedded(fmt: str) -> bool:
+    fl = (fmt or '').strip().lower()
+    return any(p in fl for p in _FORMAT_EMBEDDED_PHRASES)
+
+
+def _details_signals_reference_only(details: str) -> bool:
+    dl = (details or '').strip().lower()
+    return any(p in dl for p in _PROCESS_DETAILS_PHRASES)
+
+
+def _is_concrete_submission_document(
+    item: str,
+    fmt: str | None = None,
+    details: str | None = None,
+) -> bool:
+    '''
+    Return True only when normalized evidence establishes the rule as a
+    DISCRETE, INDEPENDENTLY TRACKED submission artefact.
+
+    Decision logic (in priority order):
+    1. Empty item -> False.
+    2. Format field signals embedded/non-file content -> False.
+    3. Workbook tab inside another workbook -> False.
+    4. Item text contains a process/portal phrase -> False.
+    5. Item text matches a quantified-constraint pattern -> False.
+    6. Details text reveals reference-only or process intent -> False.
+    7. Item text contains a strong artefact token (word-boundary) -> True.
+    8. Item text contains a format-dependent token AND format explicitly
+       signals an independent file -> True.
+    9. Conservative default -> False.
+    '''
     if not item:
         return False
-    item_lower = item.strip().lower()
-    details_lower = (details or "").strip().lower()
 
-    # Step 1: explicit process / instruction phrases -> not a document
-    for phrase in _PROCESS_INDICATOR_WORDS:
+    item_lower = item.strip().lower()
+    fmt_lower  = (fmt or '').strip().lower()
+
+    # Step 2: format field signals embedded content -> exclude
+    if _format_signals_embedded(fmt_lower):
+        return False
+
+    # Step 3: workbook tab that is part of a parent workbook -> exclude
+    if _WORKBOOK_TAB_RE.search(item):
+        return False
+
+    # Step 4: process/portal phrase in item -> exclude
+    for phrase in _PROCESS_ITEM_PHRASES:
         if phrase in item_lower:
             return False
 
-    # Step 2: quantified constraint pattern ("Maximum 50 pages", etc.) -> not a document
-    if _QUANTITY_CONSTRAINT_PATTERN.search(item):
+    # Step 5: quantified constraint in item -> exclude
+    if _QUANTITY_CONSTRAINT_RE.search(item):
         return False
 
-    # Step 3: document indicator in item name -> concrete document
-    for word in _DOCUMENT_INDICATOR_WORDS:
-        if word in item_lower:
-            return True
+    # Step 6: details reveal reference-only intent -> exclude
+    if _details_signals_reference_only(details):
+        return False
 
-    # Step 4: document indicator in details (supplementary evidence)
-    for word in _DOCUMENT_INDICATOR_WORDS:
-        if word in details_lower:
-            return True
+    # Step 7: strong artefact token matched at word boundary -> include
+    if _ARTEFACT_TOKEN_RE.search(item):
+        return True
 
-    # Step 5: conservative default -> not a document
+    # Step 8: format-dependent token + format explicitly says independent file
+    if _FORMAT_DEPENDENT_TOKEN_RE.search(item) and _format_signals_independent(fmt_lower):
+        return True
+
+    # Step 9: conservative default
     return False
 
 
-def build_submission_documents(submission_rules: list[dict],
-                               submission_deadline: str | None = None) -> list[dict]:
-    """
-    SUBMISSION DOCUMENT PROJECTION — deterministic, provenance-preserving.
+def build_submission_documents(
+    submission_rules: list[dict],
+    submission_deadline: str | None = None,
+) -> list[dict]:
+    '''
+    SUBMISSION DOCUMENT PROJECTION -- deterministic, provenance-preserving.
 
-    Converts normalized submission rules into concrete document records for
-    the bid registry. Only rules that represent an explicitly required or
-    expected submission component are included.
+    Projects normalized submission rules into document records for the bid
+    registry. Only rules representing a DISCRETE, INDEPENDENTLY TRACKED
+    submission artefact or package item are included.
 
-    Rules:
-    - Process instructions (portal links, page limits, font requirements,
-      registration rules) are excluded.
-    - Concrete components (forms, templates, proposals, pricing files,
-      questionnaires, declarations, etc.) are included.
-    - Document name is the normalized item text as-is. ".pdf" or any other
-      extension is NOT appended unless the source text already contains it.
-    - mandatory is taken from the normalized fact. If absent, it is NOT
-      defaulted to 1 — it remains None (unknown).
-    - Empty submission_rules yields an empty list. This is a valid state
-      meaning "no concrete submission documents were established from the
-      normalized facts."
-
-    Returns a list of document dicts suitable for upsert_document().
-    """
+    mandatory semantics:
+      1   -> REQUIRED
+      0   -> OPTIONAL
+      absent/None -> UNKNOWN (key omitted from record)
+    '''
     documents = []
     for sr in (submission_rules or []):
         if not isinstance(sr, dict):
             continue
-        item    = (sr.get("item") or "").strip()
-        details = sr.get("details")
-        if not _is_concrete_submission_document(item, details):
+        item    = (sr.get('item') or '').strip()
+        fmt     = sr.get('format') or ''
+        details = sr.get('details') or ''
+        if not _is_concrete_submission_document(item, fmt, details):
             continue
 
-        # Preserve name exactly as normalized — do not mutate with ".pdf"
         doc_type = (
-            "Financial"
-            if any(kw in item.lower() for kw in ("pricing", "financial", "rate card", "cost"))
-            else "Submission"
+            'Financial'
+            if any(kw in item.lower()
+                   for kw in ('pricing', 'financial', 'rate card', 'cost'))
+            else 'Submission'
         )
-        mandatory = sr.get("mandatory")  # None if absent — not defaulted
-        doc = {
-            "name":     item,
-            "doc_type": doc_type,
-            "owner":    None,
-            "due_date": submission_deadline,
-            "status":   "Expected",
-            "notes":    details or "",
+        mandatory = sr.get('mandatory')   # None if absent -- not defaulted
+        doc: dict = {
+            'name':     item,
+            'doc_type': doc_type,
+            'owner':    None,
+            'due_date': submission_deadline,
+            'status':   'Expected',
+            'notes':    details,
         }
         if mandatory is not None:
-            doc["mandatory"] = mandatory
+            doc['mandatory'] = mandatory
         documents.append(doc)
     return documents
 
