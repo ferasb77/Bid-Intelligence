@@ -8,16 +8,18 @@ Consolidated quality gate answering:
 5. What is still weak or missing?
 """
 import io
+import json
 import streamlit as st
 from database import (get_bid, get_requirements, upsert_requirement,
                       get_documents, get_outline, get_clarifications,
-                      download_file)
+                      download_file, get_bid_brief)
 from analyst import (analyze_proposal_alignment, missing_evidence,
                      compliance_review)
 from extractor import extract_text_from_file
 from config import api_key_configured
 from components.ui import (qual_badge, evidence_badge, status_badge, readiness_bar,
                            metric_card, QUAL_STATUSES)
+from requirement_semantics import select_qualification_requirements
 
 
 def page_check(bid_id: int):
@@ -36,19 +38,34 @@ def page_check(bid_id: int):
     st.markdown(f'<div style="font-size:1rem;color:#A9A69D">{bid["client"]} — {bid["title"]}</div>', unsafe_allow_html=True)
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
 
+    brief_row = get_bid_brief(bid_id) or {}
+    raw_q_gates = brief_row.get("qualification_gates")
+    qual_gates = []
+    if isinstance(raw_q_gates, list):
+        qual_gates = raw_q_gates
+    elif isinstance(raw_q_gates, str):
+        try:
+            qual_gates = json.loads(raw_q_gates) if raw_q_gates.strip().startswith("[") else []
+        except Exception:
+            qual_gates = []
+
     # ── READINESS SCORE STRIP ─────────────────────────────────────────────────
+    # A. True Supplier Qualification Gates
+    qual_reqs = select_qualification_requirements(reqs, qual_gates)
+    q_pass = sum(1 for r in qual_reqs if r.get("qual_status") == "PASS")
+    q_fail = sum(1 for r in qual_reqs if r.get("qual_status") == "FAIL")
+    q_unknown = sum(1 for r in qual_reqs if r.get("qual_status", "UNKNOWN") == "UNKNOWN")
+
+    # B. Overall Mandatory Compliance
     mand_reqs = [r for r in reqs if r.get("category") == "Mandatory"]
     m_pass = sum(1 for r in mand_reqs if r.get("qual_status") == "PASS")
-    m_fail = sum(1 for r in mand_reqs if r.get("qual_status") == "FAIL")
-    m_unknown = sum(1 for r in mand_reqs if r.get("qual_status", "UNKNOWN") == "UNKNOWN")
-
-    readiness_pct = (m_pass / len(mand_reqs) * 100) if mand_reqs else 100
+    m_unverified = sum(1 for r in mand_reqs if r.get("qual_status", "UNKNOWN") in ("UNKNOWN", "CONCERN"))
 
     k1, k2, k3, k4 = st.columns(4)
-    k1.markdown(metric_card("Mandatory Coverage", f"{m_pass}/{len(mand_reqs)}", f"{readiness_pct:.0f}% verified"), unsafe_allow_html=True)
-    k2.markdown(metric_card("Hard Blockers (FAIL)", m_fail, "critical", "#C0392B" if m_fail else "#27AE60"), unsafe_allow_html=True)
-    k3.markdown(metric_card("Unverified Gates", m_unknown, "needs proof", "#E67E22" if m_unknown else "#27AE60"), unsafe_allow_html=True)
-    k4.markdown(metric_card("Draft Outline Done", f"{sum(1 for s in outline if s.get('status')=='Complete')}/{len(outline)}", "sections"), unsafe_allow_html=True)
+    k1.markdown(metric_card("Qualification Gates", f"{q_pass}/{len(qual_reqs)}", "verified PASS" if qual_reqs else "none identified"), unsafe_allow_html=True)
+    k2.markdown(metric_card("Mandatory Compliance", f"{m_pass}/{len(mand_reqs)}", "verified PASS" if mand_reqs else "none"), unsafe_allow_html=True)
+    k3.markdown(metric_card("Qualification FAILs", q_fail, "disqualification blocker", "#C0392B" if q_fail else "#27AE60"), unsafe_allow_html=True)
+    k4.markdown(metric_card("Unverified Mandatory", m_unverified, "needs evidence before submit", "#E67E22" if m_unverified else "#27AE60"), unsafe_allow_html=True)
     st.markdown("")
 
     tab_alignment, tab_risk, tab_matrix, tab_clar_audit = st.tabs([

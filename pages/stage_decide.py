@@ -59,62 +59,49 @@ def page_decide(bid_id: int):
 
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
 
-    # ── QUALIFICATION STATUS COUNTS & HARD-GATE ALERT ─────────────────────────
-    mandatory_reqs = [r for r in reqs if r.get("category") == "Mandatory"]
-    m_pass = sum(1 for r in mandatory_reqs if r.get("qual_status") == "PASS")
-    m_concern = sum(1 for r in mandatory_reqs if r.get("qual_status") == "CONCERN")
-    m_fail = sum(1 for r in mandatory_reqs if r.get("qual_status") == "FAIL")
-    m_unknown = sum(1 for r in mandatory_reqs if r.get("qual_status", "UNKNOWN") == "UNKNOWN")
+    from requirement_semantics import (
+        select_qualification_requirements,
+        resolve_requirement_type,
+        get_qualification_gate_ui_alert,
+    )
+
+    qual_gates = _ensure_list(brief_row.get("qualification_gates"))
+    qual_reqs = select_qualification_requirements(reqs, qual_gates)
+
+    q_total = len(qual_reqs)
+    q_pass = sum(1 for r in qual_reqs if r.get("qual_status") == "PASS")
+    q_concern = sum(1 for r in qual_reqs if r.get("qual_status") == "CONCERN")
+    q_fail = sum(1 for r in qual_reqs if r.get("qual_status") == "FAIL")
+    q_unknown = sum(1 for r in qual_reqs if r.get("qual_status", "UNKNOWN") == "UNKNOWN")
 
     k1, k2, k3, k4 = st.columns(4)
-    k1.markdown(metric_card("Mandatory Gates", len(mandatory_reqs), f"{m_pass} verified PASS"), unsafe_allow_html=True)
-    k2.markdown(metric_card("Verified PASS", m_pass, f"{round(m_pass/len(mandatory_reqs)*100) if mandatory_reqs else 0}% verified"), unsafe_allow_html=True)
-    k3.markdown(metric_card("Concerns / Risks", m_concern, "need resolution", "#E67E22" if m_concern else "#27AE60"), unsafe_allow_html=True)
-    k4.markdown(metric_card("Blockers (FAIL / UNKNOWN)", f"{m_fail}F / {m_unknown}U", "prevent qualification", "#C0392B" if (m_fail or m_unknown) else "#27AE60"), unsafe_allow_html=True)
+    k1.markdown(metric_card("Qualification Gates", q_total, f"{q_pass} verified PASS"), unsafe_allow_html=True)
+    k2.markdown(metric_card("Verified PASS", q_pass, f"{round(q_pass/q_total*100) if q_total else 0}% verified"), unsafe_allow_html=True)
+    k3.markdown(metric_card("Concerns / Risks", q_concern, "need resolution", "#E67E22" if q_concern else "#27AE60"), unsafe_allow_html=True)
+    k4.markdown(metric_card("Blockers (FAIL / UNKNOWN)", f"{q_fail}F / {q_unknown}U", "prevent qualification", "#C0392B" if (q_fail or q_unknown) else "#27AE60"), unsafe_allow_html=True)
     st.markdown("")
 
-    # Hard-gate blocker warning
-    if m_fail > 0:
-        st.markdown(
-            f'<div class="warn-box">'
-            f'⛔ <strong>DISQUALIFICATION RISK:</strong> {m_fail} mandatory requirement(s) are currently marked as <strong>FAIL</strong>. '
-            f'Submitting without resolving these hard gates will result in formal rejection.'
-            f'</div>',
-            unsafe_allow_html=True
-        )
-    elif m_unknown > 0:
-        st.markdown(
-            f'<div class="info-box">'
-            f'⚠️ <strong>UNVERIFIED QUALIFICATION GATES:</strong> {m_unknown} mandatory requirement(s) have status <strong>UNKNOWN</strong>. '
-            f'The system does not assume compliance without evidence. Verify qualifying credentials before committing to bid.'
-            f'</div>',
-            unsafe_allow_html=True
-        )
-    else:
-        st.markdown(
-            '<div class="success-box">'
-            '✅ <strong>ALL MANDATORY GATES VERIFIED:</strong> All mandatory eligibility criteria are confirmed with PASS status.'
-            '</div>',
-            unsafe_allow_html=True
-        )
+    # Qualification gate status warning / zero-state alert
+    alert_info = get_qualification_gate_ui_alert(q_total, q_fail, q_unknown)
+    st.markdown(alert_info["html"], unsafe_allow_html=True)
 
     st.markdown("")
 
     tab_qual, tab_clars, tab_decision = st.tabs([
-        "🛡️ Hard-Gate Qualification Matrix",
+        "🛡️ Requirement Assessment Matrix",
         "❓ Strategic Clarifications",
         "🎯 Bid / No-Bid Decision Console"
     ])
 
     # ══════════════════════════════════════════════════════════════════════════
-    # TAB 1: QUALIFICATION MATRIX
+    # TAB 1: REQUIREMENT ASSESSMENT MATRIX
     # ══════════════════════════════════════════════════════════════════════════
     with tab_qual:
-        st.markdown("### Qualification Matrix: Hard Gates vs Evidence")
+        st.markdown("### Requirement Assessment Matrix: Compliance & Evidence")
         st.markdown(
             '<div style="font-size:.82rem;color:#A9A69D;margin-bottom:.8rem">'
             'Assess each mandatory and scored requirement against verified corporate evidence. '
-            'Assign clear qualification statuses: <code>PASS</code>, <code>CONCERN</code>, <code>FAIL</code>, or <code>UNKNOWN</code>.'
+            'Assign clear compliance statuses: <code>PASS</code>, <code>CONCERN</code>, <code>FAIL</code>, or <code>UNKNOWN</code>.'
             '</div>',
             unsafe_allow_html=True
         )
@@ -122,7 +109,7 @@ def page_decide(bid_id: int):
         # Filters
         c_f1, c_f2 = st.columns([2, 2])
         cat_filter = c_f1.selectbox("Filter Category", ["All", "Mandatory", "Rated", "Financial", "Supporting"], key="qm_cat_filter")
-        status_filter = c_f2.selectbox("Filter Qualification Status", ["All", "PASS", "CONCERN", "FAIL", "UNKNOWN"], key="qm_stat_filter")
+        status_filter = c_f2.selectbox("Filter Compliance Status", ["All", "PASS", "CONCERN", "FAIL", "UNKNOWN"], key="qm_stat_filter")
 
         filtered_reqs = reqs
         if cat_filter != "All":
@@ -133,15 +120,16 @@ def page_decide(bid_id: int):
         if not filtered_reqs:
             st.markdown('<div class="empty-state">No requirements match the selected filter.</div>', unsafe_allow_html=True)
         else:
-            hcols = st.columns([0.7, 0.9, 2.8, 1.2, 1.3, 1.6, 1.5, 0.5])
-            for h, hc in zip(["ID", "Category", "Requirement & Ref", "Qualification", "Evidence Readiness", "Evidence Details", "Gap / Action", ""], hcols):
+            hcols = st.columns([0.7, 1.4, 2.8, 1.2, 1.3, 1.6, 1.5, 0.5])
+            for h, hc in zip(["ID", "Category / Type", "Requirement & Ref", "Compliance Status", "Evidence Readiness", "Evidence Details", "Gap / Action", ""], hcols):
                 hc.markdown(f'<span style="font-size:.68rem;color:#6E6C66;font-weight:700;text-transform:uppercase">{h}</span>', unsafe_allow_html=True)
             st.markdown('<hr class="section-divider" style="margin:.2rem 0">', unsafe_allow_html=True)
 
             for req in filtered_reqs:
-                c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([0.7, 0.9, 2.8, 1.2, 1.3, 1.6, 1.5, 0.5])
+                c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([0.7, 1.4, 2.8, 1.2, 1.3, 1.6, 1.5, 0.5])
                 c1.markdown(f'<span style="font-size:.82rem;color:#C9A96E;font-weight:700">{req.get("req_id","—")}</span>', unsafe_allow_html=True)
-                c2.markdown(f'<span style="font-size:.78rem;color:#A9A69D">{req.get("category","")}</span>', unsafe_allow_html=True)
+                sem_type = req.get("requirement_type") or resolve_requirement_type(req)
+                c2.markdown(f'<span style="font-size:.78rem;color:#EDEAE3">{req.get("category","")}</span><br><span style="font-size:.70rem;color:#A9A69D">{sem_type}</span>', unsafe_allow_html=True)
 
                 ref_str = f' <span style="font-size:.72rem;color:#6E6C66">[{req.get("rfso_ref","")}]</span>' if req.get("rfso_ref") else ""
                 c3.markdown(f'<div style="font-size:.82rem">{req.get("description","")}{ref_str}</div>', unsafe_allow_html=True)
@@ -155,7 +143,7 @@ def page_decide(bid_id: int):
                 c6.markdown(f'<span style="font-size:.78rem;color:#A9A69D">{req.get("evidence") or "No evidence linked"}</span>', unsafe_allow_html=True)
                 c7.markdown(f'<span style="font-size:.78rem;color:#EDEAE3">{req.get("gap_action") or "—"}</span>', unsafe_allow_html=True)
 
-                if c8.button("✏", key=f"eq_{req['id']}", help="Update qualification status & evidence"):
+                if c8.button("✏", key=f"eq_{req['id']}", help="Update compliance status & evidence"):
                     st.session_state["editing_qual_id"] = req["id"]
                     st.rerun()
 
@@ -170,14 +158,14 @@ def page_decide(bid_id: int):
                 st.markdown(f"### ✏️ Assess Requirement: {target_req.get('req_id','')} — {target_req.get('description','')[:50]}")
                 with st.form("edit_qual_form"):
                     c1, c2, c3 = st.columns([1, 1, 1.5])
-                    new_qstat = c1.selectbox("Qualification Status *", QUAL_STATUSES,
+                    new_qstat = c1.selectbox("Compliance Status *", QUAL_STATUSES,
                                              index=QUAL_STATUSES.index(target_req.get("qual_status", "UNKNOWN"))
                                              if target_req.get("qual_status") in QUAL_STATUSES else 3)
                     new_estat = c2.selectbox("Evidence Readiness *", EVIDENCE_STATUSES,
                                              index=EVIDENCE_STATUSES.index(target_req.get("evidence_status", "MISSING"))
                                              if target_req.get("evidence_status") in EVIDENCE_STATUSES else 2)
                     new_owner = c3.text_input("Assigned Owner", value=target_req.get("owner") or "")
-                    new_evidence = st.text_area("Linked Evidence & Qualifications", value=target_req.get("evidence") or "", height=70,
+                    new_evidence = st.text_area("Linked Evidence & Compliance Notes", value=target_req.get("evidence") or "", height=70,
                                                 placeholder="e.g. Reference projects 2023-2025, ISO certifications, key expert CVs")
                     new_gap = st.text_area("Gap / Remediation Action Required", value=target_req.get("gap_action") or "", height=60,
                                            placeholder="e.g. Obtain client reference confirmation, request partner clearance")
@@ -291,7 +279,7 @@ def page_decide(bid_id: int):
                 with st.spinner("Evaluating pursuit viability against firm capabilities… 15–25s"):
                     try:
                         firm_summary = f"{firm_profile.get('company_name','')}: {firm_profile.get('overview','')} Capabilities: {firm_profile.get('core_capabilities','')}"
-                        bn_res = bid_no_bid_score(bid, reqs, firm_summary)
+                        bn_res = bid_no_bid_score(bid, reqs, firm_summary, qualification_requirements=qual_reqs)
                         existing_dec = get_bid_decision(bid_id)
                         save_bid_decision({
                             "bid_id": bid_id,

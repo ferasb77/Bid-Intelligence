@@ -13,6 +13,7 @@ Provides decision-oriented intelligence across the bid lifecycle:
 """
 import json
 import re
+from typing import Any
 import anthropic
 from config import get_api_key
 
@@ -294,14 +295,50 @@ You are objective, unsentimental, and focused on win probability, delivery capab
 Base your recommendation strictly on the RFP requirements, qualification status, and bidder capability profile provided."""
 
 def bid_no_bid_score(bid_info: dict, requirements: list[dict],
-                     firm_context: str = "") -> dict:
+                     firm_context: str = "",
+                     qualification_requirements: list[dict] | None = None) -> dict:
     """Produce a structured pursuit recommendation across five strategic dimensions."""
-    reqs_summary = "\n".join(
-        f"- [{r.get('req_id','')}] ({r.get('category','')}) Qual: {r.get('qual_status','UNKNOWN')} | "
-        f"Weight: {str(round(r['weight']*100)) + '%' if r.get('weight') else 'n/a'} | "
-        f"{r.get('description','')[:120]}"
-        for r in requirements
-    )
+    from requirement_semantics import is_supplier_qualification, normalize_requirement_identity_text
+
+    def _req_key(r: dict) -> Any:
+        # Use database id if present; else normalized material description if present; else object identity
+        if r.get("id") is not None:
+            return ("id", r["id"])
+        norm_desc = normalize_requirement_identity_text(r.get("description"))
+        if norm_desc:
+            return ("desc", norm_desc)
+        return ("obj", id(r))
+
+    # Separate true supplier qualification gates from other procurement requirements
+    if qualification_requirements is not None:
+        qual_reqs = qualification_requirements
+        qual_pks = {_req_key(r) for r in qual_reqs}
+        other_reqs = [r for r in requirements if _req_key(r) not in qual_pks]
+    else:
+        qual_reqs = [r for r in requirements if is_supplier_qualification(r)]
+        qual_pks = {_req_key(r) for r in qual_reqs}
+        other_reqs = [r for r in requirements if _req_key(r) not in qual_pks]
+
+    if qual_reqs:
+        qual_summary = "\n".join(
+            f"- [GATE: {r.get('req_id','')}] ({r.get('category','')}) Status: {r.get('qual_status','UNKNOWN')} | "
+            f"Evidence: {r.get('evidence_status','MISSING')} | "
+            f"{r.get('description','')[:150]}"
+            for r in qual_reqs
+        )
+    else:
+        qual_summary = "None identified. No explicit pass/fail bidder qualification gates found."
+
+    if other_reqs:
+        other_summary = "\n".join(
+            f"- [{r.get('req_id','')}] ({r.get('category','')}) Type: {r.get('requirement_type','General')} | "
+            f"Qual: {r.get('qual_status','UNKNOWN')} | "
+            f"Weight: {str(round(r['weight']*100)) + '%' if r.get('weight') else 'n/a'} | "
+            f"{r.get('description','')[:120]}"
+            for r in other_reqs
+        )
+    else:
+        other_summary = "None."
 
     prompt = f"""OPPORTUNITY UNDER EVALUATION:
 Title: {bid_info.get('title','')}
@@ -309,13 +346,20 @@ Client: {bid_info.get('client','')}
 Submission deadline: {bid_info.get('submission_deadline','unknown')}
 Summary: {bid_info.get('notes','')[:500]}
 
-REQUIREMENTS & QUALIFICATION GATES:
-{reqs_summary}
+TRUE SUPPLIER QUALIFICATION GATES (Pass/Fail Bidder Eligibility):
+{qual_summary}
+
+OTHER PROCUREMENT REQUIREMENTS (Technical, Submission, SLA, Commercial, Scored):
+{other_summary}
 
 BIDDER PROFILE & CAPABILITIES:
 {firm_context[:1000] if firm_context else 'Assess feasibility based on requirement standards.'}
 
 Score this opportunity across five strategic dimensions (0-10 each) and provide an actionable pursuit recommendation.
+CRITICAL EVALUATION RULES:
+- A qualification FAIL is a hard blocker to participation.
+- A qualification UNKNOWN may justify NEEDS MORE INFORMATION or a condition; missing bidder information is NOT evidence of PASS.
+- Technical, submission, SLA, and commercial requirements influence feasibility, staffing, risk, and pursuit conditions, but must NOT be described as supplier eligibility failures unless they are genuine qualification gates.
 Return ONLY valid JSON:
 {{
   "recommendation": "GO|GO WITH CONDITIONS|NO-GO|NEEDS MORE INFORMATION",
