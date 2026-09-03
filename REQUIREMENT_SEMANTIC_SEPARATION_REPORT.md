@@ -116,11 +116,11 @@ This branch introduces orthogonal semantic typing (`requirement_type`) across St
 
 ## 4. Fresh British Council Production Replay (Stage A → B → C → D)
 
-A fresh, live benchmark execution was performed directly from the source procurement documents through the production pipeline using the current Anthropic configuration:
+A completely fresh benchmark execution was performed directly from the source procurement documents through the production pipeline using current Anthropic configuration at committed code revision `REPLAY_CODE_SHA`:
 
 ### 4.1 Provenance & Input Verification
-- **Code SHA:** `9a6dc4e4e09d8b8342b9b6e2041ec86699534382`
-- **Run Started At:** `2026-09-03T11:52:02.149285+00:00`
+- **Code SHA (`REPLAY_CODE_SHA`):** `1eaa10c2f4b9264aef865e983daf4787ddf805c1`
+- **Run Started At:** `2026-09-03T13:45:11.354030+00:00`
 - **Model:** `claude-haiku-4-5-20251001` (`temperature=0.0`)
 - **Input Files & Hashes:**
   - `itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf` (60,210 chars)  
@@ -129,48 +129,48 @@ A fresh, live benchmark execution was performed directly from the source procure
     `SHA-256: 08970b7e7c7356d40529121d51d50238659a22a7555bb9a63ae69c87b8a239e6`
 
 ### 4.2 Replay Execution Timings
-- **Stage A Execution Time:** 693.74s
-- **Stage B Execution Time:** 0.0906s
-- **Stage C Execution Time:** 0.0324s
-- **Stage D Execution Time:** 91.87s
-- **Total Pipeline Execution Time:** 785.73s (~13.1 minutes)
+- **Stage A Execution Time:** 683.12s
+- **Stage B Execution Time:** 0.0680s
+- **Stage C Execution Time:** 0.0209s
+- **Stage D Execution Time:** 89.89s
+- **Total Pipeline Execution Time:** 773.10s (~12.9 minutes)
 
 ### 4.3 Requirement Counts & Semantic Breakdown
 - **Raw Extracted Requirements:**
-  - Primary ITT (`itt_-_ir67tvet42026...pdf`): 117
+  - Primary ITT (`itt_-_ir67tvet42026...pdf`): 121
   - Annex 2 PSQ (`annex_2_-_procurement...docx`): 26
-  - Total Raw: 143
-- **Normalized Requirements:** 143
-  - `Mandatory`: 134
+  - Total Raw: 147
+- **Normalized Requirements:** 147
+  - `Mandatory`: 136
   - `Rated`: 4
   - `Financial`: 0
-  - `Supporting`: 5
+  - `Supporting`: 7
 - **Semantic Type Distribution:**
-  - `Supplier Qualification`: 30
-  - `Technical Specification`: 5
-  - `Submission Compliance`: 47
-  - `Delivery / SLA`: 13
-  - `Commercial / Contractual`: 12
+  - `Supplier Qualification`: 29
+  - `Technical Specification`: 6
+  - `Submission Compliance`: 46
+  - `Delivery / SLA`: 12
+  - `Commercial / Contractual`: 13
   - `Evaluation / Scored`: 4
-  - `General Compliance`: 32
-- **Authoritative `qualification_gates` Count:** **26** (Strict semantic subset of the 134 Mandatory requirements; deduplicated and verified against narrowed hard-gate evidence cues).
+  - `General Compliance`: 37
+- **Authoritative `qualification_gates` Count:** **25** (Strict semantic subset of the 136 Mandatory requirements; deduplicated and verified against actor- and qualification-bound hard-gate evidence cues).
 
 ### 4.4 Human Review & Verification of All Resulting Qualification Gates
-Every one of the 26 resulting qualification gates was individually reviewed:
+Every one of the 25 resulting qualification gates was individually reviewed:
 
 1. `M1` (Sec 2.1): *"Vendors must be authorized by the respective OEM, certified, and have demonstrable experience in executing similar comprehensive IT projects."* (OEM authorization & certified standing)
 2. `M1` (Sec 2.1): *"Vendors must be authorized by the respective OEM (Original Equipment Manufacturer)"* (OEM authorization)
 3. `M2` (Sec 2.1): *"Vendors must be certified"* (Certified bidder standing)
 4. `M3` (Sec 2.1): *"Vendors must have demonstrable experience in executing similar comprehensive IT projects"* (Demonstrable bidder experience)
 5. `M4` (Sec 2.1): *"Suppliers must be eligible and reputable firms"* (Supplier eligibility condition)
-6. `M4` (Sec 8.2): *"Vendor must be able to demonstrate proof of authorized Partner/Reseller/Manufacturer status. British Council reserves the right to seek proof in the form of OEM certificates or Manufacturer Authorization letter."* (OEM/Partner authorization)
+6. `M4` (PAGE 15): *"Vendor must be able to demonstrate proof of authorized Partner/Reseller/Manufacturer status. British Council reserves the right to seek proof in the form of OEM certificates or Manufacturer Authorization letter."* (OEM/Partner authorization)
 7. `M1` (Sec 9.1 & 10.1): *"Confirm compliance with qualification requirements as set out at Annex 2 (Procurement Specific Questionnaire). Failure to comply with one or more qualification requirements shall entitle British Council to reject tender response in full."* (Conditions of participation compliance & rejection consequence)
 8. `M1` (Sec 15.1, PSQ Q1): *"Participant must confirm legal eligibility and authorization to perform services in all specified cities (Peshawar, Haripur, D.I Khan, Gilgit, Skardu, Quetta), including compliance with all applicable tax registration and regulatory requirements."* (Legal eligibility & tax registration)
-9. `M2` (Sec 15.1, PSQ Q1): *"Participant must confirm organizational capability to supply, install, and provide after-sales support in all listed cities (Peshawar, Haripur, D.I Khan, Gilgit, Skardu, Quetta)."* (Organizational capability to supply and perform)
+9. `M2` (Sec 15.1, PSQ Q1): *"Participant must confirm organizational capability to supply, install, and provide after-sales support in all listed cities (Peshawar, Haripur, D.I Khan, Gilgit, Skardu, Quetta)."* (Organizational capability with PSQ context)
 10. `M3` (Sec 15.1, PSQ Q2): *"Participant must provide valid Original Equipment Manufacturer (OEM) Authorization Letters or equivalent documentary evidence confirming authorization to supply, install, support, and provide warranty services for all proposed solution components."* (OEM authorization letters)
 11. `M4` (Sec 15.3): *"Participant must achieve minimum pass score for ALL Conditions of Participation questions. Failure to achieve minimum pass score on any question results in exclusion from event and rejection of submission."* (Conditions of participation minimum score & exclusion)
-12. `M5` (Sec 15.2): *"Participant must provide information on two most recent accounts and, upon request, provide copies of most recent audited accounts or up-to-date financial statements to facilitate British Council's assessment of economic and financial standing (turnover relative to contract value, solvency ratios, profitability ratios)."* (Economic & financial standing)
-13. `M6` (Sec 14.4): *"Where participant intends to sub-contract performance of part or all of contract, sub-contractor details must be completed in Procurement Specific Questionnaire. Sub-contractor details will be assessed to determine if any sub-contractor is an Excluded or Excludable supplier."* (Sub-contractor assessment for Excluded/Excludable status)
+12. `M5` (Sec 15.2): *"Participant must provide information on two most recent accounts and, upon request, provide copies of most recent audited accounts or up-to-date financial statements to facilitate British Council's assessment of economic and financial standing, including turnover relative to contract value, solvency ratios, and profitability ratios."* (Economic & financial standing)
+13. `M7` (Sec 14.4, 14.5): *"Where participant intends to sub-contract performance of part or all of contract, sub-contractor details must be completed in Procurement Specific Questionnaire. Sub-contractors will be assessed for Excluded or Excludable status. If sub-contractor is deemed Excluded or Excludable, the Participant will be treated as Excluded or Excludable."* (Sub-contractor assessment for Excluded/Excludable status & exclusion)
 14. `M16` (Sec 18.1 Stage 2): *"Stage 2 Evaluation: The completed Selection Questionnaire will be reviewed to confirm that the potential supplier meets all qualification criteria set out in the questionnaire. Suppliers meeting qualification criteria will proceed to Stage 3. Suppliers not meeting qualification criteria may be excluded and their tender response rejected in full."* (Selection questionnaire qualification criteria & exclusion)
 15. `M2` (Part 1 - Q5): *"Supplier must not be on the debarment list. Question 5 requires confirmation of debarment status."* (Debarment list exclusion)
 16. `M4` (Part 2 - Q7, 8, 9): *"If relying on associated persons (consortium members or key sub-contractors relied upon to meet conditions of participation), those associated persons must be registered on CDP and have shared their information as PDF download, including basic information, economic and financial standing information (if relied upon for financial capacity), associated person information, and exclusion grounds information."* (Associated persons meeting conditions of participation & financial capacity)
@@ -179,19 +179,19 @@ Every one of the 26 resulting qualification gates was individually reviewed:
 19. `M8` (Part 3A - Q14): *"Supplier must satisfy minimum financial requirements set as conditions of participation: Operating Profit Margin > 20%; Current Ratio (Liquidity) > 1; Debt Ratio < 0.8. Question 14 requires confirmation of compliance with these minimum requirements."* (Minimum financial conditions of participation)
 20. `M14` (Part 3A - Q15): *"If relying on another supplier to act as a guarantor, supplier must provide the guarantor's name and evidence of their economic and financial standing."* (Guarantor economic & financial standing)
 21. `M1` (Sec 17.1): *"Bidder must confirm legal eligibility and authorization to perform services in each specified city, including compliance with all applicable tax registration and regulatory requirements."* (Legal eligibility & tax registration)
-22. `M2` (Sec 17.1): *"Bidder must confirm organizational capability to supply, install, and provide after-sales support in all listed cities."* (Organizational capability to perform)
-23. `M3` (Sec 17.2): *"Bidder must provide valid Original Equipment Manufacturer (OEM) Authorization Letters or equivalent documentary evidence confirming authorization to supply, install, support, and provide warranty services for all proposed solution components."* (OEM authorization letters)
-24. `M4` (Sec 18): *"Bidder must confirm that human and technical resources are in place, or will be in place by contract award, to perform the contract and ensure compliance with UK General Data Protection Regulation and protection of data subject rights. Authority has right to exclude any supplier answering 'No' to this section."* (Explicit right to exclude based on resource & compliance confirmation)
-25. `M5` (Sec 19): *"Bidder must provide details of at least three contracts demonstrating technical ability from past three years (public or private sector, including grant-funded work)... Authority has right to exclude any supplier unable to provide at least one example or reasonable explanation."* (Explicit right to exclude based on technical ability demonstration)
-26. `M7` (Sec 21): *"Bidder must provide details of how organizational qualifications or standards specified in conditions of participation are met, or provide details of other equivalent standards that equal or exceed what has been requested."* (Conditions of participation organizational standards)
+22. `M3` (Sec 17.2): *"Bidder must provide valid Original Equipment Manufacturer (OEM) Authorization Letters or equivalent documentary evidence confirming authorization to supply, install, support, and provide warranty services for all proposed solution components."* (OEM authorization letters)
+23. `M4` (Sec 18): *"Bidder must confirm that human and technical resources are in place, or will be in place by contract award, to perform the contract and ensure compliance with UK General Data Protection Regulation and protection of data subject rights. Authority has right to exclude any supplier answering 'No' to this section."* (Explicit right to exclude based on resource & compliance confirmation)
+24. `M5` (Sec 19): *"Bidder must provide details of at least three contracts demonstrating technical ability from past three years (public or private sector, including grant-funded work)... Authority has right to exclude any supplier unable to provide at least one example or reasonable explanation."* (Explicit right to exclude based on technical ability demonstration)
+25. `M7` (Sec 21): *"Bidder must provide details of how organizational qualifications or standards specified in conditions of participation are met, or provide details of other equivalent standards that equal or exceed what has been requested."* (Conditions of participation organizational standards)
 
 ### 4.5 Specific Verification Invariants
-- **Brand-new hardware is NOT a gate:** Confirmed absent from `qualification_gates`.
-- **Ordinary bidding model disclosure is NOT a gate:** `M11` (*"Supplier must provide registered name and confirm bidding model: single supplier or part of group/consortium..."*) was correctly excluded under the narrowed cues.
-- **Technical/Product specifications are absent:** No display, resolution, hardware, or port specifications are in `qualification_gates`.
-- **Submission mechanics are absent:** Document completion, signing, caveats, and format requirements are tracked in the Requirements Register and SUBMIT gate, not in `qualification_gates`.
-- **SLA & Commercial terms are absent:** Warranty terms, liability, and payment clauses are not in `qualification_gates`.
-- **Genuine conditions of participation remain present:** Debarment, financial ratios, OEM authorization, and exclusion grounds are strictly preserved.
+- **Hardware/Product requirements absent:** Confirmed brand-new hardware is strictly absent from `qualification_gates`.
+- **Solution technical capability statements absent:** Pure solution capability statements lacking actor or qualification context are strictly absent.
+- **Ordinary bidding-model disclosure absent:** Bidding model structure disclosure is strictly absent.
+- **Submission mechanics absent:** Formatting, document completion, signing, caveats, and response receipt times are tracked in the Requirements Register and SUBMIT gate, not in `qualification_gates`.
+- **SLA obligations absent:** Warranty periods and SLA response times are not in `qualification_gates`.
+- **Commercial terms absent:** Commercial pricing terms, liabilities, and payments are not in `qualification_gates`.
+- **Genuine conditions of participation retained:** Debarment checks, financial liquidity and debt ratios, OEM authorizations, and statutory exclusion grounds are strictly preserved.
 
 ---
 
@@ -212,7 +212,7 @@ Every one of the 26 resulting qualification gates was individually reviewed:
   - `test_condition_of_participation_resolves_to_supplier_qualification`
   - `test_financial_standing_resolves_to_supplier_qualification`
   - `test_oem_authorization_for_participation_resolves_to_supplier_qualification`
-  - `test_hard_gate_evidence_safety_barrier_cases` (A, B, C, D, E, F coverage + narrowed negative and positive context tests)
+  - `test_hard_gate_evidence_safety_barrier_cases` (A, B, C, D, E, F coverage + narrowed negative and positive context tests + capability actor/qualification-bound tests)
   - `test_technical_specification_is_non_gate`
   - `test_signed_submission_form_is_non_gate`
   - `test_incident_sla_response_is_non_gate`

@@ -1,7 +1,7 @@
 {
   "provenance": {
-    "code_sha": "9a6dc4e4e09d8b8342b9b6e2041ec86699534382",
-    "run_started_at": "2026-09-03T11:52:02.149285+00:00",
+    "code_sha": "1eaa10c2f4b9264aef865e983daf4787ddf805c1",
+    "run_started_at": "2026-09-03T13:45:11.354030+00:00",
     "model": "claude-haiku-4-5-20251001",
     "input_files": [
       {
@@ -17,33 +17,33 @@
     ]
   },
   "timings": {
-    "stage_a_sec": 693.74,
-    "stage_b_sec": 0.0906,
-    "stage_c_sec": 0.0324,
-    "stage_d_sec": 91.87,
-    "total_pipeline_sec": 785.73
+    "stage_a_sec": 683.12,
+    "stage_b_sec": 0.068,
+    "stage_c_sec": 0.0209,
+    "stage_d_sec": 89.89,
+    "total_pipeline_sec": 773.1
   },
   "raw_requirement_counts": {
-    "itt_pdf": 117,
+    "itt_pdf": 121,
     "annex_2_docx": 26,
-    "total_raw": 143
+    "total_raw": 147
   },
   "normalized_requirement_counts": {
-    "total_requirements": 143,
-    "mandatory_count": 134,
+    "total_requirements": 147,
+    "mandatory_count": 136,
     "rated_count": 4,
     "financial_count": 0,
-    "supporting_count": 5
+    "supporting_count": 7
   },
-  "qualification_gates_count": 26,
+  "qualification_gates_count": 25,
   "type_breakdown": {
-    "Supplier Qualification": 30,
-    "Technical Specification": 5,
-    "Submission Compliance": 47,
-    "Delivery / SLA": 13,
-    "Commercial / Contractual": 12,
+    "Supplier Qualification": 29,
+    "Technical Specification": 6,
+    "Submission Compliance": 46,
+    "Delivery / SLA": 12,
+    "Commercial / Contractual": 13,
     "Evaluation / Scored": 4,
-    "General Compliance": 32
+    "General Compliance": 37
   },
   "qualification_gates": [
     {
@@ -84,7 +84,7 @@
     {
       "requirement": "Vendor must be able to demonstrate proof of authorized Partner/Reseller/Manufacturer status. British Council reserves the right to seek proof in the form of OEM certificates or Manufacturer Authorization letter.",
       "type": "Supplier Qualification",
-      "rfp_ref": "Section 8.2 - General Requirements",
+      "rfp_ref": "PAGE: 15",
       "req_id": "M4",
       "disqualification_risk": "High"
     },
@@ -124,17 +124,17 @@
       "disqualification_risk": "High"
     },
     {
-      "requirement": "Participant must provide information on two most recent accounts and, upon request, provide copies of most recent audited accounts or up-to-date financial statements to facilitate British Council's assessment of economic and financial standing (turnover relative to contract value, solvency ratios, profitability ratios).",
+      "requirement": "Participant must provide information on two most recent accounts and, upon request, provide copies of most recent audited accounts or up-to-date financial statements to facilitate British Council's assessment of economic and financial standing, including turnover relative to contract value, solvency ratios, and profitability ratios.",
       "type": "Supplier Qualification",
       "rfp_ref": "Section 15.2",
       "req_id": "M5",
       "disqualification_risk": "High"
     },
     {
-      "requirement": "Where participant intends to sub-contract performance of part or all of contract, sub-contractor details must be completed in Procurement Specific Questionnaire. Sub-contractor details will be assessed to determine if any sub-contractor is an Excluded or Excludable supplier.",
+      "requirement": "Where participant intends to sub-contract performance of part or all of contract, sub-contractor details must be completed in Procurement Specific Questionnaire. Sub-contractors will be assessed for Excluded or Excludable status. If sub-contractor is deemed Excluded or Excludable, the Participant will be treated as Excluded or Excludable.",
       "type": "Supplier Qualification",
-      "rfp_ref": "Section 14.4",
-      "req_id": "M6",
+      "rfp_ref": "Section 14.4, 14.5",
+      "req_id": "M7",
       "disqualification_risk": "High"
     },
     {
@@ -191,13 +191,6 @@
       "type": "Supplier Qualification",
       "rfp_ref": "Section 17.1",
       "req_id": "M1",
-      "disqualification_risk": "High"
-    },
-    {
-      "requirement": "Bidder must confirm organizational capability to supply, install, and provide after-sales support in all listed cities.",
-      "type": "Supplier Qualification",
-      "rfp_ref": "Section 17.1",
-      "req_id": "M2",
       "disqualification_risk": "High"
     },
     {
