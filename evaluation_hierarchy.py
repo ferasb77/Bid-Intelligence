@@ -174,10 +174,9 @@ def make_criterion_key(ec: dict) -> tuple:
     norm_parent = normalize_criterion_title(str(parent_title))
 
     level = ec.get("hierarchy_level", 1 if not norm_parent else 2)
-    role = ec.get("evaluation_role") or ROLE_UNKNOWN
 
     # If explicit unique criterion_id is provided, include it to preserve distinct candidate nodes
-    return (cid if cid else norm_title, norm_parent, level, role)
+    return (cid if cid else norm_title, norm_parent, level)
 
 
 def normalize_evaluation_criterion(ec: dict) -> dict:
@@ -234,9 +233,6 @@ def normalize_evaluation_criterion(ec: dict) -> dict:
         basis = BASIS_WITHIN_PARENT
     elif explicit_basis and "overall" in str(explicit_basis).lower():
         basis = BASIS_OVERALL
-    elif basis == BASIS_UNKNOWN and hierarchy_level == 1 and not parent_stage and unit in (UNIT_PERCENT, UNIT_POINTS):
-        # Top-level criterion with no parent naturally defaults to Overall evaluation allocation unless specified
-        basis = BASIS_OVERALL
 
     # Allow explicit Stage A overrides for weight_unit
     explicit_unit = ec.get("weight_unit")
@@ -281,6 +277,7 @@ def normalize_evaluation_criterion(ec: dict) -> dict:
         "threshold": threshold,
         "notes": notes,
         "source_refs": source_refs,
+        "role_observations": [role] if role else [ROLE_UNKNOWN],
         "weight_observations": weight_obs,
         "weight_conflict": False,
     }
@@ -317,18 +314,43 @@ def deduplicate_evaluation_criteria(criteria_list: list[dict]) -> list[dict]:
                         existing_refs.append(r)
                         existing_keys.add(rk)
 
-            # Check weight observations
+            # Accumulate role observations deterministically
+            existing_roles = existing.get("role_observations", [])
+            if not existing_roles and existing.get("evaluation_role"):
+                existing_roles = [existing.get("evaluation_role")]
+            new_roles = norm_ec.get("role_observations", [])
+            if not new_roles and norm_ec.get("evaluation_role"):
+                new_roles = [norm_ec.get("evaluation_role")]
+            merged_roles = list(dict.fromkeys(existing_roles + new_roles))
+            existing["role_observations"] = merged_roles
+
+            # Resolve deterministic role: prefer ROLE_SUBCRITERION if level > 1 or parent_stage, else prefer specific role over ROLE_UNKNOWN
+            h_level = existing.get("hierarchy_level", 1)
+            p_stage = existing.get("parent_stage")
+            if h_level > 1 or p_stage:
+                existing["evaluation_role"] = ROLE_SUBCRITERION
+            else:
+                specific_roles = [r for r in merged_roles if r not in (ROLE_UNKNOWN, ROLE_SUBCRITERION)]
+                if specific_roles:
+                    prio = [ROLE_AWARD_CRITERION, ROLE_QUALIFICATION_GATE, ROLE_PROCESS_STAGE, ROLE_SCORING_SCALE, ROLE_QUALIFICATION_GATE]
+                    chosen = next((pr for pr in prio if pr in specific_roles), specific_roles[0])
+                    existing["evaluation_role"] = chosen
+
+            # Check weight observations - comparison includes value, unit, and basis
             new_obs = norm_ec.get("weight_observations", [])
             existing_obs = existing.setdefault("weight_observations", [])
             for nobs in new_obs:
                 match_found = False
                 for eobs in existing_obs:
-                    if eobs.get("value") == nobs.get("value") and eobs.get("unit") == nobs.get("unit"):
+                    if (eobs.get("value") == nobs.get("value") and
+                        eobs.get("unit") == nobs.get("unit") and
+                        eobs.get("basis") == nobs.get("basis")):
                         match_found = True
                         break
                 if not match_found:
                     existing_obs.append(nobs)
-                    existing["weight_conflict"] = True
+                    if len(existing_obs) > 1:
+                        existing["weight_conflict"] = True
 
             # If existing had no weight and new has it, adopt primary representation
             if existing.get("weight_value") is None and norm_ec.get("weight_value") is not None:
@@ -577,8 +599,69 @@ def calculate_evaluation_totals(hierarchy: dict) -> dict:
     root_total = 0.0
     has_missing_award_weight = False
     has_source_discrepancy = False
+    has_mixed_units = False
     root_details = []
     child_details = {}
+
+    # Recursive validator for any parent-child relationship at any depth (1 -> 2 -> 3 -> ...)
+    def validate_subtree_arithmetic(node: dict, path: str = ""):
+        nonlocal has_source_discrepancy, has_missing_award_weight, has_mixed_units
+        node_title = node.get("stage") or "Untitled"
+        node_val = node.get("weight_value")
+        current_path = f"{path} -> {node_title}" if path else node_title
+        children = node.get("children", [])
+        if not children:
+            return
+
+        c_vals = []
+        c_units = set()
+        c_bases = set()
+        for c in children:
+            cv = c.get("weight_value")
+            cu = c.get("weight_unit") or UNIT_NONE
+            cb = c.get("weight_basis") or BASIS_UNKNOWN
+            crole = c.get("evaluation_role")
+            if cv is not None:
+                c_vals.append(cv)
+            if cu != UNIT_NONE:
+                c_units.add(cu)
+            c_bases.add(cb)
+            if cv is None and crole == ROLE_AWARD_CRITERION:
+                has_missing_award_weight = True
+            if c.get("weight_conflict"):
+                has_source_discrepancy = True
+
+        child_subtotal = sum(c_vals) if c_vals else None
+        child_details[node_title] = {
+            "count": len(children),
+            "subtotal": child_subtotal,
+            "units": list(c_units),
+            "bases": list(c_bases),
+        }
+
+        # Check unit consistency across sibling children
+        if len(c_units) > 1:
+            has_mixed_units = True
+            warnings.append(f"Mixed weight units among subcriteria of '{current_path}': {sorted(c_units)}.")
+
+        # Child/Parent arithmetic consistency check
+        # Only validate arithmetic if children are comparable and not non-additive (e.g. scoring scales)
+        # where within-parent children are expected to sum to 100% (specifically percentage units)
+        if child_subtotal is not None:
+            if BASIS_WITHIN_PARENT in c_bases:
+                is_scoring_or_non_pct = all(c.get("weight_unit") == UNIT_POINTS or c.get("evaluation_role") == ROLE_SCORING_SCALE for c in children)
+                if not is_scoring_or_non_pct and UNIT_PERCENT in c_units:
+                    if round(child_subtotal, 2) != 100.0:
+                        has_source_discrepancy = True
+                        warnings.append(f"Subcriteria for '{current_path}' total {child_subtotal}% within parent (expected 100%).")
+            elif all(b == BASIS_OVERALL for b in c_bases) and node_val is not None:
+                if round(child_subtotal, 2) != round(node_val, 2):
+                    has_source_discrepancy = True
+                    warnings.append(f"Subcriteria for '{current_path}' sum to {child_subtotal}% overall, but parent states {node_val}%. correlation discrepancy.")
+
+        # Recurse into each child for nested validation (grandchildren, great-grandchildren, etc.)
+        for c in children:
+            validate_subtree_arithmetic(c, current_path)
 
     for r in roots:
         val = r.get("weight_value")
@@ -589,44 +672,13 @@ def calculate_evaluation_totals(hierarchy: dict) -> dict:
         title = r.get("stage")
         children = r.get("children", [])
 
-        # Process children recursively/shallowly for consistency
-        child_subtotal = None
-        c_units = set()
-        c_bases = set()
-        if children:
-            c_vals = []
-            for c in children:
-                cv = c.get("weight_value")
-                cu = c.get("weight_unit") or UNIT_NONE
-                cb = c.get("weight_basis") or BASIS_UNKNOWN
-                crole = c.get("evaluation_role")
-                if cv is not None:
-                    c_vals.append(cv)
-                if cu != UNIT_NONE:
-                    c_units.add(cu)
-                c_bases.add(cb)
-                # Check missing weight on child award criteria
-                if cv is None and crole == ROLE_AWARD_CRITERION:
-                    has_missing_award_weight = True
+        # Recursively validate arithmetic and units down the entire subtree
+        validate_subtree_arithmetic(r)
 
-            child_subtotal = sum(c_vals) if c_vals else None
-            child_details[title] = {
-                "count": len(children),
-                "subtotal": child_subtotal,
-                "units": list(c_units),
-                "bases": list(c_bases),
-            }
-
-            # Child/Parent consistency check
-            if val is not None and child_subtotal is not None:
-                if BASIS_WITHIN_PARENT in c_bases:
-                    if round(child_subtotal, 2) != 100.0:
-                        has_source_discrepancy = True
-                        warnings.append(f"Subcriteria for '{title}' total {child_subtotal}% within parent (expected 100%).")
-                elif all(b == BASIS_OVERALL for b in c_bases):
-                    if round(child_subtotal, 2) != round(val, 2):
-                        has_source_discrepancy = True
-                        warnings.append(f"Subcriteria for '{title}' sum to {child_subtotal}% overall, but parent states {val}%. correlation discrepancy.")
+        child_info = child_details.get(title, {})
+        child_subtotal = child_info.get("subtotal")
+        c_bases = set(child_info.get("bases", []))
+        c_units = set(child_info.get("units", []))
 
         # Determine if root contributes to overall total
         contributing_value = None
@@ -692,7 +744,7 @@ def calculate_evaluation_totals(hierarchy: dict) -> dict:
     active_units = {u for u in root_units if u != UNIT_NONE}
 
     # Priority 2: MIXED_UNITS
-    if len(active_units) > 1:
+    if len(active_units) > 1 or has_mixed_units:
         warnings.append(f"Mixed weight units detected at overall contribution level: {sorted(active_units)}.")
         return {
             "status": STATUS_MIXED_UNITS,

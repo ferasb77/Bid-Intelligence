@@ -443,5 +443,160 @@ class TestStageAPreservationAndDAuthoritativeRebuild(unittest.TestCase):
         self.assertEqual(len(ec[0]["weight_observations"]), 2)
 
 
+
+class TestGenericIntegrityCorrectionsPass(unittest.TestCase):
+    """Directives 1-4 tests for final generic integrity pass."""
+
+    def test_directive_1_unknown_root_basis_not_promoted_to_overall(self):
+        """
+        Directive 1: Criteria with weight='60%' and no explicit basis must remain
+        weight_value=60, weight_unit='Percent', weight_basis='Unknown' (NOT 'Overall').
+        Unknown roots must remain non-additive.
+        """
+        raw = {"stage": "Technical", "weight": "60%"}
+        norm = normalize_evaluation_criterion(raw)
+        self.assertEqual(norm["weight_value"], 60.0)
+        self.assertEqual(norm["weight_unit"], UNIT_PERCENT)
+        self.assertEqual(norm["weight_basis"], BASIS_UNKNOWN)
+
+        # Build hierarchy and calculate totals: unknown root must not contribute to overall total
+        h = build_evaluation_hierarchy([norm])
+        totals = calculate_evaluation_totals(h)
+        # Because only Unknown basis exists, no overall quantitative weights found -> INSUFFICIENT_DATA
+        self.assertIn(totals["status"], (STATUS_INSUFFICIENT_DATA, STATUS_SOURCE_DISCREPANCY))
+        self.assertNotEqual(totals["status"], STATUS_VALID)
+        self.assertIsNone(totals["overall_total"])
+
+    def test_directive_2_valid_3_level_hierarchy_matching_grandchildren(self):
+        """Directive 2: Arbitrary nesting arithmetic validation with matching grandchildren."""
+        criteria = [
+            {"stage": "Award Criteria", "hierarchy_level": 1, "is_structural_container": True},
+            {"stage": "Technical", "parent_stage": "Award Criteria", "weight": "60%", "weight_basis": "Overall", "hierarchy_level": 2},
+            {"stage": "Commercial", "parent_stage": "Award Criteria", "weight": "40%", "weight_basis": "Overall", "hierarchy_level": 2},
+            # Grandchildren of Technical sum to 100% within parent
+            {"stage": "Tech Sub 1", "parent_stage": "Technical", "weight": "60%", "weight_basis": "Within Parent", "hierarchy_level": 3},
+            {"stage": "Tech Sub 2", "parent_stage": "Technical", "weight": "40%", "weight_basis": "Within Parent", "hierarchy_level": 3},
+        ]
+        h = build_evaluation_hierarchy(criteria)
+        totals = calculate_evaluation_totals(h)
+        self.assertEqual(totals["status"], STATUS_VALID)
+        self.assertEqual(totals["overall_total"], 100.0)
+        self.assertEqual(totals["overall_unit"], UNIT_PERCENT)
+
+    def test_directive_2_invalid_3_level_hierarchy_child_mismatch(self):
+        """Directive 2: Grandchildren mismatch (e.g. 50% within parent instead of 100%) triggers SOURCE_DISCREPANCY."""
+        criteria = [
+            {"stage": "Award Criteria", "hierarchy_level": 1, "is_structural_container": True},
+            {"stage": "Technical", "parent_stage": "Award Criteria", "weight": "60%", "weight_basis": "Overall", "hierarchy_level": 2},
+            {"stage": "Commercial", "parent_stage": "Award Criteria", "weight": "40%", "weight_basis": "Overall", "hierarchy_level": 2},
+            # Grandchildren sum to only 50% within parent (expected 100%)
+            {"stage": "Tech Sub 1", "parent_stage": "Technical", "weight": "30%", "weight_basis": "Within Parent", "hierarchy_level": 3},
+            {"stage": "Tech Sub 2", "parent_stage": "Technical", "weight": "20%", "weight_basis": "Within Parent", "hierarchy_level": 3},
+        ]
+        h = build_evaluation_hierarchy(criteria)
+        totals = calculate_evaluation_totals(h)
+        self.assertEqual(totals["status"], STATUS_SOURCE_DISCREPANCY)
+        self.assertTrue(any("within parent (expected 100%)" in w for w in totals["warnings"]))
+
+    def test_directive_2_4_level_hierarchy_sanity(self):
+        """Directive 2: 4-level hierarchy arithmetic check."""
+        criteria = [
+            {"stage": "Root Award", "hierarchy_level": 1, "is_structural_container": True},
+            {"stage": "Technical", "parent_stage": "Root Award", "weight": "60%", "weight_basis": "Overall", "hierarchy_level": 2},
+            {"stage": "Commercial", "parent_stage": "Root Award", "weight": "40%", "weight_basis": "Overall", "hierarchy_level": 2},
+            # Level 3 under Technical
+            {"stage": "Software", "parent_stage": "Technical", "weight": "50%", "weight_basis": "Within Parent", "hierarchy_level": 3},
+            {"stage": "Hardware", "parent_stage": "Technical", "weight": "50%", "weight_basis": "Within Parent", "hierarchy_level": 3},
+            # Level 4 under Software: mismatch (40% + 40% = 80%)
+            {"stage": "Backend", "parent_stage": "Software", "weight": "40%", "weight_basis": "Within Parent", "hierarchy_level": 4},
+            {"stage": "Frontend", "parent_stage": "Software", "weight": "40%", "weight_basis": "Within Parent", "hierarchy_level": 4},
+        ]
+        h = build_evaluation_hierarchy(criteria)
+        totals = calculate_evaluation_totals(h)
+        self.assertEqual(totals["status"], STATUS_SOURCE_DISCREPANCY)
+        self.assertTrue(any("Backend" in w or "Software" in w for w in totals["warnings"]))
+
+    def test_directive_2_nested_mixed_units(self):
+        """Directive 2: Mixed units at nested level triggers MIXED_UNITS status."""
+        criteria = [
+            {"stage": "Award Criteria", "hierarchy_level": 1, "is_structural_container": True},
+            {"stage": "Technical", "parent_stage": "Award Criteria", "weight": "60%", "weight_basis": "Overall", "hierarchy_level": 2},
+            {"stage": "Commercial", "parent_stage": "Award Criteria", "weight": "40%", "weight_basis": "Overall", "hierarchy_level": 2},
+            # Sibling children with mixed units (Points and Percent)
+            {"stage": "Tech Sub 1", "parent_stage": "Technical", "weight": "30%", "weight_basis": "Within Parent", "hierarchy_level": 3},
+            {"stage": "Tech Sub 2", "parent_stage": "Technical", "weight": "50 points", "weight_basis": "Within Parent", "hierarchy_level": 3},
+        ]
+        h = build_evaluation_hierarchy(criteria)
+        totals = calculate_evaluation_totals(h)
+        self.assertEqual(totals["status"], STATUS_MIXED_UNITS)
+
+    def test_directive_2_nested_weight_conflict_propagates(self):
+        """Directive 2: Weight conflict at nested descendant level propagates SOURCE_DISCREPANCY."""
+        c1 = {"stage": "Tech Sub 1", "parent_stage": "Technical", "weight": "30%", "weight_basis": "Within Parent", "hierarchy_level": 3}
+        c2 = {"stage": "Tech Sub 1", "parent_stage": "Technical", "weight": "40%", "weight_basis": "Within Parent", "hierarchy_level": 3}
+        deduped = deduplicate_evaluation_criteria([c1, c2])
+        self.assertEqual(len(deduped), 1)
+        self.assertTrue(deduped[0]["weight_conflict"])
+
+        full_criteria = [
+            {"stage": "Award Criteria", "hierarchy_level": 1, "is_structural_container": True},
+            {"stage": "Technical", "parent_stage": "Award Criteria", "weight": "60%", "weight_basis": "Overall", "hierarchy_level": 2},
+            {"stage": "Commercial", "parent_stage": "Award Criteria", "weight": "40%", "weight_basis": "Overall", "hierarchy_level": 2},
+            deduped[0],
+            {"stage": "Tech Sub 2", "parent_stage": "Technical", "weight": "60%", "weight_basis": "Within Parent", "hierarchy_level": 3},
+        ]
+        h = build_evaluation_hierarchy(full_criteria)
+        totals = calculate_evaluation_totals(h)
+        self.assertEqual(totals["status"], STATUS_SOURCE_DISCREPANCY)
+
+    def test_directive_3_observation_identity_includes_basis(self):
+        """
+        Directive 3: Comparing observations must include (value, unit, basis).
+        Same logical criterion with materially different basis (40% Overall vs 40% Within Parent)
+        must produce 1 logical criterion with 2 observations and weight_conflict=True.
+        """
+        c1 = {"stage": "Commercial", "weight": "40%", "weight_basis": "Overall", "hierarchy_level": 1}
+        c2 = {"stage": "Commercial", "weight": "40%", "weight_basis": "Within Parent", "hierarchy_level": 1}
+        deduped = deduplicate_evaluation_criteria([c1, c2])
+        self.assertEqual(len(deduped), 1)
+        self.assertTrue(deduped[0]["weight_conflict"])
+        self.assertEqual(len(deduped[0]["weight_observations"]), 2)
+        bases = [obs.get("basis") for obs in deduped[0]["weight_observations"]]
+        self.assertIn("Overall", bases)
+        self.assertIn("Within Parent", bases)
+
+    def test_directive_3_identical_basis_deduplicates_cleanly(self):
+        """Directive 3: Identical observations (40% Overall twice) collapse into 1 observation without conflict."""
+        c1 = {"stage": "Commercial", "weight": "40%", "weight_basis": "Overall", "hierarchy_level": 1}
+        c2 = {"stage": "Commercial", "weight": "40%", "weight_basis": "Overall", "hierarchy_level": 1}
+        deduped = deduplicate_evaluation_criteria([c1, c2])
+        self.assertEqual(len(deduped), 1)
+        self.assertFalse(deduped[0]["weight_conflict"])
+        self.assertEqual(len(deduped[0]["weight_observations"]), 1)
+
+    def test_directive_4_role_not_in_criterion_key(self):
+        """
+        Directive 4: Same title + parent + level but different role collapses into
+        one logical criterion with accumulated role_observations.
+        """
+        c1 = {"stage": "Technical", "hierarchy_level": 1, "evaluation_role": "Award Criterion"}
+        c2 = {"stage": "Technical", "hierarchy_level": 1, "evaluation_role": "Process / Methodology"}
+        deduped = deduplicate_evaluation_criteria([c1, c2])
+        self.assertEqual(len(deduped), 1)
+        roles = deduped[0]["role_observations"]
+        self.assertEqual(len(roles), 2)
+        self.assertIn("Award Criterion", roles)
+        self.assertIn("Process / Methodology", roles)
+        # Deterministic role resolution prioritizes Award Criterion
+        self.assertEqual(deduped[0]["evaluation_role"], "Award Criterion")
+
+    def test_directive_4_order_independence_role_merging(self):
+        """Directive 4: Deduplication is permutation invariant with respect to role observations."""
+        c1 = {"stage": "Technical", "hierarchy_level": 1, "evaluation_role": "Process / Methodology"}
+        c2 = {"stage": "Technical", "hierarchy_level": 1, "evaluation_role": "Award Criterion"}
+        deduped = deduplicate_evaluation_criteria([c1, c2])
+        self.assertEqual(len(deduped), 1)
+        self.assertEqual(deduped[0]["evaluation_role"], "Award Criterion")
+
 if __name__ == "__main__":
     unittest.main()

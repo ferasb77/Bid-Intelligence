@@ -1891,13 +1891,19 @@ def _clean_raw(raw: str) -> str:
     return raw.strip()
 
 
-def _safe_parse_json(raw: str) -> dict:
+def _safe_parse_json_with_status(raw: str) -> tuple[dict, str]:
+    """
+    Parses JSON with explicit status reporting:
+    - (dict, "COMPLETE"): fully valid JSON output
+    - (dict, "RECOVERED_TRUNCATED"): truncated output repaired via balanced stack recovery
+    - ({}, "FAILED"): unparseable
+    """
     # 1. Direct json.loads on cleaned text (fast path)
     try:
         cleaned = _clean_raw(raw)
         res = json.loads(cleaned)
         if isinstance(res, dict):
-            return res
+            return res, "COMPLETE"
     except Exception:
         pass
 
@@ -1906,7 +1912,7 @@ def _safe_parse_json(raw: str) -> dict:
         from analyst import _parse_json
         res = _parse_json(raw)
         if isinstance(res, dict) and not res.get("_truncated"):
-            return res
+            return res, "COMPLETE"
     except Exception:
         pass
 
@@ -1950,13 +1956,16 @@ def _safe_parse_json(raw: str) -> dict:
             try:
                 res = json.loads(candidate)
                 if isinstance(res, dict):
-                    return res
+                    return res, "RECOVERED_TRUNCATED"
             except json.JSONDecodeError:
                 pass
 
-    return {}
+    return {}, "FAILED"
 
 
+def _safe_parse_json(raw: str) -> dict:
+    """Backward-compatible wrapper returning only parsed dict."""
+    return _safe_parse_json_with_status(raw)[0]
 # ── STAGE A: DOCUMENT FACT EXTRACTION ─────────────────────────────────────────
 
 # ── STAGE A CHUNKING, AGGREGATION & COVERAGE GUARD ───────────────────────────
@@ -2321,9 +2330,10 @@ def _extract_chunk_facts(chunk_text: str, filename: str, api_key: str, client=No
         messages=[{"role": "user", "content": content}],
     )
 
-    data = _safe_parse_json(response.content[0].text)
+    data, parse_status = _safe_parse_json_with_status(response.content[0].text)
     if not isinstance(data, dict):
         data = {}
+    data["_parse_status"] = parse_status
 
     for r in data.get("requirements", []):
         r.setdefault("source_refs", [{"source_doc": filename, "page": None, "sheet": None, "section": None, "excerpt": r.get("description", "")[:100]}])
@@ -2355,8 +2365,39 @@ def extract_document_facts(doc_text: str, filename: str, api_key: str) -> dict:
     chunks = chunk_document_text(doc_text, max_chunk_chars=_STAGE_A_MAX_CHUNK_CHARS)
 
     chunk_results = []
+    has_recovered_truncation = False
+
     for chunk in chunks:
         res = _extract_chunk_facts(chunk, filename, api_key, client=client)
+        pstatus = res.get("_parse_status")
+        if pstatus == "RECOVERED_TRUNCATED":
+            # Directive 5: Bounded retry for this chunk using smaller input / targeted retry
+            target_size = max(500, len(chunk) // 2) if len(chunk) > 1000 else len(chunk)
+            retry_subchunks = chunk_document_text(chunk, max_chunk_chars=target_size)
+            if len(retry_subchunks) <= 1:
+                # If chunker didn't split (e.g. single block without delimiters), try splitting roughly in half or re-request
+                half_pt = len(chunk) // 2
+                split_candidates = [chunk[:half_pt], chunk[half_pt:]] if len(chunk) > 1000 else [chunk]
+                retry_subchunks = [c for c in split_candidates if c.strip()]
+
+            sub_results = []
+            sub_all_complete = True
+            for sc in retry_subchunks:
+                sres = _extract_chunk_facts(sc, filename, api_key, client=client)
+                if sres.get("_parse_status") != "COMPLETE":
+                    sub_all_complete = False
+                sub_results.append(sres)
+            if sub_all_complete:
+                res = aggregate_stage_a_facts(sub_results, filename)
+                res["_parse_status"] = "COMPLETE"
+            else:
+                # Still has recovered truncation or failure; preserve recovered partial facts
+                res = aggregate_stage_a_facts([res] + sub_results, filename)
+                res["_parse_status"] = "RECOVERED_TRUNCATED"
+                has_recovered_truncation = True
+        elif pstatus == "FAILED":
+            # Preservation of any partial items
+            pass
         chunk_results.append(res)
 
     aggregated = aggregate_stage_a_facts(chunk_results, filename)
@@ -2375,6 +2416,8 @@ def extract_document_facts(doc_text: str, filename: str, api_key: str) -> dict:
             retry_results = []
             for schunk in smaller_chunks:
                 rres = _extract_chunk_facts(schunk, filename, api_key, client=client)
+                if rres.get("_parse_status") == "RECOVERED_TRUNCATED":
+                    has_recovered_truncation = True
                 retry_results.append(rres)
             retry_aggregated = aggregate_stage_a_facts(retry_results, filename)
             # Deterministically merge original aggregated facts with retry facts
@@ -2388,13 +2431,21 @@ def extract_document_facts(doc_text: str, filename: str, api_key: str) -> dict:
             # Re-extract chunks that might have dropped facts
             break
 
-    # Attach internal non-schema diagnostic if still suspicious
+    # Attach internal non-schema diagnostic: truncated JSON recovery must not masquerade as VERIFIED_ADEQUATE
     if coverage["is_suspicious"]:
         aggregated["_extraction_diagnostic"] = {
             "status": "SUSPICIOUS_UNDER_COVERAGE",
             "suspicious_families": coverage["suspicious_families"],
             "signal_counts": coverage["signal_counts"],
             "recovery_attempts": recovery_attempts,
+            "has_recovered_truncation": has_recovered_truncation,
+        }
+    elif has_recovered_truncation:
+        aggregated["_extraction_diagnostic"] = {
+            "status": "RECOVERED_TRUNCATED",
+            "recovery_attempts": recovery_attempts,
+            "has_recovered_truncation": True,
+            "note": "Document facts recovered from truncated JSON parser; bounded retries completed without complete parse",
         }
     else:
         aggregated["_extraction_diagnostic"] = {
