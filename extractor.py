@@ -24,6 +24,7 @@ from requirement_semantics import (
     resolve_requirement_type,
     is_supplier_qualification,
     normalize_requirement_type,
+    merge_requirement_types,
     TYPE_SUPPLIER_QUALIFICATION,
     ALLOWED_REQUIREMENT_TYPES,
 )
@@ -2055,10 +2056,11 @@ def aggregate_stage_a_facts(chunk_facts_list: list[dict], filename: str) -> dict
                     if rk not in existing_ref_keys:
                         existing.setdefault("source_refs", []).append(ref)
                         existing_ref_keys.add(rk)
-                # If existing has unclassified / general type but chunk has more specific type, upgrade it
-                chunk_type = normalize_requirement_type(r.get("requirement_type"))
-                if chunk_type and existing.get("requirement_type") in (None, "General Compliance"):
-                    existing["requirement_type"] = chunk_type
+                # Conflict-safe commutative semantic type merge
+                existing["requirement_type"] = merge_requirement_types(
+                    existing.get("requirement_type"),
+                    r.get("requirement_type")
+                )
             else:
                 r_copy = dict(r)
                 r_copy["source_refs"] = list(raw_refs)
@@ -2362,10 +2364,11 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
                     if not any(e.get("source_doc") == vref.get("source_doc") and e.get("page") == vref.get("page") for e in existing_refs):
                         existing_refs.append(vref)
                 existing_r["source_refs"] = existing_refs
-                # If existing has unclassified/general type but incoming has specific type, upgrade it
-                inc_type = normalize_requirement_type(r.get("requirement_type"))
-                if inc_type and existing_r.get("requirement_type") in (None, "General Compliance"):
-                    existing_r["requirement_type"] = inc_type
+                # Conflict-safe commutative semantic type merge
+                existing_r["requirement_type"] = merge_requirement_types(
+                    existing_r.get("requirement_type"),
+                    r.get("requirement_type")
+                )
             else:
                 r_copy = dict(r)
                 r_copy["source_refs"] = validated_refs
@@ -2790,7 +2793,7 @@ def apply_stage_d_authoritative_sections(synth_data: dict, normalized_facts: dic
     Only exact duplicates (identical on all canonical fields) are collapsed.
 
     Sections replaced deterministically:
-      qualification_gates      <- ALL Mandatory requirements
+      qualification_gates      <- Mandatory Supplier Qualification requirements only
       evaluation_breakdown     <- normalized evaluation_criteria
       submission_requirements  <- normalized submission_rules
       key_dates                <- normalized dates

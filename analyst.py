@@ -13,6 +13,7 @@ Provides decision-oriented intelligence across the bid lifecycle:
 """
 import json
 import re
+from typing import Any
 import anthropic
 from config import get_api_key
 
@@ -297,17 +298,26 @@ def bid_no_bid_score(bid_info: dict, requirements: list[dict],
                      firm_context: str = "",
                      qualification_requirements: list[dict] | None = None) -> dict:
     """Produce a structured pursuit recommendation across five strategic dimensions."""
-    from requirement_semantics import is_supplier_qualification
+    from requirement_semantics import is_supplier_qualification, normalize_requirement_identity_text
+
+    def _req_key(r: dict) -> Any:
+        # Use database id if present; else normalized material description if present; else object identity
+        if r.get("id") is not None:
+            return ("id", r["id"])
+        norm_desc = normalize_requirement_identity_text(r.get("description"))
+        if norm_desc:
+            return ("desc", norm_desc)
+        return ("obj", id(r))
 
     # Separate true supplier qualification gates from other procurement requirements
     if qualification_requirements is not None:
         qual_reqs = qualification_requirements
-        qual_pks = {r.get("id") or r.get("req_id") or id(r) for r in qual_reqs}
-        other_reqs = [r for r in requirements if (r.get("id") or r.get("req_id") or id(r)) not in qual_pks]
+        qual_pks = {_req_key(r) for r in qual_reqs}
+        other_reqs = [r for r in requirements if _req_key(r) not in qual_pks]
     else:
         qual_reqs = [r for r in requirements if is_supplier_qualification(r)]
-        qual_pks = {r.get("id") or r.get("req_id") or id(r) for r in qual_reqs}
-        other_reqs = [r for r in requirements if (r.get("id") or r.get("req_id") or id(r)) not in qual_pks]
+        qual_pks = {_req_key(r) for r in qual_reqs}
+        other_reqs = [r for r in requirements if _req_key(r) not in qual_pks]
 
     if qual_reqs:
         qual_summary = "\n".join(

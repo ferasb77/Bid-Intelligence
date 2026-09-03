@@ -59,8 +59,11 @@ def page_decide(bid_id: int):
 
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
 
-    # ── QUALIFICATION STATUS COUNTS & HARD-GATE ALERT ─────────────────────────
-    from requirement_semantics import select_qualification_requirements, resolve_requirement_type
+    from requirement_semantics import (
+        select_qualification_requirements,
+        resolve_requirement_type,
+        get_qualification_gate_ui_alert,
+    )
 
     qual_gates = _ensure_list(brief_row.get("qualification_gates"))
     qual_reqs = select_qualification_requirements(reqs, qual_gates)
@@ -78,30 +81,9 @@ def page_decide(bid_id: int):
     k4.markdown(metric_card("Blockers (FAIL / UNKNOWN)", f"{q_fail}F / {q_unknown}U", "prevent qualification", "#C0392B" if (q_fail or q_unknown) else "#27AE60"), unsafe_allow_html=True)
     st.markdown("")
 
-    # Hard-gate blocker warning
-    if q_fail > 0:
-        st.markdown(
-            f'<div class="warn-box">'
-            f'⛔ <strong>DISQUALIFICATION RISK:</strong> {q_fail} qualification gate(s) are currently marked as <strong>FAIL</strong>. '
-            f'Submitting without resolving these hard gates will result in formal rejection.'
-            f'</div>',
-            unsafe_allow_html=True
-        )
-    elif q_unknown > 0:
-        st.markdown(
-            f'<div class="info-box">'
-            f'⚠️ <strong>UNVERIFIED QUALIFICATION GATES:</strong> {q_unknown} qualification gate(s) have status <strong>UNKNOWN</strong>. '
-            f'The system does not assume compliance without evidence. Verify qualifying credentials before committing to bid.'
-            f'</div>',
-            unsafe_allow_html=True
-        )
-    else:
-        st.markdown(
-            '<div class="success-box">'
-            '✅ <strong>ALL QUALIFICATION GATES VERIFIED:</strong> All supplier qualification criteria are confirmed with PASS status.'
-            '</div>',
-            unsafe_allow_html=True
-        )
+    # Qualification gate status warning / zero-state alert
+    alert_info = get_qualification_gate_ui_alert(q_total, q_fail, q_unknown)
+    st.markdown(alert_info["html"], unsafe_allow_html=True)
 
     st.markdown("")
 

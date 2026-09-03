@@ -1,0 +1,273 @@
+{
+  "total_requirements": 148,
+  "mandatory_count": 138,
+  "rated_count": 4,
+  "financial_count": 0,
+  "supporting_count": 6,
+  "qualification_gates_count": 30,
+  "type_breakdown": {
+    "Supplier Qualification": 30,
+    "Technical Specification": 7,
+    "Submission Compliance": 47,
+    "Delivery / SLA": 15,
+    "Commercial / Contractual": 11,
+    "Evaluation / Scored": 4,
+    "General Compliance": 34
+  },
+  "timings": {
+    "stage_a_sec": 679.655237799976,
+    "stage_b_sec": 0.05141340009868145,
+    "stage_c_sec": 0.018447499955073,
+    "stage_d_sec": 91.58417490008287
+  },
+  "qualification_gates": [
+    {
+      "requirement": "Vendors must be authorized by the respective OEM, certified, and have demonstrable experience in executing similar comprehensive IT projects.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Section 2.1",
+      "req_id": "M1",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Vendors must be authorized by the respective OEM (Original Equipment Manufacturer)",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Section 2.1",
+      "req_id": "M1",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Vendors must be certified",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Section 2.1",
+      "req_id": "M2",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Vendors must have demonstrable experience in executing similar comprehensive IT projects",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Section 2.1",
+      "req_id": "M3",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Suppliers must be eligible and reputable firms",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Section 2.1",
+      "req_id": "M4",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "All items must be brand new and not refurbished, used, or end-of-life hardware.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Section 8.2 - General Requirements",
+      "req_id": "M3",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Vendor must be able to demonstrate proof of authorized Partner/Reseller/Manufacturer status. British Council reserves the right to seek proof in the form of OEM certificates or Manufacturer Authorization letter.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Section 8.2 - General Requirements",
+      "req_id": "M4",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Confirm compliance with qualification requirements as set out at Annex 2 (Procurement Specific Questionnaire). Failure to comply with one or more qualification requirements shall entitle British Council to reject tender response in full.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Section 9.1 and 10.1",
+      "req_id": "M1",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Participant must confirm legal eligibility and authorization to perform services in all specified cities (Peshawar, Haripur, D.I Khan, Gilgit, Skardu, Quetta), including compliance with all applicable tax registration and regulatory requirements.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Section 15.1, PSQ Question 1",
+      "req_id": "M1",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Participant must confirm organizational capability to supply, install, and provide after-sales support in all listed cities (Peshawar, Haripur, D.I Khan, Gilgit, Skardu, Quetta).",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Section 15.1, PSQ Question 1",
+      "req_id": "M2",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Participant must provide valid Original Equipment Manufacturer (OEM) Authorization Letters or equivalent documentary evidence confirming authorization to supply, install, support, and provide warranty services for all proposed solution components.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Section 15.1, PSQ Question 2",
+      "req_id": "M3",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Participant must achieve minimum pass score for ALL Conditions of Participation questions. Failure to achieve minimum pass score on any question results in exclusion from event and rejection of submission.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Section 15.3",
+      "req_id": "M4",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Participant must not be an Excluded or Excludable supplier under Schedule 7 grounds, including: business suspension/cessation, competition infringements (Chapters I & II), cartel offences, professional misconduct, breach of contract and poor performance, improper procurement conduct, and national security concerns.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Section 14, Schedule 7 paragraphs 5-14",
+      "req_id": "M5",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "If Participant intends to sub-contract performance of part or all of the contract, sub-contractor details must be completed in the Procurement Specific Questionnaire. Sub-contractors will be assessed for Excluded or Excludable status. If any sub-contractor is deemed Excluded or Excludable, the Participant will be treated as Excluded or Excludable.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Section 14.4, 14.5",
+      "req_id": "M6",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Participant must demonstrate acceptable economic and financial standing. British Council will assess turnover relative to Contract Value, solvency ratios, and profitability ratios. Participants must provide information on their two most recent accounts, and upon request, provide copies of most recent audited accounts or up-to-date financial statements.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Section 15.2",
+      "req_id": "M8",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Stage 2 Evaluation: The completed Selection Questionnaire will be reviewed to confirm that the potential supplier meets all qualification criteria set out in the questionnaire. Suppliers meeting qualification criteria will proceed to Stage 3. Suppliers not meeting qualification criteria may be excluded and their tender response rejected in full.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Section 18.1 Stage 2",
+      "req_id": "M16",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Supplier must not be on the debarment list. Question 5 requires confirmation of debarment status.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Part 1 - Question 5",
+      "req_id": "M2",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "If relying on associated persons (consortium members or key sub-contractors relied upon to meet conditions of participation), those associated persons must be registered on CDP and have shared their information as PDF download, including basic information, economic and financial standing information (if relied upon for financial capacity), associated person information, and exclusion grounds information.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Part 2 - Questions 7, 8, 9",
+      "req_id": "M4",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Associated persons must not be on the debarment list. Question 10 requires confirmation of debarment status for all associated persons.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Part 2 - Question 10",
+      "req_id": "M5",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "No intended sub-contractor may be on the debarment list. Question 13 requires confirmation of debarment status for all intended sub-contractors.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Part 2 - Question 13",
+      "req_id": "M7",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Supplier must satisfy minimum financial requirements set as conditions of participation: Operating Profit Margin > 20%; Current Ratio (Liquidity) > 1; Debt Ratio < 0.8. Question 14 requires confirmation of compliance with these minimum requirements.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Part 3A - Question 14",
+      "req_id": "M8",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Supplier must provide registered name (if applicable) and confirm bidding model: single supplier (with or without sub-contractors) or part of a group/consortium. If consortium, must provide group name, proposed structure, lead member name, and supplier's role.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Part 1 - Questions 1, 3",
+      "req_id": "M11",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "If relying on another supplier to act as a guarantor, supplier must provide the guarantor's name and evidence of their economic and financial standing.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Part 3A - Question 15",
+      "req_id": "M14",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Bidder must confirm legal eligibility and authorization to perform services in each specified city, including compliance with all applicable tax registration and regulatory requirements.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Section 17.1",
+      "req_id": "M1",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Bidder must confirm organizational capability to supply, install, and provide after-sales support in all listed cities.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Section 17.1",
+      "req_id": "M2",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Bidder must provide valid Original Equipment Manufacturer (OEM) Authorization Letters or equivalent documentary evidence confirming authorization to supply, install, support, and provide warranty services for all proposed solution components.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Section 17.2",
+      "req_id": "M3",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Bidder must confirm that human and technical resources are in place, or will be in place by contract award, to perform the contract and ensure compliance with UK General Data Protection Regulation and protection of data subject rights. Authority has right to exclude any supplier answering 'No' to this section.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Section 18",
+      "req_id": "M4",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Bidder must provide details of at least three contracts demonstrating technical ability from past three years (public or private sector, including grant-funded work). For consortium bids or reliance on associated persons, examples may be provided from consortium members or sub-contractors. Authority has right to exclude any supplier unable to provide at least one example or reasonable explanation.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Section 19",
+      "req_id": "M5",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Where bidder intends to sub-contract a proportion of the contract, bidder must demonstrate previous experience maintaining healthy supply chains with sub-contractors, including procedures to ensure performance of the contract.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Section 20",
+      "req_id": "M6",
+      "disqualification_risk": "High"
+    },
+    {
+      "requirement": "Bidder must provide details of how organizational qualifications or standards specified in conditions of participation are met, or provide details of other equivalent standards that equal or exceed what has been requested.",
+      "type": "Supplier Qualification",
+      "rfp_ref": "Section 21",
+      "req_id": "M7",
+      "disqualification_risk": "High"
+    }
+  ],
+  "sample_mandatory_non_gates": [
+    {
+      "req_id": "M2",
+      "category": "Mandatory",
+      "type": "Submission Compliance",
+      "description": "Tender responses must comprise the relevant documents specified by the British Council completed in all areas and in the"
+    },
+    {
+      "req_id": "M3",
+      "category": "Mandatory",
+      "type": "Submission Compliance",
+      "description": "Tender responses may be rejected if they contain gaps, omissions, misrepresentations, errors, uncompleted sections, or c"
+    },
+    {
+      "req_id": "M4",
+      "category": "Mandatory",
+      "type": "Submission Compliance",
+      "description": "Handwritten amendments must be initialled by the authorised signatory."
+    },
+    {
+      "req_id": "M5",
+      "category": "Mandatory",
+      "type": "General Compliance",
+      "description": "By submitting a tender response, potential suppliers confirm they will comply with all applicable laws, codes of practic"
+    },
+    {
+      "req_id": "M6",
+      "category": "Mandatory",
+      "type": "Commercial / Contractual",
+      "description": "By submitting a tender response, you are agreeing to be bound by the terms of the ITT and the Contract (Annex 1 - Terms "
+    },
+    {
+      "req_id": "M7",
+      "category": "Mandatory",
+      "type": "General Compliance",
+      "description": "Tender responses must reflect and confirm full and unconditional compliance with all of the documents issued by the Brit"
+    }
+  ]
+}

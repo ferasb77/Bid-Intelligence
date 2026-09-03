@@ -5,6 +5,7 @@ Orthogonal requirement semantics and supplier-qualification helper module.
 Defines:
 - Controlled requirement_type taxonomy (orthogonal to category).
 - Normalization and fallback classification.
+- Conflict-safe, order-independent semantic type merging.
 - Supplier qualification gate filtering and matching logic.
 """
 import re
@@ -29,51 +30,137 @@ ALLOWED_REQUIREMENT_TYPES = (
     TYPE_GENERAL_COMPLIANCE,
 )
 
-_NORMALIZED_TYPE_MAP = {
-    # Direct and canonical variants
+# Specific (non-general) types for conflict-safe merging
+SPECIFIC_REQUIREMENT_TYPES = {
+    TYPE_SUPPLIER_QUALIFICATION,
+    TYPE_TECHNICAL_SPECIFICATION,
+    TYPE_SUBMISSION_COMPLIANCE,
+    TYPE_DELIVERY_SLA,
+    TYPE_COMMERCIAL_CONTRACTUAL,
+    TYPE_EVALUATION_SCORED,
+}
+
+# Explicit exact aliases mapping to canonical enum values after safe whitespace/separator normalization.
+# NOTE: Arbitrary substring matching is strictly prohibited.
+# Ambiguous compounds (e.g. "Technical Qualification", "Commercial Qualification",
+# "Submission Qualification", "Qualification / Technical") are strictly omitted and return None.
+_EXACT_ALIAS_MAP = {
+    # Supplier Qualification
     "supplier qualification": TYPE_SUPPLIER_QUALIFICATION,
     "supplier_qualification": TYPE_SUPPLIER_QUALIFICATION,
     "supplierqualification": TYPE_SUPPLIER_QUALIFICATION,
-    "qualification": TYPE_SUPPLIER_QUALIFICATION,
-    "eligibility": TYPE_SUPPLIER_QUALIFICATION,
     "bidder qualification": TYPE_SUPPLIER_QUALIFICATION,
     "bidder_qualification": TYPE_SUPPLIER_QUALIFICATION,
+    "bidderqualification": TYPE_SUPPLIER_QUALIFICATION,
+    "proponent qualification": TYPE_SUPPLIER_QUALIFICATION,
+    "proponent_qualification": TYPE_SUPPLIER_QUALIFICATION,
+    "qualification gate": TYPE_SUPPLIER_QUALIFICATION,
+    "qualification_gate": TYPE_SUPPLIER_QUALIFICATION,
+    "eligibility gate": TYPE_SUPPLIER_QUALIFICATION,
+    "eligibility_gate": TYPE_SUPPLIER_QUALIFICATION,
+    "supplier eligibility": TYPE_SUPPLIER_QUALIFICATION,
+    "supplier_eligibility": TYPE_SUPPLIER_QUALIFICATION,
+    "bidder eligibility": TYPE_SUPPLIER_QUALIFICATION,
+    "bidder_eligibility": TYPE_SUPPLIER_QUALIFICATION,
 
+    # Technical Specification
     "technical specification": TYPE_TECHNICAL_SPECIFICATION,
     "technical_specification": TYPE_TECHNICAL_SPECIFICATION,
     "technicalspecification": TYPE_TECHNICAL_SPECIFICATION,
-    "technical": TYPE_TECHNICAL_SPECIFICATION,
-    "specification": TYPE_TECHNICAL_SPECIFICATION,
+    "technical specifications": TYPE_TECHNICAL_SPECIFICATION,
+    "technical_specifications": TYPE_TECHNICAL_SPECIFICATION,
+    "technical requirement": TYPE_TECHNICAL_SPECIFICATION,
+    "technical_requirement": TYPE_TECHNICAL_SPECIFICATION,
+    "technical requirements": TYPE_TECHNICAL_SPECIFICATION,
+    "technical_requirements": TYPE_TECHNICAL_SPECIFICATION,
+    "technical spec": TYPE_TECHNICAL_SPECIFICATION,
+    "technical_spec": TYPE_TECHNICAL_SPECIFICATION,
 
+    # Submission Compliance
     "submission compliance": TYPE_SUBMISSION_COMPLIANCE,
     "submission_compliance": TYPE_SUBMISSION_COMPLIANCE,
     "submissioncompliance": TYPE_SUBMISSION_COMPLIANCE,
-    "submission": TYPE_SUBMISSION_COMPLIANCE,
+    "submission requirement": TYPE_SUBMISSION_COMPLIANCE,
+    "submission_requirement": TYPE_SUBMISSION_COMPLIANCE,
+    "submission requirements": TYPE_SUBMISSION_COMPLIANCE,
+    "submission_requirements": TYPE_SUBMISSION_COMPLIANCE,
+    "submission instruction": TYPE_SUBMISSION_COMPLIANCE,
+    "submission_instruction": TYPE_SUBMISSION_COMPLIANCE,
+    "submission instructions": TYPE_SUBMISSION_COMPLIANCE,
+    "submission_instructions": TYPE_SUBMISSION_COMPLIANCE,
+    "bidding instruction": TYPE_SUBMISSION_COMPLIANCE,
+    "bidding instructions": TYPE_SUBMISSION_COMPLIANCE,
 
+    # Delivery / SLA
     "delivery / sla": TYPE_DELIVERY_SLA,
     "delivery/sla": TYPE_DELIVERY_SLA,
-    "delivery": TYPE_DELIVERY_SLA,
-    "sla": TYPE_DELIVERY_SLA,
+    "delivery _ sla": TYPE_DELIVERY_SLA,
+    "delivery_sla": TYPE_DELIVERY_SLA,
+    "delivery and sla": TYPE_DELIVERY_SLA,
+    "service level agreement": TYPE_DELIVERY_SLA,
+    "service_level_agreement": TYPE_DELIVERY_SLA,
     "service level": TYPE_DELIVERY_SLA,
+    "service_level": TYPE_DELIVERY_SLA,
+    "delivery obligation": TYPE_DELIVERY_SLA,
+    "delivery_obligation": TYPE_DELIVERY_SLA,
+    "delivery obligations": TYPE_DELIVERY_SLA,
+    "delivery_obligations": TYPE_DELIVERY_SLA,
+    "sla requirement": TYPE_DELIVERY_SLA,
+    "sla_requirement": TYPE_DELIVERY_SLA,
+    "sla requirements": TYPE_DELIVERY_SLA,
+    "sla_requirements": TYPE_DELIVERY_SLA,
 
+    # Commercial / Contractual
     "commercial / contractual": TYPE_COMMERCIAL_CONTRACTUAL,
     "commercial/contractual": TYPE_COMMERCIAL_CONTRACTUAL,
-    "commercial": TYPE_COMMERCIAL_CONTRACTUAL,
-    "contractual": TYPE_COMMERCIAL_CONTRACTUAL,
-    "contract": TYPE_COMMERCIAL_CONTRACTUAL,
+    "commercial _ contractual": TYPE_COMMERCIAL_CONTRACTUAL,
+    "commercial_contractual": TYPE_COMMERCIAL_CONTRACTUAL,
+    "commercial and contractual": TYPE_COMMERCIAL_CONTRACTUAL,
+    "commercial requirement": TYPE_COMMERCIAL_CONTRACTUAL,
+    "commercial_requirement": TYPE_COMMERCIAL_CONTRACTUAL,
+    "commercial requirements": TYPE_COMMERCIAL_CONTRACTUAL,
+    "commercial_requirements": TYPE_COMMERCIAL_CONTRACTUAL,
+    "contractual requirement": TYPE_COMMERCIAL_CONTRACTUAL,
+    "contractual_requirement": TYPE_COMMERCIAL_CONTRACTUAL,
+    "contractual requirements": TYPE_COMMERCIAL_CONTRACTUAL,
+    "contractual_requirements": TYPE_COMMERCIAL_CONTRACTUAL,
+    "commercial term": TYPE_COMMERCIAL_CONTRACTUAL,
+    "commercial terms": TYPE_COMMERCIAL_CONTRACTUAL,
+    "contract term": TYPE_COMMERCIAL_CONTRACTUAL,
+    "contract terms": TYPE_COMMERCIAL_CONTRACTUAL,
 
+    # Evaluation / Scored
     "evaluation / scored": TYPE_EVALUATION_SCORED,
     "evaluation/scored": TYPE_EVALUATION_SCORED,
-    "evaluation": TYPE_EVALUATION_SCORED,
-    "scored": TYPE_EVALUATION_SCORED,
-    "rated": TYPE_EVALUATION_SCORED,
+    "evaluation _ scored": TYPE_EVALUATION_SCORED,
+    "evaluation_scored": TYPE_EVALUATION_SCORED,
+    "evaluation and scored": TYPE_EVALUATION_SCORED,
+    "scored evaluation": TYPE_EVALUATION_SCORED,
+    "scored_evaluation": TYPE_EVALUATION_SCORED,
+    "evaluation criteria": TYPE_EVALUATION_SCORED,
+    "evaluation_criteria": TYPE_EVALUATION_SCORED,
+    "evaluation criterion": TYPE_EVALUATION_SCORED,
+    "evaluation_criterion": TYPE_EVALUATION_SCORED,
+    "rated criterion": TYPE_EVALUATION_SCORED,
+    "rated_criterion": TYPE_EVALUATION_SCORED,
+    "rated criteria": TYPE_EVALUATION_SCORED,
+    "rated_criteria": TYPE_EVALUATION_SCORED,
+    "scored criterion": TYPE_EVALUATION_SCORED,
+    "scored criteria": TYPE_EVALUATION_SCORED,
 
+    # General Compliance
     "general compliance": TYPE_GENERAL_COMPLIANCE,
     "general_compliance": TYPE_GENERAL_COMPLIANCE,
     "generalcompliance": TYPE_GENERAL_COMPLIANCE,
-    "general": TYPE_GENERAL_COMPLIANCE,
-    "compliance": TYPE_GENERAL_COMPLIANCE,
+    "general requirement": TYPE_GENERAL_COMPLIANCE,
+    "general requirements": TYPE_GENERAL_COMPLIANCE,
+    "mandatory compliance": TYPE_GENERAL_COMPLIANCE,
+    "compliance requirement": TYPE_GENERAL_COMPLIANCE,
+    "compliance requirements": TYPE_GENERAL_COMPLIANCE,
 }
+
+# Canonical lowercase map for exact canonical matching
+_CANONICAL_LOWER_MAP = {t.lower(): t for t in ALLOWED_REQUIREMENT_TYPES}
 
 # Strong supplier qualification / bidder eligibility cues for fallback detection
 # NOTE: Generic modal words ("must", "shall", "mandatory", "required") are strictly EXCLUDED.
@@ -111,20 +198,68 @@ def normalize_requirement_type(raw_type: Any) -> str | None:
     """
     Normalize raw requirement_type string to one of the canonical ALLOWED_REQUIREMENT_TYPES,
     or None if unrecognized / empty.
+
+    Rules:
+    - Accepts exact canonical values (case-insensitive, normalized whitespace/separators).
+    - Accepts explicit exact aliases from _EXACT_ALIAS_MAP.
+    - DOES NOT perform substring matching.
+    - Ambiguous compounds (e.g. 'Technical Qualification', 'Qualification / Technical')
+      strictly return None rather than guessing a category.
     """
     if not isinstance(raw_type, str):
         return None
-    cleaned = raw_type.strip().lower()
+    cleaned = raw_type.strip()
     if not cleaned:
         return None
-    # Direct map lookup
-    if cleaned in _NORMALIZED_TYPE_MAP:
-        return _NORMALIZED_TYPE_MAP[cleaned]
-    # Check if any canonical name is contained
-    for k, v in _NORMALIZED_TYPE_MAP.items():
-        if k in cleaned:
-            return v
+
+    # Exact canonical check (case-insensitive)
+    lower_cleaned = cleaned.lower()
+    if lower_cleaned in _CANONICAL_LOWER_MAP:
+        return _CANONICAL_LOWER_MAP[lower_cleaned]
+
+    # Normalize inner multiple whitespace
+    normalized_spacing = " ".join(lower_cleaned.split())
+    if normalized_spacing in _EXACT_ALIAS_MAP:
+        return _EXACT_ALIAS_MAP[normalized_spacing]
+
+    # No substring matching: anything not exactly matched returns None
     return None
+
+
+def merge_requirement_types(current_type: Any, incoming_type: Any) -> str:
+    """
+    Conflict-safe, commutative (order-independent) merge of two requirement semantic types.
+
+    Rules:
+    1. same canonical specific types -> preserve type
+    2. None/General + specific -> preserve specific
+    3. specific + None/General -> preserve specific
+    4. two DIFFERENT specific types -> General Compliance
+    5. None/General + None/General -> General Compliance
+
+    Order-independent guarantee:
+    merge_requirement_types(A, B) == merge_requirement_types(B, A) for all A, B.
+    Specifically:
+    Supplier Qualification + Technical Specification -> General Compliance
+    """
+    norm_a = normalize_requirement_type(current_type)
+    norm_b = normalize_requirement_type(incoming_type)
+
+    is_spec_a = norm_a in SPECIFIC_REQUIREMENT_TYPES
+    is_spec_b = norm_b in SPECIFIC_REQUIREMENT_TYPES
+
+    if is_spec_a and is_spec_b:
+        if norm_a == norm_b:
+            return norm_a
+        # Conflict between two different specific classifications -> fallback to General Compliance
+        return TYPE_GENERAL_COMPLIANCE
+
+    if is_spec_a:
+        return norm_a
+    if is_spec_b:
+        return norm_b
+
+    return TYPE_GENERAL_COMPLIANCE
 
 
 def resolve_requirement_type(requirement: dict) -> str:
@@ -196,6 +331,9 @@ def select_qualification_requirements(requirements: list[dict], qualification_ga
     """
     Match authoritative qualification_gates from the Bid Brief back to persisted requirements.
     - Uses full normalized description identity as the primary anchor.
+    - Case and punctuation differences remain supported by normalization.
+    - NO fuzzy substring matching: if exact normalized description identity fails,
+      it does NOT guess a match from substring containment.
     - Matches are constrained to requirements where category == 'Mandatory'.
     - If qualification_gates is empty: returns empty list []. (Never falls back to all Mandatory!)
     - If multiple requirements share the same req_id, only the requirement matching the gate description is selected.
@@ -215,7 +353,7 @@ def select_qualification_requirements(requirements: list[dict], qualification_ga
             desc_lookup[norm_desc] = r
 
     matched: list[dict] = []
-    seen_ids: set = set()
+    seen_pks: set = set()
 
     for g in qualification_gates:
         if not isinstance(g, dict):
@@ -225,18 +363,70 @@ def select_qualification_requirements(requirements: list[dict], qualification_ga
         if not norm_gate:
             continue
 
+        # EXACT description match only
         target_req = desc_lookup.get(norm_gate)
-        if not target_req:
-            # Try matching gate text against normalized requirement description substring or vice versa
-            for nd, r in desc_lookup.items():
-                if len(nd) > 20 and len(norm_gate) > 20 and (nd in norm_gate or norm_gate in nd):
-                    target_req = r
-                    break
 
         if target_req:
-            req_pk = target_req.get("id") or target_req.get("req_id") or id(target_req)
-            if req_pk not in seen_ids:
-                seen_ids.add(req_pk)
+            # Anchor uniqueness by database id if present, else by full normalized description
+            req_pk = target_req.get("id") or normalize_requirement_identity_text(target_req.get("description")) or id(target_req)
+            if req_pk not in seen_pks:
+                seen_pks.add(req_pk)
                 matched.append(target_req)
 
     return matched
+
+
+def get_qualification_gate_ui_alert(q_total: int, q_fail: int, q_unknown: int) -> dict[str, str]:
+    """
+    Produce the appropriate UI warning/info/success block for qualification gates in DECIDE.
+    Returns dict with keys:
+      'state': 'FAIL' | 'UNKNOWN' | 'ALL_VERIFIED' | 'ZERO_GATES'
+      'alert_class': 'warn-box' | 'info-box' | 'success-box'
+      'html': formatted alert html
+    """
+    if q_total == 0:
+        return {
+            "state": "ZERO_GATES",
+            "alert_class": "info-box",
+            "html": (
+                '<div class="info-box">'
+                'ℹ️ <strong>NO QUALIFICATION GATES IDENTIFIED:</strong> '
+                'No explicit pass/fail supplier qualification gates were identified. '
+                'Mandatory compliance requirements remain tracked separately.'
+                '</div>'
+            ),
+        }
+
+    if q_fail > 0:
+        return {
+            "state": "FAIL",
+            "alert_class": "warn-box",
+            "html": (
+                f'<div class="warn-box">'
+                f'⛔ <strong>DISQUALIFICATION RISK:</strong> {q_fail} qualification gate(s) are currently marked as <strong>FAIL</strong>. '
+                f'Submitting without resolving these hard gates will result in formal rejection.'
+                f'</div>'
+            ),
+        }
+
+    if q_unknown > 0:
+        return {
+            "state": "UNKNOWN",
+            "alert_class": "info-box",
+            "html": (
+                f'<div class="info-box">'
+                f'⚠️ <strong>UNVERIFIED QUALIFICATION GATES:</strong> {q_unknown} qualification gate(s) have status <strong>UNKNOWN</strong>. '
+                f'The system does not assume compliance without evidence. Verify qualifying credentials before committing to bid.'
+                f'</div>'
+            ),
+        }
+
+    return {
+        "state": "ALL_VERIFIED",
+        "alert_class": "success-box",
+        "html": (
+            '<div class="success-box">'
+            '✅ <strong>ALL QUALIFICATION GATES VERIFIED:</strong> All supplier qualification criteria are confirmed with PASS status.'
+            '</div>'
+        ),
+    }
