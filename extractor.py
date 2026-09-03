@@ -1892,24 +1892,54 @@ def _clean_raw(raw: str) -> str:
 
 
 def _safe_parse_json(raw: str) -> dict:
+    # 1. First try analyst._parse_json if it returns a dict
     try:
         from analyst import _parse_json
         res = _parse_json(raw)
+        if isinstance(res, dict) and not res.get("_truncated"):
+            return res
+    except Exception:
+        pass
+
+    # 2. Try direct json.loads on cleaned text
+    try:
+        cleaned = _clean_raw(raw)
+        res = json.loads(cleaned)
         if isinstance(res, dict):
             return res
     except Exception:
         pass
-    try:
-        return json.loads(_clean_raw(raw))
-    except Exception:
-        return {}
+
+    # 3. Dedicated dictionary repair for truncated JSON outputs
+    # Strips code fences and scans backwards to balance unclosed arrays and objects
+    t = raw.strip()
+    t = re.sub(r"^```[a-z]*\s*\n?", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"\n?```\s*$", "", t).strip()
+    start_idx = t.find('{')
+    if start_idx != -1:
+        frag = t[start_idx:]
+        for end_pos in range(len(frag) - 1, 0, -1):
+            if frag[end_pos] in ('}', ']', '"', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'e', 'l', 's'):
+                chunk = frag[:end_pos + 1]
+                diff_brace = chunk.count('{') - chunk.count('}')
+                diff_bracket = chunk.count('[') - chunk.count(']')
+                if diff_brace >= 0 and diff_bracket >= 0:
+                    repaired = chunk + (']' * diff_bracket) + ('}' * diff_brace)
+                    try:
+                        res = json.loads(repaired)
+                        if isinstance(res, dict):
+                            return res
+                    except json.JSONDecodeError:
+                        pass
+
+    return {}
 
 
 # ── STAGE A: DOCUMENT FACT EXTRACTION ─────────────────────────────────────────
 
 # ── STAGE A CHUNKING, AGGREGATION & COVERAGE GUARD ───────────────────────────
 
-_STAGE_A_MAX_CHUNK_CHARS = 16000
+_STAGE_A_MAX_CHUNK_CHARS = 12000
 _STAGE_A_MARKER_SPLIT_RE = re.compile(r'(\[\[SOURCE:[^\]]+\]\])', re.IGNORECASE)
 
 # General procurement-language signal patterns for coverage auditing
