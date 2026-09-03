@@ -2307,7 +2307,17 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
 
         # Normalize and deduplicate requirements
         for r in df.get("requirements", []):
-            desc_key = re.sub(r'\W+', '', r.get("description", "").lower())[:60]
+            if not isinstance(r, dict):
+                continue
+            raw_desc = r.get("description")
+            if not isinstance(raw_desc, str):
+                continue
+            desc = raw_desc.strip()
+            if not desc:
+                continue
+            desc_key = re.sub(r'\W+', '', desc.lower())
+            if not desc_key:
+                continue
             # Validate source references
             validated_refs = validate_source_refs(r.get("source_refs", []), package_metadata)
             
