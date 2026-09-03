@@ -444,7 +444,7 @@ class TestStageDDeduplicationRegressions(unittest.TestCase):
         self.assertEqual(len(dates), 2,
             "Two same-milestone dates with different values must both appear in key_dates")
 
-    # B: same evaluation stage, different weights -> both preserved
+    # B: same evaluation stage, different weights -> one logical criterion with conflict & both observations tracked
     def test_B_same_eval_stage_different_weights_both_preserved(self):
         nf = self._base_nf(evaluation_criteria=[
             {"stage": "Technical", "weight": "70 points", "threshold": "50%",
@@ -456,11 +456,12 @@ class TestStageDDeduplicationRegressions(unittest.TestCase):
         ])
         result = apply_stage_d_authoritative_sections({}, nf)
         breakdown = result["brief"]["evaluation_breakdown"]
-        weights = [e["weight"] for e in breakdown]
-        self.assertIn("70 points", weights, "Original weight must be preserved")
-        self.assertIn("60 points", weights, "Addendum weight must be preserved")
-        self.assertEqual(len(breakdown), 2,
-            "Two same-stage criteria with different weights must both appear")
+        self.assertEqual(len(breakdown), 1, "Logical criterion must not duplicate on weight observation difference")
+        criterion = breakdown[0]
+        self.assertTrue(criterion.get("weight_conflict"), "Conflicting weights must mark weight_conflict")
+        obs_weights = [o.get("raw_weight") for o in criterion.get("weight_observations", [])]
+        self.assertIn("70 points", obs_weights, "Original weight observation must be preserved")
+        self.assertIn("60 points", obs_weights, "Addendum weight observation must be preserved")
 
     # C: same submission item, different format/details -> both preserved
     def test_C_same_submission_item_different_format_both_preserved(self):

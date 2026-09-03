@@ -78,8 +78,10 @@ CRITICAL EVALUATION HIERARCHY & WEIGHTING RULES:
 - Preserve parent headings and child/subcriteria when stated or clearly structured by the source.
 - Record "parent_stage" ONLY when the source structure or wording explicitly establishes that hierarchy (e.g. sub-table or indented/numbered section).
 - Do NOT flatten nested evaluation tables.
-- Preserve the raw weight string exactly as stated in the text (e.g. "40%", "25 points").
+- Preserve the raw weight string exactly as stated in the text (e.g. "40%", "25 points"). Bare numbers without units are NOT percentages.
+- "weight_unit": "Percent" (e.g. 40%), "Points" (e.g. 25 pts), "Other", or "None".
 - "weight_basis": record "Overall" if stated or structured as contributing to the entire procurement total; record "Within Parent" if stated as weighting within its parent criterion; record "Unknown" if ambiguous.
+- "evaluation_role": controlled role: "Award Criterion" (scored criteria), "Subcriterion" (nested subcriteria), "Qualification / Gate" (mandatory conditions/gates), "Scoring Scale" (points scale 10/7/5/3/0), "Process / Methodology" (procedural stages), "Structural Container" (award criteria / scoring model parent heading), or "Unknown".
 - Do NOT reinterpret a child percentage as an overall percentage unless the source makes that clear.
 - Do NOT invent missing weights. If a weight is not stated, leave "weight" as null.
 - Do NOT force evaluation totals to 100%. If the source states numbers that do not sum to 100%, record them faithfully.
@@ -117,7 +119,9 @@ Return ONLY valid JSON with this exact schema:
       "stage": "Evaluation stage or criterion title",
       "parent_stage": "Parent heading title or null",
       "hierarchy_level": 1,
+      "evaluation_role": "Award Criterion|Subcriterion|Qualification / Gate|Scoring Scale|Process / Methodology|Structural Container|Unknown",
       "weight": "e.g. 75 points or 25% or null",
+      "weight_unit": "Percent|Points|Other|None",
       "weight_basis": "Overall|Within Parent|Unknown",
       "threshold": "e.g. 70% or null",
       "notes": "Scoring rules or details",
