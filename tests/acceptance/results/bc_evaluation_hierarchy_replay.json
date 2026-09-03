@@ -1,0 +1,2232 @@
+{
+  "provenance": {
+    "code_sha": "92451a6d8a579b768added7fec68774f23f836c1",
+    "run_started_at": "2026-09-03T14:47:26.741082+00:00",
+    "model": "claude-haiku-4-5-20251001",
+    "input_files": [
+      {
+        "filename": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+        "sha256": "607e6634ed36f440bc88a6dd2c2103973d46a6112f00aacc1c0e3f5c6fd268b7",
+        "chars": 60210
+      },
+      {
+        "filename": "annex_2_-_procurement_specific_questionnaire_1.docx",
+        "sha256": "08970b7e7c7356d40529121d51d50238659a22a7555bb9a63ae69c87b8a239e6",
+        "chars": 24452
+      }
+    ]
+  },
+  "timings": {
+    "stage_a_sec": 658.8,
+    "stage_b_sec": 0.0571,
+    "stage_c_sec": 0.0226,
+    "stage_d_sec": 91.6,
+    "total_pipeline_sec": 750.49
+  },
+  "raw_evaluation_criteria": {
+    "itt_pdf": [
+      {
+        "criterion_id": null,
+        "stage": "Conditions of Participation - Legal Eligibility and Authorization",
+        "title": "Conditions of Participation - Legal Eligibility and Authorization",
+        "parent_stage": "Conditions of Participation",
+        "parent_title": "Conditions of Participation",
+        "hierarchy_level": 2,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": "Yes (1) for all six cities",
+        "notes": "PSQ Question 1: Participant must confirm legal eligibility and authorization for each city (Peshawar, Haripur, D.I Khan, Gilgit, Skardu, Quetta). Scoring: Yes = 1, No = 0. Minimum pass score = Yes for all cities.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 20,
+            "sheet": null,
+            "section": "Conditions of Participation",
+            "excerpt": "Please confirm whether you are legally eligible and authorized to perform services in each of the cities specified below, including compliance with all applicable tax registration and regulatory requirements."
+          }
+        ]
+      },
+      {
+        "criterion_id": null,
+        "stage": "Conditions of Participation - Capability to Supply, Install, and Support",
+        "title": "Conditions of Participation - Capability to Supply, Install, and Support",
+        "parent_stage": "Conditions of Participation",
+        "parent_title": "Conditions of Participation",
+        "hierarchy_level": 2,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": "Yes (1) for all six cities",
+        "notes": "PSQ Question 1 (continued): Participant must confirm capability to supply, install, and provide after-sales support in all listed cities. Scoring: Yes = 1, No = 0. Minimum pass score = Yes for all cities.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 20,
+            "sheet": null,
+            "section": "Conditions of Participation",
+            "excerpt": "Please confirm that your organization is capable of supplying, installing, and providing after-sales support in all the listed cities."
+          }
+        ]
+      },
+      {
+        "criterion_id": null,
+        "stage": "Conditions of Participation - OEM Authorization",
+        "title": "Conditions of Participation - OEM Authorization",
+        "parent_stage": "Conditions of Participation",
+        "parent_title": "Conditions of Participation",
+        "hierarchy_level": 2,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": "Yes (1)",
+        "notes": "PSQ Question 2: Participant must provide valid OEM Authorization Letters or equivalent documentary evidence. Scoring: Yes = 1, No = 0. Minimum pass score = Yes.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 20,
+            "sheet": null,
+            "section": "Conditions of Participation",
+            "excerpt": "OEM Authorization - Please provide valid Original Equipment Manufacturer (OEM) Authorization Letters or equivalent documentary evidence confirming that you are authorized to supply, install, support, and provide warranty services for all proposed solution components."
+          }
+        ]
+      },
+      {
+        "criterion_id": null,
+        "stage": "Conditions of Participation - Economic and Financial Standing",
+        "title": "Conditions of Participation - Economic and Financial Standing",
+        "parent_stage": "Conditions of Participation",
+        "parent_title": "Conditions of Participation",
+        "hierarchy_level": 2,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": "Acceptable level of financial risk (assessed via turnover, solvency ratios, profitability ratios)",
+        "notes": "British Council assesses turnover relative to contract value, solvency ratios, and profitability ratios based on two most recent accounts or audited financial statements. Minimum criteria apply; British Council may require further information.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 20,
+            "sheet": null,
+            "section": "Conditions of Participation",
+            "excerpt": "In order to facilitate British Council's assessment of a Participant's economic and financial standing, British Council will assess turnover relative to the Contract Value, solvency ratios and profitability ratios."
+          }
+        ]
+      },
+      {
+        "criterion_id": null,
+        "stage": "Stage 1: Tender Completion and Mandatory Requirements Check",
+        "title": "Stage 1: Tender Completion and Mandatory Requirements Check",
+        "parent_stage": null,
+        "parent_title": null,
+        "hierarchy_level": 1,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": "All mandatory requirements must be met; tender must be correctly completed with all necessary information provided",
+        "notes": "Tender responses will be checked to ensure they have been completed correctly and all necessary information has been provided. Tenderers with correctly completed responses and all relevant information provided and all mandatory requirements as set out in the specification met will proceed to Stage 2. Any tender responses not correctly completed in accordance with the requirements of this ITT and/or containing omissions may be rejected at this point. Where a tender response is rejected at this point it will automatically be disqualified and will not be further evaluated.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 22,
+            "sheet": null,
+            "section": "Evaluation Criteria",
+            "excerpt": "Stage 1: Tender responses will be checked to ensure that they have been completed correctly and all necessary information has been provided. Tenderers responses correctly completed with all relevant information being provided and all mandatory requirements as set out in the specification met will proceed to Stage 2. Any tender responses not correctly completed in accordance with the requirements of this ITT and/or containing omissions may be rejected at this point."
+          }
+        ]
+      },
+      {
+        "criterion_id": null,
+        "stage": "Stage 2: Selection Questionnaire and Supplier Qualification Review",
+        "title": "Stage 2: Selection Questionnaire and Supplier Qualification Review",
+        "parent_stage": null,
+        "parent_title": null,
+        "hierarchy_level": 1,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": "Potential supplier must meet all qualification criteria set out in the Selection Questionnaire",
+        "notes": "The completed Selection Questionnaire will then be reviewed to confirm that the potential supplier meets all of the qualification criteria set out in the questionnaire. Potential suppliers that meet the qualification criteria will proceed to Stage 3. Potential suppliers that do not meet the qualification criteria set out in the Selection Questionnaire may be excluded from the Procurement Process at this point. Where a potential supplier is excluded at this point, its tender response will be rejected in full and not evaluated further and the supplier will automatically be disqualified from this Procurement Process.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 22,
+            "sheet": null,
+            "section": "Evaluation Criteria",
+            "excerpt": "Stage 2: The completed Selection Questionnaire will then be reviewed to confirm that the potential supplier meets all of the qualification criteria set out in the questionnaire. Potential suppliers that meet the qualification criteria will proceed to Stage 3. Potential suppliers that do not meet the qualification criteria set out in the Selection Questionnaire may be excluded from the Procurement Process at this point."
+          }
+        ]
+      },
+      {
+        "criterion_id": null,
+        "stage": "Stage 3 \u2013 Detailed Tender Response Evaluation",
+        "title": "Stage 3 \u2013 Detailed Tender Response Evaluation",
+        "parent_stage": null,
+        "parent_title": null,
+        "hierarchy_level": 1,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": null,
+        "notes": "If a bidder succeeds in passing Stages 1 and 2, its detailed tender response to British Council requirements is evaluated using award criteria and weightings. Information from Selection Questionnaire responses may also be verified.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 23,
+            "sheet": null,
+            "section": "Stage 3",
+            "excerpt": "If a bidder succeeds in passing Stages 1 and 2 of the evaluation, then it will have its detailed tender response to the British Council's requirements evaluated in accordance with the evaluation methodology set out below."
+          }
+        ]
+      },
+      {
+        "criterion_id": null,
+        "stage": "Social Value",
+        "title": "Social Value",
+        "parent_stage": "Award Criteria",
+        "parent_title": "Award Criteria",
+        "hierarchy_level": 2,
+        "weight": "10%",
+        "weight_value": 10.0,
+        "weight_unit": "Percent",
+        "weight_basis": "Overall",
+        "threshold": null,
+        "notes": "Scored using 0-10 point scale by evaluation panel",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 23,
+            "sheet": null,
+            "section": "18.2 Award Criteria",
+            "excerpt": "Criteria: Social Value, Weighting: 10%"
+          }
+        ]
+      },
+      {
+        "criterion_id": null,
+        "stage": "Relevant Experience and Clientele",
+        "title": "Relevant Experience and Clientele",
+        "parent_stage": "Award Criteria",
+        "parent_title": "Award Criteria",
+        "hierarchy_level": 2,
+        "weight": "15%",
+        "weight_value": 15.0,
+        "weight_unit": "Percent",
+        "weight_basis": "Overall",
+        "threshold": null,
+        "notes": "Scored using 0-10 point scale by evaluation panel",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 23,
+            "sheet": null,
+            "section": "18.2 Award Criteria",
+            "excerpt": "Criteria: Relevant Experience and Clientele, Weighting: 15%"
+          }
+        ]
+      },
+      {
+        "criterion_id": null,
+        "stage": "Scope of Work and Delivery Timelines",
+        "title": "Scope of Work and Delivery Timelines",
+        "parent_stage": "Award Criteria",
+        "parent_title": "Award Criteria",
+        "hierarchy_level": 2,
+        "weight": "35%",
+        "weight_value": 35.0,
+        "weight_unit": "Percent",
+        "weight_basis": "Overall",
+        "threshold": null,
+        "notes": "Scored using 0-10 point scale by evaluation panel",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 23,
+            "sheet": null,
+            "section": "18.2 Award Criteria",
+            "excerpt": "Criteria: Scope of Work and Delivery Timelines, Weighting: 35%"
+          }
+        ]
+      },
+      {
+        "criterion_id": null,
+        "stage": "Commercial",
+        "title": "Commercial",
+        "parent_stage": "Award Criteria",
+        "parent_title": "Award Criteria",
+        "hierarchy_level": 2,
+        "weight": "40%",
+        "weight_value": 40.0,
+        "weight_unit": "Percent",
+        "weight_basis": "Overall",
+        "threshold": null,
+        "notes": "Evaluated based on Overall Price. Maximum score of 10 awarded to lowest price. Other responses scored using formula: (Lowest Overall Price / Overall Price being evaluated) \u00d7 10, rounded to two decimal places.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 23,
+            "sheet": null,
+            "section": "18.2 Award Criteria",
+            "excerpt": "Criteria: Commercial, Weighting: 40%"
+          },
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 24,
+            "sheet": null,
+            "section": "18.4 Commercial Evaluation",
+            "excerpt": "A maximum offer score of 10 will be awarded to the tender response offering the lowest 'Overall Price'. Other tender responses will be awarded a mark by application of the following formula: (Lowest Overall Price/Overall Price being evaluated) x 10 (rounded to two decimal places) = commercial score."
+          }
+        ]
+      },
+      {
+        "criterion_id": null,
+        "stage": "Scoring Scale \u2013 Excellent",
+        "title": "Scoring Scale \u2013 Excellent",
+        "parent_stage": "Scoring Model",
+        "parent_title": "Scoring Model",
+        "hierarchy_level": 2,
+        "weight": "10 points",
+        "weight_value": 10.0,
+        "weight_unit": "Points",
+        "weight_basis": "Within Parent",
+        "threshold": null,
+        "notes": "Excellent \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement and provides all of the areas evidence requested in the level of detail requested. This is a detailed excellent response that meets all aspects of the requirement leaving no ambiguity as to whether the bidder can meet the requirement.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 23,
+            "sheet": null,
+            "section": "18.3 Scoring Model",
+            "excerpt": "10 \u2013 Excellent \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement and provides all of the areas evidence requested in the level of detail requested."
+          }
+        ]
+      },
+      {
+        "criterion_id": null,
+        "stage": "Scoring Scale \u2013 Good",
+        "title": "Scoring Scale \u2013 Good",
+        "parent_stage": "Scoring Model",
+        "parent_title": "Scoring Model",
+        "hierarchy_level": 2,
+        "weight": "7 points",
+        "weight_value": 7.0,
+        "weight_unit": "Points",
+        "weight_basis": "Within Parent",
+        "threshold": null,
+        "notes": "Good \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement and provides all of the areas of evidence requested, but contains some trivial omissions in relation to the level of detail requested. This is a good response that meets all aspects of the requirement with only a trivial level ambiguity.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 23,
+            "sheet": null,
+            "section": "18.3 Scoring Model",
+            "excerpt": "7 \u2013 Good \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement and provides all of the areas of evidence requested, but contains some trivial omissions in relation to the level of detail requested in terms of either the response or the evidence."
+          }
+        ]
+      },
+      {
+        "criterion_id": null,
+        "stage": "Scoring Scale \u2013 Adequate",
+        "title": "Scoring Scale \u2013 Adequate",
+        "parent_stage": "Scoring Model",
+        "parent_title": "Scoring Model",
+        "hierarchy_level": 2,
+        "weight": "5 points",
+        "weight_value": 5.0,
+        "weight_unit": "Points",
+        "weight_basis": "Within Parent",
+        "threshold": null,
+        "notes": "Adequate \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement, but not all of the areas of evidence requested have been provided. This is an adequate response, but with some limited ambiguity as to whether the bidder can meet the requirement.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 23,
+            "sheet": null,
+            "section": "18.3 Scoring Model",
+            "excerpt": "5 \u2013 Adequate \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement, but not all of the areas of evidence requested have been provided."
+          }
+        ]
+      },
+      {
+        "criterion_id": null,
+        "stage": "Scoring Scale \u2013 Poor",
+        "title": "Scoring Scale \u2013 Poor",
+        "parent_stage": "Scoring Model",
+        "parent_title": "Scoring Model",
+        "hierarchy_level": 2,
+        "weight": "3 points",
+        "weight_value": 3.0,
+        "weight_unit": "Points",
+        "weight_basis": "Within Parent",
+        "threshold": null,
+        "notes": "Poor \u2013 The response does not demonstrate that the bidder meets the requirement in one or more areas. This is a poor response with significant ambiguity as to whether the bidder can meet the requirement.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 24,
+            "sheet": null,
+            "section": "18.3 Scoring Model",
+            "excerpt": "3 \u2013 Poor \u2013 The response does not demonstrate that the bidder meets the requirement in one or more areas. This, therefore, is a poor response with significant ambiguity as to whether the bidder can meet the requirement due to the failure by the bidder to show that it meets one or more areas of the requirement."
+          }
+        ]
+      },
+      {
+        "criterion_id": null,
+        "stage": "Scoring Scale \u2013 Unacceptable",
+        "title": "Scoring Scale \u2013 Unacceptable",
+        "parent_stage": "Scoring Model",
+        "parent_title": "Scoring Model",
+        "hierarchy_level": 2,
+        "weight": "0 points",
+        "weight_value": 0.0,
+        "weight_unit": "Points",
+        "weight_basis": "Within Parent",
+        "threshold": null,
+        "notes": "Unacceptable \u2013 The response is non-compliant with the requirements of the ITT and/or no response has been provided.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 24,
+            "sheet": null,
+            "section": "18.3 Scoring Model",
+            "excerpt": "0 \u2013 Unacceptable \u2013 The response is non-compliant with the requirements of the ITT and/or no response has been provided."
+          }
+        ]
+      },
+      {
+        "criterion_id": null,
+        "stage": "Moderation and Application of Weightings",
+        "title": "Moderation and Application of Weightings",
+        "parent_stage": null,
+        "parent_title": null,
+        "hierarchy_level": 1,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": null,
+        "notes": "The evaluation panel will meet to agree and moderate scores for each award criteria. Final scores as a percentage of overall tender score are obtained by applying relevant weighting factors. Percentage scores for each award criteria are amalgamated to give a percentage score out of 100.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 24,
+            "sheet": null,
+            "section": "18.5 Moderation and application of weightings",
+            "excerpt": "The evaluation panel appointed for this procurement will meet to agree and moderate scores for each award criteria. Final scores in terms of a percentage of the overall tender score will be obtained by applying the relevant weighting factors set out as part of the award criteria table above. The percentage scores for each award criteria will be amalgamated to give a percentage score out of 100."
+          }
+        ]
+      },
+      {
+        "criterion_id": null,
+        "stage": "Winning Tender Selection",
+        "title": "Winning Tender Selection",
+        "parent_stage": null,
+        "parent_title": null,
+        "hierarchy_level": 1,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": "Highest percentage score out of 100",
+        "notes": "The winning tender response shall be the tender response scoring the highest percentage score out of 100 when applying the evaluation methodology, which is also supported by any required verification evidence relating to Exclusion Grounds or Conditions of Participation responses.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 24,
+            "sheet": null,
+            "section": "18.6 The winning tender response",
+            "excerpt": "The winning tender response shall be the tender response scoring the highest percentage score out of 100 when applying the above evaluation methodology, which is also supported by any required verification evidence (to include, without limitation, any updated information or references relating to any Exclusion Grounds or Conditions of Participation responses) obtained by the Authority relating to any self-certification or other requirements referred to in the Procurement Specific Questionnaire."
+          }
+        ]
+      }
+    ],
+    "annex_2_docx": [],
+    "total_raw_count": 18
+  },
+  "normalized_evaluation_criteria": [
+    {
+      "criterion_id": null,
+      "stage": "Conditions of Participation - Legal Eligibility and Authorization",
+      "title": "Conditions of Participation - Legal Eligibility and Authorization",
+      "parent_stage": "Conditions of Participation",
+      "parent_title": "Conditions of Participation",
+      "hierarchy_level": 2,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "Yes (1) for all six cities",
+      "notes": "PSQ Question 1: Participant must confirm legal eligibility and authorization for each city (Peshawar, Haripur, D.I Khan, Gilgit, Skardu, Quetta). Scoring: Yes = 1, No = 0. Minimum pass score = Yes for all cities.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 20,
+          "sheet": null,
+          "section": "Conditions of Participation",
+          "excerpt": "Please confirm whether you are legally eligible and authorized to perform services in each of the cities specified below, including compliance with all applicable tax registration and regulatory requirements."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Conditions of Participation - Capability to Supply, Install, and Support",
+      "title": "Conditions of Participation - Capability to Supply, Install, and Support",
+      "parent_stage": "Conditions of Participation",
+      "parent_title": "Conditions of Participation",
+      "hierarchy_level": 2,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "Yes (1) for all six cities",
+      "notes": "PSQ Question 1 (continued): Participant must confirm capability to supply, install, and provide after-sales support in all listed cities. Scoring: Yes = 1, No = 0. Minimum pass score = Yes for all cities.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 20,
+          "sheet": null,
+          "section": "Conditions of Participation",
+          "excerpt": "Please confirm that your organization is capable of supplying, installing, and providing after-sales support in all the listed cities."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Conditions of Participation - OEM Authorization",
+      "title": "Conditions of Participation - OEM Authorization",
+      "parent_stage": "Conditions of Participation",
+      "parent_title": "Conditions of Participation",
+      "hierarchy_level": 2,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "Yes (1)",
+      "notes": "PSQ Question 2: Participant must provide valid OEM Authorization Letters or equivalent documentary evidence. Scoring: Yes = 1, No = 0. Minimum pass score = Yes.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 20,
+          "sheet": null,
+          "section": "Conditions of Participation",
+          "excerpt": "OEM Authorization - Please provide valid Original Equipment Manufacturer (OEM) Authorization Letters or equivalent documentary evidence confirming that you are authorized to supply, install, support, and provide warranty services for all proposed solution components."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Conditions of Participation - Economic and Financial Standing",
+      "title": "Conditions of Participation - Economic and Financial Standing",
+      "parent_stage": "Conditions of Participation",
+      "parent_title": "Conditions of Participation",
+      "hierarchy_level": 2,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "Acceptable level of financial risk (assessed via turnover, solvency ratios, profitability ratios)",
+      "notes": "British Council assesses turnover relative to contract value, solvency ratios, and profitability ratios based on two most recent accounts or audited financial statements. Minimum criteria apply; British Council may require further information.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 20,
+          "sheet": null,
+          "section": "Conditions of Participation",
+          "excerpt": "In order to facilitate British Council's assessment of a Participant's economic and financial standing, British Council will assess turnover relative to the Contract Value, solvency ratios and profitability ratios."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Stage 1: Tender Completion and Mandatory Requirements Check",
+      "title": "Stage 1: Tender Completion and Mandatory Requirements Check",
+      "parent_stage": null,
+      "parent_title": null,
+      "hierarchy_level": 1,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "All mandatory requirements must be met; tender must be correctly completed with all necessary information provided",
+      "notes": "Tender responses will be checked to ensure they have been completed correctly and all necessary information has been provided. Tenderers with correctly completed responses and all relevant information provided and all mandatory requirements as set out in the specification met will proceed to Stage 2. Any tender responses not correctly completed in accordance with the requirements of this ITT and/or containing omissions may be rejected at this point. Where a tender response is rejected at this point it will automatically be disqualified and will not be further evaluated.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 22,
+          "sheet": null,
+          "section": "Evaluation Criteria",
+          "excerpt": "Stage 1: Tender responses will be checked to ensure that they have been completed correctly and all necessary information has been provided. Tenderers responses correctly completed with all relevant information being provided and all mandatory requirements as set out in the specification met will proceed to Stage 2. Any tender responses not correctly completed in accordance with the requirements of this ITT and/or containing omissions may be rejected at this point."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Stage 2: Selection Questionnaire and Supplier Qualification Review",
+      "title": "Stage 2: Selection Questionnaire and Supplier Qualification Review",
+      "parent_stage": null,
+      "parent_title": null,
+      "hierarchy_level": 1,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "Potential supplier must meet all qualification criteria set out in the Selection Questionnaire",
+      "notes": "The completed Selection Questionnaire will then be reviewed to confirm that the potential supplier meets all of the qualification criteria set out in the questionnaire. Potential suppliers that meet the qualification criteria will proceed to Stage 3. Potential suppliers that do not meet the qualification criteria set out in the Selection Questionnaire may be excluded from the Procurement Process at this point. Where a potential supplier is excluded at this point, its tender response will be rejected in full and not evaluated further and the supplier will automatically be disqualified from this Procurement Process.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 22,
+          "sheet": null,
+          "section": "Evaluation Criteria",
+          "excerpt": "Stage 2: The completed Selection Questionnaire will then be reviewed to confirm that the potential supplier meets all of the qualification criteria set out in the questionnaire. Potential suppliers that meet the qualification criteria will proceed to Stage 3. Potential suppliers that do not meet the qualification criteria set out in the Selection Questionnaire may be excluded from the Procurement Process at this point."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Stage 3 \u2013 Detailed Tender Response Evaluation",
+      "title": "Stage 3 \u2013 Detailed Tender Response Evaluation",
+      "parent_stage": null,
+      "parent_title": null,
+      "hierarchy_level": 1,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": null,
+      "notes": "If a bidder succeeds in passing Stages 1 and 2, its detailed tender response to British Council requirements is evaluated using award criteria and weightings. Information from Selection Questionnaire responses may also be verified.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "Stage 3",
+          "excerpt": "If a bidder succeeds in passing Stages 1 and 2 of the evaluation, then it will have its detailed tender response to the British Council's requirements evaluated in accordance with the evaluation methodology set out below."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Social Value",
+      "title": "Social Value",
+      "parent_stage": "Award Criteria",
+      "parent_title": "Award Criteria",
+      "hierarchy_level": 2,
+      "weight": "10%",
+      "weight_value": 10.0,
+      "weight_unit": "Percent",
+      "weight_basis": "Overall",
+      "threshold": null,
+      "notes": "Scored using 0-10 point scale by evaluation panel",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "18.2 Award Criteria",
+          "excerpt": "Criteria: Social Value, Weighting: 10%"
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Relevant Experience and Clientele",
+      "title": "Relevant Experience and Clientele",
+      "parent_stage": "Award Criteria",
+      "parent_title": "Award Criteria",
+      "hierarchy_level": 2,
+      "weight": "15%",
+      "weight_value": 15.0,
+      "weight_unit": "Percent",
+      "weight_basis": "Overall",
+      "threshold": null,
+      "notes": "Scored using 0-10 point scale by evaluation panel",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "18.2 Award Criteria",
+          "excerpt": "Criteria: Relevant Experience and Clientele, Weighting: 15%"
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Scope of Work and Delivery Timelines",
+      "title": "Scope of Work and Delivery Timelines",
+      "parent_stage": "Award Criteria",
+      "parent_title": "Award Criteria",
+      "hierarchy_level": 2,
+      "weight": "35%",
+      "weight_value": 35.0,
+      "weight_unit": "Percent",
+      "weight_basis": "Overall",
+      "threshold": null,
+      "notes": "Scored using 0-10 point scale by evaluation panel",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "18.2 Award Criteria",
+          "excerpt": "Criteria: Scope of Work and Delivery Timelines, Weighting: 35%"
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Commercial",
+      "title": "Commercial",
+      "parent_stage": "Award Criteria",
+      "parent_title": "Award Criteria",
+      "hierarchy_level": 2,
+      "weight": "40%",
+      "weight_value": 40.0,
+      "weight_unit": "Percent",
+      "weight_basis": "Overall",
+      "threshold": null,
+      "notes": "Evaluated based on Overall Price. Maximum score of 10 awarded to lowest price. Other responses scored using formula: (Lowest Overall Price / Overall Price being evaluated) \u00d7 10, rounded to two decimal places.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "18.2 Award Criteria",
+          "excerpt": "Criteria: Commercial, Weighting: 40%"
+        },
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 24,
+          "sheet": null,
+          "section": "18.4 Commercial Evaluation",
+          "excerpt": "A maximum offer score of 10 will be awarded to the tender response offering the lowest 'Overall Price'. Other tender responses will be awarded a mark by application of the following formula: (Lowest Overall Price/Overall Price being evaluated) x 10 (rounded to two decimal places) = commercial score."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Scoring Scale \u2013 Excellent",
+      "title": "Scoring Scale \u2013 Excellent",
+      "parent_stage": "Scoring Model",
+      "parent_title": "Scoring Model",
+      "hierarchy_level": 2,
+      "weight": "10 points",
+      "weight_value": 10.0,
+      "weight_unit": "Points",
+      "weight_basis": "Within Parent",
+      "threshold": null,
+      "notes": "Excellent \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement and provides all of the areas evidence requested in the level of detail requested. This is a detailed excellent response that meets all aspects of the requirement leaving no ambiguity as to whether the bidder can meet the requirement.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "18.3 Scoring Model",
+          "excerpt": "10 \u2013 Excellent \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement and provides all of the areas evidence requested in the level of detail requested."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Scoring Scale \u2013 Good",
+      "title": "Scoring Scale \u2013 Good",
+      "parent_stage": "Scoring Model",
+      "parent_title": "Scoring Model",
+      "hierarchy_level": 2,
+      "weight": "7 points",
+      "weight_value": 7.0,
+      "weight_unit": "Points",
+      "weight_basis": "Within Parent",
+      "threshold": null,
+      "notes": "Good \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement and provides all of the areas of evidence requested, but contains some trivial omissions in relation to the level of detail requested. This is a good response that meets all aspects of the requirement with only a trivial level ambiguity.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "18.3 Scoring Model",
+          "excerpt": "7 \u2013 Good \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement and provides all of the areas of evidence requested, but contains some trivial omissions in relation to the level of detail requested in terms of either the response or the evidence."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Scoring Scale \u2013 Adequate",
+      "title": "Scoring Scale \u2013 Adequate",
+      "parent_stage": "Scoring Model",
+      "parent_title": "Scoring Model",
+      "hierarchy_level": 2,
+      "weight": "5 points",
+      "weight_value": 5.0,
+      "weight_unit": "Points",
+      "weight_basis": "Within Parent",
+      "threshold": null,
+      "notes": "Adequate \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement, but not all of the areas of evidence requested have been provided. This is an adequate response, but with some limited ambiguity as to whether the bidder can meet the requirement.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "18.3 Scoring Model",
+          "excerpt": "5 \u2013 Adequate \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement, but not all of the areas of evidence requested have been provided."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Scoring Scale \u2013 Poor",
+      "title": "Scoring Scale \u2013 Poor",
+      "parent_stage": "Scoring Model",
+      "parent_title": "Scoring Model",
+      "hierarchy_level": 2,
+      "weight": "3 points",
+      "weight_value": 3.0,
+      "weight_unit": "Points",
+      "weight_basis": "Within Parent",
+      "threshold": null,
+      "notes": "Poor \u2013 The response does not demonstrate that the bidder meets the requirement in one or more areas. This is a poor response with significant ambiguity as to whether the bidder can meet the requirement.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 24,
+          "sheet": null,
+          "section": "18.3 Scoring Model",
+          "excerpt": "3 \u2013 Poor \u2013 The response does not demonstrate that the bidder meets the requirement in one or more areas. This, therefore, is a poor response with significant ambiguity as to whether the bidder can meet the requirement due to the failure by the bidder to show that it meets one or more areas of the requirement."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Scoring Scale \u2013 Unacceptable",
+      "title": "Scoring Scale \u2013 Unacceptable",
+      "parent_stage": "Scoring Model",
+      "parent_title": "Scoring Model",
+      "hierarchy_level": 2,
+      "weight": "0 points",
+      "weight_value": 0.0,
+      "weight_unit": "Points",
+      "weight_basis": "Within Parent",
+      "threshold": null,
+      "notes": "Unacceptable \u2013 The response is non-compliant with the requirements of the ITT and/or no response has been provided.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 24,
+          "sheet": null,
+          "section": "18.3 Scoring Model",
+          "excerpt": "0 \u2013 Unacceptable \u2013 The response is non-compliant with the requirements of the ITT and/or no response has been provided."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Moderation and Application of Weightings",
+      "title": "Moderation and Application of Weightings",
+      "parent_stage": null,
+      "parent_title": null,
+      "hierarchy_level": 1,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": null,
+      "notes": "The evaluation panel will meet to agree and moderate scores for each award criteria. Final scores as a percentage of overall tender score are obtained by applying relevant weighting factors. Percentage scores for each award criteria are amalgamated to give a percentage score out of 100.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 24,
+          "sheet": null,
+          "section": "18.5 Moderation and application of weightings",
+          "excerpt": "The evaluation panel appointed for this procurement will meet to agree and moderate scores for each award criteria. Final scores in terms of a percentage of the overall tender score will be obtained by applying the relevant weighting factors set out as part of the award criteria table above. The percentage scores for each award criteria will be amalgamated to give a percentage score out of 100."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Winning Tender Selection",
+      "title": "Winning Tender Selection",
+      "parent_stage": null,
+      "parent_title": null,
+      "hierarchy_level": 1,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "Highest percentage score out of 100",
+      "notes": "The winning tender response shall be the tender response scoring the highest percentage score out of 100 when applying the evaluation methodology, which is also supported by any required verification evidence relating to Exclusion Grounds or Conditions of Participation responses.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 24,
+          "sheet": null,
+          "section": "18.6 The winning tender response",
+          "excerpt": "The winning tender response shall be the tender response scoring the highest percentage score out of 100 when applying the above evaluation methodology, which is also supported by any required verification evidence (to include, without limitation, any updated information or references relating to any Exclusion Grounds or Conditions of Participation responses) obtained by the Authority relating to any self-certification or other requirements referred to in the Procurement Specific Questionnaire."
+        }
+      ]
+    }
+  ],
+  "evaluation_breakdown": [
+    {
+      "criterion_id": null,
+      "stage": "Conditions of Participation - Legal Eligibility and Authorization",
+      "title": "Conditions of Participation - Legal Eligibility and Authorization",
+      "parent_stage": "Conditions of Participation",
+      "parent_title": "Conditions of Participation",
+      "hierarchy_level": 2,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "Yes (1) for all six cities",
+      "notes": "PSQ Question 1: Participant must confirm legal eligibility and authorization for each city (Peshawar, Haripur, D.I Khan, Gilgit, Skardu, Quetta). Scoring: Yes = 1, No = 0. Minimum pass score = Yes for all cities.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 20,
+          "sheet": null,
+          "section": "Conditions of Participation",
+          "excerpt": "Please confirm whether you are legally eligible and authorized to perform services in each of the cities specified below, including compliance with all applicable tax registration and regulatory requirements."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Conditions of Participation - Capability to Supply, Install, and Support",
+      "title": "Conditions of Participation - Capability to Supply, Install, and Support",
+      "parent_stage": "Conditions of Participation",
+      "parent_title": "Conditions of Participation",
+      "hierarchy_level": 2,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "Yes (1) for all six cities",
+      "notes": "PSQ Question 1 (continued): Participant must confirm capability to supply, install, and provide after-sales support in all listed cities. Scoring: Yes = 1, No = 0. Minimum pass score = Yes for all cities.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 20,
+          "sheet": null,
+          "section": "Conditions of Participation",
+          "excerpt": "Please confirm that your organization is capable of supplying, installing, and providing after-sales support in all the listed cities."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Conditions of Participation - OEM Authorization",
+      "title": "Conditions of Participation - OEM Authorization",
+      "parent_stage": "Conditions of Participation",
+      "parent_title": "Conditions of Participation",
+      "hierarchy_level": 2,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "Yes (1)",
+      "notes": "PSQ Question 2: Participant must provide valid OEM Authorization Letters or equivalent documentary evidence. Scoring: Yes = 1, No = 0. Minimum pass score = Yes.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 20,
+          "sheet": null,
+          "section": "Conditions of Participation",
+          "excerpt": "OEM Authorization - Please provide valid Original Equipment Manufacturer (OEM) Authorization Letters or equivalent documentary evidence confirming that you are authorized to supply, install, support, and provide warranty services for all proposed solution components."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Conditions of Participation - Economic and Financial Standing",
+      "title": "Conditions of Participation - Economic and Financial Standing",
+      "parent_stage": "Conditions of Participation",
+      "parent_title": "Conditions of Participation",
+      "hierarchy_level": 2,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "Acceptable level of financial risk (assessed via turnover, solvency ratios, profitability ratios)",
+      "notes": "British Council assesses turnover relative to contract value, solvency ratios, and profitability ratios based on two most recent accounts or audited financial statements. Minimum criteria apply; British Council may require further information.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 20,
+          "sheet": null,
+          "section": "Conditions of Participation",
+          "excerpt": "In order to facilitate British Council's assessment of a Participant's economic and financial standing, British Council will assess turnover relative to the Contract Value, solvency ratios and profitability ratios."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Stage 1: Tender Completion and Mandatory Requirements Check",
+      "title": "Stage 1: Tender Completion and Mandatory Requirements Check",
+      "parent_stage": null,
+      "parent_title": null,
+      "hierarchy_level": 1,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "All mandatory requirements must be met; tender must be correctly completed with all necessary information provided",
+      "notes": "Tender responses will be checked to ensure they have been completed correctly and all necessary information has been provided. Tenderers with correctly completed responses and all relevant information provided and all mandatory requirements as set out in the specification met will proceed to Stage 2. Any tender responses not correctly completed in accordance with the requirements of this ITT and/or containing omissions may be rejected at this point. Where a tender response is rejected at this point it will automatically be disqualified and will not be further evaluated.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 22,
+          "sheet": null,
+          "section": "Evaluation Criteria",
+          "excerpt": "Stage 1: Tender responses will be checked to ensure that they have been completed correctly and all necessary information has been provided. Tenderers responses correctly completed with all relevant information being provided and all mandatory requirements as set out in the specification met will proceed to Stage 2. Any tender responses not correctly completed in accordance with the requirements of this ITT and/or containing omissions may be rejected at this point."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Stage 2: Selection Questionnaire and Supplier Qualification Review",
+      "title": "Stage 2: Selection Questionnaire and Supplier Qualification Review",
+      "parent_stage": null,
+      "parent_title": null,
+      "hierarchy_level": 1,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "Potential supplier must meet all qualification criteria set out in the Selection Questionnaire",
+      "notes": "The completed Selection Questionnaire will then be reviewed to confirm that the potential supplier meets all of the qualification criteria set out in the questionnaire. Potential suppliers that meet the qualification criteria will proceed to Stage 3. Potential suppliers that do not meet the qualification criteria set out in the Selection Questionnaire may be excluded from the Procurement Process at this point. Where a potential supplier is excluded at this point, its tender response will be rejected in full and not evaluated further and the supplier will automatically be disqualified from this Procurement Process.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 22,
+          "sheet": null,
+          "section": "Evaluation Criteria",
+          "excerpt": "Stage 2: The completed Selection Questionnaire will then be reviewed to confirm that the potential supplier meets all of the qualification criteria set out in the questionnaire. Potential suppliers that meet the qualification criteria will proceed to Stage 3. Potential suppliers that do not meet the qualification criteria set out in the Selection Questionnaire may be excluded from the Procurement Process at this point."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Stage 3 \u2013 Detailed Tender Response Evaluation",
+      "title": "Stage 3 \u2013 Detailed Tender Response Evaluation",
+      "parent_stage": null,
+      "parent_title": null,
+      "hierarchy_level": 1,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": null,
+      "notes": "If a bidder succeeds in passing Stages 1 and 2, its detailed tender response to British Council requirements is evaluated using award criteria and weightings. Information from Selection Questionnaire responses may also be verified.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "Stage 3",
+          "excerpt": "If a bidder succeeds in passing Stages 1 and 2 of the evaluation, then it will have its detailed tender response to the British Council's requirements evaluated in accordance with the evaluation methodology set out below."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Social Value",
+      "title": "Social Value",
+      "parent_stage": "Award Criteria",
+      "parent_title": "Award Criteria",
+      "hierarchy_level": 2,
+      "weight": "10%",
+      "weight_value": 10.0,
+      "weight_unit": "Percent",
+      "weight_basis": "Overall",
+      "threshold": null,
+      "notes": "Scored using 0-10 point scale by evaluation panel",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "18.2 Award Criteria",
+          "excerpt": "Criteria: Social Value, Weighting: 10%"
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Relevant Experience and Clientele",
+      "title": "Relevant Experience and Clientele",
+      "parent_stage": "Award Criteria",
+      "parent_title": "Award Criteria",
+      "hierarchy_level": 2,
+      "weight": "15%",
+      "weight_value": 15.0,
+      "weight_unit": "Percent",
+      "weight_basis": "Overall",
+      "threshold": null,
+      "notes": "Scored using 0-10 point scale by evaluation panel",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "18.2 Award Criteria",
+          "excerpt": "Criteria: Relevant Experience and Clientele, Weighting: 15%"
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Scope of Work and Delivery Timelines",
+      "title": "Scope of Work and Delivery Timelines",
+      "parent_stage": "Award Criteria",
+      "parent_title": "Award Criteria",
+      "hierarchy_level": 2,
+      "weight": "35%",
+      "weight_value": 35.0,
+      "weight_unit": "Percent",
+      "weight_basis": "Overall",
+      "threshold": null,
+      "notes": "Scored using 0-10 point scale by evaluation panel",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "18.2 Award Criteria",
+          "excerpt": "Criteria: Scope of Work and Delivery Timelines, Weighting: 35%"
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Commercial",
+      "title": "Commercial",
+      "parent_stage": "Award Criteria",
+      "parent_title": "Award Criteria",
+      "hierarchy_level": 2,
+      "weight": "40%",
+      "weight_value": 40.0,
+      "weight_unit": "Percent",
+      "weight_basis": "Overall",
+      "threshold": null,
+      "notes": "Evaluated based on Overall Price. Maximum score of 10 awarded to lowest price. Other responses scored using formula: (Lowest Overall Price / Overall Price being evaluated) \u00d7 10, rounded to two decimal places.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "18.2 Award Criteria",
+          "excerpt": "Criteria: Commercial, Weighting: 40%"
+        },
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 24,
+          "sheet": null,
+          "section": "18.4 Commercial Evaluation",
+          "excerpt": "A maximum offer score of 10 will be awarded to the tender response offering the lowest 'Overall Price'. Other tender responses will be awarded a mark by application of the following formula: (Lowest Overall Price/Overall Price being evaluated) x 10 (rounded to two decimal places) = commercial score."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Scoring Scale \u2013 Excellent",
+      "title": "Scoring Scale \u2013 Excellent",
+      "parent_stage": "Scoring Model",
+      "parent_title": "Scoring Model",
+      "hierarchy_level": 2,
+      "weight": "10 points",
+      "weight_value": 10.0,
+      "weight_unit": "Points",
+      "weight_basis": "Within Parent",
+      "threshold": null,
+      "notes": "Excellent \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement and provides all of the areas evidence requested in the level of detail requested. This is a detailed excellent response that meets all aspects of the requirement leaving no ambiguity as to whether the bidder can meet the requirement.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "18.3 Scoring Model",
+          "excerpt": "10 \u2013 Excellent \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement and provides all of the areas evidence requested in the level of detail requested."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Scoring Scale \u2013 Good",
+      "title": "Scoring Scale \u2013 Good",
+      "parent_stage": "Scoring Model",
+      "parent_title": "Scoring Model",
+      "hierarchy_level": 2,
+      "weight": "7 points",
+      "weight_value": 7.0,
+      "weight_unit": "Points",
+      "weight_basis": "Within Parent",
+      "threshold": null,
+      "notes": "Good \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement and provides all of the areas of evidence requested, but contains some trivial omissions in relation to the level of detail requested. This is a good response that meets all aspects of the requirement with only a trivial level ambiguity.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "18.3 Scoring Model",
+          "excerpt": "7 \u2013 Good \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement and provides all of the areas of evidence requested, but contains some trivial omissions in relation to the level of detail requested in terms of either the response or the evidence."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Scoring Scale \u2013 Adequate",
+      "title": "Scoring Scale \u2013 Adequate",
+      "parent_stage": "Scoring Model",
+      "parent_title": "Scoring Model",
+      "hierarchy_level": 2,
+      "weight": "5 points",
+      "weight_value": 5.0,
+      "weight_unit": "Points",
+      "weight_basis": "Within Parent",
+      "threshold": null,
+      "notes": "Adequate \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement, but not all of the areas of evidence requested have been provided. This is an adequate response, but with some limited ambiguity as to whether the bidder can meet the requirement.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "18.3 Scoring Model",
+          "excerpt": "5 \u2013 Adequate \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement, but not all of the areas of evidence requested have been provided."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Scoring Scale \u2013 Poor",
+      "title": "Scoring Scale \u2013 Poor",
+      "parent_stage": "Scoring Model",
+      "parent_title": "Scoring Model",
+      "hierarchy_level": 2,
+      "weight": "3 points",
+      "weight_value": 3.0,
+      "weight_unit": "Points",
+      "weight_basis": "Within Parent",
+      "threshold": null,
+      "notes": "Poor \u2013 The response does not demonstrate that the bidder meets the requirement in one or more areas. This is a poor response with significant ambiguity as to whether the bidder can meet the requirement.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 24,
+          "sheet": null,
+          "section": "18.3 Scoring Model",
+          "excerpt": "3 \u2013 Poor \u2013 The response does not demonstrate that the bidder meets the requirement in one or more areas. This, therefore, is a poor response with significant ambiguity as to whether the bidder can meet the requirement due to the failure by the bidder to show that it meets one or more areas of the requirement."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Scoring Scale \u2013 Unacceptable",
+      "title": "Scoring Scale \u2013 Unacceptable",
+      "parent_stage": "Scoring Model",
+      "parent_title": "Scoring Model",
+      "hierarchy_level": 2,
+      "weight": "0 points",
+      "weight_value": 0.0,
+      "weight_unit": "Points",
+      "weight_basis": "Within Parent",
+      "threshold": null,
+      "notes": "Unacceptable \u2013 The response is non-compliant with the requirements of the ITT and/or no response has been provided.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 24,
+          "sheet": null,
+          "section": "18.3 Scoring Model",
+          "excerpt": "0 \u2013 Unacceptable \u2013 The response is non-compliant with the requirements of the ITT and/or no response has been provided."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Moderation and Application of Weightings",
+      "title": "Moderation and Application of Weightings",
+      "parent_stage": null,
+      "parent_title": null,
+      "hierarchy_level": 1,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": null,
+      "notes": "The evaluation panel will meet to agree and moderate scores for each award criteria. Final scores as a percentage of overall tender score are obtained by applying relevant weighting factors. Percentage scores for each award criteria are amalgamated to give a percentage score out of 100.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 24,
+          "sheet": null,
+          "section": "18.5 Moderation and application of weightings",
+          "excerpt": "The evaluation panel appointed for this procurement will meet to agree and moderate scores for each award criteria. Final scores in terms of a percentage of the overall tender score will be obtained by applying the relevant weighting factors set out as part of the award criteria table above. The percentage scores for each award criteria will be amalgamated to give a percentage score out of 100."
+        }
+      ]
+    },
+    {
+      "criterion_id": null,
+      "stage": "Winning Tender Selection",
+      "title": "Winning Tender Selection",
+      "parent_stage": null,
+      "parent_title": null,
+      "hierarchy_level": 1,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "Highest percentage score out of 100",
+      "notes": "The winning tender response shall be the tender response scoring the highest percentage score out of 100 when applying the evaluation methodology, which is also supported by any required verification evidence relating to Exclusion Grounds or Conditions of Participation responses.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 24,
+          "sheet": null,
+          "section": "18.6 The winning tender response",
+          "excerpt": "The winning tender response shall be the tender response scoring the highest percentage score out of 100 when applying the above evaluation methodology, which is also supported by any required verification evidence (to include, without limitation, any updated information or references relating to any Exclusion Grounds or Conditions of Participation responses) obtained by the Authority relating to any self-certification or other requirements referred to in the Procurement Specific Questionnaire."
+        }
+      ]
+    }
+  ],
+  "evaluation_hierarchy": {
+    "roots": [
+      {
+        "criterion_id": null,
+        "stage": "Stage 1: Tender Completion and Mandatory Requirements Check",
+        "title": "Stage 1: Tender Completion and Mandatory Requirements Check",
+        "parent_stage": null,
+        "parent_title": null,
+        "hierarchy_level": 1,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": "All mandatory requirements must be met; tender must be correctly completed with all necessary information provided",
+        "notes": "Tender responses will be checked to ensure they have been completed correctly and all necessary information has been provided. Tenderers with correctly completed responses and all relevant information provided and all mandatory requirements as set out in the specification met will proceed to Stage 2. Any tender responses not correctly completed in accordance with the requirements of this ITT and/or containing omissions may be rejected at this point. Where a tender response is rejected at this point it will automatically be disqualified and will not be further evaluated.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 22,
+            "sheet": null,
+            "section": "Evaluation Criteria",
+            "excerpt": "Stage 1: Tender responses will be checked to ensure that they have been completed correctly and all necessary information has been provided. Tenderers responses correctly completed with all relevant information being provided and all mandatory requirements as set out in the specification met will proceed to Stage 2. Any tender responses not correctly completed in accordance with the requirements of this ITT and/or containing omissions may be rejected at this point."
+          }
+        ],
+        "children": []
+      },
+      {
+        "criterion_id": null,
+        "stage": "Stage 2: Selection Questionnaire and Supplier Qualification Review",
+        "title": "Stage 2: Selection Questionnaire and Supplier Qualification Review",
+        "parent_stage": null,
+        "parent_title": null,
+        "hierarchy_level": 1,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": "Potential supplier must meet all qualification criteria set out in the Selection Questionnaire",
+        "notes": "The completed Selection Questionnaire will then be reviewed to confirm that the potential supplier meets all of the qualification criteria set out in the questionnaire. Potential suppliers that meet the qualification criteria will proceed to Stage 3. Potential suppliers that do not meet the qualification criteria set out in the Selection Questionnaire may be excluded from the Procurement Process at this point. Where a potential supplier is excluded at this point, its tender response will be rejected in full and not evaluated further and the supplier will automatically be disqualified from this Procurement Process.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 22,
+            "sheet": null,
+            "section": "Evaluation Criteria",
+            "excerpt": "Stage 2: The completed Selection Questionnaire will then be reviewed to confirm that the potential supplier meets all of the qualification criteria set out in the questionnaire. Potential suppliers that meet the qualification criteria will proceed to Stage 3. Potential suppliers that do not meet the qualification criteria set out in the Selection Questionnaire may be excluded from the Procurement Process at this point."
+          }
+        ],
+        "children": []
+      },
+      {
+        "criterion_id": null,
+        "stage": "Stage 3 \u2013 Detailed Tender Response Evaluation",
+        "title": "Stage 3 \u2013 Detailed Tender Response Evaluation",
+        "parent_stage": null,
+        "parent_title": null,
+        "hierarchy_level": 1,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": null,
+        "notes": "If a bidder succeeds in passing Stages 1 and 2, its detailed tender response to British Council requirements is evaluated using award criteria and weightings. Information from Selection Questionnaire responses may also be verified.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 23,
+            "sheet": null,
+            "section": "Stage 3",
+            "excerpt": "If a bidder succeeds in passing Stages 1 and 2 of the evaluation, then it will have its detailed tender response to the British Council's requirements evaluated in accordance with the evaluation methodology set out below."
+          }
+        ],
+        "children": []
+      },
+      {
+        "criterion_id": null,
+        "stage": "Moderation and Application of Weightings",
+        "title": "Moderation and Application of Weightings",
+        "parent_stage": null,
+        "parent_title": null,
+        "hierarchy_level": 1,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": null,
+        "notes": "The evaluation panel will meet to agree and moderate scores for each award criteria. Final scores as a percentage of overall tender score are obtained by applying relevant weighting factors. Percentage scores for each award criteria are amalgamated to give a percentage score out of 100.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 24,
+            "sheet": null,
+            "section": "18.5 Moderation and application of weightings",
+            "excerpt": "The evaluation panel appointed for this procurement will meet to agree and moderate scores for each award criteria. Final scores in terms of a percentage of the overall tender score will be obtained by applying the relevant weighting factors set out as part of the award criteria table above. The percentage scores for each award criteria will be amalgamated to give a percentage score out of 100."
+          }
+        ],
+        "children": []
+      },
+      {
+        "criterion_id": null,
+        "stage": "Winning Tender Selection",
+        "title": "Winning Tender Selection",
+        "parent_stage": null,
+        "parent_title": null,
+        "hierarchy_level": 1,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": "Highest percentage score out of 100",
+        "notes": "The winning tender response shall be the tender response scoring the highest percentage score out of 100 when applying the evaluation methodology, which is also supported by any required verification evidence relating to Exclusion Grounds or Conditions of Participation responses.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 24,
+            "sheet": null,
+            "section": "18.6 The winning tender response",
+            "excerpt": "The winning tender response shall be the tender response scoring the highest percentage score out of 100 when applying the above evaluation methodology, which is also supported by any required verification evidence (to include, without limitation, any updated information or references relating to any Exclusion Grounds or Conditions of Participation responses) obtained by the Authority relating to any self-certification or other requirements referred to in the Procurement Specific Questionnaire."
+          }
+        ],
+        "children": []
+      }
+    ],
+    "unresolved": [
+      {
+        "criterion_id": null,
+        "stage": "Conditions of Participation - Legal Eligibility and Authorization",
+        "title": "Conditions of Participation - Legal Eligibility and Authorization",
+        "parent_stage": "Conditions of Participation",
+        "parent_title": "Conditions of Participation",
+        "hierarchy_level": 2,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": "Yes (1) for all six cities",
+        "notes": "PSQ Question 1: Participant must confirm legal eligibility and authorization for each city (Peshawar, Haripur, D.I Khan, Gilgit, Skardu, Quetta). Scoring: Yes = 1, No = 0. Minimum pass score = Yes for all cities.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 20,
+            "sheet": null,
+            "section": "Conditions of Participation",
+            "excerpt": "Please confirm whether you are legally eligible and authorized to perform services in each of the cities specified below, including compliance with all applicable tax registration and regulatory requirements."
+          }
+        ],
+        "unresolved_reason": "Parent 'Conditions of Participation' not found"
+      },
+      {
+        "criterion_id": null,
+        "stage": "Conditions of Participation - Capability to Supply, Install, and Support",
+        "title": "Conditions of Participation - Capability to Supply, Install, and Support",
+        "parent_stage": "Conditions of Participation",
+        "parent_title": "Conditions of Participation",
+        "hierarchy_level": 2,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": "Yes (1) for all six cities",
+        "notes": "PSQ Question 1 (continued): Participant must confirm capability to supply, install, and provide after-sales support in all listed cities. Scoring: Yes = 1, No = 0. Minimum pass score = Yes for all cities.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 20,
+            "sheet": null,
+            "section": "Conditions of Participation",
+            "excerpt": "Please confirm that your organization is capable of supplying, installing, and providing after-sales support in all the listed cities."
+          }
+        ],
+        "unresolved_reason": "Parent 'Conditions of Participation' not found"
+      },
+      {
+        "criterion_id": null,
+        "stage": "Conditions of Participation - OEM Authorization",
+        "title": "Conditions of Participation - OEM Authorization",
+        "parent_stage": "Conditions of Participation",
+        "parent_title": "Conditions of Participation",
+        "hierarchy_level": 2,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": "Yes (1)",
+        "notes": "PSQ Question 2: Participant must provide valid OEM Authorization Letters or equivalent documentary evidence. Scoring: Yes = 1, No = 0. Minimum pass score = Yes.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 20,
+            "sheet": null,
+            "section": "Conditions of Participation",
+            "excerpt": "OEM Authorization - Please provide valid Original Equipment Manufacturer (OEM) Authorization Letters or equivalent documentary evidence confirming that you are authorized to supply, install, support, and provide warranty services for all proposed solution components."
+          }
+        ],
+        "unresolved_reason": "Parent 'Conditions of Participation' not found"
+      },
+      {
+        "criterion_id": null,
+        "stage": "Conditions of Participation - Economic and Financial Standing",
+        "title": "Conditions of Participation - Economic and Financial Standing",
+        "parent_stage": "Conditions of Participation",
+        "parent_title": "Conditions of Participation",
+        "hierarchy_level": 2,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": "Acceptable level of financial risk (assessed via turnover, solvency ratios, profitability ratios)",
+        "notes": "British Council assesses turnover relative to contract value, solvency ratios, and profitability ratios based on two most recent accounts or audited financial statements. Minimum criteria apply; British Council may require further information.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 20,
+            "sheet": null,
+            "section": "Conditions of Participation",
+            "excerpt": "In order to facilitate British Council's assessment of a Participant's economic and financial standing, British Council will assess turnover relative to the Contract Value, solvency ratios and profitability ratios."
+          }
+        ],
+        "unresolved_reason": "Parent 'Conditions of Participation' not found"
+      },
+      {
+        "criterion_id": null,
+        "stage": "Social Value",
+        "title": "Social Value",
+        "parent_stage": "Award Criteria",
+        "parent_title": "Award Criteria",
+        "hierarchy_level": 2,
+        "weight": "10%",
+        "weight_value": 10.0,
+        "weight_unit": "Percent",
+        "weight_basis": "Overall",
+        "threshold": null,
+        "notes": "Scored using 0-10 point scale by evaluation panel",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 23,
+            "sheet": null,
+            "section": "18.2 Award Criteria",
+            "excerpt": "Criteria: Social Value, Weighting: 10%"
+          }
+        ],
+        "unresolved_reason": "Parent 'Award Criteria' not found"
+      },
+      {
+        "criterion_id": null,
+        "stage": "Relevant Experience and Clientele",
+        "title": "Relevant Experience and Clientele",
+        "parent_stage": "Award Criteria",
+        "parent_title": "Award Criteria",
+        "hierarchy_level": 2,
+        "weight": "15%",
+        "weight_value": 15.0,
+        "weight_unit": "Percent",
+        "weight_basis": "Overall",
+        "threshold": null,
+        "notes": "Scored using 0-10 point scale by evaluation panel",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 23,
+            "sheet": null,
+            "section": "18.2 Award Criteria",
+            "excerpt": "Criteria: Relevant Experience and Clientele, Weighting: 15%"
+          }
+        ],
+        "unresolved_reason": "Parent 'Award Criteria' not found"
+      },
+      {
+        "criterion_id": null,
+        "stage": "Scope of Work and Delivery Timelines",
+        "title": "Scope of Work and Delivery Timelines",
+        "parent_stage": "Award Criteria",
+        "parent_title": "Award Criteria",
+        "hierarchy_level": 2,
+        "weight": "35%",
+        "weight_value": 35.0,
+        "weight_unit": "Percent",
+        "weight_basis": "Overall",
+        "threshold": null,
+        "notes": "Scored using 0-10 point scale by evaluation panel",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 23,
+            "sheet": null,
+            "section": "18.2 Award Criteria",
+            "excerpt": "Criteria: Scope of Work and Delivery Timelines, Weighting: 35%"
+          }
+        ],
+        "unresolved_reason": "Parent 'Award Criteria' not found"
+      },
+      {
+        "criterion_id": null,
+        "stage": "Commercial",
+        "title": "Commercial",
+        "parent_stage": "Award Criteria",
+        "parent_title": "Award Criteria",
+        "hierarchy_level": 2,
+        "weight": "40%",
+        "weight_value": 40.0,
+        "weight_unit": "Percent",
+        "weight_basis": "Overall",
+        "threshold": null,
+        "notes": "Evaluated based on Overall Price. Maximum score of 10 awarded to lowest price. Other responses scored using formula: (Lowest Overall Price / Overall Price being evaluated) \u00d7 10, rounded to two decimal places.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 23,
+            "sheet": null,
+            "section": "18.2 Award Criteria",
+            "excerpt": "Criteria: Commercial, Weighting: 40%"
+          },
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 24,
+            "sheet": null,
+            "section": "18.4 Commercial Evaluation",
+            "excerpt": "A maximum offer score of 10 will be awarded to the tender response offering the lowest 'Overall Price'. Other tender responses will be awarded a mark by application of the following formula: (Lowest Overall Price/Overall Price being evaluated) x 10 (rounded to two decimal places) = commercial score."
+          }
+        ],
+        "unresolved_reason": "Parent 'Award Criteria' not found"
+      },
+      {
+        "criterion_id": null,
+        "stage": "Scoring Scale \u2013 Excellent",
+        "title": "Scoring Scale \u2013 Excellent",
+        "parent_stage": "Scoring Model",
+        "parent_title": "Scoring Model",
+        "hierarchy_level": 2,
+        "weight": "10 points",
+        "weight_value": 10.0,
+        "weight_unit": "Points",
+        "weight_basis": "Within Parent",
+        "threshold": null,
+        "notes": "Excellent \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement and provides all of the areas evidence requested in the level of detail requested. This is a detailed excellent response that meets all aspects of the requirement leaving no ambiguity as to whether the bidder can meet the requirement.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 23,
+            "sheet": null,
+            "section": "18.3 Scoring Model",
+            "excerpt": "10 \u2013 Excellent \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement and provides all of the areas evidence requested in the level of detail requested."
+          }
+        ],
+        "unresolved_reason": "Parent 'Scoring Model' not found"
+      },
+      {
+        "criterion_id": null,
+        "stage": "Scoring Scale \u2013 Good",
+        "title": "Scoring Scale \u2013 Good",
+        "parent_stage": "Scoring Model",
+        "parent_title": "Scoring Model",
+        "hierarchy_level": 2,
+        "weight": "7 points",
+        "weight_value": 7.0,
+        "weight_unit": "Points",
+        "weight_basis": "Within Parent",
+        "threshold": null,
+        "notes": "Good \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement and provides all of the areas of evidence requested, but contains some trivial omissions in relation to the level of detail requested. This is a good response that meets all aspects of the requirement with only a trivial level ambiguity.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 23,
+            "sheet": null,
+            "section": "18.3 Scoring Model",
+            "excerpt": "7 \u2013 Good \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement and provides all of the areas of evidence requested, but contains some trivial omissions in relation to the level of detail requested in terms of either the response or the evidence."
+          }
+        ],
+        "unresolved_reason": "Parent 'Scoring Model' not found"
+      },
+      {
+        "criterion_id": null,
+        "stage": "Scoring Scale \u2013 Adequate",
+        "title": "Scoring Scale \u2013 Adequate",
+        "parent_stage": "Scoring Model",
+        "parent_title": "Scoring Model",
+        "hierarchy_level": 2,
+        "weight": "5 points",
+        "weight_value": 5.0,
+        "weight_unit": "Points",
+        "weight_basis": "Within Parent",
+        "threshold": null,
+        "notes": "Adequate \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement, but not all of the areas of evidence requested have been provided. This is an adequate response, but with some limited ambiguity as to whether the bidder can meet the requirement.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 23,
+            "sheet": null,
+            "section": "18.3 Scoring Model",
+            "excerpt": "5 \u2013 Adequate \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement, but not all of the areas of evidence requested have been provided."
+          }
+        ],
+        "unresolved_reason": "Parent 'Scoring Model' not found"
+      },
+      {
+        "criterion_id": null,
+        "stage": "Scoring Scale \u2013 Poor",
+        "title": "Scoring Scale \u2013 Poor",
+        "parent_stage": "Scoring Model",
+        "parent_title": "Scoring Model",
+        "hierarchy_level": 2,
+        "weight": "3 points",
+        "weight_value": 3.0,
+        "weight_unit": "Points",
+        "weight_basis": "Within Parent",
+        "threshold": null,
+        "notes": "Poor \u2013 The response does not demonstrate that the bidder meets the requirement in one or more areas. This is a poor response with significant ambiguity as to whether the bidder can meet the requirement.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 24,
+            "sheet": null,
+            "section": "18.3 Scoring Model",
+            "excerpt": "3 \u2013 Poor \u2013 The response does not demonstrate that the bidder meets the requirement in one or more areas. This, therefore, is a poor response with significant ambiguity as to whether the bidder can meet the requirement due to the failure by the bidder to show that it meets one or more areas of the requirement."
+          }
+        ],
+        "unresolved_reason": "Parent 'Scoring Model' not found"
+      },
+      {
+        "criterion_id": null,
+        "stage": "Scoring Scale \u2013 Unacceptable",
+        "title": "Scoring Scale \u2013 Unacceptable",
+        "parent_stage": "Scoring Model",
+        "parent_title": "Scoring Model",
+        "hierarchy_level": 2,
+        "weight": "0 points",
+        "weight_value": 0.0,
+        "weight_unit": "Points",
+        "weight_basis": "Within Parent",
+        "threshold": null,
+        "notes": "Unacceptable \u2013 The response is non-compliant with the requirements of the ITT and/or no response has been provided.",
+        "source_refs": [
+          {
+            "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+            "page": 24,
+            "sheet": null,
+            "section": "18.3 Scoring Model",
+            "excerpt": "0 \u2013 Unacceptable \u2013 The response is non-compliant with the requirements of the ITT and/or no response has been provided."
+          }
+        ],
+        "unresolved_reason": "Parent 'Scoring Model' not found"
+      }
+    ],
+    "all_criteria_count": 18
+  },
+  "evaluation_totals": {
+    "status": "UNRESOLVED_HIERARCHY",
+    "overall_total": null,
+    "overall_unit": "None",
+    "root_details": [],
+    "child_details": {},
+    "warnings": [
+      "13 criteria have unresolved hierarchy."
+    ]
+  },
+  "display_rows": [
+    {
+      "criterion_id": null,
+      "stage": "Stage 1: Tender Completion and Mandatory Requirements Check",
+      "title": "Stage 1: Tender Completion and Mandatory Requirements Check",
+      "parent_stage": null,
+      "parent_title": null,
+      "hierarchy_level": 1,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "All mandatory requirements must be met; tender must be correctly completed with all necessary information provided",
+      "notes": "Tender responses will be checked to ensure they have been completed correctly and all necessary information has been provided. Tenderers with correctly completed responses and all relevant information provided and all mandatory requirements as set out in the specification met will proceed to Stage 2. Any tender responses not correctly completed in accordance with the requirements of this ITT and/or containing omissions may be rejected at this point. Where a tender response is rejected at this point it will automatically be disqualified and will not be further evaluated.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 22,
+          "sheet": null,
+          "section": "Evaluation Criteria",
+          "excerpt": "Stage 1: Tender responses will be checked to ensure that they have been completed correctly and all necessary information has been provided. Tenderers responses correctly completed with all relevant information being provided and all mandatory requirements as set out in the specification met will proceed to Stage 2. Any tender responses not correctly completed in accordance with the requirements of this ITT and/or containing omissions may be rejected at this point."
+        }
+      ],
+      "children": [],
+      "indent": 0,
+      "is_parent": false
+    },
+    {
+      "criterion_id": null,
+      "stage": "Stage 2: Selection Questionnaire and Supplier Qualification Review",
+      "title": "Stage 2: Selection Questionnaire and Supplier Qualification Review",
+      "parent_stage": null,
+      "parent_title": null,
+      "hierarchy_level": 1,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "Potential supplier must meet all qualification criteria set out in the Selection Questionnaire",
+      "notes": "The completed Selection Questionnaire will then be reviewed to confirm that the potential supplier meets all of the qualification criteria set out in the questionnaire. Potential suppliers that meet the qualification criteria will proceed to Stage 3. Potential suppliers that do not meet the qualification criteria set out in the Selection Questionnaire may be excluded from the Procurement Process at this point. Where a potential supplier is excluded at this point, its tender response will be rejected in full and not evaluated further and the supplier will automatically be disqualified from this Procurement Process.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 22,
+          "sheet": null,
+          "section": "Evaluation Criteria",
+          "excerpt": "Stage 2: The completed Selection Questionnaire will then be reviewed to confirm that the potential supplier meets all of the qualification criteria set out in the questionnaire. Potential suppliers that meet the qualification criteria will proceed to Stage 3. Potential suppliers that do not meet the qualification criteria set out in the Selection Questionnaire may be excluded from the Procurement Process at this point."
+        }
+      ],
+      "children": [],
+      "indent": 0,
+      "is_parent": false
+    },
+    {
+      "criterion_id": null,
+      "stage": "Stage 3 \u2013 Detailed Tender Response Evaluation",
+      "title": "Stage 3 \u2013 Detailed Tender Response Evaluation",
+      "parent_stage": null,
+      "parent_title": null,
+      "hierarchy_level": 1,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": null,
+      "notes": "If a bidder succeeds in passing Stages 1 and 2, its detailed tender response to British Council requirements is evaluated using award criteria and weightings. Information from Selection Questionnaire responses may also be verified.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "Stage 3",
+          "excerpt": "If a bidder succeeds in passing Stages 1 and 2 of the evaluation, then it will have its detailed tender response to the British Council's requirements evaluated in accordance with the evaluation methodology set out below."
+        }
+      ],
+      "children": [],
+      "indent": 0,
+      "is_parent": false
+    },
+    {
+      "criterion_id": null,
+      "stage": "Moderation and Application of Weightings",
+      "title": "Moderation and Application of Weightings",
+      "parent_stage": null,
+      "parent_title": null,
+      "hierarchy_level": 1,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": null,
+      "notes": "The evaluation panel will meet to agree and moderate scores for each award criteria. Final scores as a percentage of overall tender score are obtained by applying relevant weighting factors. Percentage scores for each award criteria are amalgamated to give a percentage score out of 100.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 24,
+          "sheet": null,
+          "section": "18.5 Moderation and application of weightings",
+          "excerpt": "The evaluation panel appointed for this procurement will meet to agree and moderate scores for each award criteria. Final scores in terms of a percentage of the overall tender score will be obtained by applying the relevant weighting factors set out as part of the award criteria table above. The percentage scores for each award criteria will be amalgamated to give a percentage score out of 100."
+        }
+      ],
+      "children": [],
+      "indent": 0,
+      "is_parent": false
+    },
+    {
+      "criterion_id": null,
+      "stage": "Winning Tender Selection",
+      "title": "Winning Tender Selection",
+      "parent_stage": null,
+      "parent_title": null,
+      "hierarchy_level": 1,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "Highest percentage score out of 100",
+      "notes": "The winning tender response shall be the tender response scoring the highest percentage score out of 100 when applying the evaluation methodology, which is also supported by any required verification evidence relating to Exclusion Grounds or Conditions of Participation responses.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 24,
+          "sheet": null,
+          "section": "18.6 The winning tender response",
+          "excerpt": "The winning tender response shall be the tender response scoring the highest percentage score out of 100 when applying the above evaluation methodology, which is also supported by any required verification evidence (to include, without limitation, any updated information or references relating to any Exclusion Grounds or Conditions of Participation responses) obtained by the Authority relating to any self-certification or other requirements referred to in the Procurement Specific Questionnaire."
+        }
+      ],
+      "children": [],
+      "indent": 0,
+      "is_parent": false
+    },
+    {
+      "criterion_id": null,
+      "stage": "Conditions of Participation - Legal Eligibility and Authorization",
+      "title": "Conditions of Participation - Legal Eligibility and Authorization",
+      "parent_stage": "Conditions of Participation",
+      "parent_title": "Conditions of Participation",
+      "hierarchy_level": 2,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "Yes (1) for all six cities",
+      "notes": "PSQ Question 1: Participant must confirm legal eligibility and authorization for each city (Peshawar, Haripur, D.I Khan, Gilgit, Skardu, Quetta). Scoring: Yes = 1, No = 0. Minimum pass score = Yes for all cities.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 20,
+          "sheet": null,
+          "section": "Conditions of Participation",
+          "excerpt": "Please confirm whether you are legally eligible and authorized to perform services in each of the cities specified below, including compliance with all applicable tax registration and regulatory requirements."
+        }
+      ],
+      "unresolved_reason": "Parent 'Conditions of Participation' not found",
+      "indent": 0,
+      "is_parent": false
+    },
+    {
+      "criterion_id": null,
+      "stage": "Conditions of Participation - Capability to Supply, Install, and Support",
+      "title": "Conditions of Participation - Capability to Supply, Install, and Support",
+      "parent_stage": "Conditions of Participation",
+      "parent_title": "Conditions of Participation",
+      "hierarchy_level": 2,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "Yes (1) for all six cities",
+      "notes": "PSQ Question 1 (continued): Participant must confirm capability to supply, install, and provide after-sales support in all listed cities. Scoring: Yes = 1, No = 0. Minimum pass score = Yes for all cities.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 20,
+          "sheet": null,
+          "section": "Conditions of Participation",
+          "excerpt": "Please confirm that your organization is capable of supplying, installing, and providing after-sales support in all the listed cities."
+        }
+      ],
+      "unresolved_reason": "Parent 'Conditions of Participation' not found",
+      "indent": 0,
+      "is_parent": false
+    },
+    {
+      "criterion_id": null,
+      "stage": "Conditions of Participation - OEM Authorization",
+      "title": "Conditions of Participation - OEM Authorization",
+      "parent_stage": "Conditions of Participation",
+      "parent_title": "Conditions of Participation",
+      "hierarchy_level": 2,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "Yes (1)",
+      "notes": "PSQ Question 2: Participant must provide valid OEM Authorization Letters or equivalent documentary evidence. Scoring: Yes = 1, No = 0. Minimum pass score = Yes.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 20,
+          "sheet": null,
+          "section": "Conditions of Participation",
+          "excerpt": "OEM Authorization - Please provide valid Original Equipment Manufacturer (OEM) Authorization Letters or equivalent documentary evidence confirming that you are authorized to supply, install, support, and provide warranty services for all proposed solution components."
+        }
+      ],
+      "unresolved_reason": "Parent 'Conditions of Participation' not found",
+      "indent": 0,
+      "is_parent": false
+    },
+    {
+      "criterion_id": null,
+      "stage": "Conditions of Participation - Economic and Financial Standing",
+      "title": "Conditions of Participation - Economic and Financial Standing",
+      "parent_stage": "Conditions of Participation",
+      "parent_title": "Conditions of Participation",
+      "hierarchy_level": 2,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "Acceptable level of financial risk (assessed via turnover, solvency ratios, profitability ratios)",
+      "notes": "British Council assesses turnover relative to contract value, solvency ratios, and profitability ratios based on two most recent accounts or audited financial statements. Minimum criteria apply; British Council may require further information.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 20,
+          "sheet": null,
+          "section": "Conditions of Participation",
+          "excerpt": "In order to facilitate British Council's assessment of a Participant's economic and financial standing, British Council will assess turnover relative to the Contract Value, solvency ratios and profitability ratios."
+        }
+      ],
+      "unresolved_reason": "Parent 'Conditions of Participation' not found",
+      "indent": 0,
+      "is_parent": false
+    },
+    {
+      "criterion_id": null,
+      "stage": "Social Value",
+      "title": "Social Value",
+      "parent_stage": "Award Criteria",
+      "parent_title": "Award Criteria",
+      "hierarchy_level": 2,
+      "weight": "10%",
+      "weight_value": 10.0,
+      "weight_unit": "Percent",
+      "weight_basis": "Overall",
+      "threshold": null,
+      "notes": "Scored using 0-10 point scale by evaluation panel",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "18.2 Award Criteria",
+          "excerpt": "Criteria: Social Value, Weighting: 10%"
+        }
+      ],
+      "unresolved_reason": "Parent 'Award Criteria' not found",
+      "indent": 0,
+      "is_parent": false
+    },
+    {
+      "criterion_id": null,
+      "stage": "Relevant Experience and Clientele",
+      "title": "Relevant Experience and Clientele",
+      "parent_stage": "Award Criteria",
+      "parent_title": "Award Criteria",
+      "hierarchy_level": 2,
+      "weight": "15%",
+      "weight_value": 15.0,
+      "weight_unit": "Percent",
+      "weight_basis": "Overall",
+      "threshold": null,
+      "notes": "Scored using 0-10 point scale by evaluation panel",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "18.2 Award Criteria",
+          "excerpt": "Criteria: Relevant Experience and Clientele, Weighting: 15%"
+        }
+      ],
+      "unresolved_reason": "Parent 'Award Criteria' not found",
+      "indent": 0,
+      "is_parent": false
+    },
+    {
+      "criterion_id": null,
+      "stage": "Scope of Work and Delivery Timelines",
+      "title": "Scope of Work and Delivery Timelines",
+      "parent_stage": "Award Criteria",
+      "parent_title": "Award Criteria",
+      "hierarchy_level": 2,
+      "weight": "35%",
+      "weight_value": 35.0,
+      "weight_unit": "Percent",
+      "weight_basis": "Overall",
+      "threshold": null,
+      "notes": "Scored using 0-10 point scale by evaluation panel",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "18.2 Award Criteria",
+          "excerpt": "Criteria: Scope of Work and Delivery Timelines, Weighting: 35%"
+        }
+      ],
+      "unresolved_reason": "Parent 'Award Criteria' not found",
+      "indent": 0,
+      "is_parent": false
+    },
+    {
+      "criterion_id": null,
+      "stage": "Commercial",
+      "title": "Commercial",
+      "parent_stage": "Award Criteria",
+      "parent_title": "Award Criteria",
+      "hierarchy_level": 2,
+      "weight": "40%",
+      "weight_value": 40.0,
+      "weight_unit": "Percent",
+      "weight_basis": "Overall",
+      "threshold": null,
+      "notes": "Evaluated based on Overall Price. Maximum score of 10 awarded to lowest price. Other responses scored using formula: (Lowest Overall Price / Overall Price being evaluated) \u00d7 10, rounded to two decimal places.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "18.2 Award Criteria",
+          "excerpt": "Criteria: Commercial, Weighting: 40%"
+        },
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 24,
+          "sheet": null,
+          "section": "18.4 Commercial Evaluation",
+          "excerpt": "A maximum offer score of 10 will be awarded to the tender response offering the lowest 'Overall Price'. Other tender responses will be awarded a mark by application of the following formula: (Lowest Overall Price/Overall Price being evaluated) x 10 (rounded to two decimal places) = commercial score."
+        }
+      ],
+      "unresolved_reason": "Parent 'Award Criteria' not found",
+      "indent": 0,
+      "is_parent": false
+    },
+    {
+      "criterion_id": null,
+      "stage": "Scoring Scale \u2013 Excellent",
+      "title": "Scoring Scale \u2013 Excellent",
+      "parent_stage": "Scoring Model",
+      "parent_title": "Scoring Model",
+      "hierarchy_level": 2,
+      "weight": "10 points",
+      "weight_value": 10.0,
+      "weight_unit": "Points",
+      "weight_basis": "Within Parent",
+      "threshold": null,
+      "notes": "Excellent \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement and provides all of the areas evidence requested in the level of detail requested. This is a detailed excellent response that meets all aspects of the requirement leaving no ambiguity as to whether the bidder can meet the requirement.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "18.3 Scoring Model",
+          "excerpt": "10 \u2013 Excellent \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement and provides all of the areas evidence requested in the level of detail requested."
+        }
+      ],
+      "unresolved_reason": "Parent 'Scoring Model' not found",
+      "indent": 0,
+      "is_parent": false
+    },
+    {
+      "criterion_id": null,
+      "stage": "Scoring Scale \u2013 Good",
+      "title": "Scoring Scale \u2013 Good",
+      "parent_stage": "Scoring Model",
+      "parent_title": "Scoring Model",
+      "hierarchy_level": 2,
+      "weight": "7 points",
+      "weight_value": 7.0,
+      "weight_unit": "Points",
+      "weight_basis": "Within Parent",
+      "threshold": null,
+      "notes": "Good \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement and provides all of the areas of evidence requested, but contains some trivial omissions in relation to the level of detail requested. This is a good response that meets all aspects of the requirement with only a trivial level ambiguity.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "18.3 Scoring Model",
+          "excerpt": "7 \u2013 Good \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement and provides all of the areas of evidence requested, but contains some trivial omissions in relation to the level of detail requested in terms of either the response or the evidence."
+        }
+      ],
+      "unresolved_reason": "Parent 'Scoring Model' not found",
+      "indent": 0,
+      "is_parent": false
+    },
+    {
+      "criterion_id": null,
+      "stage": "Scoring Scale \u2013 Adequate",
+      "title": "Scoring Scale \u2013 Adequate",
+      "parent_stage": "Scoring Model",
+      "parent_title": "Scoring Model",
+      "hierarchy_level": 2,
+      "weight": "5 points",
+      "weight_value": 5.0,
+      "weight_unit": "Points",
+      "weight_basis": "Within Parent",
+      "threshold": null,
+      "notes": "Adequate \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement, but not all of the areas of evidence requested have been provided. This is an adequate response, but with some limited ambiguity as to whether the bidder can meet the requirement.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 23,
+          "sheet": null,
+          "section": "18.3 Scoring Model",
+          "excerpt": "5 \u2013 Adequate \u2013 Overall the response demonstrates that the bidder meets all areas of the requirement, but not all of the areas of evidence requested have been provided."
+        }
+      ],
+      "unresolved_reason": "Parent 'Scoring Model' not found",
+      "indent": 0,
+      "is_parent": false
+    },
+    {
+      "criterion_id": null,
+      "stage": "Scoring Scale \u2013 Poor",
+      "title": "Scoring Scale \u2013 Poor",
+      "parent_stage": "Scoring Model",
+      "parent_title": "Scoring Model",
+      "hierarchy_level": 2,
+      "weight": "3 points",
+      "weight_value": 3.0,
+      "weight_unit": "Points",
+      "weight_basis": "Within Parent",
+      "threshold": null,
+      "notes": "Poor \u2013 The response does not demonstrate that the bidder meets the requirement in one or more areas. This is a poor response with significant ambiguity as to whether the bidder can meet the requirement.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 24,
+          "sheet": null,
+          "section": "18.3 Scoring Model",
+          "excerpt": "3 \u2013 Poor \u2013 The response does not demonstrate that the bidder meets the requirement in one or more areas. This, therefore, is a poor response with significant ambiguity as to whether the bidder can meet the requirement due to the failure by the bidder to show that it meets one or more areas of the requirement."
+        }
+      ],
+      "unresolved_reason": "Parent 'Scoring Model' not found",
+      "indent": 0,
+      "is_parent": false
+    },
+    {
+      "criterion_id": null,
+      "stage": "Scoring Scale \u2013 Unacceptable",
+      "title": "Scoring Scale \u2013 Unacceptable",
+      "parent_stage": "Scoring Model",
+      "parent_title": "Scoring Model",
+      "hierarchy_level": 2,
+      "weight": "0 points",
+      "weight_value": 0.0,
+      "weight_unit": "Points",
+      "weight_basis": "Within Parent",
+      "threshold": null,
+      "notes": "Unacceptable \u2013 The response is non-compliant with the requirements of the ITT and/or no response has been provided.",
+      "source_refs": [
+        {
+          "source_doc": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+          "page": 24,
+          "sheet": null,
+          "section": "18.3 Scoring Model",
+          "excerpt": "0 \u2013 Unacceptable \u2013 The response is non-compliant with the requirements of the ITT and/or no response has been provided."
+        }
+      ],
+      "unresolved_reason": "Parent 'Scoring Model' not found",
+      "indent": 0,
+      "is_parent": false
+    }
+  ]
+}
