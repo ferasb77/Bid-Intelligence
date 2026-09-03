@@ -12,10 +12,11 @@ from extractor import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_req(req_id, category, description, rfso_ref=None):
+def _make_req(req_id, category, description, rfso_ref=None, requirement_type="Supplier Qualification"):
     return {
         "req_id":          req_id,
         "category":        category,
+        "requirement_type": requirement_type,
         "description":     description,
         "rfso_ref":        rfso_ref,
         "weight":          None,
@@ -551,6 +552,7 @@ class TestStageDDeduplicationRegressions(unittest.TestCase):
                 nf = {
                     "requirements": [
                         {"req_id": "M1", "category": "Mandatory",
+                         "requirement_type": "Supplier Qualification",
                          "description": "Mandatory req 1"}
                     ],
                     "dates": [], "evaluation_criteria": [], "submission_rules": [],

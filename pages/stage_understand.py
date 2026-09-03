@@ -68,19 +68,6 @@ def page_understand(bid_id: int):
     key_dates = _ensure_list(brief_row.get("key_dates"))
     citations = _ensure_dict(brief_row.get("source_citations"))
 
-    # Fallback to requirements if qualification gates not explicitly in brief
-    if not qual_gates and reqs:
-        mand = [r for r in reqs if r.get("category") == "Mandatory"]
-        qual_gates = [
-            {
-                "requirement": r.get("description", ""),
-                "type": "Mandatory Qualification",
-                "rfp_ref": r.get("rfso_ref", "Mandatory Gate"),
-                "disqualification_risk": "High"
-            }
-            for r in mand[:8]
-        ]
-
     # ── HEADER & OPPORTUNITY IDENTITY ─────────────────────────────────────────
     st.markdown('<div style="font-size:.72rem;color:#C9A96E;text-transform:uppercase;letter-spacing:.12em;font-weight:600">STAGE 1 · UNDERSTAND</div>', unsafe_allow_html=True)
     c1, c2 = st.columns([4, 1.2])
@@ -199,9 +186,13 @@ def page_understand(bid_id: int):
     )
 
     from components.ui import qual_badge, evidence_badge
-    mand_canonical = [r for r in reqs if r.get("category") == "Mandatory"]
-    if mand_canonical:
-        for idx, r in enumerate(mand_canonical, 1):
+    from requirement_semantics import select_qualification_requirements, normalize_requirement_identity_text
+
+    # Match authoritative brief qualification gates to persisted requirements
+    matched_qual_reqs = select_qualification_requirements(reqs, qual_gates)
+
+    if matched_qual_reqs:
+        for idx, r in enumerate(matched_qual_reqs, 1):
             ref_str = f' <span style="font-size:.72rem;color:#6E6C66">({r.get("rfso_ref","Gate")})</span>' if r.get("rfso_ref") else ""
             q_status = r.get("qual_status", "UNKNOWN")
             e_status = r.get("evidence_status", "MISSING")
@@ -217,18 +208,25 @@ def page_understand(bid_id: int):
                 unsafe_allow_html=True
             )
     elif qual_gates:
+        # Gates exist in brief but did not match database rows (e.g. before requirement persistence)
         for idx, g in enumerate(qual_gates, 1):
             ref_str = f' <span style="font-size:.72rem;color:#6E6C66">({g.get("rfp_ref","Ref")})</span>' if g.get("rfp_ref") else ""
             st.markdown(
                 f'<div style="background:#1A0F00;border:1px solid #3A2A00;border-left:3px solid #E67E22;'
                 f'border-radius:0 4px 4px 0;padding:.6rem 1rem;margin:.35rem 0;font-size:.85rem">'
-                f'<span style="color:#E67E22;font-weight:700">GATE #{idx} [{g.get("type","Mandatory")}]</span>{ref_str}'
+                f'<span style="color:#E67E22;font-weight:700">GATE #{idx} [{g.get("type","Supplier Qualification")}]</span>{ref_str}'
                 f'<div style="margin-top:.2rem;color:#EDEAE3">{g.get("requirement","")}</div>'
                 f'</div>',
                 unsafe_allow_html=True
             )
     else:
-        st.markdown('<div class="empty-state">No qualification gates extracted. Review compliance matrix in Decide.</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="empty-state">'
+            'No explicit pass/fail supplier qualification gates were identified. '
+            'Mandatory compliance requirements remain tracked in the compliance register.'
+            '</div>',
+            unsafe_allow_html=True
+        )
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 

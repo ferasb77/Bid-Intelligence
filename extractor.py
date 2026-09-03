@@ -20,6 +20,13 @@ import zipfile
 import xml.etree.ElementTree as ET
 import anthropic
 from config import get_anthropic_client
+from requirement_semantics import (
+    resolve_requirement_type,
+    is_supplier_qualification,
+    normalize_requirement_type,
+    TYPE_SUPPLIER_QUALIFICATION,
+    ALLOWED_REQUIREMENT_TYPES,
+)
 
 
 # ── PROMPTS FOR STAGED EXTRACTION ─────────────────────────────────────────────
@@ -45,8 +52,24 @@ CRITICAL SOURCE TRACEABILITY RULES:
        "excerpt": "<1-2 sentence verbatim quote from text>"
      }
    ]
-4. Extract ALL decision-critical procurement facts present in this text. Do not stop after the first requirement or fact.
-5. If no facts of a given type exist in the supplied text, return an empty array [] for that key. Do not invent placeholder facts.
+CRITICAL REQUIREMENT CLASSIFICATION RULES:
+- "category" describes whether compliance is compulsory: "Mandatory|Rated|Financial|Supporting".
+- "requirement_type" describes what KIND of requirement it is (controlled enum):
+    "Supplier Qualification"   -> Pass/fail condition concerning whether the bidder itself is eligible, qualified, authorized, or capable of participating (e.g. legal eligibility, conditions of participation, financial standing, certifications, mandatory experience thresholds, OEM authorization as eligibility).
+    "Technical Specification"   -> Property or characteristic of the offered solution, product, technology, or technical response.
+    "Submission Compliance"    -> Forms, signatures, packaging, portal, document format, checklist, or bid-submission mechanics.
+    "Delivery / SLA"           -> Implementation, service levels, response times, maintenance, support, uptime, or delivery performance.
+    "Commercial / Contractual" -> Pricing mechanics, payment, insurance maintained during contract, liability, IP, termination, or contract terms.
+    "Evaluation / Scored"      -> Competitive scored/rated criteria or scoring mechanics.
+    "General Compliance"       -> Mandatory procurement obligations that do not safely fit one of the above.
+- CRITICAL RULE: "Mandatory" describes whether compliance is compulsory. "Supplier Qualification" describes what KIND of requirement it is. They are independent concepts. Do NOT classify a requirement as "Supplier Qualification" merely because its category is "Mandatory"!
+  Examples:
+  - Mandatory + Supplier Qualification -> bidder must hold required registration to participate
+  - Mandatory + Technical Specification -> proposed system must meet specified technical characteristic
+  - Mandatory + Submission Compliance -> bidder must submit signed response form
+  - Mandatory + Delivery / SLA -> supplier must respond to critical incidents within four hours
+  - Mandatory + Commercial / Contractual -> supplier must accept stated liability provision
+  - Rated + Evaluation / Scored -> experience response scored at 15%
 
 Return ONLY valid JSON with this exact schema:
 {
@@ -62,6 +85,7 @@ Return ONLY valid JSON with this exact schema:
     {
       "req_id": "M1 or R1",
       "category": "Mandatory|Rated|Financial|Supporting",
+      "requirement_type": "Supplier Qualification|Technical Specification|Submission Compliance|Delivery / SLA|Commercial / Contractual|Evaluation / Scored|General Compliance",
       "description": "Full requirement text",
       "rfso_ref": "Section reference",
       "weight": null,
@@ -97,8 +121,12 @@ Do NOT invent facts not present in the normalized data model.
 CONTRACT WITH THE CONTEXT:
 - The supplied context is the authoritative normalized procurement model. All requirements, dates, evaluation
   criteria, submission rules, and conflicts have been deterministically extracted and verified.
-- Mandatory requirements are hard procurement gates. Every mandatory requirement must inform your executive
-  reasoning. Do not omit mandatory requirements from qualification_gates.
+- Mandatory requirements are compulsory procurement obligations.
+- Mandatory does NOT automatically mean supplier qualification.
+- qualification_gates contains ONLY true pass/fail bidder eligibility or qualification conditions (category == Mandatory AND requirement_type == Supplier Qualification).
+- Technical specifications, submission instructions, delivery/SLA obligations, commercial terms, and general mandatory compliance requirements MUST NOT be represented as qualification gates merely because they are Mandatory.
+- Rated/scored requirements MUST NOT become qualification gates.
+- All requirements remain available in the complete normalized context and requirements register.
 - Distinguish procurement requirements (what the buyer demands) from bidder capability (what the bidder holds).
   Do not convert UNKNOWN bidder capability into PASS.
 - Detected conflicts are unresolved unless the source model explicitly resolves them. Do not silently merge
@@ -130,7 +158,7 @@ Return ONLY valid JSON with this exact schema:
       {"title": "Deliverable title", "description": "Scope details", "category": "Core|Optional"}
     ],
     "qualification_gates": [
-      {"requirement": "Mandatory condition", "type": "Mandatory Qualification", "rfp_ref": "Ref", "disqualification_risk": "High"}
+      {"requirement": "Pass/fail bidder eligibility condition", "type": "Supplier Qualification", "rfp_ref": "Ref", "disqualification_risk": "High"}
     ],
     "evaluation_breakdown": [
       {"stage": "Technical / Price stage", "weight": "75 points / 25%", "threshold": "Threshold or null", "notes": "Scoring rules"}
@@ -2027,9 +2055,14 @@ def aggregate_stage_a_facts(chunk_facts_list: list[dict], filename: str) -> dict
                     if rk not in existing_ref_keys:
                         existing.setdefault("source_refs", []).append(ref)
                         existing_ref_keys.add(rk)
+                # If existing has unclassified / general type but chunk has more specific type, upgrade it
+                chunk_type = normalize_requirement_type(r.get("requirement_type"))
+                if chunk_type and existing.get("requirement_type") in (None, "General Compliance"):
+                    existing["requirement_type"] = chunk_type
             else:
                 r_copy = dict(r)
                 r_copy["source_refs"] = list(raw_refs)
+                r_copy["requirement_type"] = resolve_requirement_type(r)
                 req_seen[canon_key] = r_copy
                 merged["requirements"].append(r_copy)
 
@@ -2329,11 +2362,16 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
                     if not any(e.get("source_doc") == vref.get("source_doc") and e.get("page") == vref.get("page") for e in existing_refs):
                         existing_refs.append(vref)
                 existing_r["source_refs"] = existing_refs
+                # If existing has unclassified/general type but incoming has specific type, upgrade it
+                inc_type = normalize_requirement_type(r.get("requirement_type"))
+                if inc_type and existing_r.get("requirement_type") in (None, "General Compliance"):
+                    existing_r["requirement_type"] = inc_type
             else:
                 r_copy = dict(r)
                 r_copy["source_refs"] = validated_refs
                 r_copy.setdefault("qual_status", "UNKNOWN")
                 r_copy.setdefault("evidence_status", "MISSING")
+                r_copy["requirement_type"] = resolve_requirement_type(r)
                 req_seen[desc_key] = r_copy
                 normalized["requirements"].append(r_copy)
 
@@ -2603,7 +2641,7 @@ def build_submission_documents(
 
 
 _REQUIREMENT_FIELDS = (
-    "req_id", "category", "description", "rfso_ref",
+    "req_id", "category", "requirement_type", "description", "rfso_ref",
     "weight", "evidence", "source_refs", "qual_status", "evidence_status"
 )
 _SOURCE_REF_FIELDS = ("source_doc", "page", "sheet", "section", "excerpt")
@@ -2774,13 +2812,13 @@ def apply_stage_d_authoritative_sections(synth_data: dict, normalized_facts: dic
 
     all_reqs = [r for r in (normalized_facts.get("requirements") or []) if isinstance(r, dict)]
 
-    # ── qualification_gates — ALL Mandatory requirements ─────────────────────
+    # ── qualification_gates — ONLY Mandatory Supplier Qualification requirements ───
     # Canonical key: (description, rfso_ref, req_id) — preserves same description
     # from different RFSO refs or different doc versions.
-    mandatory_reqs = [r for r in all_reqs if r.get("category", "").strip().lower() == "mandatory"]
+    qual_reqs = [r for r in all_reqs if is_supplier_qualification(r)]
     seen_gates: set[tuple] = set()
     gates = []
-    for r in mandatory_reqs:
+    for r in qual_reqs:
         desc    = (r.get("description") or "").strip()
         rfso    = r.get("rfso_ref")
         req_id  = r.get("req_id")
@@ -2796,7 +2834,7 @@ def apply_stage_d_authoritative_sections(synth_data: dict, normalized_facts: dic
         rfp_ref = rfso or (", ".join(ref_parts) if ref_parts else None)
         gates.append({
             "requirement":          desc,
-            "type":                 "Mandatory Qualification",
+            "type":                 "Supplier Qualification",
             "rfp_ref":              rfp_ref,
             "req_id":               req_id,
             "disqualification_risk":"High",
