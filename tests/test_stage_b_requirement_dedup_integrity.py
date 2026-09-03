@@ -187,6 +187,25 @@ class TestStageBRequirementDedupIntegrity(unittest.TestCase):
         self.assertEqual(len(reqs), 1, "Only valid non-empty requirement must be normalized")
         self.assertEqual(reqs[0]["description"], "Valid requirement statement.")
 
+    def test_G_malformed_non_string_and_symbol_only_descriptions(self):
+        """Truthy non-string values (int, list, dict) and symbol-only strings must be safely ignored without exception."""
+        df = {
+            "requirements": [
+                {"req_id": "M1", "category": "Mandatory", "description": 123},
+                {"req_id": "M2", "category": "Mandatory", "description": ["malformed", "list"]},
+                {"req_id": "M3", "category": "Mandatory", "description": {"nested": "dict"}},
+                {"req_id": "M4", "category": "Mandatory", "description": "!!!"},
+                {"req_id": "M5", "category": "Mandatory", "description": "  $$$ #@!  "},
+                {"req_id": "M6", "category": "Mandatory", "description": "Valid requirement statement after malformed items."},
+            ]
+        }
+
+        # Must not raise AttributeError or any exception
+        normalized = normalize_package_facts([df], self.pkg_meta)
+        reqs = normalized.get("requirements", [])
+        self.assertEqual(len(reqs), 1, "Only valid requirement must remain; all malformed records must be safely ignored")
+        self.assertEqual(reqs[0]["description"], "Valid requirement statement after malformed items.")
+
 
 class TestCrossStageRequirementHandoff(unittest.TestCase):
     """Section 4: Cross-stage regression proving Stage A -> Stage B preserves distinct long-prefix requirements."""
