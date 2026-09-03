@@ -74,6 +74,19 @@ CRITICAL REQUIREMENT CLASSIFICATION RULES:
   - Mandatory + Commercial / Contractual -> supplier must accept stated liability provision
   - Rated + Evaluation / Scored -> experience response scored at 15%
 
+CRITICAL EVALUATION HIERARCHY & WEIGHTING RULES:
+- Preserve parent headings and child/subcriteria when stated or clearly structured by the source.
+- Record "parent_stage" ONLY when the source structure or wording explicitly establishes that hierarchy (e.g. sub-table or indented/numbered section).
+- Do NOT flatten nested evaluation tables.
+- Preserve the raw weight string exactly as stated in the text (e.g. "40%", "25 points").
+- "weight_basis": record "Overall" if stated or structured as contributing to the entire procurement total; record "Within Parent" if stated as weighting within its parent criterion; record "Unknown" if ambiguous.
+- Do NOT reinterpret a child percentage as an overall percentage unless the source makes that clear.
+- Do NOT invent missing weights. If a weight is not stated, leave "weight" as null.
+- Do NOT force evaluation totals to 100%. If the source states numbers that do not sum to 100%, record them faithfully.
+- Do NOT combine points and percentages into one number.
+- "threshold": minimum passing score or threshold (e.g. "70% minimum"). Thresholds are NOT weights.
+- Include "source_refs" for each evaluation criterion.
+
 Return ONLY valid JSON with this exact schema:
 {
   "doc_metadata": {
@@ -100,7 +113,16 @@ Return ONLY valid JSON with this exact schema:
     {"milestone": "Milestone name", "date": "YYYY-MM-DD", "source_doc": "<filename>"}
   ],
   "evaluation_criteria": [
-    {"stage": "Evaluation stage or criterion", "weight": "e.g. 75 points or 25%", "threshold": "e.g. 70% or null", "notes": "Scoring rules"}
+    {
+      "stage": "Evaluation stage or criterion title",
+      "parent_stage": "Parent heading title or null",
+      "hierarchy_level": 1,
+      "weight": "e.g. 75 points or 25% or null",
+      "weight_basis": "Overall|Within Parent|Unknown",
+      "threshold": "e.g. 70% or null",
+      "notes": "Scoring rules or details",
+      "source_refs": []
+    }
   ],
   "submission_rules": [
     {"item": "Submission component name", "format": "PDF / Separate File / Portal", "details": "Packaging / page limit rule", "mandatory": 1}
@@ -134,6 +156,7 @@ CONTRACT WITH THE CONTEXT:
   Do not convert UNKNOWN bidder capability into PASS.
 - Detected conflicts are unresolved unless the source model explicitly resolves them. Do not silently merge
   or dismiss TRUE_CONFLICT or REVIEW_ITEM records.
+- Evaluation Hierarchy: preserve parent-child relationships and weight basis. Do NOT treat parent and child weights as independent overall weights. Do NOT normalize totals to 100% if source totals differ. Preserve source discrepancies and mixed units. Distinguish thresholds from weights.
 - Do not invent submission documents, certifications, languages, security clearances, insurance coverage,
   or pricing facts unless they are explicitly present in the supplied normalized facts.
 - Do not infer organizational capacity or qualifications from blank or internal fields.
@@ -164,7 +187,7 @@ Return ONLY valid JSON with this exact schema:
       {"requirement": "Pass/fail bidder eligibility condition", "type": "Supplier Qualification", "rfp_ref": "Ref", "disqualification_risk": "High"}
     ],
     "evaluation_breakdown": [
-      {"stage": "Technical / Price stage", "weight": "75 points / 25%", "threshold": "Threshold or null", "notes": "Scoring rules"}
+      {"stage": "Technical / Price stage", "parent_stage": null, "weight": "75 points / 25%", "weight_basis": "Overall", "threshold": "Threshold or null", "notes": "Scoring rules"}
     ],
     "commercial_structure": [
       {"topic": "Commercial topic", "details": "Details"}
@@ -2104,24 +2127,18 @@ def aggregate_stage_a_facts(chunk_facts_list: list[dict], filename: str) -> dict
             d_copy.setdefault("source_doc", filename)
             merged["dates"].append(d_copy)
 
-    # 4. Evaluation Criteria aggregation & deduplication
-    seen_eval = set()
+    # 4. Evaluation Criteria aggregation & deduplication using evaluation_hierarchy
+    from evaluation_hierarchy import deduplicate_evaluation_criteria, normalize_evaluation_criterion
+    raw_eval_list = []
     for cf in chunk_facts_list:
         if not isinstance(cf, dict):
             continue
         for ec in cf.get("evaluation_criteria") or []:
-            if not isinstance(ec, dict):
-                continue
-            stage = (ec.get("stage") or ec.get("criterion") or "").strip()
-            weight = str(ec.get("weight") or ec.get("points") or "").strip()
-            notes = str(ec.get("notes") or "").strip()
-            canon = (stage.lower(), weight.lower(), notes.lower())
-            if not stage or canon in seen_eval:
-                continue
-            seen_eval.add(canon)
-            ec_copy = dict(ec)
-            ec_copy.setdefault("source_doc", filename)
-            merged["evaluation_criteria"].append(ec_copy)
+            if isinstance(ec, dict):
+                ec_copy = dict(ec)
+                ec_copy.setdefault("source_doc", filename)
+                raw_eval_list.append(ec_copy)
+    merged["evaluation_criteria"] = deduplicate_evaluation_criteria(raw_eval_list)
 
     # 5. Submission Rules aggregation & deduplication
     seen_sub = set()
@@ -2414,7 +2431,8 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
 
         # Merge other facts
         normalized["dates"].extend(df.get("dates", []))
-        normalized["evaluation_criteria"].extend(df.get("evaluation_criteria", []))
+        raw_pkg_eval = normalized.setdefault("_raw_evaluation_criteria", [])
+        raw_pkg_eval.extend(df.get("evaluation_criteria", []))
         normalized["submission_rules"].extend(df.get("submission_rules", []))
         normalized["deliverables"].extend(df.get("deliverables", []))
         normalized["commercial_clauses"].extend(df.get("commercial_clauses", []))
@@ -2424,6 +2442,11 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
     for r in normalized["requirements"]:
         r.pop("_semantic_candidates", None)
         r.pop("_specific_types", None)
+
+    # Deterministically deduplicate package-level evaluation criteria
+    from evaluation_hierarchy import deduplicate_evaluation_criteria
+    raw_pkg_eval = normalized.pop("_raw_evaluation_criteria", [])
+    normalized["evaluation_criteria"] = deduplicate_evaluation_criteria(raw_pkg_eval)
 
     return normalized
 
@@ -2884,33 +2907,10 @@ def apply_stage_d_authoritative_sections(synth_data: dict, normalized_facts: dic
     brief["qualification_gates"] = gates
 
     # ── evaluation_breakdown — normalized evaluation_criteria ─────────────────
-    # Canonical key: (stage, weight, threshold, notes, first source_doc)
+    # Uses evaluation_hierarchy to preserve full hierarchy while maintaining backward-compatible keys
+    from evaluation_hierarchy import deduplicate_evaluation_criteria
     eval_criteria = normalized_facts.get("evaluation_criteria", [])
-    seen_eval: set[tuple] = set()
-    evals = []
-    for ec in eval_criteria:
-        if not isinstance(ec, dict):
-            continue
-        stage    = (ec.get("stage") or ec.get("criterion") or "").strip()
-        weight   = ec.get("weight") or ec.get("points")
-        thresh   = ec.get("threshold")
-        notes    = ec.get("notes") or ec.get("criterion")
-        src_doc  = None
-        for sref in (ec.get("source_refs") or []):
-            if isinstance(sref, dict) and sref.get("source_doc"):
-                src_doc = sref["source_doc"]
-                break
-        canon = (stage, str(weight), str(thresh), str(notes), src_doc)
-        if not stage or canon in seen_eval:
-            continue
-        seen_eval.add(canon)
-        evals.append({
-            "stage":     stage,
-            "weight":    weight,
-            "threshold": thresh,
-            "notes":     notes,
-        })
-    brief["evaluation_breakdown"] = evals
+    brief["evaluation_breakdown"] = deduplicate_evaluation_criteria(eval_criteria)
 
     # ── submission_requirements — normalized submission_rules ─────────────────
     # Canonical key: (item, format, details, mandatory, first source_doc)

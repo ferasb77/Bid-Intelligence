@@ -235,15 +235,85 @@ def page_understand(bid_id: int):
     with c_eval:
         st.markdown("### 📊 How We Will Be Evaluated")
         if eval_breakdown:
-            for ev in eval_breakdown:
-                wt = f'<span style="color:#27AE60;font-weight:700">{ev.get("weight","")}</span>' if ev.get("weight") else ""
-                th = f' · Threshold: {ev.get("threshold")}' if ev.get("threshold") else ""
+            from evaluation_hierarchy import (
+                format_evaluation_for_display,
+                STATUS_VALID,
+                STATUS_SOURCE_DISCREPANCY,
+                STATUS_UNRESOLVED_HIERARCHY,
+                STATUS_MIXED_UNITS,
+                STATUS_INSUFFICIENT_DATA,
+                BASIS_WITHIN_PARENT,
+            )
+            display_rows, totals = format_evaluation_for_display(eval_breakdown)
+
+            for ev in display_rows:
+                raw_wt = ev.get("weight") or ""
+                val = ev.get("weight_value")
+                unit = ev.get("weight_unit")
+                basis = ev.get("weight_basis")
+                indent = ev.get("indent", 0)
+
+                # Format weight badge
+                if raw_wt:
+                    basis_suffix = f" (Within {ev.get('parent_stage', 'Parent')})" if basis == BASIS_WITHIN_PARENT else ""
+                    wt_html = f'<span style="color:#27AE60;font-weight:700">{raw_wt}{basis_suffix}</span>'
+                else:
+                    wt_html = ""
+
+                th_html = f' · Threshold: {ev.get("threshold")}' if ev.get("threshold") else ""
+                margin_left = f"{indent * 1.5}rem"
+                bg_col = "#111118" if indent == 0 else "#151520"
+                border_style = "border:1px solid #292832" if indent == 0 else "border:1px solid #222230;border-left:2px solid #C9A96E"
+
                 st.markdown(
-                    f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;'
-                    f'padding:.6rem .9rem;margin:.3rem 0;font-size:.85rem">'
-                    f'<strong>{ev.get("stage","Evaluation Stage")}</strong> — {wt}{th}'
+                    f'<div style="background:{bg_col};{border_style};border-radius:4px;'
+                    f'padding:.55rem .9rem;margin:.3rem 0;margin-left:{margin_left};font-size:.85rem">'
+                    f'<strong>{ev.get("stage","Evaluation Stage")}</strong> {("— " + wt_html) if wt_html else ""}{th_html}'
                     f'{"<br><span style=font-size:.76rem;color:#A9A69D>" + ev.get("notes","") + "</span>" if ev.get("notes") else ""}'
                     f'</div>',
+                    unsafe_allow_html=True
+                )
+
+            # Overall total and status presentation
+            status = totals.get("status")
+            overall_tot = totals.get("overall_total")
+            overall_unit = totals.get("overall_unit")
+
+            if status == STATUS_VALID:
+                tot_str = f"{overall_tot:.0f}%" if overall_unit == "Percent" else f"{overall_tot} {overall_unit}"
+                st.markdown(
+                    f'<div style="background:#0F1F15;border:1px solid #27AE60;border-radius:4px;padding:.5rem .8rem;margin-top:.6rem;font-size:.84rem;color:#2ECC71;font-weight:600">'
+                    f'✓ Top-level weighting: {tot_str}'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+            elif status == STATUS_SOURCE_DISCREPANCY:
+                tot_str = f"{overall_tot:.1f}%" if overall_unit == "Percent" else f"{overall_tot} {overall_unit}"
+                st.markdown(
+                    f'<div style="background:#2A1A10;border:1px solid #E67E22;border-radius:4px;padding:.5rem .8rem;margin-top:.6rem;font-size:.84rem;color:#E67E22;font-weight:600">'
+                    f'⚠ Source weighting totals {tot_str} — review procurement documents for discrepancy.'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+            elif status == STATUS_UNRESOLVED_HIERARCHY:
+                st.markdown(
+                    '<div style="background:#201A24;border:1px solid #9B59B6;border-radius:4px;padding:.5rem .8rem;margin-top:.6rem;font-size:.84rem;color:#D2B4DE;font-weight:600">'
+                    '⚠ Overall weighting cannot be safely calculated from the source structure.'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+            elif status == STATUS_MIXED_UNITS:
+                st.markdown(
+                    '<div style="background:#201A24;border:1px solid #3498DB;border-radius:4px;padding:.5rem .8rem;margin-top:.6rem;font-size:.84rem;color:#85C1E9;font-weight:600">'
+                    'ℹ Percent and point-based scoring are shown separately.'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+            elif status == STATUS_INSUFFICIENT_DATA:
+                st.markdown(
+                    '<div style="background:#1C1C24;border:1px solid #566573;border-radius:4px;padding:.5rem .8rem;margin-top:.6rem;font-size:.84rem;color:#A6ACAF">'
+                    'ℹ Evaluation weighting details incomplete in tender instructions.'
+                    '</div>',
                     unsafe_allow_html=True
                 )
         else:
