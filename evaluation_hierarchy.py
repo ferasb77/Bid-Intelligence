@@ -143,6 +143,10 @@ def infer_evaluation_role(stage: str, parent_stage: str = None, level: int = 1, 
             return ROLE_PROCESS_STAGE
     if level > 1 or parent_stage:
         return ROLE_SUBCRITERION
+    # Narrative process headings (e.g. 'Commercial Evaluation', 'Price Assessment Formula') without weights describe evaluation methodology
+    if any(k in s_lower for k in [" evaluation", " assessment", " methodology", " procedure", " mechanism", " formula"]):
+        if not weight or str(weight).strip().lower() in ("none", "null", ""):
+            return ROLE_PROCESS_STAGE
     # Standard procurement award criteria topics even without weight stated
     if any(k in s_lower for k in ["technical", "commercial", "financial", "price", "pricing", "quality", "social value", "experience", "methodology", "scope"]):
         return ROLE_AWARD_CRITERION
@@ -212,7 +216,11 @@ def normalize_evaluation_criterion(ec: dict) -> dict:
 
     # Evaluation role
     role = ec.get("evaluation_role")
-    if not role or role == ROLE_UNKNOWN:
+    # If the model marked a purely unweighted narrative process/methodology heading as Award Criterion,
+    # conservatively correct it to Process / Methodology
+    if role == ROLE_AWARD_CRITERION and not raw_weight and any(k in stage.lower() for k in [" evaluation", " assessment", " methodology", " procedure", " mechanism", " formula"]):
+        role = ROLE_PROCESS_STAGE
+    elif not role or role == ROLE_UNKNOWN:
         role = infer_evaluation_role(stage, parent_stage, hierarchy_level, raw_weight)
 
     # Weight parsing
