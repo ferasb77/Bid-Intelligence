@@ -1892,16 +1892,7 @@ def _clean_raw(raw: str) -> str:
 
 
 def _safe_parse_json(raw: str) -> dict:
-    # 1. First try analyst._parse_json if it returns a dict
-    try:
-        from analyst import _parse_json
-        res = _parse_json(raw)
-        if isinstance(res, dict) and not res.get("_truncated"):
-            return res
-    except Exception:
-        pass
-
-    # 2. Try direct json.loads on cleaned text
+    # 1. Direct json.loads on cleaned text (fast path)
     try:
         cleaned = _clean_raw(raw)
         res = json.loads(cleaned)
@@ -1910,27 +1901,58 @@ def _safe_parse_json(raw: str) -> dict:
     except Exception:
         pass
 
-    # 3. Dedicated dictionary repair for truncated JSON outputs
-    # Strips code fences and scans backwards to balance unclosed arrays and objects
+    # 2. Try analyst._parse_json if it returned a complete dict
+    try:
+        from analyst import _parse_json
+        res = _parse_json(raw)
+        if isinstance(res, dict) and not res.get("_truncated"):
+            return res
+    except Exception:
+        pass
+
+    # 3. Dedicated stack-based dictionary repair for truncated JSON outputs
+    # Strips code fences, scans backwards from cut point, and balances open tokens using LIFO container stack
     t = raw.strip()
     t = re.sub(r"^```[a-z]*\s*\n?", "", t, flags=re.IGNORECASE)
     t = re.sub(r"\n?```\s*$", "", t).strip()
     start_idx = t.find('{')
     if start_idx != -1:
-        frag = t[start_idx:]
-        for end_pos in range(len(frag) - 1, 0, -1):
-            if frag[end_pos] in ('}', ']', '"', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'e', 'l', 's'):
-                chunk = frag[:end_pos + 1]
-                diff_brace = chunk.count('{') - chunk.count('}')
-                diff_bracket = chunk.count('[') - chunk.count(']')
-                if diff_brace >= 0 and diff_bracket >= 0:
-                    repaired = chunk + (']' * diff_bracket) + ('}' * diff_brace)
-                    try:
-                        res = json.loads(repaired)
-                        if isinstance(res, dict):
-                            return res
-                    except json.JSONDecodeError:
-                        pass
+        src = t[start_idx:]
+        max_scan = min(len(src), 4000)
+        for end_pos in range(len(src) - 1, len(src) - max_scan, -1):
+            prefix = src[:end_pos + 1]
+            stack = []
+            in_str, esc = False, False
+            valid = True
+            for ch in prefix:
+                if esc:
+                    esc = False
+                    continue
+                if ch == "\\" and in_str:
+                    esc = True
+                    continue
+                if ch == '"' and not esc:
+                    in_str = not in_str
+                    continue
+                if in_str:
+                    continue
+                if ch in ('{', '['):
+                    stack.append('}' if ch == '{' else ']')
+                elif ch in ('}', ']'):
+                    if not stack or stack[-1] != ch:
+                        valid = False
+                        break
+                    stack.pop()
+            if not valid or in_str:
+                continue
+            suffix = "".join(reversed(stack))
+            candidate = prefix + suffix
+            try:
+                res = json.loads(candidate)
+                if isinstance(res, dict):
+                    return res
+            except json.JSONDecodeError:
+                pass
 
     return {}
 
