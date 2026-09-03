@@ -33,6 +33,8 @@ from extractor import (
     STAGE_D_SYNTHESIS_PROMPT,
     apply_stage_d_authoritative_sections,
     _compact_requirement,
+    aggregate_stage_a_facts,
+    normalize_package_facts,
 )
 from analyst import bid_no_bid_score
 
@@ -223,6 +225,16 @@ class TestRequirementTypeNormalizationAndResolution(unittest.TestCase):
             ("D", "All items must be brand new and not refurbished, used, or end-of-life hardware.", False),
             ("E", "Supplier must confirm no historical grounds for mandatory exclusion or debarment.", True),
             ("F", "Interactive whiteboard must be wall-mounted and delivered with 3-year warranty.", False),
+            # Narrowed cues: generic standalone words must be False
+            ("NEG_1", "Supplier must provide registered name and confirm bidding model...", False),
+            ("NEG_2", "Bidder must describe consortium structure.", False),
+            ("NEG_3", "Provide guarantor name.", False),
+            ("NEG_4", "Solution must demonstrate technical capability...", False),
+            # Narrowed cues: context-bound must be True
+            ("POS_1", "Consortium member relied upon to satisfy conditions of participation...", True),
+            ("POS_2", "Guarantor financial standing must satisfy the minimum financial condition...", True),
+            ("POS_3", "Bidder must demonstrate organizational capability and failure results in exclusion...", True),
+            ("POS_4", "Bidder must demonstrate minimum 3 years previous experience as a condition of participation...", True),
         ]
 
         for label, text, expected_gate in test_cases:
@@ -319,6 +331,87 @@ class TestConflictSafeSemanticMerging(unittest.TestCase):
         # Supplier + Technical + Supplier -> General Compliance (conflict once observed persists)
         seq2 = [TYPE_SUPPLIER_QUALIFICATION, TYPE_TECHNICAL_SPECIFICATION, TYPE_SUPPLIER_QUALIFICATION]
         self.assertEqual(resolve_candidate_requirement_types(seq2), TYPE_GENERAL_COMPLIANCE)
+
+    def test_stage_a_aggregation_missing_explicit_type_preserves_financial_qualification(self):
+        """Test A: Two identical requirements missing explicit type, financial standing qualification."""
+        chunk_facts = [
+            {"requirements": [{"req_id": "M1", "category": "Mandatory", "description": "Supplier must demonstrate financial standing with minimum turnover."}]},
+            {"requirements": [{"req_id": "M1", "category": "Mandatory", "description": "Supplier must demonstrate financial standing with minimum turnover."}]},
+        ]
+        doc_facts = aggregate_stage_a_facts(chunk_facts, "ITT.pdf")
+        reqs = doc_facts["requirements"]
+        self.assertEqual(len(reqs), 1)
+        self.assertEqual(reqs[0]["requirement_type"], TYPE_SUPPLIER_QUALIFICATION)
+        self.assertEqual(reqs[0]["_semantic_candidates"], [TYPE_SUPPLIER_QUALIFICATION])
+
+    def test_stage_a_aggregation_missing_explicit_type_preserves_technical_specification(self):
+        """Test B: Two identical requirements missing explicit type, technical specification."""
+        chunk_facts = [
+            {"requirements": [{"req_id": "M2", "category": "Mandatory", "description": "Hardware specification: smart board display must support 4K resolution at 60Hz."}]},
+            {"requirements": [{"req_id": "M2", "category": "Mandatory", "description": "Hardware specification: smart board display must support 4K resolution at 60Hz."}]},
+        ]
+        doc_facts = aggregate_stage_a_facts(chunk_facts, "ITT.pdf")
+        reqs = doc_facts["requirements"]
+        self.assertEqual(len(reqs), 1)
+        self.assertEqual(reqs[0]["requirement_type"], TYPE_TECHNICAL_SPECIFICATION)
+        self.assertEqual(reqs[0]["_semantic_candidates"], [TYPE_TECHNICAL_SPECIFICATION])
+
+    def test_stage_a_conflict_retained_and_prevents_stage_b_resurrection(self):
+        """Test C: Stage A conflict (Supplier Qual + Tech Spec) retained and not resurrected by Stage B."""
+        # Stage A in Doc 1 sees conflicting types for the same requirement
+        chunk_facts_doc1 = [
+            {"requirements": [{"req_id": "M1", "category": "Mandatory", "requirement_type": TYPE_SUPPLIER_QUALIFICATION, "description": "Same shared requirement across docs."}]},
+            {"requirements": [{"req_id": "M1", "category": "Mandatory", "requirement_type": TYPE_TECHNICAL_SPECIFICATION, "description": "Same shared requirement across docs."}]},
+        ]
+        doc1_facts = aggregate_stage_a_facts(chunk_facts_doc1, "Doc1.pdf")
+        self.assertEqual(doc1_facts["requirements"][0]["requirement_type"], TYPE_GENERAL_COMPLIANCE)
+        self.assertIn(TYPE_SUPPLIER_QUALIFICATION, doc1_facts["requirements"][0]["_semantic_candidates"])
+        self.assertIn(TYPE_TECHNICAL_SPECIFICATION, doc1_facts["requirements"][0]["_semantic_candidates"])
+
+        # Doc 2 sees Supplier Qualification for the same requirement
+        chunk_facts_doc2 = [
+            {"requirements": [{"req_id": "M1", "category": "Mandatory", "requirement_type": TYPE_SUPPLIER_QUALIFICATION, "description": "Same shared requirement across docs."}]},
+        ]
+        doc2_facts = aggregate_stage_a_facts(chunk_facts_doc2, "Doc2.pdf")
+
+        # Stage B normalization across both docs
+        pkg = normalize_package_facts([doc1_facts, doc2_facts], {"source_files": ["Doc1.pdf", "Doc2.pdf"]})
+        pkg_reqs = pkg["requirements"]
+        self.assertEqual(len(pkg_reqs), 1)
+        # MUST remain General Compliance, not resurrected to Supplier Qualification!
+        self.assertEqual(pkg_reqs[0]["requirement_type"], TYPE_GENERAL_COMPLIANCE)
+
+    def test_stage_b_all_document_permutations_preserve_conflict(self):
+        """Test D: Run all permutations across documents for SQ, TS, SQ -> General Compliance in every ordering."""
+        import itertools
+        obs_defs = [
+            ("DocSQ1.pdf", TYPE_SUPPLIER_QUALIFICATION),
+            ("DocTS.pdf", TYPE_TECHNICAL_SPECIFICATION),
+            ("DocSQ2.pdf", TYPE_SUPPLIER_QUALIFICATION),
+        ]
+
+        for perm in itertools.permutations(obs_defs):
+            doc_facts_list = []
+            for doc_name, req_type in perm:
+                cf = [{"requirements": [{"req_id": "M1", "category": "Mandatory", "requirement_type": req_type, "description": "Permutation test requirement."}]}]
+                df = aggregate_stage_a_facts(cf, doc_name)
+                doc_facts_list.append(df)
+
+            pkg = normalize_package_facts(doc_facts_list, {"source_files": [d[0] for d in perm]})
+            self.assertEqual(len(pkg["requirements"]), 1)
+            self.assertEqual(
+                pkg["requirements"][0]["requirement_type"],
+                TYPE_GENERAL_COMPLIANCE,
+                f"Permutation {[p[1] for p in perm]} failed to resolve to General Compliance"
+            )
+
+    def test_stage_b_final_requirements_contain_no_internal_semantic_candidates(self):
+        """Test E: Confirm final normalized requirements contain NO internal _semantic_candidates field."""
+        cf1 = [{"requirements": [{"req_id": "M1", "category": "Mandatory", "requirement_type": TYPE_SUPPLIER_QUALIFICATION, "description": "Some requirement."}]}]
+        df1 = aggregate_stage_a_facts(cf1, "Doc1.pdf")
+        pkg = normalize_package_facts([df1], {"source_files": ["Doc1.pdf"]})
+        self.assertNotIn("_semantic_candidates", pkg["requirements"][0])
+        self.assertNotIn("_specific_types", pkg["requirements"][0])
 
 
 class TestStageDAuthoritativeSectionRebuild(unittest.TestCase):

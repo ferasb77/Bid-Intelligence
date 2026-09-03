@@ -2050,7 +2050,18 @@ def aggregate_stage_a_facts(chunk_facts_list: list[dict], filename: str) -> dict
 
             canon_key = (norm_desc, cat.lower(), rfso.lower())
 
-            st = normalize_requirement_type(r.get("requirement_type"))
+            explicit = normalize_requirement_type(r.get("requirement_type"))
+            candidate = explicit or resolve_requirement_type(r)
+
+            incoming_candidates = set()
+            if isinstance(r.get("_semantic_candidates"), (list, set, tuple)):
+                for c in r["_semantic_candidates"]:
+                    norm_c = normalize_requirement_type(c)
+                    if norm_c in SPECIFIC_REQUIREMENT_TYPES:
+                        incoming_candidates.add(norm_c)
+            if candidate in SPECIFIC_REQUIREMENT_TYPES:
+                incoming_candidates.add(candidate)
+
             if canon_key in req_seen:
                 existing = req_seen[canon_key]
                 existing_ref_keys = {_source_ref_key(ref) for ref in existing.get("source_refs", [])}
@@ -2060,17 +2071,16 @@ def aggregate_stage_a_facts(chunk_facts_list: list[dict], filename: str) -> dict
                         existing.setdefault("source_refs", []).append(ref)
                         existing_ref_keys.add(rk)
                 # True N-way order-independent candidate accumulation
-                spec_set = existing.setdefault("_specific_types", set())
-                if st in SPECIFIC_REQUIREMENT_TYPES:
-                    spec_set.add(st)
+                spec_set = set(existing.get("_semantic_candidates") or [])
+                spec_set.update(incoming_candidates)
+                existing["_semantic_candidates"] = sorted(spec_set)
                 existing["requirement_type"] = resolve_candidate_requirement_types(spec_set)
             else:
                 r_copy = dict(r)
                 r_copy["source_refs"] = list(raw_refs)
-                spec_set = {st} if st in SPECIFIC_REQUIREMENT_TYPES else set()
-                r_copy["_specific_types"] = spec_set
-                if spec_set:
-                    r_copy["requirement_type"] = resolve_candidate_requirement_types(spec_set)
+                r_copy["_semantic_candidates"] = sorted(incoming_candidates)
+                if incoming_candidates:
+                    r_copy["requirement_type"] = resolve_candidate_requirement_types(incoming_candidates)
                 else:
                     r_copy["requirement_type"] = resolve_requirement_type(r)
                 req_seen[canon_key] = r_copy
@@ -2185,10 +2195,6 @@ def aggregate_stage_a_facts(chunk_facts_list: list[dict], filename: str) -> dict
             cr_copy = dict(cr)
             cr_copy.setdefault("source_doc", filename)
             merged["contract_risks"].append(cr_copy)
-
-    # Clean up internal candidate accumulation tracking
-    for r in merged["requirements"]:
-        r.pop("_specific_types", None)
 
     return merged
 
@@ -2368,7 +2374,18 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
             # Validate source references
             validated_refs = validate_source_refs(r.get("source_refs", []), package_metadata)
             
-            st = normalize_requirement_type(r.get("requirement_type"))
+            explicit = normalize_requirement_type(r.get("requirement_type"))
+            candidate = explicit or resolve_requirement_type(r)
+
+            incoming_candidates = set()
+            if isinstance(r.get("_semantic_candidates"), (list, set, tuple)):
+                for c in r["_semantic_candidates"]:
+                    norm_c = normalize_requirement_type(c)
+                    if norm_c in SPECIFIC_REQUIREMENT_TYPES:
+                        incoming_candidates.add(norm_c)
+            if candidate in SPECIFIC_REQUIREMENT_TYPES:
+                incoming_candidates.add(candidate)
+
             if desc_key in req_seen:
                 # Merge source references into existing requirement
                 existing_r = req_seen[desc_key]
@@ -2377,20 +2394,19 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
                     if not any(e.get("source_doc") == vref.get("source_doc") and e.get("page") == vref.get("page") for e in existing_refs):
                         existing_refs.append(vref)
                 existing_r["source_refs"] = existing_refs
-                # True N-way order-independent candidate accumulation
-                spec_set = existing_r.setdefault("_specific_types", set())
-                if st in SPECIFIC_REQUIREMENT_TYPES:
-                    spec_set.add(st)
+                # True N-way order-independent candidate accumulation across all documents
+                spec_set = set(existing_r.get("_semantic_candidates") or [])
+                spec_set.update(incoming_candidates)
+                existing_r["_semantic_candidates"] = sorted(spec_set)
                 existing_r["requirement_type"] = resolve_candidate_requirement_types(spec_set)
             else:
                 r_copy = dict(r)
                 r_copy["source_refs"] = validated_refs
                 r_copy.setdefault("qual_status", "UNKNOWN")
                 r_copy.setdefault("evidence_status", "MISSING")
-                spec_set = {st} if st in SPECIFIC_REQUIREMENT_TYPES else set()
-                r_copy["_specific_types"] = spec_set
-                if spec_set:
-                    r_copy["requirement_type"] = resolve_candidate_requirement_types(spec_set)
+                r_copy["_semantic_candidates"] = sorted(incoming_candidates)
+                if incoming_candidates:
+                    r_copy["requirement_type"] = resolve_candidate_requirement_types(incoming_candidates)
                 else:
                     r_copy["requirement_type"] = resolve_requirement_type(r)
                 req_seen[desc_key] = r_copy
@@ -2404,8 +2420,9 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
         normalized["commercial_clauses"].extend(df.get("commercial_clauses", []))
         normalized["contract_risks"].extend(df.get("contract_risks", []))
 
-    # Clean up internal candidate accumulation tracking
+    # Clean up internal candidate accumulation tracking from final normalized requirements
     for r in normalized["requirements"]:
+        r.pop("_semantic_candidates", None)
         r.pop("_specific_types", None)
 
     return normalized

@@ -164,7 +164,8 @@ _EXACT_ALIAS_MAP = {
 _CANONICAL_LOWER_MAP = {t.lower(): t for t in ALLOWED_REQUIREMENT_TYPES}
 
 # Strong supplier qualification / bidder eligibility cues for fallback detection and hard-gate safety barrier.
-# NOTE: Generic modal words ("must", "shall", "mandatory", "required") and solution/product specs are strictly EXCLUDED.
+# NOTE: Generic modal words ("must", "shall", "mandatory", "required"), standalone disclosure words
+# (bidding model, consortium, guarantor, demonstrable experience) and solution/product specs are strictly EXCLUDED.
 _STRONG_QUALIFICATION_CUES = [
     r"\bcondition[s]?\s+of\s+participation\b",
     r"\b(?:minimum\s+)?qualification[s]?\s+(?:criteria|requirements?|standards?)\b",
@@ -182,12 +183,14 @@ _STRONG_QUALIFICATION_CUES = [
     r"\bauthorized\s+by\s+(?:the\s+)?(?:respective\s+)?oem\b",
     r"\bsecurity\s+clearance\s+threshold\b",
     r"\b(?:debarment|debarred|exclusion\s+grounds|excludable|excluded\s+supplier)\b",
-    r"\bright\s+to\s+exclude\b",
+    r"\b(?:right\s+to\s+exclude|results?\s+in\s+exclusion|subject\s+to\s+exclusion)\b",
     r"\b(?:tax\s+registration|trade\s+license)\b",
-    r"\b(?:demonstrable|previous)\s+experience\b",
-    r"\b(?:organizational|technical)\s+capability\b",
-    r"\b(?:human\s+and\s+technical\s+resources|healthy\s+supply\s+chains)\b",
-    r"\b(?:bidding\s+model|consortium|guarantor)\b",
+    # Context-bound experience, capability, and bidding structure
+    r"\b(?:bidder|supplier|vendor|participant|proponent|tenderer)s?\s+must\s+have\s+demonstrable\s+experience\b",
+    r"\b(?:previous|demonstrable)\s+experience\s+(?:as\s+a\s+condition\s+of\s+participation|required\s+for\s+qualification)\b",
+    r"\b(?:demonstrating\s+technical\s+ability|organizational\s+qualifications).*?(?:exclude|exclusion|condition[s]?\s+of\s+participation)\b",
+    r"\b(?:organizational|technical)\s+capability\s+to\s+(?:supply|install|perform|provide)\b",
+    r"\b(?:consortium|associated\s+person[s]?|guarantor).*?(?:condition[s]?\s+of\s+participation|financial\s+(?:capacity|standing)|exclusion|debarment)\b",
 ]
 
 _QUAL_CUES_RE = re.compile("|".join(_STRONG_QUALIFICATION_CUES), re.IGNORECASE)
