@@ -87,6 +87,28 @@ class TestStageAChunkingAndAggregation(unittest.TestCase):
         for ch in chunks:
             self.assertIn("[[SOURCE: spec.docx", ch)
 
+    def test_D2_hard_chunk_size_guarantee_single_oversized_line(self):
+        """One source marker + one 40,000-char single line with max_chunk_chars=16,000."""
+        marker = "[[SOURCE: spec.pdf | PAGE: 1]]\n"
+        single_line = "B" * 40000
+        text = marker + single_line
+        chunks = chunk_document_text(text, max_chunk_chars=16000)
+
+        # Every resulting chunk <= 16,000
+        for idx, ch in enumerate(chunks):
+            self.assertLessEqual(len(ch), 16000, f"Chunk {idx+1} length {len(ch)} exceeds 16,000")
+            self.assertIn("[[SOURCE: spec.pdf | PAGE: 1]]", ch, f"Chunk {idx+1} missing inherited source marker")
+
+        # Substantive content is lossless
+        recovered_parts = []
+        for ch in chunks:
+            lines = ch.splitlines(keepends=True)
+            body = [l for l in lines if not l.startswith("[[SOURCE:")]
+            recovered_parts.append("".join(body))
+        recovered_content = "".join(recovered_parts)
+        self.assertEqual(len(recovered_content), 40000)
+        self.assertEqual(recovered_content, single_line)
+
     def test_E_deterministic_aggregation(self):
         """Same chunk outputs in same order produce byte-equivalent normalized document aggregation."""
         chunk1 = {
@@ -149,6 +171,31 @@ class TestStageAChunkingAndAggregation(unittest.TestCase):
         }
         merged = aggregate_stage_a_facts([chunk1, chunk2], "doc.pdf")
         self.assertEqual(len(merged["requirements"]), 2, "Must preserve both distinct requirements despite duplicate req_id M1")
+
+    def test_G2_long_common_prefix_different_suffix(self):
+        """Two requirements with identical >80 char normalized prefix but different text afterward must NOT collapse."""
+        prefix = "The contractor and all dedicated personnel shall strictly comply with quality management system standards under ISO 9001 and ensure that all documentation is audited annually by an accredited registrar "
+        self.assertGreater(len(prefix), 80)
+        chunk1 = {
+            "requirements": [{
+                "req_id": "M1",
+                "category": "Mandatory",
+                "rfso_ref": "Section 4.1",
+                "description": prefix + "specifically covering hardware assembly processes.",
+                "source_refs": [{"source_doc": "doc.pdf", "page": 4, "excerpt": "assembly"}]
+            }]
+        }
+        chunk2 = {
+            "requirements": [{
+                "req_id": "M1",
+                "category": "Mandatory",
+                "rfso_ref": "Section 4.1",
+                "description": prefix + "specifically covering software testing and quality control.",
+                "source_refs": [{"source_doc": "doc.pdf", "page": 8, "excerpt": "software"}]
+            }]
+        }
+        merged = aggregate_stage_a_facts([chunk1, chunk2], "doc.pdf")
+        self.assertEqual(len(merged["requirements"]), 2, "Both requirements sharing >80 char prefix must survive aggregation")
 
     def test_H_same_requirement_text_different_physical_source_refs(self):
         """Same requirement text with different physical source_refs preserves provenance correctly."""
@@ -337,6 +384,58 @@ class TestMockedStageAOrchestration(unittest.TestCase):
         self.assertGreaterEqual(call_count[0], 2, "Must trigger controlled recovery")
         self.assertEqual(len(facts["requirements"]), 1)
         self.assertEqual(facts["requirements"][0]["description"], "Contractor shall deliver goods")
+        self.assertEqual(facts["_extraction_diagnostic"]["status"], "VERIFIED_ADEQUATE")
+
+    def test_controlled_recovery_family_specific_merge(self):
+        """Original extraction has 100 reqs but zero dates; dates flagged suspicious; recovery has fewer reqs but valid date."""
+        text = (
+            "[[SOURCE: doc.pdf | PAGE: 1]]\n"
+            "Supplier shall deliver goods. Contractor must follow guidelines.\n"
+            "The tender deadline is strict. The closing date is 2026-11-15.\n"
+            "Response deadline is firm. Timescale for completion is 6 months.\n"
+            "Clarification deadline must be observed per timescale.\n"
+            + ("Additional tender content. " * 500)
+        )
+
+        call_count = [0]
+        mock_client = MagicMock()
+
+        def side_effect(*args, **kwargs):
+            call_count[0] += 1
+            resp = MagicMock()
+            if call_count[0] == 1:
+                # First pass: returns 100 requirements, but 0 dates (dates flagged suspicious)
+                reqs = [
+                    {"req_id": f"M{i}", "category": "Mandatory", "description": f"Mandatory requirement number {i}"}
+                    for i in range(1, 101)
+                ]
+                data = {"requirements": reqs, "dates": []}
+                resp.content = [MagicMock(text=json.dumps(data))]
+            else:
+                # Recovery pass: returns fewer requirements (e.g. 5) but returns the valid date
+                reqs = [
+                    {"req_id": f"M{i}", "category": "Mandatory", "description": f"Mandatory requirement number {i}"}
+                    for i in range(1, 6)
+                ]
+                dates = [{"milestone": "Closing Date", "date": "2026-11-15"}]
+                data = {"requirements": reqs, "dates": dates}
+                resp.content = [MagicMock(text=json.dumps(data))]
+            return resp
+
+        mock_client.messages.create.side_effect = side_effect
+
+        with patch("extractor.get_anthropic_client", return_value=mock_client):
+            facts = extract_document_facts(text, "doc.pdf", "test_key")
+
+        # Must trigger recovery
+        self.assertGreaterEqual(call_count[0], 2, "Must trigger controlled recovery")
+        # All 100 original requirements must remain (never discarded)
+        self.assertEqual(len(facts["requirements"]), 100, "All original 100 requirements must remain")
+        # Recovered date must be present
+        self.assertEqual(len(facts["dates"]), 1, "Recovered date must be present in aggregated facts")
+        self.assertEqual(facts["dates"][0]["milestone"], "Closing Date")
+        self.assertEqual(facts["dates"][0]["date"], "2026-11-15")
+        # Date under-coverage resolved
         self.assertEqual(facts["_extraction_diagnostic"]["status"], "VERIFIED_ADEQUATE")
 
 

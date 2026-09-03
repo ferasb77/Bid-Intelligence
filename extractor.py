@@ -1915,6 +1915,26 @@ def chunk_document_text(doc_text: str, max_chunk_chars: int = _STAGE_A_MAX_CHUNK
             sub = []
             sub_len = 0
             for line in lines:
+                if len(line) > max_chunk_chars:
+                    if sub:
+                        chunks.append("".join(sub))
+                        sub = []
+                        sub_len = 0
+                    p = line
+                    prefix = leading_marker if leading_marker and not p.startswith("[[SOURCE:") else ""
+                    while len(p) > 0:
+                        max_slice = max_chunk_chars - len(prefix)
+                        if max_slice <= 0:
+                            take = p[:max_chunk_chars]
+                            chunks.append(take)
+                            p = p[max_chunk_chars:]
+                        else:
+                            take = p[:max_slice]
+                            chunks.append(prefix + take)
+                            p = p[max_slice:]
+                            prefix = leading_marker
+                    continue
+
                 if sub_len + len(line) > max_chunk_chars and sub:
                     chunks.append("".join(sub))
                     sub = [leading_marker, line] if leading_marker and not line.startswith("[[SOURCE:") else [line]
@@ -1991,7 +2011,7 @@ def aggregate_stage_a_facts(chunk_facts_list: list[dict], filename: str) -> dict
                 continue
             cat = (r.get("category") or "").strip()
             rfso = (r.get("rfso_ref") or "").strip()
-            norm_desc = re.sub(r'\W+', '', desc.lower())[:80]
+            norm_desc = re.sub(r'\W+', '', desc.lower())
 
             raw_refs = r.get("source_refs") or []
             if not raw_refs:
@@ -2231,24 +2251,12 @@ def extract_document_facts(doc_text: str, filename: str, api_key: str) -> dict:
                 rres = _extract_chunk_facts(schunk, filename, api_key, client=client)
                 retry_results.append(rres)
             retry_aggregated = aggregate_stage_a_facts(retry_results, filename)
-            retry_cov = inspect_stage_a_coverage(doc_text, retry_aggregated, min_signal_count=5)
-            # If retry yielded more facts, adopt it
-            total_retry_facts = (
-                len(retry_aggregated.get("requirements", [])) +
-                len(retry_aggregated.get("dates", [])) +
-                len(retry_aggregated.get("evaluation_criteria", [])) +
-                len(retry_aggregated.get("submission_rules", []))
-            )
-            total_cur_facts = (
-                len(aggregated.get("requirements", [])) +
-                len(aggregated.get("dates", [])) +
-                len(aggregated.get("evaluation_criteria", [])) +
-                len(aggregated.get("submission_rules", []))
-            )
-            if total_retry_facts > total_cur_facts:
-                aggregated = retry_aggregated
-                coverage = retry_cov
-            else:
+            # Deterministically merge original aggregated facts with retry facts
+            merged_recovery = aggregate_stage_a_facts([aggregated, retry_aggregated], filename)
+            merged_cov = inspect_stage_a_coverage(doc_text, merged_recovery, min_signal_count=5)
+            aggregated = merged_recovery
+            coverage = merged_cov
+            if not coverage["is_suspicious"]:
                 break
         else:
             # Re-extract chunks that might have dropped facts
