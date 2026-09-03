@@ -20,7 +20,9 @@ from requirement_semantics import (
     ALLOWED_REQUIREMENT_TYPES,
     normalize_requirement_type,
     merge_requirement_types,
+    resolve_candidate_requirement_types,
     resolve_requirement_type,
+    has_supplier_qualification_evidence,
     is_supplier_qualification,
     normalize_requirement_identity_text,
     select_qualification_requirements,
@@ -204,9 +206,47 @@ class TestRequirementTypeNormalizationAndResolution(unittest.TestCase):
         }
         self.assertFalse(is_supplier_qualification(req))
 
+    def test_hard_gate_evidence_safety_barrier_cases(self):
+        """
+        Verify hard-gate evidence barrier:
+        A: 'Bidder must possess valid trade license and tax registration.' -> True
+        B: 'Vendor must be an authorized OEM tier-1 gold partner.' -> True
+        C: 'Display must support 4K resolution at 60Hz and include HDMI 2.1 ports.' -> False
+        D: 'All items must be brand new and not refurbished, used, or end-of-life hardware.' -> False
+        E: 'Supplier must confirm no historical grounds for mandatory exclusion or debarment.' -> True
+        F: 'Interactive whiteboard must be wall-mounted and delivered with 3-year warranty.' -> False
+        """
+        test_cases = [
+            ("A", "Bidder must possess valid trade license and tax registration.", True),
+            ("B", "Vendor must be an authorized OEM tier-1 gold partner.", True),
+            ("C", "Display must support 4K resolution at 60Hz and include HDMI 2.1 ports.", False),
+            ("D", "All items must be brand new and not refurbished, used, or end-of-life hardware.", False),
+            ("E", "Supplier must confirm no historical grounds for mandatory exclusion or debarment.", True),
+            ("F", "Interactive whiteboard must be wall-mounted and delivered with 3-year warranty.", False),
+        ]
+
+        for label, text, expected_gate in test_cases:
+            has_ev = has_supplier_qualification_evidence({"description": text})
+            self.assertEqual(
+                has_ev,
+                expected_gate,
+                f"Case {label} has_supplier_qualification_evidence mismatch for: {text}"
+            )
+            # Even if Stage A erroneously labelled it Supplier Qualification:
+            req = {
+                "category": "Mandatory",
+                "requirement_type": TYPE_SUPPLIER_QUALIFICATION,
+                "description": text,
+            }
+            self.assertEqual(
+                is_supplier_qualification(req),
+                expected_gate,
+                f"Case {label} is_supplier_qualification mismatch for: {text}"
+            )
+
 
 class TestConflictSafeSemanticMerging(unittest.TestCase):
-    """Verify order-independent, commutative semantic type merging."""
+    """Verify order-independent, commutative and associative semantic type merging."""
 
     def test_same_specific_types_preserve_type(self):
         self.assertEqual(
@@ -251,6 +291,34 @@ class TestConflictSafeSemanticMerging(unittest.TestCase):
                 r1 = merge_requirement_types(t1, t2)
                 r2 = merge_requirement_types(t2, t1)
                 self.assertEqual(r1, r2, f"Commutativity failed for ({t1}, {t2}): {r1} != {r2}")
+
+    def test_n_way_candidate_aggregation_all_permutations(self):
+        """
+        Verify that 3+ conflicting types resolve identically to General Compliance
+        under all 6 permutations.
+        """
+        import itertools
+        conflicting_types = [
+            TYPE_SUPPLIER_QUALIFICATION,
+            TYPE_TECHNICAL_SPECIFICATION,
+            TYPE_COMMERCIAL_CONTRACTUAL,
+        ]
+        for perm in itertools.permutations(conflicting_types):
+            resolved = resolve_candidate_requirement_types(perm)
+            self.assertEqual(
+                resolved,
+                TYPE_GENERAL_COMPLIANCE,
+                f"Permutation {perm} did not resolve to General Compliance (got {resolved})"
+            )
+
+    def test_n_way_candidate_aggregation_with_general_and_duplicates(self):
+        # General + Supplier + Supplier -> Supplier Qualification
+        seq1 = [TYPE_GENERAL_COMPLIANCE, TYPE_SUPPLIER_QUALIFICATION, TYPE_SUPPLIER_QUALIFICATION]
+        self.assertEqual(resolve_candidate_requirement_types(seq1), TYPE_SUPPLIER_QUALIFICATION)
+
+        # Supplier + Technical + Supplier -> General Compliance (conflict once observed persists)
+        seq2 = [TYPE_SUPPLIER_QUALIFICATION, TYPE_TECHNICAL_SPECIFICATION, TYPE_SUPPLIER_QUALIFICATION]
+        self.assertEqual(resolve_candidate_requirement_types(seq2), TYPE_GENERAL_COMPLIANCE)
 
 
 class TestStageDAuthoritativeSectionRebuild(unittest.TestCase):
@@ -338,6 +406,45 @@ class TestStageDAuthoritativeSectionRebuild(unittest.TestCase):
         self.assertEqual(gates[0]["req_id"], "M1")
         self.assertEqual(gates[0]["type"], "Supplier Qualification")
         self.assertEqual(gates[0]["requirement"], all_reqs[0]["description"])
+
+    def test_hardware_product_spec_with_supplier_qual_label_not_rebuilt_as_gate(self):
+        """
+        Verify that a hardware/product spec (such as 'All items must be brand new...'),
+        even if carrying requirement_type == 'Supplier Qualification', is NOT rebuilt
+        into qualification_gates in Stage D.
+        """
+        reqs = [
+            {
+                "req_id": "M1",
+                "category": "Mandatory",
+                "requirement_type": TYPE_SUPPLIER_QUALIFICATION,
+                "description": "Vendors must be authorized by the respective OEM, certified, and have demonstrable experience.",
+                "rfso_ref": "Section 2.1",
+            },
+            {
+                "req_id": "M3",
+                "category": "Mandatory",
+                "requirement_type": TYPE_SUPPLIER_QUALIFICATION,
+                "description": "All items must be brand new and not refurbished, used, or end-of-life hardware.",
+                "rfso_ref": "Section 8.2 - General Requirements",
+            },
+        ]
+        nf = {
+            "requirements": reqs,
+            "dates": [],
+            "evaluation_criteria": [],
+            "submission_rules": [],
+            "deliverables": [],
+            "commercial_clauses": [],
+            "contract_risks": [],
+        }
+        synth_result = apply_stage_d_authoritative_sections({}, nf)
+        brief = synth_result.get("brief", {})
+        gates = brief.get("qualification_gates", [])
+
+        self.assertEqual(len(gates), 1)
+        self.assertEqual(gates[0]["req_id"], "M1")
+        self.assertNotIn("All items must be brand new", [g["requirement"] for g in gates])
 
 
 class TestGateToRequirementMatchingAndUIHelpers(unittest.TestCase):

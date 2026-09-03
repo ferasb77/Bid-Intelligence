@@ -101,7 +101,7 @@ def page_decide(bid_id: int):
         st.markdown(
             '<div style="font-size:.82rem;color:#A9A69D;margin-bottom:.8rem">'
             'Assess each mandatory and scored requirement against verified corporate evidence. '
-            'Assign clear qualification statuses: <code>PASS</code>, <code>CONCERN</code>, <code>FAIL</code>, or <code>UNKNOWN</code>.'
+            'Assign clear compliance statuses: <code>PASS</code>, <code>CONCERN</code>, <code>FAIL</code>, or <code>UNKNOWN</code>.'
             '</div>',
             unsafe_allow_html=True
         )
@@ -109,7 +109,7 @@ def page_decide(bid_id: int):
         # Filters
         c_f1, c_f2 = st.columns([2, 2])
         cat_filter = c_f1.selectbox("Filter Category", ["All", "Mandatory", "Rated", "Financial", "Supporting"], key="qm_cat_filter")
-        status_filter = c_f2.selectbox("Filter Qualification Status", ["All", "PASS", "CONCERN", "FAIL", "UNKNOWN"], key="qm_stat_filter")
+        status_filter = c_f2.selectbox("Filter Compliance Status", ["All", "PASS", "CONCERN", "FAIL", "UNKNOWN"], key="qm_stat_filter")
 
         filtered_reqs = reqs
         if cat_filter != "All":
@@ -121,7 +121,7 @@ def page_decide(bid_id: int):
             st.markdown('<div class="empty-state">No requirements match the selected filter.</div>', unsafe_allow_html=True)
         else:
             hcols = st.columns([0.7, 1.4, 2.8, 1.2, 1.3, 1.6, 1.5, 0.5])
-            for h, hc in zip(["ID", "Category / Type", "Requirement & Ref", "Qualification", "Evidence Readiness", "Evidence Details", "Gap / Action", ""], hcols):
+            for h, hc in zip(["ID", "Category / Type", "Requirement & Ref", "Compliance Status", "Evidence Readiness", "Evidence Details", "Gap / Action", ""], hcols):
                 hc.markdown(f'<span style="font-size:.68rem;color:#6E6C66;font-weight:700;text-transform:uppercase">{h}</span>', unsafe_allow_html=True)
             st.markdown('<hr class="section-divider" style="margin:.2rem 0">', unsafe_allow_html=True)
 
@@ -143,7 +143,7 @@ def page_decide(bid_id: int):
                 c6.markdown(f'<span style="font-size:.78rem;color:#A9A69D">{req.get("evidence") or "No evidence linked"}</span>', unsafe_allow_html=True)
                 c7.markdown(f'<span style="font-size:.78rem;color:#EDEAE3">{req.get("gap_action") or "—"}</span>', unsafe_allow_html=True)
 
-                if c8.button("✏", key=f"eq_{req['id']}", help="Update qualification status & evidence"):
+                if c8.button("✏", key=f"eq_{req['id']}", help="Update compliance status & evidence"):
                     st.session_state["editing_qual_id"] = req["id"]
                     st.rerun()
 
@@ -158,14 +158,14 @@ def page_decide(bid_id: int):
                 st.markdown(f"### ✏️ Assess Requirement: {target_req.get('req_id','')} — {target_req.get('description','')[:50]}")
                 with st.form("edit_qual_form"):
                     c1, c2, c3 = st.columns([1, 1, 1.5])
-                    new_qstat = c1.selectbox("Qualification Status *", QUAL_STATUSES,
+                    new_qstat = c1.selectbox("Compliance Status *", QUAL_STATUSES,
                                              index=QUAL_STATUSES.index(target_req.get("qual_status", "UNKNOWN"))
                                              if target_req.get("qual_status") in QUAL_STATUSES else 3)
                     new_estat = c2.selectbox("Evidence Readiness *", EVIDENCE_STATUSES,
                                              index=EVIDENCE_STATUSES.index(target_req.get("evidence_status", "MISSING"))
                                              if target_req.get("evidence_status") in EVIDENCE_STATUSES else 2)
                     new_owner = c3.text_input("Assigned Owner", value=target_req.get("owner") or "")
-                    new_evidence = st.text_area("Linked Evidence & Qualifications", value=target_req.get("evidence") or "", height=70,
+                    new_evidence = st.text_area("Linked Evidence & Compliance Notes", value=target_req.get("evidence") or "", height=70,
                                                 placeholder="e.g. Reference projects 2023-2025, ISO certifications, key expert CVs")
                     new_gap = st.text_area("Gap / Remediation Action Required", value=target_req.get("gap_action") or "", height=60,
                                            placeholder="e.g. Obtain client reference confirmation, request partner clearance")

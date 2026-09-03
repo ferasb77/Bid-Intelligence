@@ -10,6 +10,7 @@ Defines:
 """
 import re
 from typing import Any
+from collections.abc import Iterable
 
 # Controlled taxonomy enum values
 TYPE_SUPPLIER_QUALIFICATION = "Supplier Qualification"
@@ -162,23 +163,31 @@ _EXACT_ALIAS_MAP = {
 # Canonical lowercase map for exact canonical matching
 _CANONICAL_LOWER_MAP = {t.lower(): t for t in ALLOWED_REQUIREMENT_TYPES}
 
-# Strong supplier qualification / bidder eligibility cues for fallback detection
-# NOTE: Generic modal words ("must", "shall", "mandatory", "required") are strictly EXCLUDED.
+# Strong supplier qualification / bidder eligibility cues for fallback detection and hard-gate safety barrier.
+# NOTE: Generic modal words ("must", "shall", "mandatory", "required") and solution/product specs are strictly EXCLUDED.
 _STRONG_QUALIFICATION_CUES = [
     r"\bcondition[s]?\s+of\s+participation\b",
+    r"\b(?:minimum\s+)?qualification[s]?\s+(?:criteria|requirements?|standards?)\b",
     r"\bminimum\s+qualification[s]?\b",
-    r"\bsupplier\s+eligibility\b",
-    r"\bbidder\s+eligibility\b",
-    r"\bproponent\s+eligibility\b",
-    r"\btenderer\s+eligibility\b",
-    r"\bfinancial\s+standing\b",
-    r"\bsupplier\s+questionnaire\s+qualification\b",
-    r"\blegal\s+capacity\s+to\s+participate\b",
-    r"\boem\s+authorization\b",
-    r"\bmanufacturer['’]?s?\s+authorization\b",
-    r"\bauthorized\s+partner\b",
-    r"\bauthorized\s+reseller\b",
+    r"\b(?:bidder|supplier|vendor|participant|proponent|tenderer)s?\s+(?:eligibility|qualification[s]?)\b",
+    r"\b(?:bidder|supplier|vendor|participant|proponent|tenderer)s?\s+must\s+be\s+eligible\b",
+    r"\b(?:bidder|supplier|vendor|participant|proponent|tenderer)s?\s+must\s+be\s+certified\b",
+    r"\b(?:economic\s+(?:and|&)\s+)?financial\s+standing\b",
+    r"\b(?:selection\s+questionnaire|supplier\s+questionnaire|procurement\s+specific\s+questionnaire)\s+qualification\b",
+    r"\bqualification\s+requirements\b",
+    r"\blegal\s+(?:capacity|standing|status|eligibility)\b",
+    r"\b(?:oem|manufacturer['’]?s?)\s+authorization\b",
+    r"\boriginal\s+equipment\s+manufacturer\s*\(\s*oem\s*\)\s+authorization\b",
+    r"\bauthorized\s+(?:(?:oem\s+)?(?:[a-z0-9\-]+\s+)*)?(?:partner|reseller|distributor)\b",
+    r"\bauthorized\s+by\s+(?:the\s+)?(?:respective\s+)?oem\b",
     r"\bsecurity\s+clearance\s+threshold\b",
+    r"\b(?:debarment|debarred|exclusion\s+grounds|excludable|excluded\s+supplier)\b",
+    r"\bright\s+to\s+exclude\b",
+    r"\b(?:tax\s+registration|trade\s+license)\b",
+    r"\b(?:demonstrable|previous)\s+experience\b",
+    r"\b(?:organizational|technical)\s+capability\b",
+    r"\b(?:human\s+and\s+technical\s+resources|healthy\s+supply\s+chains)\b",
+    r"\b(?:bidding\s+model|consortium|guarantor)\b",
 ]
 
 _QUAL_CUES_RE = re.compile("|".join(_STRONG_QUALIFICATION_CUES), re.IGNORECASE)
@@ -226,40 +235,34 @@ def normalize_requirement_type(raw_type: Any) -> str | None:
     return None
 
 
+def resolve_candidate_requirement_types(candidate_types: Iterable[Any]) -> str:
+    """
+    True N-way order-independent and associative semantic resolution.
+
+    Rules:
+    - Retain/accumulate the set of normalized observed SPECIFIC semantic types.
+    - Ignore General Compliance and None as specific evidence.
+    - If zero specific types exist: General Compliance.
+    - If exactly one distinct specific type exists: that specific type.
+    - If two or more distinct specific types exist: General Compliance.
+    """
+    specifics = set()
+    for t in candidate_types:
+        norm = normalize_requirement_type(t)
+        if norm in SPECIFIC_REQUIREMENT_TYPES:
+            specifics.add(norm)
+
+    if len(specifics) == 1:
+        return next(iter(specifics))
+    return TYPE_GENERAL_COMPLIANCE
+
+
 def merge_requirement_types(current_type: Any, incoming_type: Any) -> str:
     """
     Conflict-safe, commutative (order-independent) merge of two requirement semantic types.
-
-    Rules:
-    1. same canonical specific types -> preserve type
-    2. None/General + specific -> preserve specific
-    3. specific + None/General -> preserve specific
-    4. two DIFFERENT specific types -> General Compliance
-    5. None/General + None/General -> General Compliance
-
-    Order-independent guarantee:
-    merge_requirement_types(A, B) == merge_requirement_types(B, A) for all A, B.
-    Specifically:
-    Supplier Qualification + Technical Specification -> General Compliance
+    Delegates to resolve_candidate_requirement_types for uniform resolution.
     """
-    norm_a = normalize_requirement_type(current_type)
-    norm_b = normalize_requirement_type(incoming_type)
-
-    is_spec_a = norm_a in SPECIFIC_REQUIREMENT_TYPES
-    is_spec_b = norm_b in SPECIFIC_REQUIREMENT_TYPES
-
-    if is_spec_a and is_spec_b:
-        if norm_a == norm_b:
-            return norm_a
-        # Conflict between two different specific classifications -> fallback to General Compliance
-        return TYPE_GENERAL_COMPLIANCE
-
-    if is_spec_a:
-        return norm_a
-    if is_spec_b:
-        return norm_b
-
-    return TYPE_GENERAL_COMPLIANCE
+    return resolve_candidate_requirement_types([current_type, incoming_type])
 
 
 def resolve_requirement_type(requirement: dict) -> str:
@@ -314,17 +317,43 @@ def resolve_requirement_type(requirement: dict) -> str:
     return TYPE_GENERAL_COMPLIANCE
 
 
+def has_supplier_qualification_evidence(requirement: dict | str) -> bool:
+    """
+    Check if a requirement contains deterministic evidence that the condition
+    concerns bidder/supplier participation, eligibility, standing, authorization,
+    capability or exclusion.
+
+    Product or solution properties (e.g. 'all items must be brand new', 'hardware must...',
+    'display must support 4K') return False even if labelled Supplier Qualification.
+    """
+    if isinstance(requirement, dict):
+        desc = requirement.get("description") or ""
+        rfso = requirement.get("rfso_ref") or ""
+        text = f"{desc} {rfso}".strip()
+    elif isinstance(requirement, str):
+        text = requirement.strip()
+    else:
+        return False
+    return bool(_QUAL_CUES_RE.search(text))
+
+
 def is_supplier_qualification(requirement: dict) -> bool:
     """
-    Returns True ONLY if requirement is pass/fail Mandatory AND resolves to Supplier Qualification.
-    Rated criteria cannot be qualification gates even if type is Supplier Qualification.
+    Returns True ONLY if:
+    1. Requirement category is pass/fail Mandatory.
+    2. Resolved requirement_type is Supplier Qualification.
+    3. AND material requirement text satisfies has_supplier_qualification_evidence.
+
+    Rated criteria or technical product specs cannot be qualification gates even if type is Supplier Qualification.
     """
     if not isinstance(requirement, dict):
         return False
     cat = (requirement.get("category") or "").strip().lower()
     if cat != "mandatory":
         return False
-    return resolve_requirement_type(requirement) == TYPE_SUPPLIER_QUALIFICATION
+    if resolve_requirement_type(requirement) != TYPE_SUPPLIER_QUALIFICATION:
+        return False
+    return has_supplier_qualification_evidence(requirement)
 
 
 def select_qualification_requirements(requirements: list[dict], qualification_gates: list[dict]) -> list[dict]:

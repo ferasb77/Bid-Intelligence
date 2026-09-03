@@ -34,7 +34,7 @@ def _large_normalized_facts(n_mandatory=40, n_rated=25, n_financial=5, n_support
     for i in range(1, n_mandatory + 1):
         reqs.append(_make_req(
             "M" + str(i), "Mandatory",
-            "Mandatory requirement " + str(i) + ": proponent must demonstrate capability " + str(i) + "."))
+            "Mandatory requirement " + str(i) + ": supplier eligibility and conditions of participation " + str(i) + "."))
     for i in range(1, n_rated + 1):
         reqs.append(_make_req(
             "R" + str(i), "Rated",
@@ -553,7 +553,7 @@ class TestStageDDeduplicationRegressions(unittest.TestCase):
                     "requirements": [
                         {"req_id": "M1", "category": "Mandatory",
                          "requirement_type": "Supplier Qualification",
-                         "description": "Mandatory req 1"}
+                         "description": "Supplier eligibility and conditions of participation"}
                     ],
                     "dates": [], "evaluation_criteria": [], "submission_rules": [],
                     "deliverables": [], "commercial_clauses": [], "contract_risks": [],

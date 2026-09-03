@@ -61,7 +61,7 @@ This branch introduces orthogonal semantic typing (`requirement_type`) across St
 
 ---
 
-## 3. Implementation Details & Pre-PR Remediations
+## 3. Implementation Details & Safety Remediations
 
 ### 3.1 Conservative Type Normalization (`requirement_semantics.py`)
 - Removed arbitrary substring matching from `normalize_requirement_type()`.
@@ -70,34 +70,47 @@ This branch introduces orthogonal semantic typing (`requirement_type`) across St
   - Explicit exact aliases from `_EXACT_ALIAS_MAP`
 - Ambiguous compounds (such as `Technical Qualification`, `Qualification / Technical`, `Submission Qualification`, `Commercial Qualification`, `Random Qualification String`) strictly return `None` rather than guessing `Supplier Qualification`.
 
-### 3.2 Conflict-Safe Semantic Merging (`merge_requirement_types`)
-- Implemented `merge_requirement_types(current_type, incoming_type)` in [`requirement_semantics.py`](file:///C:/Users/feras/Documents/Projects/Bid-Intelligence/requirement_semantics.py):
-  - Same canonical specific types $\rightarrow$ preserve type.
-  - `None` / `General Compliance` + specific $\rightarrow$ preserve specific.
-  - Specific + `None` / `General Compliance` $\rightarrow$ preserve specific.
-  - Two **different** specific types (e.g. `Supplier Qualification` + `Technical Specification`) $\rightarrow$ `General Compliance`.
-  - Strictly commutative and order-independent:
-    $$\text{merge}(A, B) == \text{merge}(B, A) \quad \forall A, B$$
-- Applied consistently across Stage A chunk aggregation and Stage B package normalization in [`extractor.py`](file:///C:/Users/feras/Documents/Projects/Bid-Intelligence/extractor.py).
+### 3.2 Hard-Gate Evidence Safety Barrier (`has_supplier_qualification_evidence`)
+- **False-Positive Discovery:** Final review of the British Council production replay revealed a real false-positive in `qualification_gates`:
+  > *"All items must be brand new and not refurbished, used, or end-of-life hardware."*
+  This was extracted with candidate `requirement_type == "Supplier Qualification"`. Because early logic trusted valid explicit `Supplier Qualification` labels unconditionally, it was admitted into the authoritative qualification gates.
+- **Safeguard Implementation:** Introduced `has_supplier_qualification_evidence(requirement)` in [`requirement_semantics.py`](file:///C:/Users/feras/Documents/Projects/Bid-Intelligence/requirement_semantics.py). A requirement can become an authoritative qualification gate (`is_supplier_qualification()`) only when:
+  1. `category == "Mandatory"`
+  2. Resolved `requirement_type == "Supplier Qualification"`
+  3. **AND** the material requirement text contains deterministic evidence that the condition concerns bidder/supplier participation, eligibility, standing, authorization, capability, or exclusion.
+- Candidate labels from Stage A are treated as candidate semantics, not sufficient proof of a hard gate. Product and hardware specifications (e.g. brand new hardware, 4K display, HDMI ports) are blocked from qualification gates regardless of candidate label.
 
-### 3.3 Exact Qualification Gate Matching (`select_qualification_requirements`)
+### 3.3 True N-Way Order-Independent Semantic Merging (`resolve_candidate_requirement_types`)
+- **Associativity Remediation:** Sequential pairwise use of `merge_requirement_types()` could lose conflict history when processing 3+ observations (e.g. $A + B \to \text{General}$, then $\text{General} + A \to A$).
+- **N-Way Resolution:** Implemented `resolve_candidate_requirement_types(candidate_types)`:
+  - For each material requirement identity during Stage A chunk aggregation and Stage B normalization, an internal candidate set `_specific_types: set[str]` accumulates all normalized observed specific semantic types.
+  - `General Compliance` and `None` are ignored as specific evidence.
+  - If zero specific types exist: `General Compliance`.
+  - If exactly one distinct specific type exists: that specific type.
+  - If two or more distinct specific types exist: `General Compliance`.
+  - Conflict state is irreversible: once conflicting distinct types occur, subsequent duplicate observations cannot resurrect a specific type.
+  - Fully order-independent and associative across all permutations of chunks and documents.
+  - Internal candidate tracking set is stripped before returning facts, ensuring no schema leakage.
+
+### 3.4 DECIDE Matrix User Terminology Update (`pages/stage_decide.py`)
+- In Tab 1 ("Requirement Assessment Matrix"), user-facing terminology for the PASS/CONCERN/FAIL/UNKNOWN evaluation of general procurement requirements was updated from *"Qualification Status"* to **"Compliance Status"**.
+- Updated filter label, table column header, edit button tooltip, form field label, and linked evidence textarea placeholder.
+- Underlying database field `qual_status` remains intact without requiring Migration 004.
+- Supplier Qualification-specific KPI metric cards and hard-gate warning alerts continue using qualification gate terminology.
+
+### 3.5 Exact Qualification Gate Matching (`select_qualification_requirements`)
 - Removed fuzzy substring matching from `select_qualification_requirements()`.
 - Uses full normalized description identity (`normalize_requirement_identity_text`).
 - Shorter gate descriptions that happen to be substrings of unrelated longer mandatory requirements strictly result in **no match**.
 
-### 3.4 Zero-Gate UI State (`get_qualification_gate_ui_alert`)
+### 3.6 Zero-Gate UI State (`get_qualification_gate_ui_alert`)
 - When `q_total == 0` in Stage 2 (DECIDE), the console never displays `"ALL QUALIFICATION GATES VERIFIED"`.
 - Instead, it renders a neutral informational state:
   > *"No explicit pass/fail supplier qualification gates were identified. Mandatory compliance requirements remain tracked separately."*
 
-### 3.5 Bid / No-Bid Requirement Partition (`analyst.py`)
+### 3.7 Bid / No-Bid Requirement Partition (`analyst.py`)
 - In `bid_no_bid_score()`, requirements are partitioned using database `id` when present, or normalized material description identity when no database ID exists.
 - Does not use `req_id` alone. Requirements sharing the same `req_id` (e.g. `M1` Supplier Qualification and `M1` Technical Specification) are correctly partitioned without collision.
-
-### 3.6 Authoritative Stage D Rebuild & Stale Documentation Correction
-- In [`extractor.py`](file:///C:/Users/feras/Documents/Projects/Bid-Intelligence/extractor.py), corrected the post-synthesis authoritative rebuild docstring:
-  - Previously stated: `qualification_gates <- ALL Mandatory requirements`
-  - Now accurately states: `qualification_gates <- Mandatory Supplier Qualification requirements only`
 
 ---
 
@@ -121,26 +134,48 @@ A complete live benchmark replay was executed through the production pipeline us
   - `Financial`: 0
   - `Supporting`: 6
 - **Semantic Type Distribution:**
-  - `Supplier Qualification`: 30
-  - `Technical Specification`: 7
+  - `Supplier Qualification`: 29 (down from 30 after eliminating the hardware false positive)
+  - `Technical Specification`: 8
   - `Submission Compliance`: 47
   - `Delivery / SLA`: 15
   - `Commercial / Contractual`: 11
   - `Evaluation / Scored`: 4
   - `General Compliance`: 34
-- **Authoritative `qualification_gates` Count:** **30** (Exactly matches the 30 Mandatory Supplier Qualification requirements; strict semantic subset of the 138 Mandatory requirements).
+- **Authoritative `qualification_gates` Count:** **29** (Strict semantic subset of the 138 Mandatory requirements; every gate verified to concern bidder eligibility or participation).
 
-### 4.3 Verification of Semantic Separation
-- **Sample True Qualification Gates in `qualification_gates`:**
-  - `M1` (Sec 2.1): *"Vendors must be authorized by the respective OEM, certified, and have demonstrable experience in executing similar comprehensive IT projects."*
-  - `M2` (Sec 2.1): *"Vendors must be certified"*
-  - `M3` (Sec 2.1): *"Vendors must have demonstrable experience in executing similar comprehensive IT projects"*
-  - `M4` (Sec 2.1): *"Suppliers must be eligible and reputable firms"*
-  - `M4` (Sec 8.2): *"Vendor must be able to demonstrate proof of authorized Partner/Reseller/Manufacturer status. British Council reserves the right to seek proof in the form of OEM certificates or Manufacturer Authorization letter."*
-  - `M1` (Sec 15.1, PSQ Q1): *"Participant must confirm legal eligibility and authorization to perform services in all specified cities (Peshawar, Haripur, D.I Khan, Gilgit, Skardu, Quetta), including compliance with all applicable tax registration and regulatory requirements."*
-  - `M3` (Sec 15.1, PSQ Q2): *"Participant must provide valid Original Equipment Manufacturer (OEM) Authorization Letters or equivalent documentary evidence confirming authorization to supply, install, support, and provide warranty services for all proposed solution components."*
-  - `M5` (Sec 14, Schedule 7): *"Participant must not be an Excluded or Excludable supplier under Schedule 7 grounds..."*
-  - `M8` (Part 3A, Q14): *"Supplier must satisfy minimum financial requirements set as conditions of participation: Operating Profit Margin > 20%; Current Ratio (Liquidity) > 1; Debt Ratio < 0.8."*
+### 4.3 Inspection & Verification of Authoritative Qualification Gates
+- **False Positive Elimination Verified:**
+  - *"All items must be brand new and not refurbished, used, or end-of-life hardware."* was safely rejected by `has_supplier_qualification_evidence` and excluded from `qualification_gates`.
+- **Complete Verified Qualification Gate Registry (All 29 Gates):**
+  1. `M1` (Sec 2.1): *"Vendors must be authorized by the respective OEM, certified, and have demonstrable experience in executing similar comprehensive IT projects."*
+  2. `M1` (Sec 2.1): *"Vendors must be authorized by the respective OEM (Original Equipment Manufacturer)"*
+  3. `M2` (Sec 2.1): *"Vendors must be certified"*
+  4. `M3` (Sec 2.1): *"Vendors must have demonstrable experience in executing similar comprehensive IT projects"*
+  5. `M4` (Sec 2.1): *"Suppliers must be eligible and reputable firms"*
+  6. `M4` (Sec 8.2): *"Vendor must be able to demonstrate proof of authorized Partner/Reseller/Manufacturer status. British Council reserves the right to seek proof in the form of OEM certificates or Manufacturer Authorization letter."*
+  7. `M1` (Sec 9.1 & 10.1): *"Confirm compliance with qualification requirements as set out at Annex 2 (Procurement Specific Questionnaire). Failure to comply with one or more qualification requirements shall entitle British Council to reject tender response in full."*
+  8. `M1` (Sec 15.1, PSQ Q1): *"Participant must confirm legal eligibility and authorization to perform services in all specified cities (Peshawar, Haripur, D.I Khan, Gilgit, Skardu, Quetta), including compliance with all applicable tax registration and regulatory requirements."*
+  9. `M2` (Sec 15.1, PSQ Q1): *"Participant must confirm organizational capability to supply, install, and provide after-sales support in all listed cities (Peshawar, Haripur, D.I Khan, Gilgit, Skardu, Quetta)."*
+  10. `M3` (Sec 15.1, PSQ Q2): *"Participant must provide valid Original Equipment Manufacturer (OEM) Authorization Letters or equivalent documentary evidence confirming authorization to supply, install, support, and provide warranty services for all proposed solution components."*
+  11. `M4` (Sec 15.3): *"Participant must achieve minimum pass score for ALL Conditions of Participation questions. Failure to achieve minimum pass score on any question results in exclusion from event and rejection of submission."*
+  12. `M5` (Sec 14, Sched 7): *"Participant must not be an Excluded or Excludable supplier under Schedule 7 grounds, including: business suspension/cessation, competition infringements (Chapters I & II), cartel offences, professional misconduct, breach of contract and poor performance, improper procurement conduct, and national security concerns."*
+  13. `M6` (Sec 14.4, 14.5): *"If Participant intends to sub-contract performance of part or all of the contract, sub-contractor details must be completed in the Procurement Specific Questionnaire. Sub-contractors will be assessed for Excluded or Excludable status..."*
+  14. `M8` (Sec 15.2): *"Participant must demonstrate acceptable economic and financial standing. British Council will assess turnover relative to Contract Value, solvency ratios, and profitability ratios..."*
+  15. `M16` (Sec 18.1 Stage 2): *"Stage 2 Evaluation: The completed Selection Questionnaire will be reviewed to confirm that the potential supplier meets all qualification criteria set out in the questionnaire..."*
+  16. `M2` (Part 1, Q5): *"Supplier must not be on the debarment list. Question 5 requires confirmation of debarment status."*
+  17. `M4` (Part 2, Q7-9): *"If relying on associated persons (consortium members or key sub-contractors relied upon to meet conditions of participation), those associated persons must be registered on CDP and have shared their information as PDF download..."*
+  18. `M5` (Part 2, Q10): *"Associated persons must not be on the debarment list. Question 10 requires confirmation of debarment status for all associated persons."*
+  19. `M7` (Part 2, Q13): *"No intended sub-contractor may be on the debarment list. Question 13 requires confirmation of debarment status for all intended sub-contractors."*
+  20. `M8` (Part 3A, Q14): *"Supplier must satisfy minimum financial requirements set as conditions of participation: Operating Profit Margin > 20%; Current Ratio (Liquidity) > 1; Debt Ratio < 0.8. Question 14 requires confirmation of compliance with these minimum requirements."*
+  21. `M11` (Part 1, Q1, 3): *"Supplier must provide registered name (if applicable) and confirm bidding model: single supplier (with or without sub-contractors) or part of a group/consortium..."*
+  22. `M14` (Part 3A, Q15): *"If relying on another supplier to act as a guarantor, supplier must provide the guarantor's name and evidence of their economic and financial standing."*
+  23. `M1` (Sec 17.1): *"Bidder must confirm legal eligibility and authorization to perform services in each specified city, including compliance with all applicable tax registration and regulatory requirements."*
+  24. `M2` (Sec 17.1): *"Bidder must confirm organizational capability to supply, install, and provide after-sales support in all listed cities."*
+  25. `M3` (Sec 17.2): *"Bidder must provide valid Original Equipment Manufacturer (OEM) Authorization Letters or equivalent documentary evidence confirming authorization to supply, install, support, and provide warranty services for all proposed solution components."*
+  26. `M4` (Sec 18): *"Bidder must confirm that human and technical resources are in place, or will be in place by contract award, to perform the contract and ensure compliance with UK General Data Protection Regulation and protection of data subject rights. Authority has right to exclude any supplier answering 'No' to this section."*
+  27. `M5` (Sec 19): *"Bidder must provide details of at least three contracts demonstrating technical ability from past three years (public or private sector, including grant-funded work)... Authority has right to exclude any supplier unable to provide at least one example or reasonable explanation."*
+  28. `M6` (Sec 20): *"Where bidder intends to sub-contract a proportion of the contract, bidder must demonstrate previous experience maintaining healthy supply chains with sub-contractors, including procedures to ensure performance of the contract."*
+  29. `M7` (Sec 21): *"Bidder must provide details of how organizational qualifications or standards specified in conditions of participation are met, or provide details of other equivalent standards that equal or exceed what has been requested."*
 
 - **Sample Mandatory Non-Gates (Tracked in Requirements Register & Blocking at SUBMIT, NOT in Qualification Gates):**
   - `M2` (Submission Compliance): *"Tender responses must comprise the relevant documents specified by the British Council completed in all areas and in the format specified..."*
@@ -158,7 +193,7 @@ A complete live benchmark replay was executed through the production pipeline us
 ## 5. Test Coverage & Regression Suite
 
 ### 5.1 Expanded Test Suite
-[`tests/test_requirement_semantic_separation.py`](file:///C:/Users/feras/Documents/Projects/Bid-Intelligence/tests/test_requirement_semantic_separation.py) (28 tests):
+[`tests/test_requirement_semantic_separation.py`](file:///C:/Users/feras/Documents/Projects/Bid-Intelligence/tests/test_requirement_semantic_separation.py) (32 tests):
 - `test_allowed_types_contains_all_seven_types`
 - `test_stage_a_prompt_defines_requirement_type`
 - `test_stage_d_prompt_separates_mandatory_from_qualification`
@@ -170,6 +205,7 @@ A complete live benchmark replay was executed through the production pipeline us
 - `test_condition_of_participation_resolves_to_supplier_qualification`
 - `test_financial_standing_resolves_to_supplier_qualification`
 - `test_oem_authorization_for_participation_resolves_to_supplier_qualification`
+- `test_hard_gate_evidence_safety_barrier_cases` (A, B, C, D, E, F coverage)
 - `test_technical_specification_is_non_gate`
 - `test_signed_submission_form_is_non_gate`
 - `test_incident_sla_response_is_non_gate`
@@ -180,7 +216,10 @@ A complete live benchmark replay was executed through the production pipeline us
 - `test_none_or_general_with_specific_preserves_specific`
 - `test_conflicting_different_specific_types_resolves_to_general_compliance`
 - `test_all_permutations_commutative`
+- `test_n_way_candidate_aggregation_all_permutations` (All 6 permutations resolve to General Compliance)
+- `test_n_way_candidate_aggregation_with_general_and_duplicates` (Order and duplicate independence)
 - `test_only_supplier_qualification_mandatory_becomes_qualification_gate`
+- `test_hardware_product_spec_with_supplier_qual_label_not_rebuilt_as_gate` (Safeguard regression test)
 - `test_select_qualification_requirements_matching`
 - `test_select_qualification_requirements_empty_gates_returns_empty`
 - `test_select_qualification_requirements_does_not_match_non_mandatory`
@@ -189,14 +228,14 @@ A complete live benchmark replay was executed through the production pipeline us
 - `test_partition_by_material_description_when_no_db_id`
 
 ### 5.2 Full Regression Suite Totals
-- `tests/test_requirement_semantic_separation.py`: **28 / 28 passed**
+- `tests/test_requirement_semantic_separation.py`: **32 / 32 passed**
 - `tests/test_stage_d_completeness.py`: **52 / 52 passed**
 - `tests/test_stage_a_extraction_reliability.py`: **20 / 20 passed**
 - `tests/test_stage_b_requirement_dedup_integrity.py`: **8 / 8 passed**
-- Full unit test discovery (`tests/test_*.py`): **295 / 295 passed**
+- Full unit test discovery (`tests/test_*.py`): **299 / 299 passed**
 - Smoke test suite (`tests/smoke/`): **12 / 12 passed**
 - Integration test suite (`tests/integration/`): **6 discovered / 5 passed / 1 skipped (live AI) / 0 failed**
-- **Grand Total:** **313 discovered / 312 passed / 1 skipped live AI / 0 failed**
+- **Grand Total:** **317 discovered / 316 passed / 1 skipped live AI / 0 failed**
 
 ---
 
@@ -214,3 +253,4 @@ A complete live benchmark replay was executed through the production pipeline us
   - `pages/stage_decide.py`
   - `pages/stage_check.py`
   - `tests/test_stage_d_completeness.py`
+  - `tests/acceptance/results/bc_benchmark_replay_stage_a_b_d.json`
