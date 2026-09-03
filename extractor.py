@@ -45,6 +45,8 @@ CRITICAL SOURCE TRACEABILITY RULES:
        "excerpt": "<1-2 sentence verbatim quote from text>"
      }
    ]
+4. Extract ALL decision-critical procurement facts present in this text. Do not stop after the first requirement or fact.
+5. If no facts of a given type exist in the supplied text, return an empty array [] for that key. Do not invent placeholder facts.
 
 Return ONLY valid JSON with this exact schema:
 {
@@ -1847,26 +1849,349 @@ def _safe_parse_json(raw: str) -> dict:
 
 # ── STAGE A: DOCUMENT FACT EXTRACTION ─────────────────────────────────────────
 
-def extract_document_facts(doc_text: str, filename: str, api_key: str) -> dict:
-    """
-    STAGE A: Process document to extract factual procurement data ONLY.
-    Does NOT synthesize executive Bid Brief.
-    """
-    client = get_anthropic_client(api_key=api_key)
-    model = "claude-haiku-4-5-20251001"
+# ── STAGE A CHUNKING, AGGREGATION & COVERAGE GUARD ───────────────────────────
 
-    text_to_send = doc_text if len(doc_text) < 150000 else (doc_text[:150000] + "\n\n[Document text truncated]")
+_STAGE_A_MAX_CHUNK_CHARS = 16000
+_STAGE_A_MARKER_SPLIT_RE = re.compile(r'(\[\[SOURCE:[^\]]+\]\])', re.IGNORECASE)
+
+# General procurement-language signal patterns for coverage auditing
+_REQ_SIGNALS = re.compile(
+    r'\b(?:shall|must|required|mandatory|condition(?:s)? of participation|supplier will|tenderer shall)\b',
+    re.IGNORECASE
+)
+_DATE_SIGNALS = re.compile(
+    r'\b(?:deadline|response deadline|clarification(?:s)?|timescale(?:s)?|closing date|site visit)\b',
+    re.IGNORECASE
+)
+_EVAL_SIGNALS = re.compile(
+    r'(?:\b(?:evaluation|award criteria|scoring|weighted|marks|price weighting)\b|%)',
+    re.IGNORECASE
+)
+_SUB_SIGNALS = re.compile(
+    r'\b(?:submit|submission|response checklist|annex|attachment|signed|portal)\b',
+    re.IGNORECASE
+)
+
+
+def chunk_document_text(doc_text: str, max_chunk_chars: int = _STAGE_A_MAX_CHUNK_CHARS) -> list[str]:
+    """
+    Deterministically partition doc_text into chunks using source markers.
+    If len(doc_text) <= max_chunk_chars, returns [doc_text].
+    Splits along source marker boundaries. If an individual block exceeds
+    max_chunk_chars, it is split along line boundaries.
+    """
+    if not doc_text or len(doc_text) <= max_chunk_chars:
+        return [doc_text] if doc_text else []
+
+    parts = _STAGE_A_MARKER_SPLIT_RE.split(doc_text)
+    blocks = []
+    if parts[0].strip():
+        blocks.append(parts[0])
+    idx = 1
+    while idx < len(parts):
+        marker = parts[idx]
+        content = parts[idx + 1] if idx + 1 < len(parts) else ""
+        blocks.append(marker + content)
+        idx += 2
+
+    if not blocks:
+        return [doc_text]
+
+    chunks = []
+    current_chunk = []
+    current_len = 0
+
+    for b in blocks:
+        b_len = len(b)
+        if b_len > max_chunk_chars:
+            if current_chunk:
+                chunks.append("".join(current_chunk))
+                current_chunk = []
+                current_len = 0
+            # Extract the leading marker of block b if present
+            m_match = _STAGE_A_MARKER_SPLIT_RE.search(b)
+            leading_marker = m_match.group(0) + "\n" if m_match else ""
+            lines = b.splitlines(keepends=True)
+            sub = []
+            sub_len = 0
+            for line in lines:
+                if len(line) > max_chunk_chars:
+                    if sub:
+                        chunks.append("".join(sub))
+                        sub = []
+                        sub_len = 0
+                    p = line
+                    prefix = leading_marker if leading_marker and not p.startswith("[[SOURCE:") else ""
+                    while len(p) > 0:
+                        max_slice = max_chunk_chars - len(prefix)
+                        if max_slice <= 0:
+                            take = p[:max_chunk_chars]
+                            chunks.append(take)
+                            p = p[max_chunk_chars:]
+                        else:
+                            take = p[:max_slice]
+                            chunks.append(prefix + take)
+                            p = p[max_slice:]
+                            prefix = leading_marker
+                    continue
+
+                if sub_len + len(line) > max_chunk_chars and sub:
+                    chunks.append("".join(sub))
+                    sub = [leading_marker, line] if leading_marker and not line.startswith("[[SOURCE:") else [line]
+                    sub_len = sum(len(x) for x in sub)
+                else:
+                    sub.append(line)
+                    sub_len += len(line)
+            if sub:
+                chunks.append("".join(sub))
+        else:
+            if current_len + b_len > max_chunk_chars and current_chunk:
+                chunks.append("".join(current_chunk))
+                current_chunk = [b]
+                current_len = b_len
+            else:
+                current_chunk.append(b)
+                current_len += b_len
+
+    if current_chunk:
+        chunks.append("".join(current_chunk))
+
+    return chunks
+
+
+def _source_ref_key(ref: dict) -> tuple:
+    if not isinstance(ref, dict):
+        return ()
+    return (
+        ref.get("source_doc") or "",
+        ref.get("page"),
+        ref.get("sheet") or "",
+        ref.get("section") or "",
+        (ref.get("excerpt") or "").strip()
+    )
+
+
+def aggregate_stage_a_facts(chunk_facts_list: list[dict], filename: str) -> dict:
+    """
+    Deterministically merge chunk results into a single document-level Stage A result.
+    Preserves all valid facts, merges source_refs, conservative metadata merge,
+    and deduplicates only materially identical facts.
+    """
+    merged = {
+        "doc_metadata": {},
+        "requirements": [],
+        "dates": [],
+        "evaluation_criteria": [],
+        "submission_rules": [],
+        "deliverables": [],
+        "commercial_clauses": [],
+        "contract_risks": []
+    }
+
+    # 1. Conservative metadata merge
+    for cf in chunk_facts_list:
+        if not isinstance(cf, dict):
+            continue
+        meta = cf.get("doc_metadata") or {}
+        if isinstance(meta, dict):
+            for k, v in meta.items():
+                if v and not merged["doc_metadata"].get(k):
+                    merged["doc_metadata"][k] = v
+
+    # 2. Requirements aggregation & deduplication
+    req_seen = {}  # map: canon_key -> dict
+    for cf in chunk_facts_list:
+        if not isinstance(cf, dict):
+            continue
+        for r in cf.get("requirements") or []:
+            if not isinstance(r, dict):
+                continue
+            desc = (r.get("description") or "").strip()
+            if not desc:
+                continue
+            cat = (r.get("category") or "").strip()
+            rfso = (r.get("rfso_ref") or "").strip()
+            norm_desc = re.sub(r'\W+', '', desc.lower())
+
+            raw_refs = r.get("source_refs") or []
+            if not raw_refs:
+                raw_refs = [{"source_doc": filename, "page": None, "sheet": None, "section": None, "excerpt": desc[:100]}]
+
+            canon_key = (norm_desc, cat.lower(), rfso.lower())
+
+            if canon_key in req_seen:
+                existing = req_seen[canon_key]
+                existing_ref_keys = {_source_ref_key(ref) for ref in existing.get("source_refs", [])}
+                for ref in raw_refs:
+                    rk = _source_ref_key(ref)
+                    if rk not in existing_ref_keys:
+                        existing.setdefault("source_refs", []).append(ref)
+                        existing_ref_keys.add(rk)
+            else:
+                r_copy = dict(r)
+                r_copy["source_refs"] = list(raw_refs)
+                req_seen[canon_key] = r_copy
+                merged["requirements"].append(r_copy)
+
+    # 3. Dates aggregation & deduplication
+    seen_dates = set()
+    for cf in chunk_facts_list:
+        if not isinstance(cf, dict):
+            continue
+        for d in cf.get("dates") or []:
+            if not isinstance(d, dict):
+                continue
+            milestone = (d.get("milestone") or "").strip()
+            date_val = str(d.get("date") or "").strip()
+            canon = (milestone.lower(), date_val)
+            if not milestone or canon in seen_dates:
+                continue
+            seen_dates.add(canon)
+            d_copy = dict(d)
+            d_copy.setdefault("source_doc", filename)
+            merged["dates"].append(d_copy)
+
+    # 4. Evaluation Criteria aggregation & deduplication
+    seen_eval = set()
+    for cf in chunk_facts_list:
+        if not isinstance(cf, dict):
+            continue
+        for ec in cf.get("evaluation_criteria") or []:
+            if not isinstance(ec, dict):
+                continue
+            stage = (ec.get("stage") or ec.get("criterion") or "").strip()
+            weight = str(ec.get("weight") or ec.get("points") or "").strip()
+            notes = str(ec.get("notes") or "").strip()
+            canon = (stage.lower(), weight.lower(), notes.lower())
+            if not stage or canon in seen_eval:
+                continue
+            seen_eval.add(canon)
+            ec_copy = dict(ec)
+            ec_copy.setdefault("source_doc", filename)
+            merged["evaluation_criteria"].append(ec_copy)
+
+    # 5. Submission Rules aggregation & deduplication
+    seen_sub = set()
+    for cf in chunk_facts_list:
+        if not isinstance(cf, dict):
+            continue
+        for sr in cf.get("submission_rules") or []:
+            if not isinstance(sr, dict):
+                continue
+            item = (sr.get("item") or "").strip()
+            fmt = str(sr.get("format") or "").strip()
+            details = str(sr.get("details") or "").strip()
+            canon = (item.lower(), fmt.lower(), details.lower())
+            if not item or canon in seen_sub:
+                continue
+            seen_sub.add(canon)
+            sr_copy = dict(sr)
+            sr_copy.setdefault("source_doc", filename)
+            merged["submission_rules"].append(sr_copy)
+
+    # 6. Deliverables aggregation & deduplication
+    seen_deliv = set()
+    for cf in chunk_facts_list:
+        if not isinstance(cf, dict):
+            continue
+        for deliv in cf.get("deliverables") or []:
+            if not isinstance(deliv, dict):
+                continue
+            title = (deliv.get("title") or deliv.get("item") or "").strip()
+            desc = str(deliv.get("description") or "").strip()
+            canon = (title.lower(), desc.lower())
+            if not title or canon in seen_deliv:
+                continue
+            seen_deliv.add(canon)
+            deliv_copy = dict(deliv)
+            deliv_copy.setdefault("source_doc", filename)
+            merged["deliverables"].append(deliv_copy)
+
+    # 7. Commercial Clauses aggregation & deduplication
+    seen_comm = set()
+    for cf in chunk_facts_list:
+        if not isinstance(cf, dict):
+            continue
+        for cc in cf.get("commercial_clauses") or []:
+            if not isinstance(cc, dict):
+                continue
+            topic = (cc.get("topic") or "").strip()
+            details = str(cc.get("details") or "").strip()
+            canon = (topic.lower(), details.lower())
+            if not topic or canon in seen_comm:
+                continue
+            seen_comm.add(canon)
+            cc_copy = dict(cc)
+            cc_copy.setdefault("source_doc", filename)
+            merged["commercial_clauses"].append(cc_copy)
+
+    # 8. Contract Risks aggregation & deduplication
+    seen_risks = set()
+    for cf in chunk_facts_list:
+        if not isinstance(cf, dict):
+            continue
+        for cr in cf.get("contract_risks") or []:
+            if not isinstance(cr, dict):
+                continue
+            risk = (cr.get("risk") or cr.get("title") or "").strip()
+            details = str(cr.get("details") or "").strip()
+            canon = (risk.lower(), details.lower())
+            if not risk or canon in seen_risks:
+                continue
+            seen_risks.add(canon)
+            cr_copy = dict(cr)
+            cr_copy.setdefault("source_doc", filename)
+            merged["contract_risks"].append(cr_copy)
+
+    return merged
+
+
+def inspect_stage_a_coverage(doc_text: str, facts: dict, min_signal_count: int = 5) -> dict:
+    """
+    Inspect whether extracted facts have suspicious under-coverage given the source text signals.
+    Does NOT create or modify procurement facts.
+    """
+    signals = {
+        "requirements": len(_REQ_SIGNALS.findall(doc_text)),
+        "dates": len(_DATE_SIGNALS.findall(doc_text)),
+        "evaluation_criteria": len(_EVAL_SIGNALS.findall(doc_text)),
+        "submission_rules": len(_SUB_SIGNALS.findall(doc_text)),
+    }
+
+    suspicious = []
+    if signals["requirements"] >= min_signal_count and not facts.get("requirements"):
+        suspicious.append("requirements")
+    if signals["dates"] >= min_signal_count and not facts.get("dates"):
+        suspicious.append("dates")
+    if signals["evaluation_criteria"] >= min_signal_count and not facts.get("evaluation_criteria"):
+        suspicious.append("evaluation_criteria")
+    if signals["submission_rules"] >= min_signal_count and not facts.get("submission_rules"):
+        suspicious.append("submission_rules")
+
+    return {
+        "is_suspicious": len(suspicious) > 0,
+        "suspicious_families": suspicious,
+        "signal_counts": signals,
+    }
+
+
+def _extract_chunk_facts(chunk_text: str, filename: str, api_key: str, client=None) -> dict:
+    """Run Stage A fact extraction on a single chunk with temperature=0."""
+    if client is None:
+        client = get_anthropic_client(api_key=api_key)
+    model = "claude-haiku-4-5-20251001"
 
     content = [
         {
             "type": "text",
-            "text": STAGE_A_FACT_EXTRACTION_PROMPT + f"\n\nDOCUMENT TO PROCESS ({filename}):\n" + text_to_send
+            "text": STAGE_A_FACT_EXTRACTION_PROMPT + f"\n\nDOCUMENT TO PROCESS ({filename}):\n" + chunk_text
         }
     ]
 
     response = client.messages.create(
         model=model,
         max_tokens=8000,
+        temperature=0.0,
         messages=[{"role": "user", "content": content}],
     )
 
@@ -1874,7 +2199,6 @@ def extract_document_facts(doc_text: str, filename: str, api_key: str) -> dict:
     if not isinstance(data, dict):
         data = {}
 
-    # Tag all items with source document
     for r in data.get("requirements", []):
         r.setdefault("source_refs", [{"source_doc": filename, "page": None, "sheet": None, "section": None, "excerpt": r.get("description", "")[:100]}])
     for d in data.get("dates", []):
@@ -1887,8 +2211,72 @@ def extract_document_facts(doc_text: str, filename: str, api_key: str) -> dict:
         d.setdefault("source_doc", filename)
     for c in data.get("commercial_clauses", []):
         c.setdefault("source_doc", filename)
+    for cr in data.get("contract_risks", []):
+        cr.setdefault("source_doc", filename)
 
     return data
+
+
+# ── STAGE A: DOCUMENT FACT EXTRACTION ─────────────────────────────────────────
+
+def extract_document_facts(doc_text: str, filename: str, api_key: str) -> dict:
+    """
+    STAGE A: Process document to extract factual procurement data ONLY.
+    Uses deterministic marker-aware chunking, conservative aggregation,
+    and a coverage guard with bounded recovery.
+    """
+    client = get_anthropic_client(api_key=api_key)
+    chunks = chunk_document_text(doc_text, max_chunk_chars=_STAGE_A_MAX_CHUNK_CHARS)
+
+    chunk_results = []
+    for chunk in chunks:
+        res = _extract_chunk_facts(chunk, filename, api_key, client=client)
+        chunk_results.append(res)
+
+    aggregated = aggregate_stage_a_facts(chunk_results, filename)
+
+    # Coverage Guard inspection
+    coverage = inspect_stage_a_coverage(doc_text, aggregated, min_signal_count=5)
+    recovery_attempts = 0
+    max_recoveries = 2
+
+    # If suspicious and only 1 chunk was extracted, subdivide with smaller chunks for recovery
+    while coverage["is_suspicious"] and recovery_attempts < max_recoveries:
+        recovery_attempts += 1
+        # Smaller chunk size to force narrower focus on dense blocks
+        smaller_chunks = chunk_document_text(doc_text, max_chunk_chars=8000)
+        if len(smaller_chunks) > len(chunks):
+            retry_results = []
+            for schunk in smaller_chunks:
+                rres = _extract_chunk_facts(schunk, filename, api_key, client=client)
+                retry_results.append(rres)
+            retry_aggregated = aggregate_stage_a_facts(retry_results, filename)
+            # Deterministically merge original aggregated facts with retry facts
+            merged_recovery = aggregate_stage_a_facts([aggregated, retry_aggregated], filename)
+            merged_cov = inspect_stage_a_coverage(doc_text, merged_recovery, min_signal_count=5)
+            aggregated = merged_recovery
+            coverage = merged_cov
+            if not coverage["is_suspicious"]:
+                break
+        else:
+            # Re-extract chunks that might have dropped facts
+            break
+
+    # Attach internal non-schema diagnostic if still suspicious
+    if coverage["is_suspicious"]:
+        aggregated["_extraction_diagnostic"] = {
+            "status": "SUSPICIOUS_UNDER_COVERAGE",
+            "suspicious_families": coverage["suspicious_families"],
+            "signal_counts": coverage["signal_counts"],
+            "recovery_attempts": recovery_attempts,
+        }
+    else:
+        aggregated["_extraction_diagnostic"] = {
+            "status": "VERIFIED_ADEQUATE",
+            "recovery_attempts": recovery_attempts,
+        }
+
+    return aggregated
 
 
 # ── STAGE B: PACKAGE NORMALIZATION ───────────────────────────────────────────
