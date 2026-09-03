@@ -189,11 +189,13 @@ _STRONG_QUALIFICATION_CUES = [
     r"\b(?:bidder|supplier|vendor|participant|proponent|tenderer)s?\s+must\s+have\s+demonstrable\s+experience\b",
     r"\b(?:previous|demonstrable)\s+experience\s+(?:as\s+a\s+condition\s+of\s+participation|required\s+for\s+qualification)\b",
     r"\b(?:demonstrating\s+technical\s+ability|organizational\s+qualifications).*?(?:exclude|exclusion|condition[s]?\s+of\s+participation)\b",
-    r"\b(?:organizational|technical)\s+capability\s+to\s+(?:supply|install|perform|provide)\b",
+    # Actor and qualification-bound organizational/technical capability:
+    # Requires BOTH bidder actor context AND qualification/exclusion context
+    r"(?=.*\b(?:bidder|supplier|vendor|participant|proponent|tenderer)s?\b)(?=.*\b(?:organizational|technical)\s+capability\b)(?=.*\b(?:condition[s]?\s+of\s+participation|qualification[s]?|eligibility|procurement\s+specific\s+questionnaire|selection\s+questionnaire|\bpsq\b|pass/fail|right\s+to\s+exclude|results?\s+in\s+exclusion|subject\s+to\s+exclusion|exclude|exclusion)\b)",
     r"\b(?:consortium|associated\s+person[s]?|guarantor).*?(?:condition[s]?\s+of\s+participation|financial\s+(?:capacity|standing)|exclusion|debarment)\b",
 ]
 
-_QUAL_CUES_RE = re.compile("|".join(_STRONG_QUALIFICATION_CUES), re.IGNORECASE)
+_QUAL_CUES_RE = re.compile("|".join(_STRONG_QUALIFICATION_CUES), re.IGNORECASE | re.DOTALL)
 
 
 def normalize_requirement_identity_text(text: Any) -> str:

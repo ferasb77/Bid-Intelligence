@@ -235,25 +235,40 @@ class TestRequirementTypeNormalizationAndResolution(unittest.TestCase):
             ("POS_2", "Guarantor financial standing must satisfy the minimum financial condition...", True),
             ("POS_3", "Bidder must demonstrate organizational capability and failure results in exclusion...", True),
             ("POS_4", "Bidder must demonstrate minimum 3 years previous experience as a condition of participation...", True),
+            # Narrowed cues: capability-based tests (actor + qualification context)
+            ("NEG_CAP_1", "The proposed solution must demonstrate technical capability to provide secure API integration.", "", False),
+            ("NEG_CAP_2", "The system must have technical capability to provide reporting and analytics.", "", False),
+            ("NEG_CAP_3", "The solution must demonstrate technical capability to provide secure APIs.", "", False),
+            ("NEG_CAP_4", "Supplier must demonstrate organizational capability to provide monthly managed services.", "", False),
+            ("POS_CAP_1", "Participant must confirm organizational capability to supply and support all locations.", "Procurement Specific Questionnaire Q1", True),
+            ("POS_CAP_2", "Bidder must demonstrate organizational capability; failure will result in exclusion.", "", True),
         ]
 
-        for label, text, expected_gate in test_cases:
-            has_ev = has_supplier_qualification_evidence({"description": text})
+        for item in test_cases:
+            if len(item) == 3:
+                label, text, expected_gate = item
+                rfso = ""
+            else:
+                label, text, rfso, expected_gate = item
+
+            req_dict = {"description": text, "rfso_ref": rfso}
+            has_ev = has_supplier_qualification_evidence(req_dict)
             self.assertEqual(
                 has_ev,
                 expected_gate,
-                f"Case {label} has_supplier_qualification_evidence mismatch for: {text}"
+                f"Case {label} has_supplier_qualification_evidence mismatch for: {text} (rfso={rfso})"
             )
             # Even if Stage A erroneously labelled it Supplier Qualification:
             req = {
                 "category": "Mandatory",
                 "requirement_type": TYPE_SUPPLIER_QUALIFICATION,
                 "description": text,
+                "rfso_ref": rfso,
             }
             self.assertEqual(
                 is_supplier_qualification(req),
                 expected_gate,
-                f"Case {label} is_supplier_qualification mismatch for: {text}"
+                f"Case {label} is_supplier_qualification mismatch for: {text} (rfso={rfso})"
             )
 
 
