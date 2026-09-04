@@ -217,10 +217,13 @@ def normalize_evaluation_criterion(ec: dict) -> dict:
 
     # Evaluation role
     role = ec.get("evaluation_role")
+    role_conflict = bool(ec.get("role_conflict"))
     # If the model marked a purely unweighted narrative process/methodology heading as Award Criterion,
     # conservatively correct it to Process / Methodology
     if role == ROLE_AWARD_CRITERION and not raw_weight and any(k in stage.lower() for k in [" evaluation", " assessment", " methodology", " procedure", " mechanism", " formula"]):
         role = ROLE_PROCESS_STAGE
+    elif role_conflict:
+        role = ROLE_UNKNOWN
     elif not role or role == ROLE_UNKNOWN:
         role = infer_evaluation_role(stage, parent_stage, hierarchy_level, raw_weight)
 
@@ -249,18 +252,46 @@ def normalize_evaluation_criterion(ec: dict) -> dict:
     if not source_refs and ec.get("source_doc"):
         source_refs.append({"source_doc": ec.get("source_doc")})
 
-    # Weight observations
+    # Weight observations - preserve incoming observations if present, union with surface observation
     weight_obs = []
+    incoming_weight_obs = ec.get("weight_observations")
+    if isinstance(incoming_weight_obs, list) and incoming_weight_obs:
+        for w in incoming_weight_obs:
+            if isinstance(w, dict):
+                weight_obs.append(dict(w))
+
     if raw_weight is not None or val is not None:
-        weight_obs.append({
+        surface_obs = {
             "raw_weight": raw_weight,
             "value": val,
             "unit": unit,
             "basis": basis,
             "source_refs": list(source_refs),
-        })
+        }
+        match_found = any(
+            w.get("value") == surface_obs["value"] and
+            w.get("unit") == surface_obs["unit"] and
+            w.get("basis") == surface_obs["basis"]
+            for w in weight_obs
+        )
+        if not match_found:
+            weight_obs.append(surface_obs)
+
+    # Role observations - preserve incoming role_observations if present, union with surface role
+    role_obs = []
+    incoming_role_obs = ec.get("role_observations")
+    if isinstance(incoming_role_obs, list) and incoming_role_obs:
+        for r in incoming_role_obs:
+            if r and r not in role_obs:
+                role_obs.append(r)
+    if role and role not in role_obs:
+        role_obs.append(role)
+    if not role_obs:
+        role_obs = [ROLE_UNKNOWN]
 
     is_structural = bool(ec.get("is_structural_container", False)) or (role == ROLE_STRUCTURAL_CONTAINER)
+    incoming_weight_conflict = bool(ec.get("weight_conflict", False)) or (len(weight_obs) > 1)
+    incoming_role_conflict = bool(ec.get("role_conflict", False))
 
     return {
         "criterion_id": criterion_id,
@@ -279,9 +310,10 @@ def normalize_evaluation_criterion(ec: dict) -> dict:
         "threshold": threshold,
         "notes": notes,
         "source_refs": source_refs,
-        "role_observations": [role] if role else [ROLE_UNKNOWN],
+        "role_observations": role_obs,
         "weight_observations": weight_obs,
-        "weight_conflict": False,
+        "weight_conflict": incoming_weight_conflict,
+        "role_conflict": incoming_role_conflict,
     }
 
 
@@ -369,8 +401,14 @@ def deduplicate_evaluation_criteria(criteria_list: list[dict]) -> list[dict]:
                         break
                 if not match_found:
                     existing_obs.append(nobs)
-                    if len(existing_obs) > 1:
-                        existing["weight_conflict"] = True
+
+            if len(existing_obs) > 1 or norm_ec.get("weight_conflict") or existing.get("weight_conflict"):
+                existing["weight_conflict"] = True
+
+            # Never downgrade True conflict to False
+            if norm_ec.get("role_conflict") or existing.get("role_conflict"):
+                existing["role_conflict"] = True
+                existing["evaluation_role"] = ROLE_UNKNOWN
 
             # If existing had no weight and new has it, adopt primary representation
             if existing.get("weight_value") is None and norm_ec.get("weight_value") is not None:
@@ -735,18 +773,51 @@ def calculate_evaluation_totals(hierarchy: dict) -> dict:
         contributing_unit = None
 
         if is_container:
-            # Directive 1: Structural Container is strictly non-additive directly regardless of is_structural_container boolean.
-            # Derives contribution ONLY from children if all children have Overall percentages
-            if overall_sub is not None and all(b == BASIS_OVERALL for b in c_bases) and len(c_units) == 1:
-                contributing_value = overall_sub
-                contributing_unit = list(c_units)[0]
-                root_details.append({
-                    "stage": title,
-                    "weight_value": contributing_value,
-                    "weight_unit": contributing_unit,
-                    "derived_from_children": True,
-                    "evaluation_role": role,
-                })
+            # Issue 2: Structural Container may derive authoritative overall contribution ONLY from children satisfying ALL of:
+            # - evaluation_role is additive: Award Criterion or confirmed Subcriterion under that parent
+            # - role_conflict is False
+            # - weight_conflict is False
+            # - weight_basis == Overall
+            # - compatible additive weight unit (e.g. Percent)
+            valid_additive_children = []
+            non_additive_children_present = False
+            for ch in children:
+                ch_role = ch.get("evaluation_role")
+                ch_val = ch.get("weight_value")
+                ch_basis = ch.get("weight_basis")
+                ch_unit = ch.get("weight_unit")
+                ch_role_conflict = bool(ch.get("role_conflict"))
+                ch_weight_conflict = bool(ch.get("weight_conflict"))
+
+                is_additive_role = ch_role in (ROLE_AWARD_CRITERION, ROLE_SUBCRITERION)
+                if (is_additive_role and not ch_role_conflict and not ch_weight_conflict
+                        and ch_basis == BASIS_OVERALL and ch_val is not None
+                        and ch_unit in (UNIT_PERCENT, UNIT_POINTS)):
+                    valid_additive_children.append(ch)
+                else:
+                    non_additive_children_present = True
+
+            # If ALL children are valid additive conflict-free Overall items with consistent unit:
+            if valid_additive_children and len(valid_additive_children) == len(children):
+                ch_units = {ch.get("weight_unit") for ch in valid_additive_children}
+                if len(ch_units) == 1:
+                    contributing_value = sum(ch.get("weight_value") for ch in valid_additive_children)
+                    contributing_unit = list(ch_units)[0]
+                    root_details.append({
+                        "stage": title,
+                        "weight_value": contributing_value,
+                        "weight_unit": contributing_unit,
+                        "derived_from_children": True,
+                        "evaluation_role": role,
+                    })
+                else:
+                    root_details.append({
+                        "stage": title,
+                        "weight_value": val,
+                        "weight_unit": unit,
+                        "derived_from_children": False,
+                        "evaluation_role": role,
+                    })
             else:
                 root_details.append({
                     "stage": title,
@@ -755,8 +826,9 @@ def calculate_evaluation_totals(hierarchy: dict) -> dict:
                     "derived_from_children": False,
                     "evaluation_role": role,
                 })
-        elif role in (ROLE_AWARD_CRITERION, ROLE_SUBCRITERION) and not has_conflict:
-            # Directive 1: Only additive roles can directly contribute to overall arithmetic
+        elif role == ROLE_AWARD_CRITERION and not has_conflict:
+            # Issue 3: Direct top-level contribution requires ROLE_AWARD_CRITERION + basis Overall + no conflict.
+            # Root Subcriterion with no parent is NOT directly additive.
             if basis == BASIS_OVERALL and val is not None:
                 contributing_value = val
                 contributing_unit = unit

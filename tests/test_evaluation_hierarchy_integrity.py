@@ -661,5 +661,200 @@ class TestGenericIntegrityCorrectionsPass(unittest.TestCase):
         self.assertEqual(totals["status"], STATUS_SOURCE_DISCREPANCY)
         self.assertTrue(any("mixed Overall and Within Parent bases" in w for w in totals["warnings"]))
 
+class TestStageAToStageBConflictPreservation(unittest.TestCase):
+    """
+    Issue 1 Tests:
+    Preserve evaluation conflict history across Stage A -> Stage B.
+    """
+
+    def test_A_within_document_role_conflict_survives_normalize_package_facts(self):
+        """A. Within-document role conflict survives normalize_package_facts()."""
+        # Stage A sees same logical criterion with conflicting roles
+        c1 = {"stage": "Commercial", "evaluation_role": "Award Criterion", "weight": "40%", "weight_basis": "Overall", "source_doc": "RFP.pdf"}
+        c2 = {"stage": "Commercial", "evaluation_role": "Process / Methodology", "source_doc": "RFP.pdf"}
+        stage_a_deduped = deduplicate_evaluation_criteria([c1, c2])
+        self.assertEqual(len(stage_a_deduped), 1)
+        self.assertTrue(stage_a_deduped[0]["role_conflict"])
+        self.assertEqual(stage_a_deduped[0]["evaluation_role"], "Unknown")
+
+        # In Stage B, document facts are collected and normalized across package
+        df1 = {
+            "evaluation_criteria": stage_a_deduped,
+            "requirements": [], "dates": [], "submission_rules": [], "deliverables": [], "commercial_clauses": [], "contract_risks": []
+        }
+        norm = normalize_package_facts([df1], {"doc_texts": {}})
+        stage_b_eval = norm["evaluation_criteria"]
+        self.assertEqual(len(stage_b_eval), 1)
+        self.assertTrue(stage_b_eval[0]["role_conflict"], "Role conflict must survive Stage B")
+        self.assertEqual(stage_b_eval[0]["evaluation_role"], "Unknown")
+        self.assertIn("Award Criterion", stage_b_eval[0]["role_observations"])
+        self.assertIn("Process / Methodology", stage_b_eval[0]["role_observations"])
+
+    def test_B_within_document_weight_conflict_survives_normalize_package_facts(self):
+        """B. Within-document weight conflict survives normalize_package_facts()."""
+        c1 = {"stage": "Technical", "weight": "40%", "weight_basis": "Overall", "source_doc": "RFP.pdf"}
+        c2 = {"stage": "Technical", "weight": "50%", "weight_basis": "Overall", "source_doc": "RFP.pdf"}
+        stage_a_deduped = deduplicate_evaluation_criteria([c1, c2])
+        self.assertEqual(len(stage_a_deduped), 1)
+        self.assertTrue(stage_a_deduped[0]["weight_conflict"])
+        self.assertEqual(len(stage_a_deduped[0]["weight_observations"]), 2)
+
+        df1 = {
+            "evaluation_criteria": stage_a_deduped,
+            "requirements": [], "dates": [], "submission_rules": [], "deliverables": [], "commercial_clauses": [], "contract_risks": []
+        }
+        norm = normalize_package_facts([df1], {"doc_texts": {}})
+        stage_b_eval = norm["evaluation_criteria"]
+        self.assertEqual(len(stage_b_eval), 1)
+        self.assertTrue(stage_b_eval[0]["weight_conflict"], "Weight conflict must survive Stage B")
+        self.assertEqual(len(stage_b_eval[0]["weight_observations"]), 2)
+
+    def test_C_stage_a_conflict_plus_consistent_stage_b_observation_does_not_clear_conflict(self):
+        """C. Stage A conflict + additional consistent Stage B observation does NOT clear conflict."""
+        # Document 1 has conflicting weights
+        c1 = {"stage": "Technical", "weight": "40%", "weight_basis": "Overall", "source_doc": "Doc1.pdf"}
+        c2 = {"stage": "Technical", "weight": "50%", "weight_basis": "Overall", "source_doc": "Doc1.pdf"}
+        doc1_eval = deduplicate_evaluation_criteria([c1, c2])
+
+        # Document 2 has consistent 40%
+        c3 = {"stage": "Technical", "weight": "40%", "weight_basis": "Overall", "source_doc": "Doc2.pdf"}
+        doc2_eval = deduplicate_evaluation_criteria([c3])
+
+        df1 = {"evaluation_criteria": doc1_eval, "requirements": [], "dates": [], "submission_rules": [], "deliverables": [], "commercial_clauses": [], "contract_risks": []}
+        df2 = {"evaluation_criteria": doc2_eval, "requirements": [], "dates": [], "submission_rules": [], "deliverables": [], "commercial_clauses": [], "contract_risks": []}
+
+        norm = normalize_package_facts([df1, df2], {"doc_texts": {}})
+        stage_b_eval = norm["evaluation_criteria"]
+        self.assertEqual(len(stage_b_eval), 1)
+        self.assertTrue(stage_b_eval[0]["weight_conflict"], "Additional observation must not clear prior conflict")
+        self.assertEqual(len(stage_b_eval[0]["weight_observations"]), 2)
+
+    def test_D_all_permutations_produce_same_final_observations_and_conflict_state(self):
+        """D. All permutations produce same final observations/conflict state."""
+        import itertools
+        obs_a = {"stage": "Technical", "weight": "40%", "weight_basis": "Overall", "evaluation_role": "Award Criterion", "source_doc": "A.pdf"}
+        obs_b = {"stage": "Technical", "weight": "50%", "weight_basis": "Overall", "evaluation_role": "Award Criterion", "source_doc": "B.pdf"}
+        obs_c = {"stage": "Technical", "weight": "40%", "weight_basis": "Overall", "evaluation_role": "Process / Methodology", "source_doc": "C.pdf"}
+
+        perms = list(itertools.permutations([obs_a, obs_b, obs_c]))
+        baseline = None
+        for p in perms:
+            deduped = deduplicate_evaluation_criteria(list(p))
+            self.assertEqual(len(deduped), 1)
+            item = deduped[0]
+            if baseline is None:
+                baseline = {
+                    "role_conflict": item["role_conflict"],
+                    "weight_conflict": item["weight_conflict"],
+                    "evaluation_role": item["evaluation_role"],
+                    "role_obs": sorted(item["role_observations"]),
+                    "num_weight_obs": len(item["weight_observations"]),
+                }
+            else:
+                self.assertEqual(item["role_conflict"], baseline["role_conflict"])
+                self.assertEqual(item["weight_conflict"], baseline["weight_conflict"])
+                self.assertEqual(item["evaluation_role"], baseline["evaluation_role"])
+                self.assertEqual(sorted(item["role_observations"]), baseline["role_obs"])
+                self.assertEqual(len(item["weight_observations"]), baseline["num_weight_obs"])
+
+
+class TestStructuralContainerAdditiveFiltering(unittest.TestCase):
+    """
+    Issue 2 Tests:
+    Structural container may derive authoritative overall contribution ONLY from additive children.
+    """
+
+    def test_container_with_process_child_does_not_derive_100(self):
+        """
+        Award Criteria
+            Quality - Award Criterion - 60% Overall
+            Evaluation Process - Process / Methodology - 40% Overall
+        Must NOT derive 100%. Process row is non-additive.
+        """
+        criteria = [
+            {"stage": "Award Criteria", "hierarchy_level": 1, "is_structural_container": True},
+            {"stage": "Quality", "parent_stage": "Award Criteria", "weight": "60%", "weight_basis": "Overall", "evaluation_role": "Award Criterion"},
+            {"stage": "Evaluation Process", "parent_stage": "Award Criteria", "weight": "40%", "weight_basis": "Overall", "evaluation_role": "Process / Methodology"},
+        ]
+        h = build_evaluation_hierarchy(criteria)
+        totals = calculate_evaluation_totals(h)
+        self.assertNotEqual(totals["status"], STATUS_VALID)
+        self.assertNotEqual(totals["overall_total"], 100.0)
+        self.assertFalse(totals["root_details"][0].get("derived_from_children"))
+
+    def test_container_with_pure_additive_children_derives_100_valid(self):
+        """
+        Award Criteria
+            Quality 60% Overall (Award Criterion)
+            Price 40% Overall (Award Criterion)
+        Both additive, conflict-free -> derives 100% VALID.
+        """
+        criteria = [
+            {"stage": "Award Criteria", "hierarchy_level": 1, "is_structural_container": True},
+            {"stage": "Quality", "parent_stage": "Award Criteria", "weight": "60%", "weight_basis": "Overall", "evaluation_role": "Award Criterion"},
+            {"stage": "Price", "parent_stage": "Award Criteria", "weight": "40%", "weight_basis": "Overall", "evaluation_role": "Award Criterion"},
+        ]
+        h = build_evaluation_hierarchy(criteria)
+        totals = calculate_evaluation_totals(h)
+        self.assertEqual(totals["status"], STATUS_VALID)
+        self.assertEqual(totals["overall_total"], 100.0)
+        self.assertTrue(totals["root_details"][0].get("derived_from_children"))
+
+    def test_container_with_role_conflicted_child_does_not_derive(self):
+        """A child with role_conflict=True must not be added into container derived total."""
+        child_conflicted = {
+            "stage": "Price", "parent_stage": "Award Criteria", "weight": "40%", "weight_basis": "Overall",
+            "evaluation_role": "Unknown", "role_conflict": True
+        }
+        criteria = [
+            {"stage": "Award Criteria", "hierarchy_level": 1, "is_structural_container": True},
+            {"stage": "Quality", "parent_stage": "Award Criteria", "weight": "60%", "weight_basis": "Overall", "evaluation_role": "Award Criterion"},
+            child_conflicted,
+        ]
+        h = build_evaluation_hierarchy(criteria)
+        totals = calculate_evaluation_totals(h)
+        self.assertNotEqual(totals["status"], STATUS_VALID)
+        self.assertFalse(totals["root_details"][0].get("derived_from_children"))
+
+
+class TestRootSubcriterionArithmetic(unittest.TestCase):
+    """
+    Issue 3 Tests:
+    Root Subcriterion must NOT be directly additive.
+    """
+
+    def test_A_root_award_criterion_60_overall_is_additive(self):
+        """A. Root Award Criterion 60% Overall -> additive."""
+        c = {"stage": "Technical", "hierarchy_level": 1, "weight": "60%", "weight_basis": "Overall", "evaluation_role": "Award Criterion"}
+        h = build_evaluation_hierarchy([c])
+        totals = calculate_evaluation_totals(h)
+        # Root is additive: totals["root_details"][0]["weight_value"] == 60.0
+        self.assertEqual(totals["root_details"][0]["weight_value"], 60.0)
+        # Incomplete total (60% != 100%) triggers SOURCE_DISCREPANCY (expected overall 100%)
+        self.assertEqual(totals["overall_total"], 60.0)
+
+    def test_B_root_subcriterion_60_overall_no_parent_not_additive(self):
+        """B. Root Subcriterion 60% Overall with no parent -> NOT additive."""
+        c = {"stage": "Technical Sub", "hierarchy_level": 1, "weight": "60%", "weight_basis": "Overall", "evaluation_role": "Subcriterion"}
+        h = build_evaluation_hierarchy([c])
+        totals = calculate_evaluation_totals(h)
+        self.assertIsNone(totals["overall_total"])
+        self.assertEqual(totals["status"], STATUS_INSUFFICIENT_DATA)
+
+    def test_C_subcriterion_nested_under_structural_parent_contributes_through_parent(self):
+        """C. Subcriterion 60% Overall correctly nested under structural parent contributes through parent/container."""
+        criteria = [
+            {"stage": "Award Criteria", "hierarchy_level": 1, "is_structural_container": True},
+            {"stage": "Tech Sub 1", "parent_stage": "Award Criteria", "weight": "60%", "weight_basis": "Overall", "evaluation_role": "Subcriterion"},
+            {"stage": "Tech Sub 2", "parent_stage": "Award Criteria", "weight": "40%", "weight_basis": "Overall", "evaluation_role": "Subcriterion"},
+        ]
+        h = build_evaluation_hierarchy(criteria)
+        totals = calculate_evaluation_totals(h)
+        self.assertEqual(totals["status"], STATUS_VALID)
+        self.assertEqual(totals["overall_total"], 100.0)
+        self.assertTrue(totals["root_details"][0].get("derived_from_children"))
+
+
 if __name__ == "__main__":
     unittest.main()
+
