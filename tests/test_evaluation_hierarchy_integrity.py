@@ -760,34 +760,88 @@ class TestStageAToStageBConflictPreservation(unittest.TestCase):
 
 class TestStructuralContainerAdditiveFiltering(unittest.TestCase):
     """
-    Issue 2 Tests:
-    Structural container may derive authoritative overall contribution ONLY from additive children.
+    Section 2 Tests:
+    Structural containers: ignore unweighted non-additive children, but flag weighted non-additive children.
     """
 
-    def test_container_with_process_child_does_not_derive_100(self):
+    def test_A_additive_children_plus_unweighted_process_child_derives_100_valid(self):
         """
-        Award Criteria
-            Quality - Award Criterion - 60% Overall
-            Evaluation Process - Process / Methodology - 40% Overall
-        Must NOT derive 100%. Process row is non-additive.
+        A. 60 + 40 additive + unweighted Process child:
+        -> VALID 100 derived from additive children (derived_from_children = True).
+        Unweighted process child does not block derivation.
         """
         criteria = [
             {"stage": "Award Criteria", "hierarchy_level": 1, "is_structural_container": True},
             {"stage": "Quality", "parent_stage": "Award Criteria", "weight": "60%", "weight_basis": "Overall", "evaluation_role": "Award Criterion"},
-            {"stage": "Evaluation Process", "parent_stage": "Award Criteria", "weight": "40%", "weight_basis": "Overall", "evaluation_role": "Process / Methodology"},
+            {"stage": "Price", "parent_stage": "Award Criteria", "weight": "40%", "weight_basis": "Overall", "evaluation_role": "Award Criterion"},
+            {"stage": "Scoring Methodology", "parent_stage": "Award Criteria", "weight": None, "evaluation_role": "Process / Methodology"},
+        ]
+        h = build_evaluation_hierarchy(criteria)
+        totals = calculate_evaluation_totals(h)
+        self.assertEqual(totals["status"], STATUS_VALID)
+        self.assertEqual(totals["overall_total"], 100.0)
+        self.assertTrue(totals["root_details"][0].get("derived_from_children"))
+
+    def test_B_additive_children_plus_weighted_process_child_not_valid(self):
+        """
+        B. 60 + 40 additive + Process 20 Overall:
+        -> NOT VALID (SOURCE_DISCREPANCY).
+        Weighted non-additive child creates ambiguity.
+        """
+        criteria = [
+            {"stage": "Award Criteria", "hierarchy_level": 1, "is_structural_container": True},
+            {"stage": "Quality", "parent_stage": "Award Criteria", "weight": "60%", "weight_basis": "Overall", "evaluation_role": "Award Criterion"},
+            {"stage": "Price", "parent_stage": "Award Criteria", "weight": "40%", "weight_basis": "Overall", "evaluation_role": "Award Criterion"},
+            {"stage": "Process Adjustment", "parent_stage": "Award Criteria", "weight": "20%", "weight_basis": "Overall", "evaluation_role": "Process / Methodology"},
         ]
         h = build_evaluation_hierarchy(criteria)
         totals = calculate_evaluation_totals(h)
         self.assertNotEqual(totals["status"], STATUS_VALID)
-        self.assertNotEqual(totals["overall_total"], 100.0)
+        self.assertEqual(totals["status"], STATUS_SOURCE_DISCREPANCY)
         self.assertFalse(totals["root_details"][0].get("derived_from_children"))
 
-    def test_container_with_pure_additive_children_derives_100_valid(self):
+    def test_C_additive_children_plus_unknown_weighted_child_not_valid(self):
         """
-        Award Criteria
-            Quality 60% Overall (Award Criterion)
-            Price 40% Overall (Award Criterion)
-        Both additive, conflict-free -> derives 100% VALID.
+        C. 60 + 40 additive + Unknown 20 Overall:
+        -> NOT VALID (SOURCE_DISCREPANCY).
+        """
+        criteria = [
+            {"stage": "Award Criteria", "hierarchy_level": 1, "is_structural_container": True},
+            {"stage": "Quality", "parent_stage": "Award Criteria", "weight": "60%", "weight_basis": "Overall", "evaluation_role": "Award Criterion"},
+            {"stage": "Price", "parent_stage": "Award Criteria", "weight": "40%", "weight_basis": "Overall", "evaluation_role": "Award Criterion"},
+            {"stage": "Mystery Component", "parent_stage": "Award Criteria", "weight": "20%", "weight_basis": "Overall", "evaluation_role": "Unknown"},
+        ]
+        h = build_evaluation_hierarchy(criteria)
+        totals = calculate_evaluation_totals(h)
+        self.assertNotEqual(totals["status"], STATUS_VALID)
+        self.assertEqual(totals["status"], STATUS_SOURCE_DISCREPANCY)
+        self.assertFalse(totals["root_details"][0].get("derived_from_children"))
+
+    def test_D_additive_children_plus_role_conflicted_child_not_valid(self):
+        """
+        D. 60 + 40 additive + role-conflicted 20 Overall:
+        -> NOT VALID (SOURCE_DISCREPANCY).
+        """
+        child_conflicted = {
+            "stage": "Interview", "parent_stage": "Award Criteria", "weight": "20%", "weight_basis": "Overall",
+            "evaluation_role": "Unknown", "role_conflict": True
+        }
+        criteria = [
+            {"stage": "Award Criteria", "hierarchy_level": 1, "is_structural_container": True},
+            {"stage": "Quality", "parent_stage": "Award Criteria", "weight": "60%", "weight_basis": "Overall", "evaluation_role": "Award Criterion"},
+            {"stage": "Price", "parent_stage": "Award Criteria", "weight": "40%", "weight_basis": "Overall", "evaluation_role": "Award Criterion"},
+            child_conflicted,
+        ]
+        h = build_evaluation_hierarchy(criteria)
+        totals = calculate_evaluation_totals(h)
+        self.assertNotEqual(totals["status"], STATUS_VALID)
+        self.assertEqual(totals["status"], STATUS_SOURCE_DISCREPANCY)
+        self.assertFalse(totals["root_details"][0].get("derived_from_children"))
+
+    def test_E_pure_additive_children_derives_100_valid_unchanged(self):
+        """
+        E. Pure 60 + 40 additive children:
+        -> VALID 100 unchanged.
         """
         criteria = [
             {"stage": "Award Criteria", "hierarchy_level": 1, "is_structural_container": True},
@@ -800,59 +854,90 @@ class TestStructuralContainerAdditiveFiltering(unittest.TestCase):
         self.assertEqual(totals["overall_total"], 100.0)
         self.assertTrue(totals["root_details"][0].get("derived_from_children"))
 
-    def test_container_with_role_conflicted_child_does_not_derive(self):
-        """A child with role_conflict=True must not be added into container derived total."""
-        child_conflicted = {
-            "stage": "Price", "parent_stage": "Award Criteria", "weight": "40%", "weight_basis": "Overall",
-            "evaluation_role": "Unknown", "role_conflict": True
-        }
+
+class TestOrphanSubcriteriaAndUnknownRoots(unittest.TestCase):
+    """
+    Section 1 Tests:
+    Orphan Subcriteria must be unresolved, and unknown overall root weights prevent VALID confidence.
+    """
+
+    def test_A_only_orphan_subcriterion_60_unresolved_hierarchy(self):
+        """
+        A. Only orphan Subcriterion 60%:
+        -> UNRESOLVED_HIERARCHY with reason 'Subcriterion has no resolved parent.'
+        """
+        c = {"stage": "Methodology", "weight": "60%", "weight_basis": "Overall", "evaluation_role": "Subcriterion"}
+        h = build_evaluation_hierarchy([c])
+        self.assertEqual(len(h["unresolved"]), 1)
+        self.assertEqual(h["unresolved"][0].get("unresolved_reason"), "Subcriterion has no resolved parent.")
+        totals = calculate_evaluation_totals(h)
+        self.assertEqual(totals["status"], STATUS_UNRESOLVED_HIERARCHY)
+        self.assertIsNone(totals["overall_total"])
+
+    def test_B_award_60_award_40_plus_orphan_subcriterion_20_unresolved_hierarchy(self):
+        """
+        B. Award 60 + Award 40 + orphan Subcriterion 20:
+        -> NOT VALID
+        -> UNRESOLVED_HIERARCHY
+        """
         criteria = [
-            {"stage": "Award Criteria", "hierarchy_level": 1, "is_structural_container": True},
-            {"stage": "Quality", "parent_stage": "Award Criteria", "weight": "60%", "weight_basis": "Overall", "evaluation_role": "Award Criterion"},
-            child_conflicted,
+            {"stage": "Quality", "weight": "60%", "weight_basis": "Overall", "evaluation_role": "Award Criterion"},
+            {"stage": "Price", "weight": "40%", "weight_basis": "Overall", "evaluation_role": "Award Criterion"},
+            {"stage": "Methodology", "weight": "20%", "weight_basis": "Overall", "evaluation_role": "Subcriterion"},
         ]
         h = build_evaluation_hierarchy(criteria)
+        self.assertEqual(len(h["unresolved"]), 1)
+        self.assertEqual(h["unresolved"][0].get("unresolved_reason"), "Subcriterion has no resolved parent.")
         totals = calculate_evaluation_totals(h)
         self.assertNotEqual(totals["status"], STATUS_VALID)
-        self.assertFalse(totals["root_details"][0].get("derived_from_children"))
+        self.assertEqual(totals["status"], STATUS_UNRESOLVED_HIERARCHY)
 
-
-class TestRootSubcriterionArithmetic(unittest.TestCase):
-    """
-    Issue 3 Tests:
-    Root Subcriterion must NOT be directly additive.
-    """
-
-    def test_A_root_award_criterion_60_overall_is_additive(self):
-        """A. Root Award Criterion 60% Overall -> additive."""
-        c = {"stage": "Technical", "hierarchy_level": 1, "weight": "60%", "weight_basis": "Overall", "evaluation_role": "Award Criterion"}
-        h = build_evaluation_hierarchy([c])
-        totals = calculate_evaluation_totals(h)
-        # Root is additive: totals["root_details"][0]["weight_value"] == 60.0
-        self.assertEqual(totals["root_details"][0]["weight_value"], 60.0)
-        # Incomplete total (60% != 100%) triggers SOURCE_DISCREPANCY (expected overall 100%)
-        self.assertEqual(totals["overall_total"], 60.0)
-
-    def test_B_root_subcriterion_60_overall_no_parent_not_additive(self):
-        """B. Root Subcriterion 60% Overall with no parent -> NOT additive."""
-        c = {"stage": "Technical Sub", "hierarchy_level": 1, "weight": "60%", "weight_basis": "Overall", "evaluation_role": "Subcriterion"}
-        h = build_evaluation_hierarchy([c])
-        totals = calculate_evaluation_totals(h)
-        self.assertIsNone(totals["overall_total"])
-        self.assertEqual(totals["status"], STATUS_INSUFFICIENT_DATA)
-
-    def test_C_subcriterion_nested_under_structural_parent_contributes_through_parent(self):
-        """C. Subcriterion 60% Overall correctly nested under structural parent contributes through parent/container."""
+    def test_C_subcriterion_nested_under_confirmed_parent_normal_hierarchy(self):
+        """
+        C. Same Subcriterion correctly nested under confirmed parent:
+        -> Normal hierarchy behavior (VALID 100 via container derivation).
+        """
         criteria = [
             {"stage": "Award Criteria", "hierarchy_level": 1, "is_structural_container": True},
             {"stage": "Tech Sub 1", "parent_stage": "Award Criteria", "weight": "60%", "weight_basis": "Overall", "evaluation_role": "Subcriterion"},
             {"stage": "Tech Sub 2", "parent_stage": "Award Criteria", "weight": "40%", "weight_basis": "Overall", "evaluation_role": "Subcriterion"},
         ]
         h = build_evaluation_hierarchy(criteria)
+        self.assertEqual(len(h["unresolved"]), 0)
         totals = calculate_evaluation_totals(h)
         self.assertEqual(totals["status"], STATUS_VALID)
         self.assertEqual(totals["overall_total"], 100.0)
         self.assertTrue(totals["root_details"][0].get("derived_from_children"))
+
+    def test_D_award_60_award_40_plus_unknown_20_overall_not_valid(self):
+        """
+        D. Award 60 + Award 40 + Unknown 20 Overall:
+        -> NOT VALID (SOURCE_DISCREPANCY due to unresolved overall weighting).
+        """
+        criteria = [
+            {"stage": "Quality", "weight": "60%", "weight_basis": "Overall", "evaluation_role": "Award Criterion"},
+            {"stage": "Price", "weight": "40%", "weight_basis": "Overall", "evaluation_role": "Award Criterion"},
+            {"stage": "Unclassified Fee", "weight": "20%", "weight_basis": "Overall", "evaluation_role": "Unknown"},
+        ]
+        h = build_evaluation_hierarchy(criteria)
+        totals = calculate_evaluation_totals(h)
+        self.assertNotEqual(totals["status"], STATUS_VALID)
+        self.assertEqual(totals["status"], STATUS_SOURCE_DISCREPANCY)
+
+    def test_E_award_60_award_40_plus_unweighted_process_remains_valid(self):
+        """
+        E. Award 60 + Award 40 + known Process stage (no weight or points):
+        -> Known non-additive role remains authoritative, does not break VALID 100%.
+        """
+        criteria = [
+            {"stage": "Quality", "weight": "60%", "weight_basis": "Overall", "evaluation_role": "Award Criterion"},
+            {"stage": "Price", "weight": "40%", "weight_basis": "Overall", "evaluation_role": "Award Criterion"},
+            {"stage": "Clarification Stage", "evaluation_role": "Process / Methodology"},
+        ]
+        h = build_evaluation_hierarchy(criteria)
+        totals = calculate_evaluation_totals(h)
+        self.assertEqual(totals["status"], STATUS_VALID)
+        self.assertEqual(totals["overall_total"], 100.0)
 
 
 if __name__ == "__main__":

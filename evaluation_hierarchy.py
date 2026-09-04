@@ -224,7 +224,7 @@ def normalize_evaluation_criterion(ec: dict) -> dict:
         role = ROLE_PROCESS_STAGE
     elif role_conflict:
         role = ROLE_UNKNOWN
-    elif not role or role == ROLE_UNKNOWN:
+    elif not role:
         role = infer_evaluation_role(stage, parent_stage, hierarchy_level, raw_weight)
 
     # Weight parsing
@@ -546,11 +546,21 @@ def build_evaluation_hierarchy(criteria_list: list[dict]) -> dict:
         pname = item.get("parent_stage") or item.get("parent_title")
 
         if not pid and not pname:
-            root_items.append(item)
+            if item.get("evaluation_role") == ROLE_SUBCRITERION:
+                item_copy = dict(item)
+                item_copy["unresolved_reason"] = "Subcriterion has no resolved parent."
+                unresolved.append(item_copy)
+            else:
+                root_items.append(item)
             continue
 
         if item.get("hierarchy_level", 1) == 1 and not pid and not pname:
-            root_items.append(item)
+            if item.get("evaluation_role") == ROLE_SUBCRITERION:
+                item_copy = dict(item)
+                item_copy["unresolved_reason"] = "Subcriterion has no resolved parent."
+                unresolved.append(item_copy)
+            else:
+                root_items.append(item)
             continue
 
         # Resolve parent
@@ -779,8 +789,25 @@ def calculate_evaluation_totals(hierarchy: dict) -> dict:
             # - weight_conflict is False
             # - weight_basis == Overall
             # - compatible additive weight unit (e.g. Percent)
+            #
+            # Child categorization rules:
+            # 1. Non-additive child with NO numeric weight (e.g. Process / Methodology without weight):
+            #    - visible in child_details
+            #    - ignored for arithmetic
+            #    - does NOT block otherwise complete additive derivation
+            # 2. Non-additive child with NUMERIC weight:
+            #    - If container has additive children or basis is Overall: excluded from arithmetic and
+            #      triggers source discrepancy / unresolved weighting (blocks VALID status).
+            #    - Non-award containers (e.g. Scoring Scale / Conditions of Participation) with Within Parent
+            #      scales/points do not trigger overall discrepancy.
+            # 3. Role-conflicted, weight-conflicted, or Unknown child with numeric weight:
+            #    - excluded from arithmetic
+            #    - triggers source discrepancy / unresolved weighting (blocks VALID status)
             valid_additive_children = []
-            non_additive_children_present = False
+            container_discrepancy = False
+
+            has_additive_candidate = any(ch.get("evaluation_role") in (ROLE_AWARD_CRITERION, ROLE_SUBCRITERION) for ch in children)
+
             for ch in children:
                 ch_role = ch.get("evaluation_role")
                 ch_val = ch.get("weight_value")
@@ -790,15 +817,37 @@ def calculate_evaluation_totals(hierarchy: dict) -> dict:
                 ch_weight_conflict = bool(ch.get("weight_conflict"))
 
                 is_additive_role = ch_role in (ROLE_AWARD_CRITERION, ROLE_SUBCRITERION)
-                if (is_additive_role and not ch_role_conflict and not ch_weight_conflict
-                        and ch_basis == BASIS_OVERALL and ch_val is not None
-                        and ch_unit in (UNIT_PERCENT, UNIT_POINTS)):
+                is_pure_additive = (is_additive_role and not ch_role_conflict and not ch_weight_conflict
+                                    and ch_basis == BASIS_OVERALL and ch_val is not None
+                                    and ch_unit in (UNIT_PERCENT, UNIT_POINTS))
+
+                if is_pure_additive:
                     valid_additive_children.append(ch)
                 else:
-                    non_additive_children_present = True
+                    # Check if non-additive / conflicted / unknown child has numeric weight or conflict
+                    # Only triggers discrepancy if child claims Overall basis, OR container is an additive award container
+                    is_overall_weight = (ch_val is not None and ch_basis == BASIS_OVERALL)
+                    is_conflicted = (ch_role_conflict or ch_weight_conflict)
+                    is_discrepant_under_award = (ch_val is not None and has_additive_candidate)
 
-            # If ALL children are valid additive conflict-free Overall items with consistent unit:
-            if valid_additive_children and len(valid_additive_children) == len(children):
+                    if is_overall_weight or is_conflicted or is_discrepant_under_award:
+                        container_discrepancy = True
+                        if ch_val is not None:
+                            warnings.append(
+                                f"Structural container '{title}' contains child '{ch.get('stage')}' with role '{ch_role}' "
+                                f"and numeric weight {ch_val} {ch_unit} ({ch_basis}), creating weighting discrepancy."
+                            )
+                        elif is_conflicted:
+                            warnings.append(
+                                f"Structural container '{title}' contains conflicted child '{ch.get('stage')}', "
+                                "preventing confident derivation."
+                            )
+
+            if container_discrepancy:
+                has_source_discrepancy = True
+
+            # If valid additive children exist, consistent unit, and no container discrepancy:
+            if valid_additive_children and not container_discrepancy:
                 ch_units = {ch.get("weight_unit") for ch in valid_additive_children}
                 if len(ch_units) == 1:
                     contributing_value = sum(ch.get("weight_value") for ch in valid_additive_children)
@@ -864,6 +913,12 @@ def calculate_evaluation_totals(hierarchy: dict) -> dict:
             # Observed numeric facts are preserved in root_details, but contributing_value remains None
             if has_conflict:
                 has_source_discrepancy = True
+            if (role == ROLE_UNKNOWN or has_conflict) and val is not None and basis == BASIS_OVERALL:
+                has_source_discrepancy = True
+                warnings.append(
+                    f"Root '{title}' has unresolved role '{role}' with numeric Overall weight {val} {unit}, "
+                    "preventing valid confidence."
+                )
             root_details.append({
                 "stage": title,
                 "weight_value": val,
