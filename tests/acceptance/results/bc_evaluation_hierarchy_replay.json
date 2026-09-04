@@ -1,7 +1,7 @@
 {
   "provenance": {
-    "code_sha": "3a73b01b5a856afc32b5e3934c80a6590e7ff6eb",
-    "run_started_at": "2026-09-04T07:24:50.037928+00:00",
+    "code_sha": "db85cde74db24615370ffedce200780de5121f18",
+    "run_started_at": "2026-09-04T08:03:27.170482+00:00",
     "model": "claude-haiku-4-5-20251001",
     "input_files": [
       {
@@ -17,11 +17,11 @@
     ]
   },
   "timings": {
-    "stage_a_sec": 760.11,
-    "stage_b_sec": 0.0799,
-    "stage_c_sec": 0.0238,
-    "stage_d_sec": 91.79,
-    "total_pipeline_sec": 852.0
+    "stage_a_sec": 745.97,
+    "stage_b_sec": 0.0769,
+    "stage_c_sec": 0.0229,
+    "stage_d_sec": 90.76,
+    "total_pipeline_sec": 836.83
   },
   "raw_evaluation_criteria": {
     "itt_pdf": [
@@ -54,7 +54,8 @@
           "Qualification / Gate"
         ],
         "weight_observations": [],
-        "weight_conflict": false
+        "weight_conflict": false,
+        "role_conflict": false
       },
       {
         "criterion_id": null,
@@ -85,7 +86,8 @@
           "Qualification / Gate"
         ],
         "weight_observations": [],
-        "weight_conflict": false
+        "weight_conflict": false,
+        "role_conflict": false
       },
       {
         "criterion_id": null,
@@ -116,7 +118,8 @@
           "Qualification / Gate"
         ],
         "weight_observations": [],
-        "weight_conflict": false
+        "weight_conflict": false,
+        "role_conflict": false
       },
       {
         "criterion_id": null,
@@ -147,7 +150,8 @@
           "Qualification / Gate"
         ],
         "weight_observations": [],
-        "weight_conflict": false
+        "weight_conflict": false,
+        "role_conflict": false
       },
       {
         "criterion_id": null,
@@ -178,7 +182,8 @@
           "Process / Methodology"
         ],
         "weight_observations": [],
-        "weight_conflict": false
+        "weight_conflict": false,
+        "role_conflict": false
       },
       {
         "criterion_id": null,
@@ -209,7 +214,8 @@
           "Process / Methodology"
         ],
         "weight_observations": [],
-        "weight_conflict": false
+        "weight_conflict": false,
+        "role_conflict": false
       },
       {
         "criterion_id": null,
@@ -240,7 +246,8 @@
           "Process / Methodology"
         ],
         "weight_observations": [],
-        "weight_conflict": false
+        "weight_conflict": false,
+        "role_conflict": false
       },
       {
         "criterion_id": null,
@@ -287,7 +294,8 @@
             ]
           }
         ],
-        "weight_conflict": false
+        "weight_conflict": false,
+        "role_conflict": false
       },
       {
         "criterion_id": null,
@@ -334,7 +342,8 @@
             ]
           }
         ],
-        "weight_conflict": false
+        "weight_conflict": false,
+        "role_conflict": false
       },
       {
         "criterion_id": null,
@@ -381,7 +390,8 @@
             ]
           }
         ],
-        "weight_conflict": false
+        "weight_conflict": false,
+        "role_conflict": false
       },
       {
         "criterion_id": null,
@@ -428,7 +438,8 @@
             ]
           }
         ],
-        "weight_conflict": false
+        "weight_conflict": false,
+        "role_conflict": false
       },
       {
         "criterion_id": null,
@@ -475,7 +486,8 @@
             ]
           }
         ],
-        "weight_conflict": false
+        "weight_conflict": false,
+        "role_conflict": false
       },
       {
         "criterion_id": null,
@@ -506,7 +518,8 @@
           "Scoring Scale"
         ],
         "weight_observations": [],
-        "weight_conflict": false
+        "weight_conflict": false,
+        "role_conflict": false
       },
       {
         "criterion_id": null,
@@ -553,7 +566,8 @@
             ]
           }
         ],
-        "weight_conflict": false
+        "weight_conflict": false,
+        "role_conflict": false
       },
       {
         "criterion_id": null,
@@ -600,7 +614,8 @@
             ]
           }
         ],
-        "weight_conflict": false
+        "weight_conflict": false,
+        "role_conflict": false
       },
       {
         "criterion_id": null,
@@ -647,7 +662,8 @@
             ]
           }
         ],
-        "weight_conflict": false
+        "weight_conflict": false,
+        "role_conflict": false
       },
       {
         "criterion_id": null,
@@ -678,7 +694,8 @@
           "Scoring Scale"
         ],
         "weight_observations": [],
-        "weight_conflict": false
+        "weight_conflict": false,
+        "role_conflict": false
       },
       {
         "criterion_id": null,
@@ -709,7 +726,8 @@
           "Process / Methodology"
         ],
         "weight_observations": [],
-        "weight_conflict": false
+        "weight_conflict": false,
+        "role_conflict": false
       },
       {
         "criterion_id": null,
@@ -740,7 +758,8 @@
           "Process / Methodology"
         ],
         "weight_observations": [],
-        "weight_conflict": false
+        "weight_conflict": false,
+        "role_conflict": false
       },
       {
         "criterion_id": null,
@@ -771,7 +790,8 @@
           "Process / Methodology"
         ],
         "weight_observations": [],
-        "weight_conflict": false
+        "weight_conflict": false,
+        "role_conflict": false
       }
     ],
     "annex_2_docx": [
@@ -783,65 +803,67 @@
         "parent_stage": null,
         "parent_title": null,
         "hierarchy_level": 1,
-        "evaluation_role": "Qualification / Gate",
-        "is_structural_container": false,
+        "evaluation_role": "Structural Container",
+        "is_structural_container": true,
         "weight": null,
         "weight_value": null,
         "weight_unit": "None",
         "weight_basis": "Unknown",
         "threshold": null,
-        "notes": "Mandatory completion for background information about bidder. Not evaluated but completion is mandatory. Covers: organization name, CDP identifier, bidding model (single/consortium), lot(s), and debarment status.",
+        "notes": "Background information about the bidder. Not evaluated but completion is mandatory.",
         "source_refs": [
           {
             "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
             "page": null,
             "sheet": null,
             "section": "TABLE",
-            "excerpt": "This section seeks background information about the bidder. It is not evaluated but completion is mandatory."
+            "excerpt": "Part 1: Your information and the bidding model. This section seeks background information about the bidder. It is not evaluated but completion is mandatory."
           }
         ],
         "role_observations": [
-          "Qualification / Gate"
+          "Structural Container"
         ],
         "weight_observations": [],
-        "weight_conflict": false
-      },
-      {
-        "criterion_id": null,
-        "parent_criterion_id": null,
-        "stage": "Confirmation of core supplier information",
-        "title": "Confirmation of core supplier information",
-        "parent_stage": "Part 1: Your information and the bidding model",
-        "parent_title": "Part 1: Your information and the bidding model",
-        "hierarchy_level": 2,
-        "evaluation_role": "Qualification / Gate",
-        "is_structural_container": false,
-        "weight": null,
-        "weight_value": null,
-        "weight_unit": "None",
-        "weight_basis": "Unknown",
-        "threshold": null,
-        "notes": "Bidder must confirm submission of up-to-date core supplier information on CDP and PDF download, including: basic information, economic and financial standing information, connected person information, and exclusion grounds information.",
-        "source_refs": [
-          {
-            "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
-            "page": null,
-            "sheet": null,
-            "section": "TABLE",
-            "excerpt": "Please confirm that you have submitted up-to-date core supplier information on the CDP and shared this information with us as PDF download."
-          }
-        ],
-        "role_observations": [
-          "Qualification / Gate"
-        ],
-        "weight_observations": [],
-        "weight_conflict": false
+        "weight_conflict": false,
+        "role_conflict": false
       },
       {
         "criterion_id": null,
         "parent_criterion_id": null,
         "stage": "Part 2: Additional exclusions information",
         "title": "Part 2: Additional exclusions information",
+        "parent_stage": null,
+        "parent_title": null,
+        "hierarchy_level": 1,
+        "evaluation_role": "Structural Container",
+        "is_structural_container": true,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": null,
+        "notes": "Background information about the bidder, associated persons and sub-contractors. Not evaluated but completion is mandatory.",
+        "source_refs": [
+          {
+            "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+            "page": null,
+            "sheet": null,
+            "section": "TABLE",
+            "excerpt": "Part 2 | Additional exclusions information. This section seeks background information about the bidder, associated persons and subcontractors. It is not evaluated but completion is mandatory."
+          }
+        ],
+        "role_observations": [
+          "Structural Container"
+        ],
+        "weight_observations": [],
+        "weight_conflict": false,
+        "role_conflict": false
+      },
+      {
+        "criterion_id": null,
+        "parent_criterion_id": null,
+        "stage": "Part 3: Conditions of participation",
+        "title": "Part 3: Conditions of participation",
         "parent_stage": null,
         "parent_title": null,
         "hierarchy_level": 1,
@@ -852,27 +874,35 @@
         "weight_unit": "None",
         "weight_basis": "Unknown",
         "threshold": null,
-        "notes": "Mandatory completion for background information about bidder, associated persons, and sub-contractors. Not evaluated but completion is mandatory. Covers exclusions information and associated persons reliance.",
+        "notes": "Contracting authorities may set conditions of participation which a supplier must satisfy to be awarded a public contract. They can relate to the supplier's legal and financial capacity and/or their technical ability. Some information will be assessed by the British Council using pass/fail mechanisms or thresholds.",
         "source_refs": [
           {
             "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
             "page": null,
             "sheet": null,
-            "section": "TABLE",
-            "excerpt": "This section seeks background information about the bidder, associated persons and subcontractors. It is not evaluated but completion is mandatory."
+            "section": "Header",
+            "excerpt": "Part 3 - conditions of participation: contracting authorities may set conditions of participation which a supplier must satisfy in order to be awarded a public contract. They can relate to the supplier's legal and financial capacity and/or their technical ability."
+          },
+          {
+            "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+            "page": null,
+            "sheet": null,
+            "section": "Header",
+            "excerpt": "Some of the information requested in the PSQ will be for information purposes only. Other information will be assessed by the British Council. This might include a pass or fail mechanism, or a threshold which you must meet."
           }
         ],
         "role_observations": [
           "Qualification / Gate"
         ],
         "weight_observations": [],
-        "weight_conflict": false
+        "weight_conflict": false,
+        "role_conflict": false
       },
       {
         "criterion_id": null,
         "parent_criterion_id": null,
-        "stage": "Associated persons",
-        "title": "Associated persons",
+        "stage": "Debarment List Check",
+        "title": "Debarment List Check",
         "parent_stage": "Part 2: Additional exclusions information",
         "parent_title": "Part 2: Additional exclusions information",
         "hierarchy_level": 2,
@@ -882,25 +912,122 @@
         "weight_value": null,
         "weight_unit": "None",
         "weight_basis": "Unknown",
-        "threshold": null,
-        "notes": "If bidder relies on associated persons (consortium members or key sub-contractors) to satisfy conditions of participation, must complete Questions 8, 9, and 10. Associated persons must be registered on CDP and share their information including basic information, economic and financial standing information (if relied upon for financial capacity), associated person information, and exclusion grounds information.",
+        "threshold": "Must not be on debarment list",
+        "notes": "Exclusion regime and published debarment list safeguard procurement from suppliers who may pose a risk due to misconduct or poor performance. Supplier and connected persons must not be on debarment list.",
         "source_refs": [
           {
             "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
             "page": null,
             "sheet": null,
-            "section": "TABLE",
-            "excerpt": "Are you relying on any associated persons to satisfy the conditions of participation? Where applicable, conditions of participation are outlined in Part 3. If so, please complete Q8, Q9 & Q10 (otherwise Q8, Q9 & Q10 are not applicable)."
+            "section": "Header",
+            "excerpt": "Part 2 - additional exclusions information: the Act provides for an 'exclusion regime' and a published 'debarment' list to safeguard procurement from suppliers who may pose a risk (for example, due to misconduct or poor performance)."
           }
         ],
         "role_observations": [
           "Qualification / Gate"
         ],
         "weight_observations": [],
-        "weight_conflict": false
+        "weight_conflict": false,
+        "role_conflict": false
+      },
+      {
+        "criterion_id": null,
+        "parent_criterion_id": null,
+        "stage": "Exclusion Grounds Assessment",
+        "title": "Exclusion Grounds Assessment",
+        "parent_stage": "Part 2: Additional exclusions information",
+        "parent_title": "Part 2: Additional exclusions information",
+        "hierarchy_level": 2,
+        "evaluation_role": "Qualification / Gate",
+        "is_structural_container": false,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": "No exclusion grounds apply",
+        "notes": "Supplier must submit self-declarations via CDP as to whether any exclusion grounds apply to the supplier or connected persons. If exclusion grounds apply, supplier must provide details of the event or conviction and steps taken to prevent recurrence.",
+        "source_refs": [
+          {
+            "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+            "page": null,
+            "sheet": null,
+            "section": "Header",
+            "excerpt": "You must submit your own (and your connected persons') exclusions information via the CDP. This includes self-declarations as to whether any exclusion grounds apply to you or connected persons and, if so, details about the event or conviction and what steps have been taken to prevent such circumstances from occurring again."
+          }
+        ],
+        "role_observations": [
+          "Qualification / Gate"
+        ],
+        "weight_observations": [],
+        "weight_conflict": false,
+        "role_conflict": false
+      },
+      {
+        "criterion_id": null,
+        "parent_criterion_id": null,
+        "stage": "Associated Persons Verification",
+        "title": "Associated Persons Verification",
+        "parent_stage": "Part 2: Additional exclusions information",
+        "parent_title": "Part 2: Additional exclusions information",
+        "hierarchy_level": 2,
+        "evaluation_role": "Qualification / Gate",
+        "is_structural_container": false,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": "Associated persons must be registered on CDP and share required information",
+        "notes": "For consortium members or key sub-contractors relied upon to meet conditions of participation (associated persons), supplier must ensure they register, submit and share their information via CDP including exclusion grounds information.",
+        "source_refs": [
+          {
+            "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+            "page": null,
+            "sheet": null,
+            "section": "Header",
+            "excerpt": "You will need to also share additional exclusions information for any suppliers that you are relying on to meet the procurement's conditions of participation. These could either be consortium members or key sub-contractors (but excludes any guarantors). These suppliers are 'associated persons' and their exclusions information must be shared with the authority. This should be done by ensuring that associated persons register, submit and share their information via the CDP (like the prime/main supplier)."
+          }
+        ],
+        "role_observations": [
+          "Qualification / Gate"
+        ],
+        "weight_observations": [],
+        "weight_conflict": false,
+        "role_conflict": false
+      },
+      {
+        "criterion_id": null,
+        "parent_criterion_id": null,
+        "stage": "Sub-contractor Debarment Check",
+        "title": "Sub-contractor Debarment Check",
+        "parent_stage": "Part 2: Additional exclusions information",
+        "parent_title": "Part 2: Additional exclusions information",
+        "hierarchy_level": 2,
+        "evaluation_role": "Qualification / Gate",
+        "is_structural_container": false,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": "All sub-contractors must not be on debarment list",
+        "notes": "All intended sub-contractors (exhaustive list) will be checked against the debarment list. Unknown sub-contractors must be identified and details provided by final tenders.",
+        "source_refs": [
+          {
+            "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+            "page": null,
+            "sheet": null,
+            "section": "Header",
+            "excerpt": "In addition to the sub-contractors who are being relied on to meet the conditions of participation (who are associated persons), you will need to share an exhaustive list of all your intended sub-contractors, which will be checked against the debarment list."
+          }
+        ],
+        "role_observations": [
+          "Qualification / Gate"
+        ],
+        "weight_observations": [],
+        "weight_conflict": false,
+        "role_conflict": false
       }
     ],
-    "total_raw_count": 24
+    "total_raw_count": 27
   },
   "normalized_evaluation_criteria": [
     {
@@ -932,7 +1059,8 @@
         "Qualification / Gate"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -963,7 +1091,8 @@
         "Qualification / Gate"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -994,7 +1123,8 @@
         "Qualification / Gate"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1025,7 +1155,8 @@
         "Qualification / Gate"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1056,7 +1187,8 @@
         "Process / Methodology"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1087,7 +1219,8 @@
         "Process / Methodology"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1118,7 +1251,8 @@
         "Process / Methodology"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1165,7 +1299,8 @@
           ]
         }
       ],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1212,7 +1347,8 @@
           ]
         }
       ],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1259,7 +1395,8 @@
           ]
         }
       ],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1306,7 +1443,8 @@
           ]
         }
       ],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1353,7 +1491,8 @@
           ]
         }
       ],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1384,7 +1523,8 @@
         "Scoring Scale"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1431,7 +1571,8 @@
           ]
         }
       ],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1478,7 +1619,8 @@
           ]
         }
       ],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1525,7 +1667,8 @@
           ]
         }
       ],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1556,7 +1699,8 @@
         "Scoring Scale"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1587,7 +1731,8 @@
         "Process / Methodology"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1618,7 +1763,8 @@
         "Process / Methodology"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1649,7 +1795,8 @@
         "Process / Methodology"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1659,65 +1806,67 @@
       "parent_stage": null,
       "parent_title": null,
       "hierarchy_level": 1,
-      "evaluation_role": "Qualification / Gate",
-      "is_structural_container": false,
+      "evaluation_role": "Structural Container",
+      "is_structural_container": true,
       "weight": null,
       "weight_value": null,
       "weight_unit": "None",
       "weight_basis": "Unknown",
       "threshold": null,
-      "notes": "Mandatory completion for background information about bidder. Not evaluated but completion is mandatory. Covers: organization name, CDP identifier, bidding model (single/consortium), lot(s), and debarment status.",
+      "notes": "Background information about the bidder. Not evaluated but completion is mandatory.",
       "source_refs": [
         {
           "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
           "page": null,
           "sheet": null,
           "section": "TABLE",
-          "excerpt": "This section seeks background information about the bidder. It is not evaluated but completion is mandatory."
+          "excerpt": "Part 1: Your information and the bidding model. This section seeks background information about the bidder. It is not evaluated but completion is mandatory."
         }
       ],
       "role_observations": [
-        "Qualification / Gate"
+        "Structural Container"
       ],
       "weight_observations": [],
-      "weight_conflict": false
-    },
-    {
-      "criterion_id": null,
-      "parent_criterion_id": null,
-      "stage": "Confirmation of core supplier information",
-      "title": "Confirmation of core supplier information",
-      "parent_stage": "Part 1: Your information and the bidding model",
-      "parent_title": "Part 1: Your information and the bidding model",
-      "hierarchy_level": 2,
-      "evaluation_role": "Qualification / Gate",
-      "is_structural_container": false,
-      "weight": null,
-      "weight_value": null,
-      "weight_unit": "None",
-      "weight_basis": "Unknown",
-      "threshold": null,
-      "notes": "Bidder must confirm submission of up-to-date core supplier information on CDP and PDF download, including: basic information, economic and financial standing information, connected person information, and exclusion grounds information.",
-      "source_refs": [
-        {
-          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
-          "page": null,
-          "sheet": null,
-          "section": "TABLE",
-          "excerpt": "Please confirm that you have submitted up-to-date core supplier information on the CDP and shared this information with us as PDF download."
-        }
-      ],
-      "role_observations": [
-        "Qualification / Gate"
-      ],
-      "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
       "parent_criterion_id": null,
       "stage": "Part 2: Additional exclusions information",
       "title": "Part 2: Additional exclusions information",
+      "parent_stage": null,
+      "parent_title": null,
+      "hierarchy_level": 1,
+      "evaluation_role": "Structural Container",
+      "is_structural_container": true,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": null,
+      "notes": "Background information about the bidder, associated persons and sub-contractors. Not evaluated but completion is mandatory.",
+      "source_refs": [
+        {
+          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+          "page": null,
+          "sheet": null,
+          "section": "TABLE",
+          "excerpt": "Part 2 | Additional exclusions information. This section seeks background information about the bidder, associated persons and subcontractors. It is not evaluated but completion is mandatory."
+        }
+      ],
+      "role_observations": [
+        "Structural Container"
+      ],
+      "weight_observations": [],
+      "weight_conflict": false,
+      "role_conflict": false
+    },
+    {
+      "criterion_id": null,
+      "parent_criterion_id": null,
+      "stage": "Part 3: Conditions of participation",
+      "title": "Part 3: Conditions of participation",
       "parent_stage": null,
       "parent_title": null,
       "hierarchy_level": 1,
@@ -1728,27 +1877,35 @@
       "weight_unit": "None",
       "weight_basis": "Unknown",
       "threshold": null,
-      "notes": "Mandatory completion for background information about bidder, associated persons, and sub-contractors. Not evaluated but completion is mandatory. Covers exclusions information and associated persons reliance.",
+      "notes": "Contracting authorities may set conditions of participation which a supplier must satisfy to be awarded a public contract. They can relate to the supplier's legal and financial capacity and/or their technical ability. Some information will be assessed by the British Council using pass/fail mechanisms or thresholds.",
       "source_refs": [
         {
           "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
           "page": null,
           "sheet": null,
-          "section": "TABLE",
-          "excerpt": "This section seeks background information about the bidder, associated persons and subcontractors. It is not evaluated but completion is mandatory."
+          "section": "Header",
+          "excerpt": "Part 3 - conditions of participation: contracting authorities may set conditions of participation which a supplier must satisfy in order to be awarded a public contract. They can relate to the supplier's legal and financial capacity and/or their technical ability."
+        },
+        {
+          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+          "page": null,
+          "sheet": null,
+          "section": "Header",
+          "excerpt": "Some of the information requested in the PSQ will be for information purposes only. Other information will be assessed by the British Council. This might include a pass or fail mechanism, or a threshold which you must meet."
         }
       ],
       "role_observations": [
         "Qualification / Gate"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
       "parent_criterion_id": null,
-      "stage": "Associated persons",
-      "title": "Associated persons",
+      "stage": "Debarment List Check",
+      "title": "Debarment List Check",
       "parent_stage": "Part 2: Additional exclusions information",
       "parent_title": "Part 2: Additional exclusions information",
       "hierarchy_level": 2,
@@ -1758,22 +1915,119 @@
       "weight_value": null,
       "weight_unit": "None",
       "weight_basis": "Unknown",
-      "threshold": null,
-      "notes": "If bidder relies on associated persons (consortium members or key sub-contractors) to satisfy conditions of participation, must complete Questions 8, 9, and 10. Associated persons must be registered on CDP and share their information including basic information, economic and financial standing information (if relied upon for financial capacity), associated person information, and exclusion grounds information.",
+      "threshold": "Must not be on debarment list",
+      "notes": "Exclusion regime and published debarment list safeguard procurement from suppliers who may pose a risk due to misconduct or poor performance. Supplier and connected persons must not be on debarment list.",
       "source_refs": [
         {
           "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
           "page": null,
           "sheet": null,
-          "section": "TABLE",
-          "excerpt": "Are you relying on any associated persons to satisfy the conditions of participation? Where applicable, conditions of participation are outlined in Part 3. If so, please complete Q8, Q9 & Q10 (otherwise Q8, Q9 & Q10 are not applicable)."
+          "section": "Header",
+          "excerpt": "Part 2 - additional exclusions information: the Act provides for an 'exclusion regime' and a published 'debarment' list to safeguard procurement from suppliers who may pose a risk (for example, due to misconduct or poor performance)."
         }
       ],
       "role_observations": [
         "Qualification / Gate"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
+    },
+    {
+      "criterion_id": null,
+      "parent_criterion_id": null,
+      "stage": "Exclusion Grounds Assessment",
+      "title": "Exclusion Grounds Assessment",
+      "parent_stage": "Part 2: Additional exclusions information",
+      "parent_title": "Part 2: Additional exclusions information",
+      "hierarchy_level": 2,
+      "evaluation_role": "Qualification / Gate",
+      "is_structural_container": false,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "No exclusion grounds apply",
+      "notes": "Supplier must submit self-declarations via CDP as to whether any exclusion grounds apply to the supplier or connected persons. If exclusion grounds apply, supplier must provide details of the event or conviction and steps taken to prevent recurrence.",
+      "source_refs": [
+        {
+          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+          "page": null,
+          "sheet": null,
+          "section": "Header",
+          "excerpt": "You must submit your own (and your connected persons') exclusions information via the CDP. This includes self-declarations as to whether any exclusion grounds apply to you or connected persons and, if so, details about the event or conviction and what steps have been taken to prevent such circumstances from occurring again."
+        }
+      ],
+      "role_observations": [
+        "Qualification / Gate"
+      ],
+      "weight_observations": [],
+      "weight_conflict": false,
+      "role_conflict": false
+    },
+    {
+      "criterion_id": null,
+      "parent_criterion_id": null,
+      "stage": "Associated Persons Verification",
+      "title": "Associated Persons Verification",
+      "parent_stage": "Part 2: Additional exclusions information",
+      "parent_title": "Part 2: Additional exclusions information",
+      "hierarchy_level": 2,
+      "evaluation_role": "Qualification / Gate",
+      "is_structural_container": false,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "Associated persons must be registered on CDP and share required information",
+      "notes": "For consortium members or key sub-contractors relied upon to meet conditions of participation (associated persons), supplier must ensure they register, submit and share their information via CDP including exclusion grounds information.",
+      "source_refs": [
+        {
+          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+          "page": null,
+          "sheet": null,
+          "section": "Header",
+          "excerpt": "You will need to also share additional exclusions information for any suppliers that you are relying on to meet the procurement's conditions of participation. These could either be consortium members or key sub-contractors (but excludes any guarantors). These suppliers are 'associated persons' and their exclusions information must be shared with the authority. This should be done by ensuring that associated persons register, submit and share their information via the CDP (like the prime/main supplier)."
+        }
+      ],
+      "role_observations": [
+        "Qualification / Gate"
+      ],
+      "weight_observations": [],
+      "weight_conflict": false,
+      "role_conflict": false
+    },
+    {
+      "criterion_id": null,
+      "parent_criterion_id": null,
+      "stage": "Sub-contractor Debarment Check",
+      "title": "Sub-contractor Debarment Check",
+      "parent_stage": "Part 2: Additional exclusions information",
+      "parent_title": "Part 2: Additional exclusions information",
+      "hierarchy_level": 2,
+      "evaluation_role": "Qualification / Gate",
+      "is_structural_container": false,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "All sub-contractors must not be on debarment list",
+      "notes": "All intended sub-contractors (exhaustive list) will be checked against the debarment list. Unknown sub-contractors must be identified and details provided by final tenders.",
+      "source_refs": [
+        {
+          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+          "page": null,
+          "sheet": null,
+          "section": "Header",
+          "excerpt": "In addition to the sub-contractors who are being relied on to meet the conditions of participation (who are associated persons), you will need to share an exhaustive list of all your intended sub-contractors, which will be checked against the debarment list."
+        }
+      ],
+      "role_observations": [
+        "Qualification / Gate"
+      ],
+      "weight_observations": [],
+      "weight_conflict": false,
+      "role_conflict": false
     }
   ],
   "evaluation_breakdown": [
@@ -1806,7 +2060,8 @@
         "Qualification / Gate"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1837,7 +2092,8 @@
         "Qualification / Gate"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1868,7 +2124,8 @@
         "Qualification / Gate"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1899,7 +2156,8 @@
         "Qualification / Gate"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1930,7 +2188,8 @@
         "Process / Methodology"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1961,7 +2220,8 @@
         "Process / Methodology"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -1992,7 +2252,8 @@
         "Process / Methodology"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -2039,7 +2300,8 @@
           ]
         }
       ],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -2086,7 +2348,8 @@
           ]
         }
       ],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -2133,7 +2396,8 @@
           ]
         }
       ],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -2180,7 +2444,8 @@
           ]
         }
       ],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -2227,7 +2492,8 @@
           ]
         }
       ],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -2258,7 +2524,8 @@
         "Scoring Scale"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -2305,7 +2572,8 @@
           ]
         }
       ],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -2352,7 +2620,8 @@
           ]
         }
       ],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -2399,7 +2668,8 @@
           ]
         }
       ],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -2430,7 +2700,8 @@
         "Scoring Scale"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -2461,7 +2732,8 @@
         "Process / Methodology"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -2492,7 +2764,8 @@
         "Process / Methodology"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -2523,7 +2796,8 @@
         "Process / Methodology"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
@@ -2533,65 +2807,67 @@
       "parent_stage": null,
       "parent_title": null,
       "hierarchy_level": 1,
-      "evaluation_role": "Qualification / Gate",
-      "is_structural_container": false,
+      "evaluation_role": "Structural Container",
+      "is_structural_container": true,
       "weight": null,
       "weight_value": null,
       "weight_unit": "None",
       "weight_basis": "Unknown",
       "threshold": null,
-      "notes": "Mandatory completion for background information about bidder. Not evaluated but completion is mandatory. Covers: organization name, CDP identifier, bidding model (single/consortium), lot(s), and debarment status.",
+      "notes": "Background information about the bidder. Not evaluated but completion is mandatory.",
       "source_refs": [
         {
           "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
           "page": null,
           "sheet": null,
           "section": "TABLE",
-          "excerpt": "This section seeks background information about the bidder. It is not evaluated but completion is mandatory."
+          "excerpt": "Part 1: Your information and the bidding model. This section seeks background information about the bidder. It is not evaluated but completion is mandatory."
         }
       ],
       "role_observations": [
-        "Qualification / Gate"
+        "Structural Container"
       ],
       "weight_observations": [],
-      "weight_conflict": false
-    },
-    {
-      "criterion_id": null,
-      "parent_criterion_id": null,
-      "stage": "Confirmation of core supplier information",
-      "title": "Confirmation of core supplier information",
-      "parent_stage": "Part 1: Your information and the bidding model",
-      "parent_title": "Part 1: Your information and the bidding model",
-      "hierarchy_level": 2,
-      "evaluation_role": "Qualification / Gate",
-      "is_structural_container": false,
-      "weight": null,
-      "weight_value": null,
-      "weight_unit": "None",
-      "weight_basis": "Unknown",
-      "threshold": null,
-      "notes": "Bidder must confirm submission of up-to-date core supplier information on CDP and PDF download, including: basic information, economic and financial standing information, connected person information, and exclusion grounds information.",
-      "source_refs": [
-        {
-          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
-          "page": null,
-          "sheet": null,
-          "section": "TABLE",
-          "excerpt": "Please confirm that you have submitted up-to-date core supplier information on the CDP and shared this information with us as PDF download."
-        }
-      ],
-      "role_observations": [
-        "Qualification / Gate"
-      ],
-      "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
       "parent_criterion_id": null,
       "stage": "Part 2: Additional exclusions information",
       "title": "Part 2: Additional exclusions information",
+      "parent_stage": null,
+      "parent_title": null,
+      "hierarchy_level": 1,
+      "evaluation_role": "Structural Container",
+      "is_structural_container": true,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": null,
+      "notes": "Background information about the bidder, associated persons and sub-contractors. Not evaluated but completion is mandatory.",
+      "source_refs": [
+        {
+          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+          "page": null,
+          "sheet": null,
+          "section": "TABLE",
+          "excerpt": "Part 2 | Additional exclusions information. This section seeks background information about the bidder, associated persons and subcontractors. It is not evaluated but completion is mandatory."
+        }
+      ],
+      "role_observations": [
+        "Structural Container"
+      ],
+      "weight_observations": [],
+      "weight_conflict": false,
+      "role_conflict": false
+    },
+    {
+      "criterion_id": null,
+      "parent_criterion_id": null,
+      "stage": "Part 3: Conditions of participation",
+      "title": "Part 3: Conditions of participation",
       "parent_stage": null,
       "parent_title": null,
       "hierarchy_level": 1,
@@ -2602,27 +2878,35 @@
       "weight_unit": "None",
       "weight_basis": "Unknown",
       "threshold": null,
-      "notes": "Mandatory completion for background information about bidder, associated persons, and sub-contractors. Not evaluated but completion is mandatory. Covers exclusions information and associated persons reliance.",
+      "notes": "Contracting authorities may set conditions of participation which a supplier must satisfy to be awarded a public contract. They can relate to the supplier's legal and financial capacity and/or their technical ability. Some information will be assessed by the British Council using pass/fail mechanisms or thresholds.",
       "source_refs": [
         {
           "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
           "page": null,
           "sheet": null,
-          "section": "TABLE",
-          "excerpt": "This section seeks background information about the bidder, associated persons and subcontractors. It is not evaluated but completion is mandatory."
+          "section": "Header",
+          "excerpt": "Part 3 - conditions of participation: contracting authorities may set conditions of participation which a supplier must satisfy in order to be awarded a public contract. They can relate to the supplier's legal and financial capacity and/or their technical ability."
+        },
+        {
+          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+          "page": null,
+          "sheet": null,
+          "section": "Header",
+          "excerpt": "Some of the information requested in the PSQ will be for information purposes only. Other information will be assessed by the British Council. This might include a pass or fail mechanism, or a threshold which you must meet."
         }
       ],
       "role_observations": [
         "Qualification / Gate"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
     },
     {
       "criterion_id": null,
       "parent_criterion_id": null,
-      "stage": "Associated persons",
-      "title": "Associated persons",
+      "stage": "Debarment List Check",
+      "title": "Debarment List Check",
       "parent_stage": "Part 2: Additional exclusions information",
       "parent_title": "Part 2: Additional exclusions information",
       "hierarchy_level": 2,
@@ -2632,22 +2916,119 @@
       "weight_value": null,
       "weight_unit": "None",
       "weight_basis": "Unknown",
-      "threshold": null,
-      "notes": "If bidder relies on associated persons (consortium members or key sub-contractors) to satisfy conditions of participation, must complete Questions 8, 9, and 10. Associated persons must be registered on CDP and share their information including basic information, economic and financial standing information (if relied upon for financial capacity), associated person information, and exclusion grounds information.",
+      "threshold": "Must not be on debarment list",
+      "notes": "Exclusion regime and published debarment list safeguard procurement from suppliers who may pose a risk due to misconduct or poor performance. Supplier and connected persons must not be on debarment list.",
       "source_refs": [
         {
           "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
           "page": null,
           "sheet": null,
-          "section": "TABLE",
-          "excerpt": "Are you relying on any associated persons to satisfy the conditions of participation? Where applicable, conditions of participation are outlined in Part 3. If so, please complete Q8, Q9 & Q10 (otherwise Q8, Q9 & Q10 are not applicable)."
+          "section": "Header",
+          "excerpt": "Part 2 - additional exclusions information: the Act provides for an 'exclusion regime' and a published 'debarment' list to safeguard procurement from suppliers who may pose a risk (for example, due to misconduct or poor performance)."
         }
       ],
       "role_observations": [
         "Qualification / Gate"
       ],
       "weight_observations": [],
-      "weight_conflict": false
+      "weight_conflict": false,
+      "role_conflict": false
+    },
+    {
+      "criterion_id": null,
+      "parent_criterion_id": null,
+      "stage": "Exclusion Grounds Assessment",
+      "title": "Exclusion Grounds Assessment",
+      "parent_stage": "Part 2: Additional exclusions information",
+      "parent_title": "Part 2: Additional exclusions information",
+      "hierarchy_level": 2,
+      "evaluation_role": "Qualification / Gate",
+      "is_structural_container": false,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "No exclusion grounds apply",
+      "notes": "Supplier must submit self-declarations via CDP as to whether any exclusion grounds apply to the supplier or connected persons. If exclusion grounds apply, supplier must provide details of the event or conviction and steps taken to prevent recurrence.",
+      "source_refs": [
+        {
+          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+          "page": null,
+          "sheet": null,
+          "section": "Header",
+          "excerpt": "You must submit your own (and your connected persons') exclusions information via the CDP. This includes self-declarations as to whether any exclusion grounds apply to you or connected persons and, if so, details about the event or conviction and what steps have been taken to prevent such circumstances from occurring again."
+        }
+      ],
+      "role_observations": [
+        "Qualification / Gate"
+      ],
+      "weight_observations": [],
+      "weight_conflict": false,
+      "role_conflict": false
+    },
+    {
+      "criterion_id": null,
+      "parent_criterion_id": null,
+      "stage": "Associated Persons Verification",
+      "title": "Associated Persons Verification",
+      "parent_stage": "Part 2: Additional exclusions information",
+      "parent_title": "Part 2: Additional exclusions information",
+      "hierarchy_level": 2,
+      "evaluation_role": "Qualification / Gate",
+      "is_structural_container": false,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "Associated persons must be registered on CDP and share required information",
+      "notes": "For consortium members or key sub-contractors relied upon to meet conditions of participation (associated persons), supplier must ensure they register, submit and share their information via CDP including exclusion grounds information.",
+      "source_refs": [
+        {
+          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+          "page": null,
+          "sheet": null,
+          "section": "Header",
+          "excerpt": "You will need to also share additional exclusions information for any suppliers that you are relying on to meet the procurement's conditions of participation. These could either be consortium members or key sub-contractors (but excludes any guarantors). These suppliers are 'associated persons' and their exclusions information must be shared with the authority. This should be done by ensuring that associated persons register, submit and share their information via the CDP (like the prime/main supplier)."
+        }
+      ],
+      "role_observations": [
+        "Qualification / Gate"
+      ],
+      "weight_observations": [],
+      "weight_conflict": false,
+      "role_conflict": false
+    },
+    {
+      "criterion_id": null,
+      "parent_criterion_id": null,
+      "stage": "Sub-contractor Debarment Check",
+      "title": "Sub-contractor Debarment Check",
+      "parent_stage": "Part 2: Additional exclusions information",
+      "parent_title": "Part 2: Additional exclusions information",
+      "hierarchy_level": 2,
+      "evaluation_role": "Qualification / Gate",
+      "is_structural_container": false,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "All sub-contractors must not be on debarment list",
+      "notes": "All intended sub-contractors (exhaustive list) will be checked against the debarment list. Unknown sub-contractors must be identified and details provided by final tenders.",
+      "source_refs": [
+        {
+          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+          "page": null,
+          "sheet": null,
+          "section": "Header",
+          "excerpt": "In addition to the sub-contractors who are being relied on to meet the conditions of participation (who are associated persons), you will need to share an exhaustive list of all your intended sub-contractors, which will be checked against the debarment list."
+        }
+      ],
+      "role_observations": [
+        "Qualification / Gate"
+      ],
+      "weight_observations": [],
+      "weight_conflict": false,
+      "role_conflict": false
     }
   ],
   "evaluation_hierarchy": {
@@ -2682,6 +3063,7 @@
         ],
         "weight_observations": [],
         "weight_conflict": false,
+        "role_conflict": false,
         "children": [
           {
             "criterion_id": null,
@@ -2713,6 +3095,7 @@
             ],
             "weight_observations": [],
             "weight_conflict": false,
+            "role_conflict": false,
             "children": []
           },
           {
@@ -2745,6 +3128,7 @@
             ],
             "weight_observations": [],
             "weight_conflict": false,
+            "role_conflict": false,
             "children": []
           }
         ]
@@ -2779,6 +3163,7 @@
         ],
         "weight_observations": [],
         "weight_conflict": false,
+        "role_conflict": false,
         "children": []
       },
       {
@@ -2811,6 +3196,7 @@
         ],
         "weight_observations": [],
         "weight_conflict": false,
+        "role_conflict": false,
         "children": []
       },
       {
@@ -2843,6 +3229,7 @@
         ],
         "weight_observations": [],
         "weight_conflict": false,
+        "role_conflict": false,
         "children": []
       },
       {
@@ -2875,6 +3262,7 @@
         ],
         "weight_observations": [],
         "weight_conflict": false,
+        "role_conflict": false,
         "children": []
       },
       {
@@ -2923,6 +3311,7 @@
           }
         ],
         "weight_conflict": false,
+        "role_conflict": false,
         "children": [
           {
             "criterion_id": null,
@@ -2970,6 +3359,7 @@
               }
             ],
             "weight_conflict": false,
+            "role_conflict": false,
             "children": []
           },
           {
@@ -3018,6 +3408,7 @@
               }
             ],
             "weight_conflict": false,
+            "role_conflict": false,
             "children": []
           },
           {
@@ -3066,6 +3457,7 @@
               }
             ],
             "weight_conflict": false,
+            "role_conflict": false,
             "children": []
           },
           {
@@ -3114,6 +3506,7 @@
               }
             ],
             "weight_conflict": false,
+            "role_conflict": false,
             "children": []
           }
         ]
@@ -3148,6 +3541,7 @@
         ],
         "weight_observations": [],
         "weight_conflict": false,
+        "role_conflict": false,
         "children": [
           {
             "criterion_id": null,
@@ -3195,6 +3589,7 @@
               }
             ],
             "weight_conflict": false,
+            "role_conflict": false,
             "children": []
           },
           {
@@ -3243,6 +3638,7 @@
               }
             ],
             "weight_conflict": false,
+            "role_conflict": false,
             "children": []
           },
           {
@@ -3291,6 +3687,7 @@
               }
             ],
             "weight_conflict": false,
+            "role_conflict": false,
             "children": []
           }
         ]
@@ -3325,6 +3722,7 @@
         ],
         "weight_observations": [],
         "weight_conflict": false,
+        "role_conflict": false,
         "children": []
       },
       {
@@ -3357,6 +3755,7 @@
         ],
         "weight_observations": [],
         "weight_conflict": false,
+        "role_conflict": false,
         "children": []
       },
       {
@@ -3389,6 +3788,7 @@
         ],
         "weight_observations": [],
         "weight_conflict": false,
+        "role_conflict": false,
         "children": []
       },
       {
@@ -3421,6 +3821,7 @@
         ],
         "weight_observations": [],
         "weight_conflict": false,
+        "role_conflict": false,
         "children": []
       },
       {
@@ -3431,36 +3832,70 @@
         "parent_stage": null,
         "parent_title": null,
         "hierarchy_level": 1,
-        "evaluation_role": "Qualification / Gate",
-        "is_structural_container": false,
+        "evaluation_role": "Structural Container",
+        "is_structural_container": true,
         "weight": null,
         "weight_value": null,
         "weight_unit": "None",
         "weight_basis": "Unknown",
         "threshold": null,
-        "notes": "Mandatory completion for background information about bidder. Not evaluated but completion is mandatory. Covers: organization name, CDP identifier, bidding model (single/consortium), lot(s), and debarment status.",
+        "notes": "Background information about the bidder. Not evaluated but completion is mandatory.",
         "source_refs": [
           {
             "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
             "page": null,
             "sheet": null,
             "section": "TABLE",
-            "excerpt": "This section seeks background information about the bidder. It is not evaluated but completion is mandatory."
+            "excerpt": "Part 1: Your information and the bidding model. This section seeks background information about the bidder. It is not evaluated but completion is mandatory."
           }
         ],
         "role_observations": [
-          "Qualification / Gate"
+          "Structural Container"
         ],
         "weight_observations": [],
         "weight_conflict": false,
+        "role_conflict": false,
+        "children": []
+      },
+      {
+        "criterion_id": null,
+        "parent_criterion_id": null,
+        "stage": "Part 2: Additional exclusions information",
+        "title": "Part 2: Additional exclusions information",
+        "parent_stage": null,
+        "parent_title": null,
+        "hierarchy_level": 1,
+        "evaluation_role": "Structural Container",
+        "is_structural_container": true,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": null,
+        "notes": "Background information about the bidder, associated persons and sub-contractors. Not evaluated but completion is mandatory.",
+        "source_refs": [
+          {
+            "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+            "page": null,
+            "sheet": null,
+            "section": "TABLE",
+            "excerpt": "Part 2 | Additional exclusions information. This section seeks background information about the bidder, associated persons and subcontractors. It is not evaluated but completion is mandatory."
+          }
+        ],
+        "role_observations": [
+          "Structural Container"
+        ],
+        "weight_observations": [],
+        "weight_conflict": false,
+        "role_conflict": false,
         "children": [
           {
             "criterion_id": null,
             "parent_criterion_id": null,
-            "stage": "Confirmation of core supplier information",
-            "title": "Confirmation of core supplier information",
-            "parent_stage": "Part 1: Your information and the bidding model",
-            "parent_title": "Part 1: Your information and the bidding model",
+            "stage": "Debarment List Check",
+            "title": "Debarment List Check",
+            "parent_stage": "Part 2: Additional exclusions information",
+            "parent_title": "Part 2: Additional exclusions information",
             "hierarchy_level": 2,
             "evaluation_role": "Qualification / Gate",
             "is_structural_container": false,
@@ -3468,15 +3903,15 @@
             "weight_value": null,
             "weight_unit": "None",
             "weight_basis": "Unknown",
-            "threshold": null,
-            "notes": "Bidder must confirm submission of up-to-date core supplier information on CDP and PDF download, including: basic information, economic and financial standing information, connected person information, and exclusion grounds information.",
+            "threshold": "Must not be on debarment list",
+            "notes": "Exclusion regime and published debarment list safeguard procurement from suppliers who may pose a risk due to misconduct or poor performance. Supplier and connected persons must not be on debarment list.",
             "source_refs": [
               {
                 "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
                 "page": null,
                 "sheet": null,
-                "section": "TABLE",
-                "excerpt": "Please confirm that you have submitted up-to-date core supplier information on the CDP and shared this information with us as PDF download."
+                "section": "Header",
+                "excerpt": "Part 2 - additional exclusions information: the Act provides for an 'exclusion regime' and a published 'debarment' list to safeguard procurement from suppliers who may pose a risk (for example, due to misconduct or poor performance)."
               }
             ],
             "role_observations": [
@@ -3484,6 +3919,106 @@
             ],
             "weight_observations": [],
             "weight_conflict": false,
+            "role_conflict": false,
+            "children": []
+          },
+          {
+            "criterion_id": null,
+            "parent_criterion_id": null,
+            "stage": "Exclusion Grounds Assessment",
+            "title": "Exclusion Grounds Assessment",
+            "parent_stage": "Part 2: Additional exclusions information",
+            "parent_title": "Part 2: Additional exclusions information",
+            "hierarchy_level": 2,
+            "evaluation_role": "Qualification / Gate",
+            "is_structural_container": false,
+            "weight": null,
+            "weight_value": null,
+            "weight_unit": "None",
+            "weight_basis": "Unknown",
+            "threshold": "No exclusion grounds apply",
+            "notes": "Supplier must submit self-declarations via CDP as to whether any exclusion grounds apply to the supplier or connected persons. If exclusion grounds apply, supplier must provide details of the event or conviction and steps taken to prevent recurrence.",
+            "source_refs": [
+              {
+                "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+                "page": null,
+                "sheet": null,
+                "section": "Header",
+                "excerpt": "You must submit your own (and your connected persons') exclusions information via the CDP. This includes self-declarations as to whether any exclusion grounds apply to you or connected persons and, if so, details about the event or conviction and what steps have been taken to prevent such circumstances from occurring again."
+              }
+            ],
+            "role_observations": [
+              "Qualification / Gate"
+            ],
+            "weight_observations": [],
+            "weight_conflict": false,
+            "role_conflict": false,
+            "children": []
+          },
+          {
+            "criterion_id": null,
+            "parent_criterion_id": null,
+            "stage": "Associated Persons Verification",
+            "title": "Associated Persons Verification",
+            "parent_stage": "Part 2: Additional exclusions information",
+            "parent_title": "Part 2: Additional exclusions information",
+            "hierarchy_level": 2,
+            "evaluation_role": "Qualification / Gate",
+            "is_structural_container": false,
+            "weight": null,
+            "weight_value": null,
+            "weight_unit": "None",
+            "weight_basis": "Unknown",
+            "threshold": "Associated persons must be registered on CDP and share required information",
+            "notes": "For consortium members or key sub-contractors relied upon to meet conditions of participation (associated persons), supplier must ensure they register, submit and share their information via CDP including exclusion grounds information.",
+            "source_refs": [
+              {
+                "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+                "page": null,
+                "sheet": null,
+                "section": "Header",
+                "excerpt": "You will need to also share additional exclusions information for any suppliers that you are relying on to meet the procurement's conditions of participation. These could either be consortium members or key sub-contractors (but excludes any guarantors). These suppliers are 'associated persons' and their exclusions information must be shared with the authority. This should be done by ensuring that associated persons register, submit and share their information via the CDP (like the prime/main supplier)."
+              }
+            ],
+            "role_observations": [
+              "Qualification / Gate"
+            ],
+            "weight_observations": [],
+            "weight_conflict": false,
+            "role_conflict": false,
+            "children": []
+          },
+          {
+            "criterion_id": null,
+            "parent_criterion_id": null,
+            "stage": "Sub-contractor Debarment Check",
+            "title": "Sub-contractor Debarment Check",
+            "parent_stage": "Part 2: Additional exclusions information",
+            "parent_title": "Part 2: Additional exclusions information",
+            "hierarchy_level": 2,
+            "evaluation_role": "Qualification / Gate",
+            "is_structural_container": false,
+            "weight": null,
+            "weight_value": null,
+            "weight_unit": "None",
+            "weight_basis": "Unknown",
+            "threshold": "All sub-contractors must not be on debarment list",
+            "notes": "All intended sub-contractors (exhaustive list) will be checked against the debarment list. Unknown sub-contractors must be identified and details provided by final tenders.",
+            "source_refs": [
+              {
+                "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+                "page": null,
+                "sheet": null,
+                "section": "Header",
+                "excerpt": "In addition to the sub-contractors who are being relied on to meet the conditions of participation (who are associated persons), you will need to share an exhaustive list of all your intended sub-contractors, which will be checked against the debarment list."
+              }
+            ],
+            "role_observations": [
+              "Qualification / Gate"
+            ],
+            "weight_observations": [],
+            "weight_conflict": false,
+            "role_conflict": false,
             "children": []
           }
         ]
@@ -3491,8 +4026,8 @@
       {
         "criterion_id": null,
         "parent_criterion_id": null,
-        "stage": "Part 2: Additional exclusions information",
-        "title": "Part 2: Additional exclusions information",
+        "stage": "Part 3: Conditions of participation",
+        "title": "Part 3: Conditions of participation",
         "parent_stage": null,
         "parent_title": null,
         "hierarchy_level": 1,
@@ -3503,14 +4038,21 @@
         "weight_unit": "None",
         "weight_basis": "Unknown",
         "threshold": null,
-        "notes": "Mandatory completion for background information about bidder, associated persons, and sub-contractors. Not evaluated but completion is mandatory. Covers exclusions information and associated persons reliance.",
+        "notes": "Contracting authorities may set conditions of participation which a supplier must satisfy to be awarded a public contract. They can relate to the supplier's legal and financial capacity and/or their technical ability. Some information will be assessed by the British Council using pass/fail mechanisms or thresholds.",
         "source_refs": [
           {
             "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
             "page": null,
             "sheet": null,
-            "section": "TABLE",
-            "excerpt": "This section seeks background information about the bidder, associated persons and subcontractors. It is not evaluated but completion is mandatory."
+            "section": "Header",
+            "excerpt": "Part 3 - conditions of participation: contracting authorities may set conditions of participation which a supplier must satisfy in order to be awarded a public contract. They can relate to the supplier's legal and financial capacity and/or their technical ability."
+          },
+          {
+            "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+            "page": null,
+            "sheet": null,
+            "section": "Header",
+            "excerpt": "Some of the information requested in the PSQ will be for information purposes only. Other information will be assessed by the British Council. This might include a pass or fail mechanism, or a threshold which you must meet."
           }
         ],
         "role_observations": [
@@ -3518,44 +4060,12 @@
         ],
         "weight_observations": [],
         "weight_conflict": false,
-        "children": [
-          {
-            "criterion_id": null,
-            "parent_criterion_id": null,
-            "stage": "Associated persons",
-            "title": "Associated persons",
-            "parent_stage": "Part 2: Additional exclusions information",
-            "parent_title": "Part 2: Additional exclusions information",
-            "hierarchy_level": 2,
-            "evaluation_role": "Qualification / Gate",
-            "is_structural_container": false,
-            "weight": null,
-            "weight_value": null,
-            "weight_unit": "None",
-            "weight_basis": "Unknown",
-            "threshold": null,
-            "notes": "If bidder relies on associated persons (consortium members or key sub-contractors) to satisfy conditions of participation, must complete Questions 8, 9, and 10. Associated persons must be registered on CDP and share their information including basic information, economic and financial standing information (if relied upon for financial capacity), associated person information, and exclusion grounds information.",
-            "source_refs": [
-              {
-                "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
-                "page": null,
-                "sheet": null,
-                "section": "TABLE",
-                "excerpt": "Are you relying on any associated persons to satisfy the conditions of participation? Where applicable, conditions of participation are outlined in Part 3. If so, please complete Q8, Q9 & Q10 (otherwise Q8, Q9 & Q10 are not applicable)."
-              }
-            ],
-            "role_observations": [
-              "Qualification / Gate"
-            ],
-            "weight_observations": [],
-            "weight_conflict": false,
-            "children": []
-          }
-        ]
+        "role_conflict": false,
+        "children": []
       }
     ],
     "unresolved": [],
-    "all_criteria_count": 24
+    "all_criteria_count": 27
   },
   "evaluation_totals": {
     "status": "VALID",
@@ -3644,10 +4154,17 @@
         "weight_value": null,
         "weight_unit": "None",
         "derived_from_children": false,
-        "evaluation_role": "Qualification / Gate"
+        "evaluation_role": "Structural Container"
       },
       {
         "stage": "Part 2: Additional exclusions information",
+        "weight_value": null,
+        "weight_unit": "None",
+        "derived_from_children": false,
+        "evaluation_role": "Structural Container"
+      },
+      {
+        "stage": "Part 3: Conditions of participation",
         "weight_value": null,
         "weight_unit": "None",
         "derived_from_children": false,
@@ -3689,18 +4206,8 @@
           "Unknown"
         ]
       },
-      "Part 1: Your information and the bidding model": {
-        "count": 1,
-        "subtotal": null,
-        "overall_subtotal": null,
-        "within_parent_subtotal": null,
-        "units": [],
-        "bases": [
-          "Unknown"
-        ]
-      },
       "Part 2: Additional exclusions information": {
-        "count": 1,
+        "count": 4,
         "subtotal": null,
         "overall_subtotal": null,
         "within_parent_subtotal": null,
@@ -3743,6 +4250,7 @@
       ],
       "weight_observations": [],
       "weight_conflict": false,
+      "role_conflict": false,
       "children": [
         {
           "criterion_id": null,
@@ -3774,6 +4282,7 @@
           ],
           "weight_observations": [],
           "weight_conflict": false,
+          "role_conflict": false,
           "children": []
         },
         {
@@ -3806,6 +4315,7 @@
           ],
           "weight_observations": [],
           "weight_conflict": false,
+          "role_conflict": false,
           "children": []
         }
       ],
@@ -3842,6 +4352,7 @@
       ],
       "weight_observations": [],
       "weight_conflict": false,
+      "role_conflict": false,
       "children": [],
       "indent": 1,
       "is_parent": false
@@ -3876,6 +4387,7 @@
       ],
       "weight_observations": [],
       "weight_conflict": false,
+      "role_conflict": false,
       "children": [],
       "indent": 1,
       "is_parent": false
@@ -3910,6 +4422,7 @@
       ],
       "weight_observations": [],
       "weight_conflict": false,
+      "role_conflict": false,
       "children": [],
       "indent": 0,
       "is_parent": false
@@ -3944,6 +4457,7 @@
       ],
       "weight_observations": [],
       "weight_conflict": false,
+      "role_conflict": false,
       "children": [],
       "indent": 0,
       "is_parent": false
@@ -3978,6 +4492,7 @@
       ],
       "weight_observations": [],
       "weight_conflict": false,
+      "role_conflict": false,
       "children": [],
       "indent": 0,
       "is_parent": false
@@ -4012,6 +4527,7 @@
       ],
       "weight_observations": [],
       "weight_conflict": false,
+      "role_conflict": false,
       "children": [],
       "indent": 0,
       "is_parent": false
@@ -4062,6 +4578,7 @@
         }
       ],
       "weight_conflict": false,
+      "role_conflict": false,
       "children": [
         {
           "criterion_id": null,
@@ -4109,6 +4626,7 @@
             }
           ],
           "weight_conflict": false,
+          "role_conflict": false,
           "children": []
         },
         {
@@ -4157,6 +4675,7 @@
             }
           ],
           "weight_conflict": false,
+          "role_conflict": false,
           "children": []
         },
         {
@@ -4205,6 +4724,7 @@
             }
           ],
           "weight_conflict": false,
+          "role_conflict": false,
           "children": []
         },
         {
@@ -4253,6 +4773,7 @@
             }
           ],
           "weight_conflict": false,
+          "role_conflict": false,
           "children": []
         }
       ],
@@ -4305,6 +4826,7 @@
         }
       ],
       "weight_conflict": false,
+      "role_conflict": false,
       "children": [],
       "indent": 1,
       "is_parent": false
@@ -4355,6 +4877,7 @@
         }
       ],
       "weight_conflict": false,
+      "role_conflict": false,
       "children": [],
       "indent": 1,
       "is_parent": false
@@ -4405,6 +4928,7 @@
         }
       ],
       "weight_conflict": false,
+      "role_conflict": false,
       "children": [],
       "indent": 1,
       "is_parent": false
@@ -4455,6 +4979,7 @@
         }
       ],
       "weight_conflict": false,
+      "role_conflict": false,
       "children": [],
       "indent": 1,
       "is_parent": false
@@ -4489,6 +5014,7 @@
       ],
       "weight_observations": [],
       "weight_conflict": false,
+      "role_conflict": false,
       "children": [
         {
           "criterion_id": null,
@@ -4536,6 +5062,7 @@
             }
           ],
           "weight_conflict": false,
+          "role_conflict": false,
           "children": []
         },
         {
@@ -4584,6 +5111,7 @@
             }
           ],
           "weight_conflict": false,
+          "role_conflict": false,
           "children": []
         },
         {
@@ -4632,6 +5160,7 @@
             }
           ],
           "weight_conflict": false,
+          "role_conflict": false,
           "children": []
         }
       ],
@@ -4684,6 +5213,7 @@
         }
       ],
       "weight_conflict": false,
+      "role_conflict": false,
       "children": [],
       "indent": 1,
       "is_parent": false
@@ -4734,6 +5264,7 @@
         }
       ],
       "weight_conflict": false,
+      "role_conflict": false,
       "children": [],
       "indent": 1,
       "is_parent": false
@@ -4784,6 +5315,7 @@
         }
       ],
       "weight_conflict": false,
+      "role_conflict": false,
       "children": [],
       "indent": 1,
       "is_parent": false
@@ -4818,6 +5350,7 @@
       ],
       "weight_observations": [],
       "weight_conflict": false,
+      "role_conflict": false,
       "children": [],
       "indent": 0,
       "is_parent": false
@@ -4852,6 +5385,7 @@
       ],
       "weight_observations": [],
       "weight_conflict": false,
+      "role_conflict": false,
       "children": [],
       "indent": 0,
       "is_parent": false
@@ -4886,6 +5420,7 @@
       ],
       "weight_observations": [],
       "weight_conflict": false,
+      "role_conflict": false,
       "children": [],
       "indent": 0,
       "is_parent": false
@@ -4920,6 +5455,7 @@
       ],
       "weight_observations": [],
       "weight_conflict": false,
+      "role_conflict": false,
       "children": [],
       "indent": 0,
       "is_parent": false
@@ -4932,97 +5468,31 @@
       "parent_stage": null,
       "parent_title": null,
       "hierarchy_level": 1,
-      "evaluation_role": "Qualification / Gate",
-      "is_structural_container": false,
+      "evaluation_role": "Structural Container",
+      "is_structural_container": true,
       "weight": null,
       "weight_value": null,
       "weight_unit": "None",
       "weight_basis": "Unknown",
       "threshold": null,
-      "notes": "Mandatory completion for background information about bidder. Not evaluated but completion is mandatory. Covers: organization name, CDP identifier, bidding model (single/consortium), lot(s), and debarment status.",
+      "notes": "Background information about the bidder. Not evaluated but completion is mandatory.",
       "source_refs": [
         {
           "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
           "page": null,
           "sheet": null,
           "section": "TABLE",
-          "excerpt": "This section seeks background information about the bidder. It is not evaluated but completion is mandatory."
+          "excerpt": "Part 1: Your information and the bidding model. This section seeks background information about the bidder. It is not evaluated but completion is mandatory."
         }
       ],
       "role_observations": [
-        "Qualification / Gate"
+        "Structural Container"
       ],
       "weight_observations": [],
       "weight_conflict": false,
-      "children": [
-        {
-          "criterion_id": null,
-          "parent_criterion_id": null,
-          "stage": "Confirmation of core supplier information",
-          "title": "Confirmation of core supplier information",
-          "parent_stage": "Part 1: Your information and the bidding model",
-          "parent_title": "Part 1: Your information and the bidding model",
-          "hierarchy_level": 2,
-          "evaluation_role": "Qualification / Gate",
-          "is_structural_container": false,
-          "weight": null,
-          "weight_value": null,
-          "weight_unit": "None",
-          "weight_basis": "Unknown",
-          "threshold": null,
-          "notes": "Bidder must confirm submission of up-to-date core supplier information on CDP and PDF download, including: basic information, economic and financial standing information, connected person information, and exclusion grounds information.",
-          "source_refs": [
-            {
-              "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
-              "page": null,
-              "sheet": null,
-              "section": "TABLE",
-              "excerpt": "Please confirm that you have submitted up-to-date core supplier information on the CDP and shared this information with us as PDF download."
-            }
-          ],
-          "role_observations": [
-            "Qualification / Gate"
-          ],
-          "weight_observations": [],
-          "weight_conflict": false,
-          "children": []
-        }
-      ],
-      "indent": 0,
-      "is_parent": true
-    },
-    {
-      "criterion_id": null,
-      "parent_criterion_id": null,
-      "stage": "Confirmation of core supplier information",
-      "title": "Confirmation of core supplier information",
-      "parent_stage": "Part 1: Your information and the bidding model",
-      "parent_title": "Part 1: Your information and the bidding model",
-      "hierarchy_level": 2,
-      "evaluation_role": "Qualification / Gate",
-      "is_structural_container": false,
-      "weight": null,
-      "weight_value": null,
-      "weight_unit": "None",
-      "weight_basis": "Unknown",
-      "threshold": null,
-      "notes": "Bidder must confirm submission of up-to-date core supplier information on CDP and PDF download, including: basic information, economic and financial standing information, connected person information, and exclusion grounds information.",
-      "source_refs": [
-        {
-          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
-          "page": null,
-          "sheet": null,
-          "section": "TABLE",
-          "excerpt": "Please confirm that you have submitted up-to-date core supplier information on the CDP and shared this information with us as PDF download."
-        }
-      ],
-      "role_observations": [
-        "Qualification / Gate"
-      ],
-      "weight_observations": [],
-      "weight_conflict": false,
+      "role_conflict": false,
       "children": [],
-      "indent": 1,
+      "indent": 0,
       "is_parent": false
     },
     {
@@ -5033,34 +5503,35 @@
       "parent_stage": null,
       "parent_title": null,
       "hierarchy_level": 1,
-      "evaluation_role": "Qualification / Gate",
-      "is_structural_container": false,
+      "evaluation_role": "Structural Container",
+      "is_structural_container": true,
       "weight": null,
       "weight_value": null,
       "weight_unit": "None",
       "weight_basis": "Unknown",
       "threshold": null,
-      "notes": "Mandatory completion for background information about bidder, associated persons, and sub-contractors. Not evaluated but completion is mandatory. Covers exclusions information and associated persons reliance.",
+      "notes": "Background information about the bidder, associated persons and sub-contractors. Not evaluated but completion is mandatory.",
       "source_refs": [
         {
           "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
           "page": null,
           "sheet": null,
           "section": "TABLE",
-          "excerpt": "This section seeks background information about the bidder, associated persons and subcontractors. It is not evaluated but completion is mandatory."
+          "excerpt": "Part 2 | Additional exclusions information. This section seeks background information about the bidder, associated persons and subcontractors. It is not evaluated but completion is mandatory."
         }
       ],
       "role_observations": [
-        "Qualification / Gate"
+        "Structural Container"
       ],
       "weight_observations": [],
       "weight_conflict": false,
+      "role_conflict": false,
       "children": [
         {
           "criterion_id": null,
           "parent_criterion_id": null,
-          "stage": "Associated persons",
-          "title": "Associated persons",
+          "stage": "Debarment List Check",
+          "title": "Debarment List Check",
           "parent_stage": "Part 2: Additional exclusions information",
           "parent_title": "Part 2: Additional exclusions information",
           "hierarchy_level": 2,
@@ -5070,15 +5541,15 @@
           "weight_value": null,
           "weight_unit": "None",
           "weight_basis": "Unknown",
-          "threshold": null,
-          "notes": "If bidder relies on associated persons (consortium members or key sub-contractors) to satisfy conditions of participation, must complete Questions 8, 9, and 10. Associated persons must be registered on CDP and share their information including basic information, economic and financial standing information (if relied upon for financial capacity), associated person information, and exclusion grounds information.",
+          "threshold": "Must not be on debarment list",
+          "notes": "Exclusion regime and published debarment list safeguard procurement from suppliers who may pose a risk due to misconduct or poor performance. Supplier and connected persons must not be on debarment list.",
           "source_refs": [
             {
               "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
               "page": null,
               "sheet": null,
-              "section": "TABLE",
-              "excerpt": "Are you relying on any associated persons to satisfy the conditions of participation? Where applicable, conditions of participation are outlined in Part 3. If so, please complete Q8, Q9 & Q10 (otherwise Q8, Q9 & Q10 are not applicable)."
+              "section": "Header",
+              "excerpt": "Part 2 - additional exclusions information: the Act provides for an 'exclusion regime' and a published 'debarment' list to safeguard procurement from suppliers who may pose a risk (for example, due to misconduct or poor performance)."
             }
           ],
           "role_observations": [
@@ -5086,6 +5557,106 @@
           ],
           "weight_observations": [],
           "weight_conflict": false,
+          "role_conflict": false,
+          "children": []
+        },
+        {
+          "criterion_id": null,
+          "parent_criterion_id": null,
+          "stage": "Exclusion Grounds Assessment",
+          "title": "Exclusion Grounds Assessment",
+          "parent_stage": "Part 2: Additional exclusions information",
+          "parent_title": "Part 2: Additional exclusions information",
+          "hierarchy_level": 2,
+          "evaluation_role": "Qualification / Gate",
+          "is_structural_container": false,
+          "weight": null,
+          "weight_value": null,
+          "weight_unit": "None",
+          "weight_basis": "Unknown",
+          "threshold": "No exclusion grounds apply",
+          "notes": "Supplier must submit self-declarations via CDP as to whether any exclusion grounds apply to the supplier or connected persons. If exclusion grounds apply, supplier must provide details of the event or conviction and steps taken to prevent recurrence.",
+          "source_refs": [
+            {
+              "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+              "page": null,
+              "sheet": null,
+              "section": "Header",
+              "excerpt": "You must submit your own (and your connected persons') exclusions information via the CDP. This includes self-declarations as to whether any exclusion grounds apply to you or connected persons and, if so, details about the event or conviction and what steps have been taken to prevent such circumstances from occurring again."
+            }
+          ],
+          "role_observations": [
+            "Qualification / Gate"
+          ],
+          "weight_observations": [],
+          "weight_conflict": false,
+          "role_conflict": false,
+          "children": []
+        },
+        {
+          "criterion_id": null,
+          "parent_criterion_id": null,
+          "stage": "Associated Persons Verification",
+          "title": "Associated Persons Verification",
+          "parent_stage": "Part 2: Additional exclusions information",
+          "parent_title": "Part 2: Additional exclusions information",
+          "hierarchy_level": 2,
+          "evaluation_role": "Qualification / Gate",
+          "is_structural_container": false,
+          "weight": null,
+          "weight_value": null,
+          "weight_unit": "None",
+          "weight_basis": "Unknown",
+          "threshold": "Associated persons must be registered on CDP and share required information",
+          "notes": "For consortium members or key sub-contractors relied upon to meet conditions of participation (associated persons), supplier must ensure they register, submit and share their information via CDP including exclusion grounds information.",
+          "source_refs": [
+            {
+              "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+              "page": null,
+              "sheet": null,
+              "section": "Header",
+              "excerpt": "You will need to also share additional exclusions information for any suppliers that you are relying on to meet the procurement's conditions of participation. These could either be consortium members or key sub-contractors (but excludes any guarantors). These suppliers are 'associated persons' and their exclusions information must be shared with the authority. This should be done by ensuring that associated persons register, submit and share their information via the CDP (like the prime/main supplier)."
+            }
+          ],
+          "role_observations": [
+            "Qualification / Gate"
+          ],
+          "weight_observations": [],
+          "weight_conflict": false,
+          "role_conflict": false,
+          "children": []
+        },
+        {
+          "criterion_id": null,
+          "parent_criterion_id": null,
+          "stage": "Sub-contractor Debarment Check",
+          "title": "Sub-contractor Debarment Check",
+          "parent_stage": "Part 2: Additional exclusions information",
+          "parent_title": "Part 2: Additional exclusions information",
+          "hierarchy_level": 2,
+          "evaluation_role": "Qualification / Gate",
+          "is_structural_container": false,
+          "weight": null,
+          "weight_value": null,
+          "weight_unit": "None",
+          "weight_basis": "Unknown",
+          "threshold": "All sub-contractors must not be on debarment list",
+          "notes": "All intended sub-contractors (exhaustive list) will be checked against the debarment list. Unknown sub-contractors must be identified and details provided by final tenders.",
+          "source_refs": [
+            {
+              "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+              "page": null,
+              "sheet": null,
+              "section": "Header",
+              "excerpt": "In addition to the sub-contractors who are being relied on to meet the conditions of participation (who are associated persons), you will need to share an exhaustive list of all your intended sub-contractors, which will be checked against the debarment list."
+            }
+          ],
+          "role_observations": [
+            "Qualification / Gate"
+          ],
+          "weight_observations": [],
+          "weight_conflict": false,
+          "role_conflict": false,
           "children": []
         }
       ],
@@ -5095,8 +5666,8 @@
     {
       "criterion_id": null,
       "parent_criterion_id": null,
-      "stage": "Associated persons",
-      "title": "Associated persons",
+      "stage": "Debarment List Check",
+      "title": "Debarment List Check",
       "parent_stage": "Part 2: Additional exclusions information",
       "parent_title": "Part 2: Additional exclusions information",
       "hierarchy_level": 2,
@@ -5106,15 +5677,15 @@
       "weight_value": null,
       "weight_unit": "None",
       "weight_basis": "Unknown",
-      "threshold": null,
-      "notes": "If bidder relies on associated persons (consortium members or key sub-contractors) to satisfy conditions of participation, must complete Questions 8, 9, and 10. Associated persons must be registered on CDP and share their information including basic information, economic and financial standing information (if relied upon for financial capacity), associated person information, and exclusion grounds information.",
+      "threshold": "Must not be on debarment list",
+      "notes": "Exclusion regime and published debarment list safeguard procurement from suppliers who may pose a risk due to misconduct or poor performance. Supplier and connected persons must not be on debarment list.",
       "source_refs": [
         {
           "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
           "page": null,
           "sheet": null,
-          "section": "TABLE",
-          "excerpt": "Are you relying on any associated persons to satisfy the conditions of participation? Where applicable, conditions of participation are outlined in Part 3. If so, please complete Q8, Q9 & Q10 (otherwise Q8, Q9 & Q10 are not applicable)."
+          "section": "Header",
+          "excerpt": "Part 2 - additional exclusions information: the Act provides for an 'exclusion regime' and a published 'debarment' list to safeguard procurement from suppliers who may pose a risk (for example, due to misconduct or poor performance)."
         }
       ],
       "role_observations": [
@@ -5122,8 +5693,156 @@
       ],
       "weight_observations": [],
       "weight_conflict": false,
+      "role_conflict": false,
       "children": [],
       "indent": 1,
+      "is_parent": false
+    },
+    {
+      "criterion_id": null,
+      "parent_criterion_id": null,
+      "stage": "Exclusion Grounds Assessment",
+      "title": "Exclusion Grounds Assessment",
+      "parent_stage": "Part 2: Additional exclusions information",
+      "parent_title": "Part 2: Additional exclusions information",
+      "hierarchy_level": 2,
+      "evaluation_role": "Qualification / Gate",
+      "is_structural_container": false,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "No exclusion grounds apply",
+      "notes": "Supplier must submit self-declarations via CDP as to whether any exclusion grounds apply to the supplier or connected persons. If exclusion grounds apply, supplier must provide details of the event or conviction and steps taken to prevent recurrence.",
+      "source_refs": [
+        {
+          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+          "page": null,
+          "sheet": null,
+          "section": "Header",
+          "excerpt": "You must submit your own (and your connected persons') exclusions information via the CDP. This includes self-declarations as to whether any exclusion grounds apply to you or connected persons and, if so, details about the event or conviction and what steps have been taken to prevent such circumstances from occurring again."
+        }
+      ],
+      "role_observations": [
+        "Qualification / Gate"
+      ],
+      "weight_observations": [],
+      "weight_conflict": false,
+      "role_conflict": false,
+      "children": [],
+      "indent": 1,
+      "is_parent": false
+    },
+    {
+      "criterion_id": null,
+      "parent_criterion_id": null,
+      "stage": "Associated Persons Verification",
+      "title": "Associated Persons Verification",
+      "parent_stage": "Part 2: Additional exclusions information",
+      "parent_title": "Part 2: Additional exclusions information",
+      "hierarchy_level": 2,
+      "evaluation_role": "Qualification / Gate",
+      "is_structural_container": false,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "Associated persons must be registered on CDP and share required information",
+      "notes": "For consortium members or key sub-contractors relied upon to meet conditions of participation (associated persons), supplier must ensure they register, submit and share their information via CDP including exclusion grounds information.",
+      "source_refs": [
+        {
+          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+          "page": null,
+          "sheet": null,
+          "section": "Header",
+          "excerpt": "You will need to also share additional exclusions information for any suppliers that you are relying on to meet the procurement's conditions of participation. These could either be consortium members or key sub-contractors (but excludes any guarantors). These suppliers are 'associated persons' and their exclusions information must be shared with the authority. This should be done by ensuring that associated persons register, submit and share their information via the CDP (like the prime/main supplier)."
+        }
+      ],
+      "role_observations": [
+        "Qualification / Gate"
+      ],
+      "weight_observations": [],
+      "weight_conflict": false,
+      "role_conflict": false,
+      "children": [],
+      "indent": 1,
+      "is_parent": false
+    },
+    {
+      "criterion_id": null,
+      "parent_criterion_id": null,
+      "stage": "Sub-contractor Debarment Check",
+      "title": "Sub-contractor Debarment Check",
+      "parent_stage": "Part 2: Additional exclusions information",
+      "parent_title": "Part 2: Additional exclusions information",
+      "hierarchy_level": 2,
+      "evaluation_role": "Qualification / Gate",
+      "is_structural_container": false,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": "All sub-contractors must not be on debarment list",
+      "notes": "All intended sub-contractors (exhaustive list) will be checked against the debarment list. Unknown sub-contractors must be identified and details provided by final tenders.",
+      "source_refs": [
+        {
+          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+          "page": null,
+          "sheet": null,
+          "section": "Header",
+          "excerpt": "In addition to the sub-contractors who are being relied on to meet the conditions of participation (who are associated persons), you will need to share an exhaustive list of all your intended sub-contractors, which will be checked against the debarment list."
+        }
+      ],
+      "role_observations": [
+        "Qualification / Gate"
+      ],
+      "weight_observations": [],
+      "weight_conflict": false,
+      "role_conflict": false,
+      "children": [],
+      "indent": 1,
+      "is_parent": false
+    },
+    {
+      "criterion_id": null,
+      "parent_criterion_id": null,
+      "stage": "Part 3: Conditions of participation",
+      "title": "Part 3: Conditions of participation",
+      "parent_stage": null,
+      "parent_title": null,
+      "hierarchy_level": 1,
+      "evaluation_role": "Qualification / Gate",
+      "is_structural_container": false,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": null,
+      "notes": "Contracting authorities may set conditions of participation which a supplier must satisfy to be awarded a public contract. They can relate to the supplier's legal and financial capacity and/or their technical ability. Some information will be assessed by the British Council using pass/fail mechanisms or thresholds.",
+      "source_refs": [
+        {
+          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+          "page": null,
+          "sheet": null,
+          "section": "Header",
+          "excerpt": "Part 3 - conditions of participation: contracting authorities may set conditions of participation which a supplier must satisfy in order to be awarded a public contract. They can relate to the supplier's legal and financial capacity and/or their technical ability."
+        },
+        {
+          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+          "page": null,
+          "sheet": null,
+          "section": "Header",
+          "excerpt": "Some of the information requested in the PSQ will be for information purposes only. Other information will be assessed by the British Council. This might include a pass or fail mechanism, or a threshold which you must meet."
+        }
+      ],
+      "role_observations": [
+        "Qualification / Gate"
+      ],
+      "weight_observations": [],
+      "weight_conflict": false,
+      "role_conflict": false,
+      "children": [],
+      "indent": 0,
       "is_parent": false
     }
   ]
