@@ -1,0 +1,164 @@
+{
+  "execution_metadata": {
+    "code_commit_sha": "81fbaa779133a922eb12b7cd65935a8725822c7a",
+    "fixture": "british_council_ir67tvet42026",
+    "pipeline_stages": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "projection_mode": "orthogonal_submission_semantics"
+  },
+  "normalized_submission_rules_count": 14,
+  "projected_submission_documents_count": 7,
+  "projected_submission_documents": [
+    {
+      "name": "Annex 2 (Procurement Specific Questionnaire)",
+      "doc_type": "Submission",
+      "owner": null,
+      "due_date": null,
+      "status": "Expected",
+      "notes": "Complete questionnaire and all associated supporting documentation",
+      "file_format": "Separate Document",
+      "submission_channel": "Unspecified",
+      "artifact_type": "Questionnaire / Workbook",
+      "source_refs": [
+        {
+          "source_doc": "annex_3_-_supplier_response_ir67tvet42026.docx",
+          "page": null,
+          "sheet": null,
+          "section": null,
+          "excerpt": "Complete questionnaire and all associated supporting documentation"
+        }
+      ],
+      "mandatory": 1
+    },
+    {
+      "name": "Annex 2a (Ratio Analysis)",
+      "doc_type": "Submission",
+      "owner": null,
+      "due_date": null,
+      "status": "Expected",
+      "notes": "Complete Procurement Specific Questionnaire Ratio Analysis and all associated documentation",
+      "file_format": "Separate Document",
+      "submission_channel": "Unspecified",
+      "artifact_type": "Form / Annex",
+      "source_refs": [
+        {
+          "source_doc": "annex_3_-_supplier_response_ir67tvet42026.docx",
+          "page": null,
+          "sheet": null,
+          "section": null,
+          "excerpt": "Complete Procurement Specific Questionnaire Ratio Analysis and all associated documentation"
+        }
+      ],
+      "mandatory": 1
+    },
+    {
+      "name": "Audited Financial Accounts",
+      "doc_type": "Financial",
+      "owner": null,
+      "due_date": null,
+      "status": "Expected",
+      "notes": "Two years of audited financial accounts (as part of Annex 2)",
+      "file_format": "Separate Document",
+      "submission_channel": "Unspecified",
+      "artifact_type": "Pricing / Financial",
+      "source_refs": [
+        {
+          "source_doc": "annex_3_-_supplier_response_ir67tvet42026.docx",
+          "page": null,
+          "sheet": null,
+          "section": null,
+          "excerpt": "Two years of audited financial accounts (as part of Annex 2)"
+        }
+      ],
+      "mandatory": 1
+    },
+    {
+      "name": "Annex 3 (Supplier Response)",
+      "doc_type": "Submission",
+      "owner": null,
+      "due_date": null,
+      "status": "Expected",
+      "notes": "Completed tender responses in accordance with ITT requirements; responses must not be altered from original questions; any alterations result in zero mark",
+      "file_format": "Unspecified",
+      "submission_channel": "Portal",
+      "artifact_type": "Proposal / Response",
+      "source_refs": [
+        {
+          "source_doc": "annex_3_-_supplier_response_ir67tvet42026.docx",
+          "page": null,
+          "sheet": null,
+          "section": null,
+          "excerpt": "Completed tender responses in accordance with ITT requirements; responses must not be altered from o"
+        }
+      ],
+      "mandatory": 1
+    },
+    {
+      "name": "Annex 4 (Pricing Approach)",
+      "doc_type": "Financial",
+      "owner": null,
+      "due_date": null,
+      "status": "Expected",
+      "notes": "Completed pricing proposal with all costs included",
+      "file_format": "Separate Document",
+      "submission_channel": "Unspecified",
+      "artifact_type": "Pricing / Financial",
+      "source_refs": [
+        {
+          "source_doc": "annex_3_-_supplier_response_ir67tvet42026.docx",
+          "page": null,
+          "sheet": null,
+          "section": null,
+          "excerpt": "Completed pricing proposal with all costs included"
+        }
+      ],
+      "mandatory": 1
+    },
+    {
+      "name": "Submission Checklist",
+      "doc_type": "Submission",
+      "owner": null,
+      "due_date": null,
+      "status": "Expected",
+      "notes": "Must be completed and signed by authorised representative; failure to provide all mandatory documentation may result in rejection",
+      "file_format": "Unspecified",
+      "submission_channel": "Portal",
+      "artifact_type": "Form / Annex",
+      "source_refs": [
+        {
+          "source_doc": "annex_3_-_supplier_response_ir67tvet42026.docx",
+          "page": null,
+          "sheet": null,
+          "section": null,
+          "excerpt": "Must be completed and signed by authorised representative; failure to provide all mandatory document"
+        }
+      ],
+      "mandatory": 1
+    },
+    {
+      "name": "Appendix A (Confidential Information Declaration)",
+      "doc_type": "Submission",
+      "owner": null,
+      "due_date": null,
+      "status": "Expected",
+      "notes": "Required only if supplier designates any information as confidential or commercially sensitive; includes reasons and exemption duration",
+      "file_format": "Separate Document",
+      "submission_channel": "Unspecified",
+      "artifact_type": "Form / Annex",
+      "source_refs": [
+        {
+          "source_doc": "annex_3_-_supplier_response_ir67tvet42026.docx",
+          "page": null,
+          "sheet": null,
+          "section": null,
+          "excerpt": "Required only if supplier designates any information as confidential or commercially sensitive; incl"
+        }
+      ],
+      "mandatory": 0
+    }
+  ]
+}
