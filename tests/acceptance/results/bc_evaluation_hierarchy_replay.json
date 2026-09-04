@@ -1,7 +1,7 @@
 {
   "provenance": {
-    "code_sha": "98b3e66103e8bb686698ee43f6333041107e18c9",
-    "run_started_at": "2026-09-03T22:12:25.580755+00:00",
+    "code_sha": "3a73b01b5a856afc32b5e3934c80a6590e7ff6eb",
+    "run_started_at": "2026-09-04T07:24:50.037928+00:00",
     "model": "claude-haiku-4-5-20251001",
     "input_files": [
       {
@@ -17,11 +17,11 @@
     ]
   },
   "timings": {
-    "stage_a_sec": 772.89,
-    "stage_b_sec": 0.0789,
-    "stage_c_sec": 0.0229,
-    "stage_d_sec": 89.24,
-    "total_pipeline_sec": 862.24
+    "stage_a_sec": 760.11,
+    "stage_b_sec": 0.0799,
+    "stage_c_sec": 0.0238,
+    "stage_d_sec": 91.79,
+    "total_pipeline_sec": 852.0
   },
   "raw_evaluation_criteria": {
     "itt_pdf": [
@@ -251,7 +251,7 @@
         "parent_title": null,
         "hierarchy_level": 1,
         "evaluation_role": "Structural Container",
-        "is_structural_container": false,
+        "is_structural_container": true,
         "weight": "100%",
         "weight_value": 100.0,
         "weight_unit": "Percent",
@@ -783,25 +783,56 @@
         "parent_stage": null,
         "parent_title": null,
         "hierarchy_level": 1,
-        "evaluation_role": "Structural Container",
+        "evaluation_role": "Qualification / Gate",
         "is_structural_container": false,
         "weight": null,
         "weight_value": null,
         "weight_unit": "None",
         "weight_basis": "Unknown",
         "threshold": null,
-        "notes": "Background information about bidder. Not evaluated but completion is mandatory.",
+        "notes": "Mandatory completion for background information about bidder. Not evaluated but completion is mandatory. Covers: organization name, CDP identifier, bidding model (single/consortium), lot(s), and debarment status.",
         "source_refs": [
           {
             "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
             "page": null,
             "sheet": null,
-            "section": "Header",
-            "excerpt": "Part 1: Your information and the bidding model. This section seeks background information about the bidder. It is not evaluated but completion is mandatory."
+            "section": "TABLE",
+            "excerpt": "This section seeks background information about the bidder. It is not evaluated but completion is mandatory."
           }
         ],
         "role_observations": [
-          "Structural Container"
+          "Qualification / Gate"
+        ],
+        "weight_observations": [],
+        "weight_conflict": false
+      },
+      {
+        "criterion_id": null,
+        "parent_criterion_id": null,
+        "stage": "Confirmation of core supplier information",
+        "title": "Confirmation of core supplier information",
+        "parent_stage": "Part 1: Your information and the bidding model",
+        "parent_title": "Part 1: Your information and the bidding model",
+        "hierarchy_level": 2,
+        "evaluation_role": "Qualification / Gate",
+        "is_structural_container": false,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": null,
+        "notes": "Bidder must confirm submission of up-to-date core supplier information on CDP and PDF download, including: basic information, economic and financial standing information, connected person information, and exclusion grounds information.",
+        "source_refs": [
+          {
+            "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+            "page": null,
+            "sheet": null,
+            "section": "TABLE",
+            "excerpt": "Please confirm that you have submitted up-to-date core supplier information on the CDP and shared this information with us as PDF download."
+          }
+        ],
+        "role_observations": [
+          "Qualification / Gate"
         ],
         "weight_observations": [],
         "weight_conflict": false
@@ -814,37 +845,6 @@
         "parent_stage": null,
         "parent_title": null,
         "hierarchy_level": 1,
-        "evaluation_role": "Structural Container",
-        "is_structural_container": false,
-        "weight": null,
-        "weight_value": null,
-        "weight_unit": "None",
-        "weight_basis": "Unknown",
-        "threshold": null,
-        "notes": "Background information about bidder, associated persons and subcontractors. Not evaluated but completion is mandatory.",
-        "source_refs": [
-          {
-            "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
-            "page": null,
-            "sheet": null,
-            "section": "Header",
-            "excerpt": "Part 2 | Additional exclusions information. This section seeks background information about the bidder, associated persons and subcontractors. It is not evaluated but completion is mandatory."
-          }
-        ],
-        "role_observations": [
-          "Structural Container"
-        ],
-        "weight_observations": [],
-        "weight_conflict": false
-      },
-      {
-        "criterion_id": null,
-        "parent_criterion_id": null,
-        "stage": "Part 3: Conditions of participation",
-        "title": "Part 3: Conditions of participation",
-        "parent_stage": null,
-        "parent_title": null,
-        "hierarchy_level": 1,
         "evaluation_role": "Qualification / Gate",
         "is_structural_container": false,
         "weight": null,
@@ -852,14 +852,45 @@
         "weight_unit": "None",
         "weight_basis": "Unknown",
         "threshold": null,
-        "notes": "Contracting authorities may set conditions of participation which a supplier must satisfy to be awarded a public contract. They can relate to supplier's legal and financial capacity and/or technical ability. Some information in PSQ will be for information purposes only; other information will be assessed by British Council using pass/fail mechanism or threshold.",
+        "notes": "Mandatory completion for background information about bidder, associated persons, and sub-contractors. Not evaluated but completion is mandatory. Covers exclusions information and associated persons reliance.",
         "source_refs": [
           {
             "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
             "page": null,
             "sheet": null,
-            "section": "Header",
-            "excerpt": "Part 3 - conditions of participation: contracting authorities may set conditions of participation which a supplier must satisfy in order to be awarded a public contract. They can relate to the supplier's legal and financial capacity and/or their technical ability. Some of the information requested in the PSQ will be for information purposes only. Other information will be assessed by the British Council. This might include a pass or fail mechanism, or a threshold which you must meet."
+            "section": "TABLE",
+            "excerpt": "This section seeks background information about the bidder, associated persons and subcontractors. It is not evaluated but completion is mandatory."
+          }
+        ],
+        "role_observations": [
+          "Qualification / Gate"
+        ],
+        "weight_observations": [],
+        "weight_conflict": false
+      },
+      {
+        "criterion_id": null,
+        "parent_criterion_id": null,
+        "stage": "Associated persons",
+        "title": "Associated persons",
+        "parent_stage": "Part 2: Additional exclusions information",
+        "parent_title": "Part 2: Additional exclusions information",
+        "hierarchy_level": 2,
+        "evaluation_role": "Qualification / Gate",
+        "is_structural_container": false,
+        "weight": null,
+        "weight_value": null,
+        "weight_unit": "None",
+        "weight_basis": "Unknown",
+        "threshold": null,
+        "notes": "If bidder relies on associated persons (consortium members or key sub-contractors) to satisfy conditions of participation, must complete Questions 8, 9, and 10. Associated persons must be registered on CDP and share their information including basic information, economic and financial standing information (if relied upon for financial capacity), associated person information, and exclusion grounds information.",
+        "source_refs": [
+          {
+            "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+            "page": null,
+            "sheet": null,
+            "section": "TABLE",
+            "excerpt": "Are you relying on any associated persons to satisfy the conditions of participation? Where applicable, conditions of participation are outlined in Part 3. If so, please complete Q8, Q9 & Q10 (otherwise Q8, Q9 & Q10 are not applicable)."
           }
         ],
         "role_observations": [
@@ -869,7 +900,7 @@
         "weight_conflict": false
       }
     ],
-    "total_raw_count": 23
+    "total_raw_count": 24
   },
   "normalized_evaluation_criteria": [
     {
@@ -1098,7 +1129,7 @@
       "parent_title": null,
       "hierarchy_level": 1,
       "evaluation_role": "Structural Container",
-      "is_structural_container": false,
+      "is_structural_container": true,
       "weight": "100%",
       "weight_value": 100.0,
       "weight_unit": "Percent",
@@ -1628,25 +1659,56 @@
       "parent_stage": null,
       "parent_title": null,
       "hierarchy_level": 1,
-      "evaluation_role": "Structural Container",
+      "evaluation_role": "Qualification / Gate",
       "is_structural_container": false,
       "weight": null,
       "weight_value": null,
       "weight_unit": "None",
       "weight_basis": "Unknown",
       "threshold": null,
-      "notes": "Background information about bidder. Not evaluated but completion is mandatory.",
+      "notes": "Mandatory completion for background information about bidder. Not evaluated but completion is mandatory. Covers: organization name, CDP identifier, bidding model (single/consortium), lot(s), and debarment status.",
       "source_refs": [
         {
           "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
           "page": null,
           "sheet": null,
-          "section": "Header",
-          "excerpt": "Part 1: Your information and the bidding model. This section seeks background information about the bidder. It is not evaluated but completion is mandatory."
+          "section": "TABLE",
+          "excerpt": "This section seeks background information about the bidder. It is not evaluated but completion is mandatory."
         }
       ],
       "role_observations": [
-        "Structural Container"
+        "Qualification / Gate"
+      ],
+      "weight_observations": [],
+      "weight_conflict": false
+    },
+    {
+      "criterion_id": null,
+      "parent_criterion_id": null,
+      "stage": "Confirmation of core supplier information",
+      "title": "Confirmation of core supplier information",
+      "parent_stage": "Part 1: Your information and the bidding model",
+      "parent_title": "Part 1: Your information and the bidding model",
+      "hierarchy_level": 2,
+      "evaluation_role": "Qualification / Gate",
+      "is_structural_container": false,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": null,
+      "notes": "Bidder must confirm submission of up-to-date core supplier information on CDP and PDF download, including: basic information, economic and financial standing information, connected person information, and exclusion grounds information.",
+      "source_refs": [
+        {
+          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+          "page": null,
+          "sheet": null,
+          "section": "TABLE",
+          "excerpt": "Please confirm that you have submitted up-to-date core supplier information on the CDP and shared this information with us as PDF download."
+        }
+      ],
+      "role_observations": [
+        "Qualification / Gate"
       ],
       "weight_observations": [],
       "weight_conflict": false
@@ -1659,37 +1721,6 @@
       "parent_stage": null,
       "parent_title": null,
       "hierarchy_level": 1,
-      "evaluation_role": "Structural Container",
-      "is_structural_container": false,
-      "weight": null,
-      "weight_value": null,
-      "weight_unit": "None",
-      "weight_basis": "Unknown",
-      "threshold": null,
-      "notes": "Background information about bidder, associated persons and subcontractors. Not evaluated but completion is mandatory.",
-      "source_refs": [
-        {
-          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
-          "page": null,
-          "sheet": null,
-          "section": "Header",
-          "excerpt": "Part 2 | Additional exclusions information. This section seeks background information about the bidder, associated persons and subcontractors. It is not evaluated but completion is mandatory."
-        }
-      ],
-      "role_observations": [
-        "Structural Container"
-      ],
-      "weight_observations": [],
-      "weight_conflict": false
-    },
-    {
-      "criterion_id": null,
-      "parent_criterion_id": null,
-      "stage": "Part 3: Conditions of participation",
-      "title": "Part 3: Conditions of participation",
-      "parent_stage": null,
-      "parent_title": null,
-      "hierarchy_level": 1,
       "evaluation_role": "Qualification / Gate",
       "is_structural_container": false,
       "weight": null,
@@ -1697,14 +1728,45 @@
       "weight_unit": "None",
       "weight_basis": "Unknown",
       "threshold": null,
-      "notes": "Contracting authorities may set conditions of participation which a supplier must satisfy to be awarded a public contract. They can relate to supplier's legal and financial capacity and/or technical ability. Some information in PSQ will be for information purposes only; other information will be assessed by British Council using pass/fail mechanism or threshold.",
+      "notes": "Mandatory completion for background information about bidder, associated persons, and sub-contractors. Not evaluated but completion is mandatory. Covers exclusions information and associated persons reliance.",
       "source_refs": [
         {
           "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
           "page": null,
           "sheet": null,
-          "section": "Header",
-          "excerpt": "Part 3 - conditions of participation: contracting authorities may set conditions of participation which a supplier must satisfy in order to be awarded a public contract. They can relate to the supplier's legal and financial capacity and/or their technical ability. Some of the information requested in the PSQ will be for information purposes only. Other information will be assessed by the British Council. This might include a pass or fail mechanism, or a threshold which you must meet."
+          "section": "TABLE",
+          "excerpt": "This section seeks background information about the bidder, associated persons and subcontractors. It is not evaluated but completion is mandatory."
+        }
+      ],
+      "role_observations": [
+        "Qualification / Gate"
+      ],
+      "weight_observations": [],
+      "weight_conflict": false
+    },
+    {
+      "criterion_id": null,
+      "parent_criterion_id": null,
+      "stage": "Associated persons",
+      "title": "Associated persons",
+      "parent_stage": "Part 2: Additional exclusions information",
+      "parent_title": "Part 2: Additional exclusions information",
+      "hierarchy_level": 2,
+      "evaluation_role": "Qualification / Gate",
+      "is_structural_container": false,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": null,
+      "notes": "If bidder relies on associated persons (consortium members or key sub-contractors) to satisfy conditions of participation, must complete Questions 8, 9, and 10. Associated persons must be registered on CDP and share their information including basic information, economic and financial standing information (if relied upon for financial capacity), associated person information, and exclusion grounds information.",
+      "source_refs": [
+        {
+          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+          "page": null,
+          "sheet": null,
+          "section": "TABLE",
+          "excerpt": "Are you relying on any associated persons to satisfy the conditions of participation? Where applicable, conditions of participation are outlined in Part 3. If so, please complete Q8, Q9 & Q10 (otherwise Q8, Q9 & Q10 are not applicable)."
         }
       ],
       "role_observations": [
@@ -1941,7 +2003,7 @@
       "parent_title": null,
       "hierarchy_level": 1,
       "evaluation_role": "Structural Container",
-      "is_structural_container": false,
+      "is_structural_container": true,
       "weight": "100%",
       "weight_value": 100.0,
       "weight_unit": "Percent",
@@ -2471,25 +2533,56 @@
       "parent_stage": null,
       "parent_title": null,
       "hierarchy_level": 1,
-      "evaluation_role": "Structural Container",
+      "evaluation_role": "Qualification / Gate",
       "is_structural_container": false,
       "weight": null,
       "weight_value": null,
       "weight_unit": "None",
       "weight_basis": "Unknown",
       "threshold": null,
-      "notes": "Background information about bidder. Not evaluated but completion is mandatory.",
+      "notes": "Mandatory completion for background information about bidder. Not evaluated but completion is mandatory. Covers: organization name, CDP identifier, bidding model (single/consortium), lot(s), and debarment status.",
       "source_refs": [
         {
           "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
           "page": null,
           "sheet": null,
-          "section": "Header",
-          "excerpt": "Part 1: Your information and the bidding model. This section seeks background information about the bidder. It is not evaluated but completion is mandatory."
+          "section": "TABLE",
+          "excerpt": "This section seeks background information about the bidder. It is not evaluated but completion is mandatory."
         }
       ],
       "role_observations": [
-        "Structural Container"
+        "Qualification / Gate"
+      ],
+      "weight_observations": [],
+      "weight_conflict": false
+    },
+    {
+      "criterion_id": null,
+      "parent_criterion_id": null,
+      "stage": "Confirmation of core supplier information",
+      "title": "Confirmation of core supplier information",
+      "parent_stage": "Part 1: Your information and the bidding model",
+      "parent_title": "Part 1: Your information and the bidding model",
+      "hierarchy_level": 2,
+      "evaluation_role": "Qualification / Gate",
+      "is_structural_container": false,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": null,
+      "notes": "Bidder must confirm submission of up-to-date core supplier information on CDP and PDF download, including: basic information, economic and financial standing information, connected person information, and exclusion grounds information.",
+      "source_refs": [
+        {
+          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+          "page": null,
+          "sheet": null,
+          "section": "TABLE",
+          "excerpt": "Please confirm that you have submitted up-to-date core supplier information on the CDP and shared this information with us as PDF download."
+        }
+      ],
+      "role_observations": [
+        "Qualification / Gate"
       ],
       "weight_observations": [],
       "weight_conflict": false
@@ -2502,37 +2595,6 @@
       "parent_stage": null,
       "parent_title": null,
       "hierarchy_level": 1,
-      "evaluation_role": "Structural Container",
-      "is_structural_container": false,
-      "weight": null,
-      "weight_value": null,
-      "weight_unit": "None",
-      "weight_basis": "Unknown",
-      "threshold": null,
-      "notes": "Background information about bidder, associated persons and subcontractors. Not evaluated but completion is mandatory.",
-      "source_refs": [
-        {
-          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
-          "page": null,
-          "sheet": null,
-          "section": "Header",
-          "excerpt": "Part 2 | Additional exclusions information. This section seeks background information about the bidder, associated persons and subcontractors. It is not evaluated but completion is mandatory."
-        }
-      ],
-      "role_observations": [
-        "Structural Container"
-      ],
-      "weight_observations": [],
-      "weight_conflict": false
-    },
-    {
-      "criterion_id": null,
-      "parent_criterion_id": null,
-      "stage": "Part 3: Conditions of participation",
-      "title": "Part 3: Conditions of participation",
-      "parent_stage": null,
-      "parent_title": null,
-      "hierarchy_level": 1,
       "evaluation_role": "Qualification / Gate",
       "is_structural_container": false,
       "weight": null,
@@ -2540,14 +2602,45 @@
       "weight_unit": "None",
       "weight_basis": "Unknown",
       "threshold": null,
-      "notes": "Contracting authorities may set conditions of participation which a supplier must satisfy to be awarded a public contract. They can relate to supplier's legal and financial capacity and/or technical ability. Some information in PSQ will be for information purposes only; other information will be assessed by British Council using pass/fail mechanism or threshold.",
+      "notes": "Mandatory completion for background information about bidder, associated persons, and sub-contractors. Not evaluated but completion is mandatory. Covers exclusions information and associated persons reliance.",
       "source_refs": [
         {
           "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
           "page": null,
           "sheet": null,
-          "section": "Header",
-          "excerpt": "Part 3 - conditions of participation: contracting authorities may set conditions of participation which a supplier must satisfy in order to be awarded a public contract. They can relate to the supplier's legal and financial capacity and/or their technical ability. Some of the information requested in the PSQ will be for information purposes only. Other information will be assessed by the British Council. This might include a pass or fail mechanism, or a threshold which you must meet."
+          "section": "TABLE",
+          "excerpt": "This section seeks background information about the bidder, associated persons and subcontractors. It is not evaluated but completion is mandatory."
+        }
+      ],
+      "role_observations": [
+        "Qualification / Gate"
+      ],
+      "weight_observations": [],
+      "weight_conflict": false
+    },
+    {
+      "criterion_id": null,
+      "parent_criterion_id": null,
+      "stage": "Associated persons",
+      "title": "Associated persons",
+      "parent_stage": "Part 2: Additional exclusions information",
+      "parent_title": "Part 2: Additional exclusions information",
+      "hierarchy_level": 2,
+      "evaluation_role": "Qualification / Gate",
+      "is_structural_container": false,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": null,
+      "notes": "If bidder relies on associated persons (consortium members or key sub-contractors) to satisfy conditions of participation, must complete Questions 8, 9, and 10. Associated persons must be registered on CDP and share their information including basic information, economic and financial standing information (if relied upon for financial capacity), associated person information, and exclusion grounds information.",
+      "source_refs": [
+        {
+          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+          "page": null,
+          "sheet": null,
+          "section": "TABLE",
+          "excerpt": "Are you relying on any associated persons to satisfy the conditions of participation? Where applicable, conditions of participation are outlined in Part 3. If so, please complete Q8, Q9 & Q10 (otherwise Q8, Q9 & Q10 are not applicable)."
         }
       ],
       "role_observations": [
@@ -2793,7 +2886,7 @@
         "parent_title": null,
         "hierarchy_level": 1,
         "evaluation_role": "Structural Container",
-        "is_structural_container": false,
+        "is_structural_container": true,
         "weight": "100%",
         "weight_value": 100.0,
         "weight_unit": "Percent",
@@ -3338,67 +3431,68 @@
         "parent_stage": null,
         "parent_title": null,
         "hierarchy_level": 1,
-        "evaluation_role": "Structural Container",
+        "evaluation_role": "Qualification / Gate",
         "is_structural_container": false,
         "weight": null,
         "weight_value": null,
         "weight_unit": "None",
         "weight_basis": "Unknown",
         "threshold": null,
-        "notes": "Background information about bidder. Not evaluated but completion is mandatory.",
+        "notes": "Mandatory completion for background information about bidder. Not evaluated but completion is mandatory. Covers: organization name, CDP identifier, bidding model (single/consortium), lot(s), and debarment status.",
         "source_refs": [
           {
             "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
             "page": null,
             "sheet": null,
-            "section": "Header",
-            "excerpt": "Part 1: Your information and the bidding model. This section seeks background information about the bidder. It is not evaluated but completion is mandatory."
+            "section": "TABLE",
+            "excerpt": "This section seeks background information about the bidder. It is not evaluated but completion is mandatory."
           }
         ],
         "role_observations": [
-          "Structural Container"
+          "Qualification / Gate"
         ],
         "weight_observations": [],
         "weight_conflict": false,
-        "children": []
+        "children": [
+          {
+            "criterion_id": null,
+            "parent_criterion_id": null,
+            "stage": "Confirmation of core supplier information",
+            "title": "Confirmation of core supplier information",
+            "parent_stage": "Part 1: Your information and the bidding model",
+            "parent_title": "Part 1: Your information and the bidding model",
+            "hierarchy_level": 2,
+            "evaluation_role": "Qualification / Gate",
+            "is_structural_container": false,
+            "weight": null,
+            "weight_value": null,
+            "weight_unit": "None",
+            "weight_basis": "Unknown",
+            "threshold": null,
+            "notes": "Bidder must confirm submission of up-to-date core supplier information on CDP and PDF download, including: basic information, economic and financial standing information, connected person information, and exclusion grounds information.",
+            "source_refs": [
+              {
+                "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+                "page": null,
+                "sheet": null,
+                "section": "TABLE",
+                "excerpt": "Please confirm that you have submitted up-to-date core supplier information on the CDP and shared this information with us as PDF download."
+              }
+            ],
+            "role_observations": [
+              "Qualification / Gate"
+            ],
+            "weight_observations": [],
+            "weight_conflict": false,
+            "children": []
+          }
+        ]
       },
       {
         "criterion_id": null,
         "parent_criterion_id": null,
         "stage": "Part 2: Additional exclusions information",
         "title": "Part 2: Additional exclusions information",
-        "parent_stage": null,
-        "parent_title": null,
-        "hierarchy_level": 1,
-        "evaluation_role": "Structural Container",
-        "is_structural_container": false,
-        "weight": null,
-        "weight_value": null,
-        "weight_unit": "None",
-        "weight_basis": "Unknown",
-        "threshold": null,
-        "notes": "Background information about bidder, associated persons and subcontractors. Not evaluated but completion is mandatory.",
-        "source_refs": [
-          {
-            "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
-            "page": null,
-            "sheet": null,
-            "section": "Header",
-            "excerpt": "Part 2 | Additional exclusions information. This section seeks background information about the bidder, associated persons and subcontractors. It is not evaluated but completion is mandatory."
-          }
-        ],
-        "role_observations": [
-          "Structural Container"
-        ],
-        "weight_observations": [],
-        "weight_conflict": false,
-        "children": []
-      },
-      {
-        "criterion_id": null,
-        "parent_criterion_id": null,
-        "stage": "Part 3: Conditions of participation",
-        "title": "Part 3: Conditions of participation",
         "parent_stage": null,
         "parent_title": null,
         "hierarchy_level": 1,
@@ -3409,14 +3503,14 @@
         "weight_unit": "None",
         "weight_basis": "Unknown",
         "threshold": null,
-        "notes": "Contracting authorities may set conditions of participation which a supplier must satisfy to be awarded a public contract. They can relate to supplier's legal and financial capacity and/or technical ability. Some information in PSQ will be for information purposes only; other information will be assessed by British Council using pass/fail mechanism or threshold.",
+        "notes": "Mandatory completion for background information about bidder, associated persons, and sub-contractors. Not evaluated but completion is mandatory. Covers exclusions information and associated persons reliance.",
         "source_refs": [
           {
             "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
             "page": null,
             "sheet": null,
-            "section": "Header",
-            "excerpt": "Part 3 - conditions of participation: contracting authorities may set conditions of participation which a supplier must satisfy in order to be awarded a public contract. They can relate to the supplier's legal and financial capacity and/or their technical ability. Some of the information requested in the PSQ will be for information purposes only. Other information will be assessed by the British Council. This might include a pass or fail mechanism, or a threshold which you must meet."
+            "section": "TABLE",
+            "excerpt": "This section seeks background information about the bidder, associated persons and subcontractors. It is not evaluated but completion is mandatory."
           }
         ],
         "role_observations": [
@@ -3424,11 +3518,44 @@
         ],
         "weight_observations": [],
         "weight_conflict": false,
-        "children": []
+        "children": [
+          {
+            "criterion_id": null,
+            "parent_criterion_id": null,
+            "stage": "Associated persons",
+            "title": "Associated persons",
+            "parent_stage": "Part 2: Additional exclusions information",
+            "parent_title": "Part 2: Additional exclusions information",
+            "hierarchy_level": 2,
+            "evaluation_role": "Qualification / Gate",
+            "is_structural_container": false,
+            "weight": null,
+            "weight_value": null,
+            "weight_unit": "None",
+            "weight_basis": "Unknown",
+            "threshold": null,
+            "notes": "If bidder relies on associated persons (consortium members or key sub-contractors) to satisfy conditions of participation, must complete Questions 8, 9, and 10. Associated persons must be registered on CDP and share their information including basic information, economic and financial standing information (if relied upon for financial capacity), associated person information, and exclusion grounds information.",
+            "source_refs": [
+              {
+                "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+                "page": null,
+                "sheet": null,
+                "section": "TABLE",
+                "excerpt": "Are you relying on any associated persons to satisfy the conditions of participation? Where applicable, conditions of participation are outlined in Part 3. If so, please complete Q8, Q9 & Q10 (otherwise Q8, Q9 & Q10 are not applicable)."
+              }
+            ],
+            "role_observations": [
+              "Qualification / Gate"
+            ],
+            "weight_observations": [],
+            "weight_conflict": false,
+            "children": []
+          }
+        ]
       }
     ],
     "unresolved": [],
-    "all_criteria_count": 23
+    "all_criteria_count": 24
   },
   "evaluation_totals": {
     "status": "VALID",
@@ -3474,7 +3601,7 @@
         "stage": "Award Criteria",
         "weight_value": 100.0,
         "weight_unit": "Percent",
-        "derived_from_children": false,
+        "derived_from_children": true,
         "evaluation_role": "Structural Container"
       },
       {
@@ -3517,17 +3644,10 @@
         "weight_value": null,
         "weight_unit": "None",
         "derived_from_children": false,
-        "evaluation_role": "Structural Container"
+        "evaluation_role": "Qualification / Gate"
       },
       {
         "stage": "Part 2: Additional exclusions information",
-        "weight_value": null,
-        "weight_unit": "None",
-        "derived_from_children": false,
-        "evaluation_role": "Structural Container"
-      },
-      {
-        "stage": "Part 3: Conditions of participation",
         "weight_value": null,
         "weight_unit": "None",
         "derived_from_children": false,
@@ -3538,6 +3658,8 @@
       "Conditions of Participation (PSQ)": {
         "count": 2,
         "subtotal": null,
+        "overall_subtotal": null,
+        "within_parent_subtotal": null,
         "units": [],
         "bases": [
           "Unknown"
@@ -3546,6 +3668,8 @@
       "Award Criteria": {
         "count": 4,
         "subtotal": 100.0,
+        "overall_subtotal": 100.0,
+        "within_parent_subtotal": null,
         "units": [
           "Percent"
         ],
@@ -3555,10 +3679,32 @@
       },
       "Scoring Model (Non-Commercial Criteria)": {
         "count": 3,
-        "subtotal": 22.0,
+        "subtotal": null,
+        "overall_subtotal": null,
+        "within_parent_subtotal": null,
         "units": [
           "Points"
         ],
+        "bases": [
+          "Unknown"
+        ]
+      },
+      "Part 1: Your information and the bidding model": {
+        "count": 1,
+        "subtotal": null,
+        "overall_subtotal": null,
+        "within_parent_subtotal": null,
+        "units": [],
+        "bases": [
+          "Unknown"
+        ]
+      },
+      "Part 2: Additional exclusions information": {
+        "count": 1,
+        "subtotal": null,
+        "overall_subtotal": null,
+        "within_parent_subtotal": null,
+        "units": [],
         "bases": [
           "Unknown"
         ]
@@ -3879,7 +4025,7 @@
       "parent_title": null,
       "hierarchy_level": 1,
       "evaluation_role": "Structural Container",
-      "is_structural_container": false,
+      "is_structural_container": true,
       "weight": "100%",
       "weight_value": 100.0,
       "weight_unit": "Percent",
@@ -4786,30 +4932,97 @@
       "parent_stage": null,
       "parent_title": null,
       "hierarchy_level": 1,
-      "evaluation_role": "Structural Container",
+      "evaluation_role": "Qualification / Gate",
       "is_structural_container": false,
       "weight": null,
       "weight_value": null,
       "weight_unit": "None",
       "weight_basis": "Unknown",
       "threshold": null,
-      "notes": "Background information about bidder. Not evaluated but completion is mandatory.",
+      "notes": "Mandatory completion for background information about bidder. Not evaluated but completion is mandatory. Covers: organization name, CDP identifier, bidding model (single/consortium), lot(s), and debarment status.",
       "source_refs": [
         {
           "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
           "page": null,
           "sheet": null,
-          "section": "Header",
-          "excerpt": "Part 1: Your information and the bidding model. This section seeks background information about the bidder. It is not evaluated but completion is mandatory."
+          "section": "TABLE",
+          "excerpt": "This section seeks background information about the bidder. It is not evaluated but completion is mandatory."
         }
       ],
       "role_observations": [
-        "Structural Container"
+        "Qualification / Gate"
+      ],
+      "weight_observations": [],
+      "weight_conflict": false,
+      "children": [
+        {
+          "criterion_id": null,
+          "parent_criterion_id": null,
+          "stage": "Confirmation of core supplier information",
+          "title": "Confirmation of core supplier information",
+          "parent_stage": "Part 1: Your information and the bidding model",
+          "parent_title": "Part 1: Your information and the bidding model",
+          "hierarchy_level": 2,
+          "evaluation_role": "Qualification / Gate",
+          "is_structural_container": false,
+          "weight": null,
+          "weight_value": null,
+          "weight_unit": "None",
+          "weight_basis": "Unknown",
+          "threshold": null,
+          "notes": "Bidder must confirm submission of up-to-date core supplier information on CDP and PDF download, including: basic information, economic and financial standing information, connected person information, and exclusion grounds information.",
+          "source_refs": [
+            {
+              "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+              "page": null,
+              "sheet": null,
+              "section": "TABLE",
+              "excerpt": "Please confirm that you have submitted up-to-date core supplier information on the CDP and shared this information with us as PDF download."
+            }
+          ],
+          "role_observations": [
+            "Qualification / Gate"
+          ],
+          "weight_observations": [],
+          "weight_conflict": false,
+          "children": []
+        }
+      ],
+      "indent": 0,
+      "is_parent": true
+    },
+    {
+      "criterion_id": null,
+      "parent_criterion_id": null,
+      "stage": "Confirmation of core supplier information",
+      "title": "Confirmation of core supplier information",
+      "parent_stage": "Part 1: Your information and the bidding model",
+      "parent_title": "Part 1: Your information and the bidding model",
+      "hierarchy_level": 2,
+      "evaluation_role": "Qualification / Gate",
+      "is_structural_container": false,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": null,
+      "notes": "Bidder must confirm submission of up-to-date core supplier information on CDP and PDF download, including: basic information, economic and financial standing information, connected person information, and exclusion grounds information.",
+      "source_refs": [
+        {
+          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+          "page": null,
+          "sheet": null,
+          "section": "TABLE",
+          "excerpt": "Please confirm that you have submitted up-to-date core supplier information on the CDP and shared this information with us as PDF download."
+        }
+      ],
+      "role_observations": [
+        "Qualification / Gate"
       ],
       "weight_observations": [],
       "weight_conflict": false,
       "children": [],
-      "indent": 0,
+      "indent": 1,
       "is_parent": false
     },
     {
@@ -4820,40 +5033,6 @@
       "parent_stage": null,
       "parent_title": null,
       "hierarchy_level": 1,
-      "evaluation_role": "Structural Container",
-      "is_structural_container": false,
-      "weight": null,
-      "weight_value": null,
-      "weight_unit": "None",
-      "weight_basis": "Unknown",
-      "threshold": null,
-      "notes": "Background information about bidder, associated persons and subcontractors. Not evaluated but completion is mandatory.",
-      "source_refs": [
-        {
-          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
-          "page": null,
-          "sheet": null,
-          "section": "Header",
-          "excerpt": "Part 2 | Additional exclusions information. This section seeks background information about the bidder, associated persons and subcontractors. It is not evaluated but completion is mandatory."
-        }
-      ],
-      "role_observations": [
-        "Structural Container"
-      ],
-      "weight_observations": [],
-      "weight_conflict": false,
-      "children": [],
-      "indent": 0,
-      "is_parent": false
-    },
-    {
-      "criterion_id": null,
-      "parent_criterion_id": null,
-      "stage": "Part 3: Conditions of participation",
-      "title": "Part 3: Conditions of participation",
-      "parent_stage": null,
-      "parent_title": null,
-      "hierarchy_level": 1,
       "evaluation_role": "Qualification / Gate",
       "is_structural_container": false,
       "weight": null,
@@ -4861,14 +5040,81 @@
       "weight_unit": "None",
       "weight_basis": "Unknown",
       "threshold": null,
-      "notes": "Contracting authorities may set conditions of participation which a supplier must satisfy to be awarded a public contract. They can relate to supplier's legal and financial capacity and/or technical ability. Some information in PSQ will be for information purposes only; other information will be assessed by British Council using pass/fail mechanism or threshold.",
+      "notes": "Mandatory completion for background information about bidder, associated persons, and sub-contractors. Not evaluated but completion is mandatory. Covers exclusions information and associated persons reliance.",
       "source_refs": [
         {
           "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
           "page": null,
           "sheet": null,
-          "section": "Header",
-          "excerpt": "Part 3 - conditions of participation: contracting authorities may set conditions of participation which a supplier must satisfy in order to be awarded a public contract. They can relate to the supplier's legal and financial capacity and/or their technical ability. Some of the information requested in the PSQ will be for information purposes only. Other information will be assessed by the British Council. This might include a pass or fail mechanism, or a threshold which you must meet."
+          "section": "TABLE",
+          "excerpt": "This section seeks background information about the bidder, associated persons and subcontractors. It is not evaluated but completion is mandatory."
+        }
+      ],
+      "role_observations": [
+        "Qualification / Gate"
+      ],
+      "weight_observations": [],
+      "weight_conflict": false,
+      "children": [
+        {
+          "criterion_id": null,
+          "parent_criterion_id": null,
+          "stage": "Associated persons",
+          "title": "Associated persons",
+          "parent_stage": "Part 2: Additional exclusions information",
+          "parent_title": "Part 2: Additional exclusions information",
+          "hierarchy_level": 2,
+          "evaluation_role": "Qualification / Gate",
+          "is_structural_container": false,
+          "weight": null,
+          "weight_value": null,
+          "weight_unit": "None",
+          "weight_basis": "Unknown",
+          "threshold": null,
+          "notes": "If bidder relies on associated persons (consortium members or key sub-contractors) to satisfy conditions of participation, must complete Questions 8, 9, and 10. Associated persons must be registered on CDP and share their information including basic information, economic and financial standing information (if relied upon for financial capacity), associated person information, and exclusion grounds information.",
+          "source_refs": [
+            {
+              "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+              "page": null,
+              "sheet": null,
+              "section": "TABLE",
+              "excerpt": "Are you relying on any associated persons to satisfy the conditions of participation? Where applicable, conditions of participation are outlined in Part 3. If so, please complete Q8, Q9 & Q10 (otherwise Q8, Q9 & Q10 are not applicable)."
+            }
+          ],
+          "role_observations": [
+            "Qualification / Gate"
+          ],
+          "weight_observations": [],
+          "weight_conflict": false,
+          "children": []
+        }
+      ],
+      "indent": 0,
+      "is_parent": true
+    },
+    {
+      "criterion_id": null,
+      "parent_criterion_id": null,
+      "stage": "Associated persons",
+      "title": "Associated persons",
+      "parent_stage": "Part 2: Additional exclusions information",
+      "parent_title": "Part 2: Additional exclusions information",
+      "hierarchy_level": 2,
+      "evaluation_role": "Qualification / Gate",
+      "is_structural_container": false,
+      "weight": null,
+      "weight_value": null,
+      "weight_unit": "None",
+      "weight_basis": "Unknown",
+      "threshold": null,
+      "notes": "If bidder relies on associated persons (consortium members or key sub-contractors) to satisfy conditions of participation, must complete Questions 8, 9, and 10. Associated persons must be registered on CDP and share their information including basic information, economic and financial standing information (if relied upon for financial capacity), associated person information, and exclusion grounds information.",
+      "source_refs": [
+        {
+          "source_doc": "annex_2_-_procurement_specific_questionnaire_1.docx",
+          "page": null,
+          "sheet": null,
+          "section": "TABLE",
+          "excerpt": "Are you relying on any associated persons to satisfy the conditions of participation? Where applicable, conditions of participation are outlined in Part 3. If so, please complete Q8, Q9 & Q10 (otherwise Q8, Q9 & Q10 are not applicable)."
         }
       ],
       "role_observations": [
@@ -4877,7 +5123,7 @@
       "weight_observations": [],
       "weight_conflict": false,
       "children": [],
-      "indent": 0,
+      "indent": 1,
       "is_parent": false
     }
   ]

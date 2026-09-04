@@ -2366,16 +2366,15 @@ def extract_document_facts(doc_text: str, filename: str, api_key: str) -> dict:
 
     chunk_results = []
     has_recovered_truncation = False
+    has_parse_failure = False
 
     for chunk in chunks:
         res = _extract_chunk_facts(chunk, filename, api_key, client=client)
         pstatus = res.get("_parse_status")
         if pstatus == "RECOVERED_TRUNCATED":
-            # Directive 5: Bounded retry for this chunk using smaller input / targeted retry
             target_size = max(500, len(chunk) // 2) if len(chunk) > 1000 else len(chunk)
             retry_subchunks = chunk_document_text(chunk, max_chunk_chars=target_size)
             if len(retry_subchunks) <= 1:
-                # If chunker didn't split (e.g. single block without delimiters), try splitting roughly in half or re-request
                 half_pt = len(chunk) // 2
                 split_candidates = [chunk[:half_pt], chunk[half_pt:]] if len(chunk) > 1000 else [chunk]
                 retry_subchunks = [c for c in split_candidates if c.strip()]
@@ -2391,13 +2390,33 @@ def extract_document_facts(doc_text: str, filename: str, api_key: str) -> dict:
                 res = aggregate_stage_a_facts(sub_results, filename)
                 res["_parse_status"] = "COMPLETE"
             else:
-                # Still has recovered truncation or failure; preserve recovered partial facts
                 res = aggregate_stage_a_facts([res] + sub_results, filename)
                 res["_parse_status"] = "RECOVERED_TRUNCATED"
                 has_recovered_truncation = True
         elif pstatus == "FAILED":
-            # Preservation of any partial items
-            pass
+            # Directive 4: Bounded retry for FAILED chunks using smaller subchunks
+            target_size = max(500, len(chunk) // 2) if len(chunk) > 1000 else len(chunk)
+            retry_subchunks = chunk_document_text(chunk, max_chunk_chars=target_size)
+            if len(retry_subchunks) <= 1:
+                half_pt = len(chunk) // 2
+                split_candidates = [chunk[:half_pt], chunk[half_pt:]] if len(chunk) > 1000 else [chunk]
+                retry_subchunks = [c for c in split_candidates if c.strip()]
+
+            sub_results = []
+            sub_all_complete = True
+            for sc in retry_subchunks:
+                sres = _extract_chunk_facts(sc, filename, api_key, client=client)
+                if sres.get("_parse_status") != "COMPLETE":
+                    sub_all_complete = False
+                sub_results.append(sres)
+            if sub_all_complete and sub_results:
+                res = aggregate_stage_a_facts(sub_results, filename)
+                res["_parse_status"] = "COMPLETE"
+            else:
+                # Retain failure and preserve any recovered partial items
+                res = aggregate_stage_a_facts([res] + sub_results, filename)
+                res["_parse_status"] = "FAILED"
+                has_parse_failure = True
         chunk_results.append(res)
 
     aggregated = aggregate_stage_a_facts(chunk_results, filename)
@@ -2410,7 +2429,6 @@ def extract_document_facts(doc_text: str, filename: str, api_key: str) -> dict:
     # If suspicious and only 1 chunk was extracted, subdivide with smaller chunks for recovery
     while coverage["is_suspicious"] and recovery_attempts < max_recoveries:
         recovery_attempts += 1
-        # Smaller chunk size to force narrower focus on dense blocks
         smaller_chunks = chunk_document_text(doc_text, max_chunk_chars=8000)
         if len(smaller_chunks) > len(chunks):
             retry_results = []
@@ -2418,9 +2436,10 @@ def extract_document_facts(doc_text: str, filename: str, api_key: str) -> dict:
                 rres = _extract_chunk_facts(schunk, filename, api_key, client=client)
                 if rres.get("_parse_status") == "RECOVERED_TRUNCATED":
                     has_recovered_truncation = True
+                elif rres.get("_parse_status") == "FAILED":
+                    has_parse_failure = True
                 retry_results.append(rres)
             retry_aggregated = aggregate_stage_a_facts(retry_results, filename)
-            # Deterministically merge original aggregated facts with retry facts
             merged_recovery = aggregate_stage_a_facts([aggregated, retry_aggregated], filename)
             merged_cov = inspect_stage_a_coverage(doc_text, merged_recovery, min_signal_count=5)
             aggregated = merged_recovery
@@ -2428,11 +2447,18 @@ def extract_document_facts(doc_text: str, filename: str, api_key: str) -> dict:
             if not coverage["is_suspicious"]:
                 break
         else:
-            # Re-extract chunks that might have dropped facts
             break
 
-    # Attach internal non-schema diagnostic: truncated JSON recovery must not masquerade as VERIFIED_ADEQUATE
-    if coverage["is_suspicious"]:
+    # Directive 4: Document diagnostic handling
+    if has_parse_failure:
+        aggregated["_extraction_diagnostic"] = {
+            "status": "PARSE_FAILURE",
+            "recovery_attempts": recovery_attempts,
+            "has_parse_failure": True,
+            "has_recovered_truncation": has_recovered_truncation,
+            "note": "Document facts extraction encountered unrecovered chunk parse failure",
+        }
+    elif coverage["is_suspicious"]:
         aggregated["_extraction_diagnostic"] = {
             "status": "SUSPICIOUS_UNDER_COVERAGE",
             "suspicious_families": coverage["suspicious_families"],

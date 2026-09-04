@@ -14,7 +14,7 @@ import hashlib
 import datetime
 import subprocess
 
-PROJECT_ROOT = pathlib.Path(r"C:\Users\feras\Documents\Projects\Bid-Intelligence")
+PROJECT_ROOT = pathlib.Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -42,6 +42,14 @@ model_name = "claude-haiku-4-5-20251001"
 fixture_dir = PROJECT_ROOT / "tests" / "fixtures" / "local" / "british_council_ir67tvet42026"
 p_itt = fixture_dir / "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf"
 p_a2 = fixture_dir / "annex_2_-_procurement_specific_questionnaire_1.docx"
+
+if not p_itt.exists() or not p_a2.exists():
+    sys.exit(
+        f"ERROR: Fixture files not found! Expected:\n"
+        f"  {p_itt}\n"
+        f"  {p_a2}\n"
+        f"Please ensure local fixtures are placed in tests/fixtures/local/british_council_ir67tvet42026/"
+    )
 
 h_itt = hashlib.sha256(p_itt.read_bytes()).hexdigest()
 h_a2 = hashlib.sha256(p_a2.read_bytes()).hexdigest()

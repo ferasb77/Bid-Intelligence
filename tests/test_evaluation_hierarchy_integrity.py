@@ -587,8 +587,9 @@ class TestGenericIntegrityCorrectionsPass(unittest.TestCase):
         self.assertEqual(len(roles), 2)
         self.assertIn("Award Criterion", roles)
         self.assertIn("Process / Methodology", roles)
-        # Deterministic role resolution prioritizes Award Criterion
-        self.assertEqual(deduped[0]["evaluation_role"], "Award Criterion")
+        # Directive 2: Disagreement between additive and non-additive roles resolves conservatively to Unknown with role_conflict=True
+        self.assertTrue(deduped[0].get("role_conflict"))
+        self.assertEqual(deduped[0]["evaluation_role"], "Unknown")
 
     def test_directive_4_order_independence_role_merging(self):
         """Directive 4: Deduplication is permutation invariant with respect to role observations."""
@@ -596,7 +597,69 @@ class TestGenericIntegrityCorrectionsPass(unittest.TestCase):
         c2 = {"stage": "Technical", "hierarchy_level": 1, "evaluation_role": "Award Criterion"}
         deduped = deduplicate_evaluation_criteria([c1, c2])
         self.assertEqual(len(deduped), 1)
-        self.assertEqual(deduped[0]["evaluation_role"], "Award Criterion")
+        self.assertTrue(deduped[0].get("role_conflict"))
+        self.assertEqual(deduped[0]["evaluation_role"], "Unknown")
+
+    def test_directive_1_qualification_gate_non_additive(self):
+        """Directive 1A: Qualification / Gate with numeric weight or percentage is non-additive directly."""
+        c = {"stage": "Eligibility Gate", "hierarchy_level": 1, "weight": "100%", "weight_basis": "Overall", "evaluation_role": "Qualification / Gate"}
+        h = build_evaluation_hierarchy([c])
+        totals = calculate_evaluation_totals(h)
+        self.assertIn(totals["status"], (STATUS_INSUFFICIENT_DATA, STATUS_SOURCE_DISCREPANCY))
+        self.assertIsNone(totals["overall_total"])
+
+    def test_directive_1_scoring_scale_non_additive(self):
+        """Directive 1B: Scoring scale is strictly non-additive directly to overall."""
+        c = {"stage": "Points Scale - Excellent", "hierarchy_level": 1, "weight": "10 points", "weight_basis": "Overall", "evaluation_role": "Scoring Scale"}
+        h = build_evaluation_hierarchy([c])
+        totals = calculate_evaluation_totals(h)
+        self.assertIn(totals["status"], (STATUS_INSUFFICIENT_DATA, STATUS_SOURCE_DISCREPANCY))
+        self.assertIsNone(totals["overall_total"])
+
+    def test_directive_1_process_stage_non_additive(self):
+        """Directive 1C: Process / Methodology stage is strictly non-additive directly."""
+        c = {"stage": "Clarification Process", "hierarchy_level": 1, "weight": "10%", "weight_basis": "Overall", "evaluation_role": "Process / Methodology"}
+        h = build_evaluation_hierarchy([c])
+        totals = calculate_evaluation_totals(h)
+        self.assertIn(totals["status"], (STATUS_INSUFFICIENT_DATA, STATUS_SOURCE_DISCREPANCY))
+        self.assertIsNone(totals["overall_total"])
+
+    def test_directive_1_structural_container_derives_from_children(self):
+        """Directive 1D: Structural container derives overall contribution ONLY from valid additive children."""
+        criteria = [
+            {"stage": "Award Criteria", "hierarchy_level": 1, "is_structural_container": True},
+            {"stage": "Quality", "parent_stage": "Award Criteria", "weight": "70%", "weight_basis": "Overall", "evaluation_role": "Award Criterion"},
+            {"stage": "Price", "parent_stage": "Award Criteria", "weight": "30%", "weight_basis": "Overall", "evaluation_role": "Award Criterion"},
+        ]
+        h = build_evaluation_hierarchy(criteria)
+        totals = calculate_evaluation_totals(h)
+        self.assertEqual(totals["status"], STATUS_VALID)
+        self.assertEqual(totals["overall_total"], 100.0)
+        self.assertTrue(totals["root_details"][0].get("derived_from_children"))
+
+    def test_directive_2_scoring_scale_and_subcriterion_conservative_resolution(self):
+        """Directive 2: Disagreement between Scoring Scale and Subcriterion does not silently promote to additive."""
+        c1 = {"stage": "Scoring", "hierarchy_level": 2, "evaluation_role": "Scoring Scale"}
+        c2 = {"stage": "Scoring", "hierarchy_level": 2, "evaluation_role": "Subcriterion"}
+        deduped = deduplicate_evaluation_criteria([c1, c2])
+        self.assertEqual(len(deduped), 1)
+        self.assertTrue(deduped[0].get("role_conflict"))
+        self.assertEqual(deduped[0]["evaluation_role"], "Unknown")
+
+    def test_directive_3_mixed_bases_among_siblings_triggers_source_discrepancy(self):
+        """Directive 3: Sibling subcriteria mixing Overall (30%) and Within Parent (70%) triggers STATUS_SOURCE_DISCREPANCY."""
+        criteria = [
+            {"stage": "Award Criteria", "hierarchy_level": 1, "is_structural_container": True},
+            {"stage": "Technical", "parent_stage": "Award Criteria", "weight": "60%", "weight_basis": "Overall"},
+            {"stage": "Commercial", "parent_stage": "Award Criteria", "weight": "40%", "weight_basis": "Overall"},
+            # Sibling mixture of bases under Technical
+            {"stage": "Child A", "parent_stage": "Technical", "weight": "30%", "weight_basis": "Overall"},
+            {"stage": "Child B", "parent_stage": "Technical", "weight": "70%", "weight_basis": "Within Parent"},
+        ]
+        h = build_evaluation_hierarchy(criteria)
+        totals = calculate_evaluation_totals(h)
+        self.assertEqual(totals["status"], STATUS_SOURCE_DISCREPANCY)
+        self.assertTrue(any("mixed Overall and Within Parent bases" in w for w in totals["warnings"]))
 
 if __name__ == "__main__":
     unittest.main()

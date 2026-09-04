@@ -138,6 +138,8 @@ def infer_evaluation_role(stage: str, parent_stage: str = None, level: int = 1, 
         return ROLE_SCORING_SCALE
     if any(k in s_lower for k in ["conditions of participation", "mandatory requirements check", "qualification review", "selection questionnaire", "exclusion grounds", "eligibility"]):
         return ROLE_QUALIFICATION_GATE
+    if any(k in s_lower for k in ["award criteria", "award framework", "award model", "award container"]):
+        return ROLE_STRUCTURAL_CONTAINER
     if any(k in s_lower for k in ["moderation", "winning tender selection", "process", "procedure", "submission check"]) or re.search(r"\bstage\s*\d+\b", s_lower):
         if not weight or str(weight).strip().lower() in ("none", "null", ""):
             return ROLE_PROCESS_STAGE
@@ -258,7 +260,7 @@ def normalize_evaluation_criterion(ec: dict) -> dict:
             "source_refs": list(source_refs),
         })
 
-    is_structural = bool(ec.get("is_structural_container", False))
+    is_structural = bool(ec.get("is_structural_container", False)) or (role == ROLE_STRUCTURAL_CONTAINER)
 
     return {
         "criterion_id": criterion_id,
@@ -324,17 +326,35 @@ def deduplicate_evaluation_criteria(criteria_list: list[dict]) -> list[dict]:
             merged_roles = list(dict.fromkeys(existing_roles + new_roles))
             existing["role_observations"] = merged_roles
 
-            # Resolve deterministic role: prefer ROLE_SUBCRITERION if level > 1 or parent_stage, else prefer specific role over ROLE_UNKNOWN
-            h_level = existing.get("hierarchy_level", 1)
-            p_stage = existing.get("parent_stage")
-            if h_level > 1 or p_stage:
-                existing["evaluation_role"] = ROLE_SUBCRITERION
+            # Directive 2: Conservative role conflict resolution
+            # Do NOT force every nested item to Subcriterion (e.g. Scoring Scale under Scoring Model remains Scoring Scale).
+            additive_roles = {ROLE_AWARD_CRITERION, ROLE_SUBCRITERION}
+            non_additive_roles = {ROLE_QUALIFICATION_GATE, ROLE_SCORING_SCALE, ROLE_PROCESS_STAGE, ROLE_STRUCTURAL_CONTAINER, ROLE_UNKNOWN}
+
+            has_additive = any(r in additive_roles for r in merged_roles)
+            has_non_additive = any(r in (non_additive_roles - {ROLE_UNKNOWN}) for r in merged_roles)
+
+            if has_additive and has_non_additive:
+                existing["role_conflict"] = True
+                existing["evaluation_role"] = ROLE_UNKNOWN
+            elif len(merged_roles) == 1:
+                existing["evaluation_role"] = merged_roles[0]
             else:
-                specific_roles = [r for r in merged_roles if r not in (ROLE_UNKNOWN, ROLE_SUBCRITERION)]
-                if specific_roles:
-                    prio = [ROLE_AWARD_CRITERION, ROLE_QUALIFICATION_GATE, ROLE_PROCESS_STAGE, ROLE_SCORING_SCALE, ROLE_QUALIFICATION_GATE]
-                    chosen = next((pr for pr in prio if pr in specific_roles), specific_roles[0])
-                    existing["evaluation_role"] = chosen
+                # Disagreement within the same category (e.g. Subcriterion vs Award Criterion, or Gate vs Process)
+                specific_non_additive = [r for r in merged_roles if r in non_additive_roles and r != ROLE_UNKNOWN]
+                if specific_non_additive:
+                    # Prefer specific non-additive role
+                    prio_non_add = [ROLE_QUALIFICATION_GATE, ROLE_SCORING_SCALE, ROLE_PROCESS_STAGE, ROLE_STRUCTURAL_CONTAINER]
+                    existing["evaluation_role"] = next((pr for pr in prio_non_add if pr in specific_non_additive), specific_non_additive[0])
+                elif all(r in additive_roles for r in merged_roles):
+                    h_level = existing.get("hierarchy_level", 1)
+                    p_stage = existing.get("parent_stage")
+                    if h_level > 1 or p_stage:
+                        existing["evaluation_role"] = ROLE_SUBCRITERION
+                    else:
+                        existing["evaluation_role"] = ROLE_AWARD_CRITERION
+                else:
+                    existing["evaluation_role"] = merged_roles[0]
 
             # Check weight observations - comparison includes value, unit, and basis
             new_obs = norm_ec.get("weight_observations", [])
@@ -631,10 +651,41 @@ def calculate_evaluation_totals(hierarchy: dict) -> dict:
             if c.get("weight_conflict"):
                 has_source_discrepancy = True
 
-        child_subtotal = sum(c_vals) if c_vals else None
+        # Directive 3: Never sum mixed weight bases. Group children by weight_basis
+        basis_groups = {}
+        for c in children:
+            cb = c.get("weight_basis") or BASIS_UNKNOWN
+            cv = c.get("weight_value")
+            cu = c.get("weight_unit") or UNIT_NONE
+            basis_groups.setdefault(cb, []).append((cv, cu, c))
+
+        known_bases_with_values = [b for b, items in basis_groups.items() if b != BASIS_UNKNOWN and any(v is not None for v, u, _ in items)]
+        has_unknown_with_values = BASIS_UNKNOWN in basis_groups and any(v is not None for v, u, _ in basis_groups[BASIS_UNKNOWN])
+
+        # Conflict if both Overall and Within Parent are present among children
+        if BASIS_OVERALL in known_bases_with_values and BASIS_WITHIN_PARENT in known_bases_with_values:
+            has_source_discrepancy = True
+            warnings.append(f"Basis conflict among subcriteria of '{current_path}': mixed Overall and Within Parent bases.")
+
+        # If known basis and Unknown basis are mixed
+        if known_bases_with_values and has_unknown_with_values:
+            has_source_discrepancy = True
+            warnings.append(f"Unresolved basis mixture among subcriteria of '{current_path}': known basis mixed with Unknown basis.")
+
+        # Subtotals are calculated per basis, not indiscriminately combined
+        overall_items = [v for v, u, _ in basis_groups.get(BASIS_OVERALL, []) if v is not None]
+        within_parent_items = [v for v, u, _ in basis_groups.get(BASIS_WITHIN_PARENT, []) if v is not None]
+        overall_subtotal = sum(overall_items) if overall_items else None
+        within_parent_subtotal = sum(within_parent_items) if within_parent_items else None
+
+        # Primary comparable subtotal: Overall if present, else Within Parent if present
+        child_subtotal = overall_subtotal if overall_subtotal is not None else within_parent_subtotal
+
         child_details[node_title] = {
             "count": len(children),
             "subtotal": child_subtotal,
+            "overall_subtotal": overall_subtotal,
+            "within_parent_subtotal": within_parent_subtotal,
             "units": list(c_units),
             "bases": list(c_bases),
         }
@@ -645,19 +696,17 @@ def calculate_evaluation_totals(hierarchy: dict) -> dict:
             warnings.append(f"Mixed weight units among subcriteria of '{current_path}': {sorted(c_units)}.")
 
         # Child/Parent arithmetic consistency check
-        # Only validate arithmetic if children are comparable and not non-additive (e.g. scoring scales)
-        # where within-parent children are expected to sum to 100% (specifically percentage units)
-        if child_subtotal is not None:
-            if BASIS_WITHIN_PARENT in c_bases:
-                is_scoring_or_non_pct = all(c.get("weight_unit") == UNIT_POINTS or c.get("evaluation_role") == ROLE_SCORING_SCALE for c in children)
-                if not is_scoring_or_non_pct and UNIT_PERCENT in c_units:
-                    if round(child_subtotal, 2) != 100.0:
-                        has_source_discrepancy = True
-                        warnings.append(f"Subcriteria for '{current_path}' total {child_subtotal}% within parent (expected 100%).")
-            elif all(b == BASIS_OVERALL for b in c_bases) and node_val is not None:
-                if round(child_subtotal, 2) != round(node_val, 2):
+        if within_parent_subtotal is not None and BASIS_WITHIN_PARENT in c_bases:
+            is_scoring_or_non_pct = all(c.get("weight_unit") == UNIT_POINTS or c.get("evaluation_role") == ROLE_SCORING_SCALE for c in children)
+            if not is_scoring_or_non_pct and UNIT_PERCENT in c_units:
+                if round(within_parent_subtotal, 2) != 100.0:
                     has_source_discrepancy = True
-                    warnings.append(f"Subcriteria for '{current_path}' sum to {child_subtotal}% overall, but parent states {node_val}%. correlation discrepancy.")
+                    warnings.append(f"Subcriteria for '{current_path}' total {within_parent_subtotal}% within parent (expected 100%).")
+
+        if overall_subtotal is not None and all(b == BASIS_OVERALL for b in c_bases) and node_val is not None:
+            if round(overall_subtotal, 2) != round(node_val, 2):
+                has_source_discrepancy = True
+                warnings.append(f"Subcriteria for '{current_path}' sum to {overall_subtotal}% overall, but parent states {node_val}%. correlation discrepancy.")
 
         # Recurse into each child for nested validation (grandchildren, great-grandchildren, etc.)
         for c in children:
@@ -668,7 +717,8 @@ def calculate_evaluation_totals(hierarchy: dict) -> dict:
         unit = r.get("weight_unit") or UNIT_NONE
         basis = r.get("weight_basis") or BASIS_UNKNOWN
         role = r.get("evaluation_role") or ROLE_UNKNOWN
-        is_container = bool(r.get("is_structural_container"))
+        is_container = bool(r.get("is_structural_container")) or (role == ROLE_STRUCTURAL_CONTAINER)
+        has_conflict = bool(r.get("role_conflict")) or bool(r.get("weight_conflict"))
         title = r.get("stage")
         children = r.get("children", [])
 
@@ -676,7 +726,7 @@ def calculate_evaluation_totals(hierarchy: dict) -> dict:
         validate_subtree_arithmetic(r)
 
         child_info = child_details.get(title, {})
-        child_subtotal = child_info.get("subtotal")
+        overall_sub = child_info.get("overall_subtotal")
         c_bases = set(child_info.get("bases", []))
         c_units = set(child_info.get("units", []))
 
@@ -685,9 +735,10 @@ def calculate_evaluation_totals(hierarchy: dict) -> dict:
         contributing_unit = None
 
         if is_container:
-            # Container itself has no direct weight. If children have overall percentages, container contributes their sum.
-            if child_subtotal is not None and all(b == BASIS_OVERALL for b in c_bases) and len(c_units) == 1:
-                contributing_value = child_subtotal
+            # Directive 1: Structural Container is strictly non-additive directly regardless of is_structural_container boolean.
+            # Derives contribution ONLY from children if all children have Overall percentages
+            if overall_sub is not None and all(b == BASIS_OVERALL for b in c_bases) and len(c_units) == 1:
+                contributing_value = overall_sub
                 contributing_unit = list(c_units)[0]
                 root_details.append({
                     "stage": title,
@@ -699,35 +750,48 @@ def calculate_evaluation_totals(hierarchy: dict) -> dict:
             else:
                 root_details.append({
                     "stage": title,
-                    "weight_value": None,
-                    "weight_unit": UNIT_NONE,
+                    "weight_value": val,
+                    "weight_unit": unit,
                     "derived_from_children": False,
                     "evaluation_role": role,
                 })
-        elif basis == BASIS_OVERALL and val is not None:
-            contributing_value = val
-            contributing_unit = unit
-            root_details.append({
-                "stage": title,
-                "weight_value": val,
-                "weight_unit": unit,
-                "derived_from_children": False,
-                "evaluation_role": role,
-            })
-        elif val is None and child_subtotal is not None and all(b == BASIS_OVERALL for b in c_bases) and len(c_units) == 1:
-            contributing_value = child_subtotal
-            contributing_unit = list(c_units)[0]
-            root_details.append({
-                "stage": title,
-                "weight_value": contributing_value,
-                "weight_unit": contributing_unit,
-                "derived_from_children": True,
-                "evaluation_role": role,
-            })
+        elif role in (ROLE_AWARD_CRITERION, ROLE_SUBCRITERION) and not has_conflict:
+            # Directive 1: Only additive roles can directly contribute to overall arithmetic
+            if basis == BASIS_OVERALL and val is not None:
+                contributing_value = val
+                contributing_unit = unit
+                root_details.append({
+                    "stage": title,
+                    "weight_value": val,
+                    "weight_unit": unit,
+                    "derived_from_children": False,
+                    "evaluation_role": role,
+                })
+            elif val is None and overall_sub is not None and all(b == BASIS_OVERALL for b in c_bases) and len(c_units) == 1:
+                contributing_value = overall_sub
+                contributing_unit = list(c_units)[0]
+                root_details.append({
+                    "stage": title,
+                    "weight_value": contributing_value,
+                    "weight_unit": contributing_unit,
+                    "derived_from_children": True,
+                    "evaluation_role": role,
+                })
+            else:
+                if val is None:
+                    has_missing_award_weight = True
+                root_details.append({
+                    "stage": title,
+                    "weight_value": val,
+                    "weight_unit": unit,
+                    "derived_from_children": False,
+                    "evaluation_role": role,
+                })
         else:
-            # Root without Overall basis (e.g. Unknown, Within Parent, Process Stage, Qualification Gate)
-            if val is None and role in (ROLE_AWARD_CRITERION, ROLE_UNKNOWN):
-                has_missing_award_weight = True
+            # Directive 1: Strictly non-additive directly (Qualification / Gate, Scoring Scale, Process / Methodology, Unknown, role_conflict)
+            # Observed numeric facts are preserved in root_details, but contributing_value remains None
+            if has_conflict:
+                has_source_discrepancy = True
             root_details.append({
                 "stage": title,
                 "weight_value": val,
