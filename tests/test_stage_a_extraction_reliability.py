@@ -439,5 +439,146 @@ class TestMockedStageAOrchestration(unittest.TestCase):
         self.assertEqual(facts["_extraction_diagnostic"]["status"], "VERIFIED_ADEQUATE")
 
 
+
+class TestTruncatedExtractionSafetyPass(unittest.TestCase):
+    """
+    Directive 5 Test Suite (A-F):
+    Truncated JSON recovery must not masquerade as complete extraction.
+    """
+
+    def test_A_direct_valid_json_reports_complete(self):
+        """Direct valid JSON reports COMPLETE parse status."""
+        from extractor import _safe_parse_json_with_status
+        raw = '{"requirements": [{"req_id": "REQ-1", "description": "Vendor must comply"}]}'
+        data, status = _safe_parse_json_with_status(raw)
+        self.assertEqual(status, "COMPLETE")
+        self.assertEqual(len(data.get("requirements", [])), 1)
+
+    def test_B_stack_repaired_json_reports_recovered_truncated(self):
+        """Truncated JSON repaired via balanced stack returns RECOVERED_TRUNCATED."""
+        from extractor import _safe_parse_json_with_status
+        # Simulated cut-off JSON mid-array
+        raw = '{"requirements": [{"req_id": "REQ-1", "description": "Vendor must comply"}, {"req_id": "REQ-2", "description": "Incomplete'
+        data, status = _safe_parse_json_with_status(raw)
+        self.assertEqual(status, "RECOVERED_TRUNCATED")
+        self.assertIn("requirements", data)
+        # Stack repair closes the string and object, preserving items up to cut point
+        self.assertGreaterEqual(len(data["requirements"]), 1)
+
+    def test_C_backward_compatible_wrapper_returns_dict_only(self):
+        """_safe_parse_json returns a dict directly regardless of completion or repair."""
+        from extractor import _safe_parse_json
+        raw = '{"requirements": [{"req_id": "REQ-1", "description": "Vendor must comply"}]}'
+        res = _safe_parse_json(raw)
+        self.assertIsInstance(res, dict)
+        self.assertEqual(len(res.get("requirements", [])), 1)
+
+    def test_D_successful_retry_yields_verified_adequate(self):
+        """When chunk is truncated, bounded retry is triggered; if retry succeeds completely, extraction is VERIFIED_ADEQUATE."""
+        mock_client = MagicMock()
+        call_count = [0]
+
+        def side_effect(*args, **kwargs):
+            call_count[0] += 1
+            resp = MagicMock()
+            if call_count[0] == 1:
+                # First pass: returns truncated JSON
+                raw_truncated = '{"requirements": [{"req_id": "R1", "description": "Req 1"}], "dates": [{"milestone": "M1'
+                resp.content = [MagicMock(text=raw_truncated)]
+            else:
+                # Retry passes: return complete valid JSON
+                raw_complete = '{"requirements": [{"req_id": "R1", "description": "Req 1"}], "dates": [{"milestone": "Closing Date", "date": "2026-12-01"}]}'
+                resp.content = [MagicMock(text=raw_complete)]
+            return resp
+
+        mock_client.messages.create.side_effect = side_effect
+        text = "Tender document with closing date 2026-12-01 and requirements. " * 30
+
+        with patch("extractor.get_anthropic_client", return_value=mock_client):
+            facts = extract_document_facts(text, "doc.pdf", "test_key")
+
+        self.assertGreaterEqual(call_count[0], 2, "Must have retried the truncated chunk")
+        self.assertEqual(facts["_extraction_diagnostic"]["status"], "VERIFIED_ADEQUATE")
+
+    def test_E_unrecovered_truncation_never_masquerades_as_verified_adequate(self):
+        """If only recovered partial facts remain after retries, status is RECOVERED_TRUNCATED, never VERIFIED_ADEQUATE."""
+        mock_client = MagicMock()
+
+        def side_effect(*args, **kwargs):
+            resp = MagicMock()
+            # Every call returns truncated JSON that stack-repair can only partially recover
+            raw_truncated = '{"requirements": [{"req_id": "R1", "description": "Req 1"}], "dates": [{"milestone": "M1'
+            resp.content = [MagicMock(text=raw_truncated)]
+            return resp
+
+        mock_client.messages.create.side_effect = side_effect
+        text = "Tender content. " * 50
+
+        with patch("extractor.get_anthropic_client", return_value=mock_client):
+            facts = extract_document_facts(text, "doc.pdf", "test_key")
+
+        # Recovered partial facts must be preserved
+        self.assertGreaterEqual(len(facts.get("requirements", [])), 1)
+        # Status MUST be RECOVERED_TRUNCATED (or SUSPICIOUS_UNDER_COVERAGE), NEVER VERIFIED_ADEQUATE
+        diag = facts["_extraction_diagnostic"]
+        self.assertNotEqual(diag["status"], "VERIFIED_ADEQUATE")
+        self.assertTrue(diag.get("has_recovered_truncation"))
+
+class TestParseFailureSafetyPass(unittest.TestCase):
+    """
+    Directive 4 Test Suite:
+    Handling FAILED chunks via bounded retry and diagnostic reporting.
+    """
+
+    def test_A_direct_invalid_json_reports_failed(self):
+        """Unrecoverable invalid text returns FAILED status."""
+        from extractor import _safe_parse_json_with_status
+        raw = "Not JSON at all, pure garbage"
+        data, status = _safe_parse_json_with_status(raw)
+        self.assertEqual(status, "FAILED")
+        self.assertEqual(data, {})
+
+    def test_B_failed_chunk_triggers_retry_and_succeeds(self):
+        """When a chunk returns FAILED, bounded retry with smaller subchunks succeeds, yielding VERIFIED_ADEQUATE."""
+        mock_client = MagicMock()
+        call_count = [0]
+
+        def side_effect(*args, **kwargs):
+            call_count[0] += 1
+            resp = MagicMock()
+            if call_count[0] == 1:
+                # First pass: returns invalid json (parse failure)
+                resp.content = [MagicMock(text="Error occurred in model output")]
+            else:
+                # Retry pass: valid json
+                resp.content = [MagicMock(text='{"requirements": [{"req_id": "REQ-1", "description": "Vendor must comply"}]}')]
+            return resp
+
+        mock_client.messages.create.side_effect = side_effect
+        text = "This is a procurement document with requirements. " * 30
+
+        with patch("extractor.get_anthropic_client", return_value=mock_client):
+            facts = extract_document_facts(text, "doc.pdf", "test_key")
+
+        self.assertGreaterEqual(call_count[0], 2, "Must retry failed chunk")
+        self.assertEqual(facts["_extraction_diagnostic"]["status"], "VERIFIED_ADEQUATE")
+
+    def test_C_unrecovered_parse_failure_reports_parse_failure_status(self):
+        """When a chunk returns FAILED and retries also fail, status is PARSE_FAILURE, never VERIFIED_ADEQUATE."""
+        mock_client = MagicMock()
+        resp = MagicMock()
+        resp.content = [MagicMock(text="Model error completely unparseable")]
+        mock_client.messages.create.return_value = resp
+
+        text = "This is a procurement document with requirements. " * 30
+
+        with patch("extractor.get_anthropic_client", return_value=mock_client):
+            facts = extract_document_facts(text, "doc.pdf", "test_key")
+
+        diag = facts["_extraction_diagnostic"]
+        self.assertEqual(diag["status"], "PARSE_FAILURE")
+        self.assertTrue(diag.get("has_parse_failure"))
+
+
 if __name__ == "__main__":
     unittest.main()

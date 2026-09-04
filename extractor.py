@@ -74,6 +74,21 @@ CRITICAL REQUIREMENT CLASSIFICATION RULES:
   - Mandatory + Commercial / Contractual -> supplier must accept stated liability provision
   - Rated + Evaluation / Scored -> experience response scored at 15%
 
+CRITICAL EVALUATION HIERARCHY & WEIGHTING RULES:
+- Preserve parent headings and child/subcriteria when stated or clearly structured by the source.
+- Record "parent_stage" ONLY when the source structure or wording explicitly establishes that hierarchy (e.g. sub-table or indented/numbered section).
+- Do NOT flatten nested evaluation tables.
+- Preserve the raw weight string exactly as stated in the text (e.g. "40%", "25 points"). Bare numbers without units are NOT percentages.
+- "weight_unit": "Percent" (e.g. 40%), "Points" (e.g. 25 pts), "Other", or "None".
+- "weight_basis": record "Overall" if stated or structured as contributing to the entire procurement total; record "Within Parent" if stated as weighting within its parent criterion; record "Unknown" if ambiguous.
+- "evaluation_role": controlled role: "Award Criterion" (scored criteria), "Subcriterion" (nested subcriteria), "Qualification / Gate" (mandatory conditions/gates), "Scoring Scale" (points scale 10/7/5/3/0), "Process / Methodology" (procedural stages), "Structural Container" (award criteria / scoring model parent heading), or "Unknown".
+- Do NOT reinterpret a child percentage as an overall percentage unless the source makes that clear.
+- Do NOT invent missing weights. If a weight is not stated, leave "weight" as null.
+- Do NOT force evaluation totals to 100%. If the source states numbers that do not sum to 100%, record them faithfully.
+- Do NOT combine points and percentages into one number.
+- "threshold": minimum passing score or threshold (e.g. "70% minimum"). Thresholds are NOT weights.
+- Include "source_refs" for each evaluation criterion.
+
 Return ONLY valid JSON with this exact schema:
 {
   "doc_metadata": {
@@ -100,7 +115,18 @@ Return ONLY valid JSON with this exact schema:
     {"milestone": "Milestone name", "date": "YYYY-MM-DD", "source_doc": "<filename>"}
   ],
   "evaluation_criteria": [
-    {"stage": "Evaluation stage or criterion", "weight": "e.g. 75 points or 25%", "threshold": "e.g. 70% or null", "notes": "Scoring rules"}
+    {
+      "stage": "Evaluation stage or criterion title",
+      "parent_stage": "Parent heading title or null",
+      "hierarchy_level": 1,
+      "evaluation_role": "Award Criterion|Subcriterion|Qualification / Gate|Scoring Scale|Process / Methodology|Structural Container|Unknown",
+      "weight": "e.g. 75 points or 25% or null",
+      "weight_unit": "Percent|Points|Other|None",
+      "weight_basis": "Overall|Within Parent|Unknown",
+      "threshold": "e.g. 70% or null",
+      "notes": "Scoring rules or details",
+      "source_refs": []
+    }
   ],
   "submission_rules": [
     {"item": "Submission component name", "format": "PDF / Separate File / Portal", "details": "Packaging / page limit rule", "mandatory": 1}
@@ -134,6 +160,7 @@ CONTRACT WITH THE CONTEXT:
   Do not convert UNKNOWN bidder capability into PASS.
 - Detected conflicts are unresolved unless the source model explicitly resolves them. Do not silently merge
   or dismiss TRUE_CONFLICT or REVIEW_ITEM records.
+- Evaluation Hierarchy: preserve parent-child relationships and weight basis. Do NOT treat parent and child weights as independent overall weights. Do NOT normalize totals to 100% if source totals differ. Preserve source discrepancies and mixed units. Distinguish thresholds from weights.
 - Do not invent submission documents, certifications, languages, security clearances, insurance coverage,
   or pricing facts unless they are explicitly present in the supplied normalized facts.
 - Do not infer organizational capacity or qualifications from blank or internal fields.
@@ -164,7 +191,7 @@ Return ONLY valid JSON with this exact schema:
       {"requirement": "Pass/fail bidder eligibility condition", "type": "Supplier Qualification", "rfp_ref": "Ref", "disqualification_risk": "High"}
     ],
     "evaluation_breakdown": [
-      {"stage": "Technical / Price stage", "weight": "75 points / 25%", "threshold": "Threshold or null", "notes": "Scoring rules"}
+      {"stage": "Technical / Price stage", "parent_stage": null, "weight": "75 points / 25%", "weight_basis": "Overall", "threshold": "Threshold or null", "notes": "Scoring rules"}
     ],
     "commercial_structure": [
       {"topic": "Commercial topic", "details": "Details"}
@@ -1864,25 +1891,86 @@ def _clean_raw(raw: str) -> str:
     return raw.strip()
 
 
-def _safe_parse_json(raw: str) -> dict:
+def _safe_parse_json_with_status(raw: str) -> tuple[dict, str]:
+    """
+    Parses JSON with explicit status reporting:
+    - (dict, "COMPLETE"): fully valid JSON output
+    - (dict, "RECOVERED_TRUNCATED"): truncated output repaired via balanced stack recovery
+    - ({}, "FAILED"): unparseable
+    """
+    # 1. Direct json.loads on cleaned text (fast path)
+    try:
+        cleaned = _clean_raw(raw)
+        res = json.loads(cleaned)
+        if isinstance(res, dict):
+            return res, "COMPLETE"
+    except Exception:
+        pass
+
+    # 2. Try analyst._parse_json if it returned a complete dict
     try:
         from analyst import _parse_json
         res = _parse_json(raw)
-        if isinstance(res, dict):
-            return res
+        if isinstance(res, dict) and not res.get("_truncated"):
+            return res, "COMPLETE"
     except Exception:
         pass
-    try:
-        return json.loads(_clean_raw(raw))
-    except Exception:
-        return {}
+
+    # 3. Dedicated stack-based dictionary repair for truncated JSON outputs
+    # Strips code fences, scans backwards from cut point, and balances open tokens using LIFO container stack
+    t = raw.strip()
+    t = re.sub(r"^```[a-z]*\s*\n?", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"\n?```\s*$", "", t).strip()
+    start_idx = t.find('{')
+    if start_idx != -1:
+        src = t[start_idx:]
+        max_scan = min(len(src), 4000)
+        for end_pos in range(len(src) - 1, len(src) - max_scan, -1):
+            prefix = src[:end_pos + 1]
+            stack = []
+            in_str, esc = False, False
+            valid = True
+            for ch in prefix:
+                if esc:
+                    esc = False
+                    continue
+                if ch == "\\" and in_str:
+                    esc = True
+                    continue
+                if ch == '"' and not esc:
+                    in_str = not in_str
+                    continue
+                if in_str:
+                    continue
+                if ch in ('{', '['):
+                    stack.append('}' if ch == '{' else ']')
+                elif ch in ('}', ']'):
+                    if not stack or stack[-1] != ch:
+                        valid = False
+                        break
+                    stack.pop()
+            if not valid or in_str:
+                continue
+            suffix = "".join(reversed(stack))
+            candidate = prefix + suffix
+            try:
+                res = json.loads(candidate)
+                if isinstance(res, dict):
+                    return res, "RECOVERED_TRUNCATED"
+            except json.JSONDecodeError:
+                pass
+
+    return {}, "FAILED"
 
 
+def _safe_parse_json(raw: str) -> dict:
+    """Backward-compatible wrapper returning only parsed dict."""
+    return _safe_parse_json_with_status(raw)[0]
 # ── STAGE A: DOCUMENT FACT EXTRACTION ─────────────────────────────────────────
 
 # ── STAGE A CHUNKING, AGGREGATION & COVERAGE GUARD ───────────────────────────
 
-_STAGE_A_MAX_CHUNK_CHARS = 16000
+_STAGE_A_MAX_CHUNK_CHARS = 12000
 _STAGE_A_MARKER_SPLIT_RE = re.compile(r'(\[\[SOURCE:[^\]]+\]\])', re.IGNORECASE)
 
 # General procurement-language signal patterns for coverage auditing
@@ -2104,24 +2192,18 @@ def aggregate_stage_a_facts(chunk_facts_list: list[dict], filename: str) -> dict
             d_copy.setdefault("source_doc", filename)
             merged["dates"].append(d_copy)
 
-    # 4. Evaluation Criteria aggregation & deduplication
-    seen_eval = set()
+    # 4. Evaluation Criteria aggregation & deduplication using evaluation_hierarchy
+    from evaluation_hierarchy import deduplicate_evaluation_criteria, normalize_evaluation_criterion
+    raw_eval_list = []
     for cf in chunk_facts_list:
         if not isinstance(cf, dict):
             continue
         for ec in cf.get("evaluation_criteria") or []:
-            if not isinstance(ec, dict):
-                continue
-            stage = (ec.get("stage") or ec.get("criterion") or "").strip()
-            weight = str(ec.get("weight") or ec.get("points") or "").strip()
-            notes = str(ec.get("notes") or "").strip()
-            canon = (stage.lower(), weight.lower(), notes.lower())
-            if not stage or canon in seen_eval:
-                continue
-            seen_eval.add(canon)
-            ec_copy = dict(ec)
-            ec_copy.setdefault("source_doc", filename)
-            merged["evaluation_criteria"].append(ec_copy)
+            if isinstance(ec, dict):
+                ec_copy = dict(ec)
+                ec_copy.setdefault("source_doc", filename)
+                raw_eval_list.append(ec_copy)
+    merged["evaluation_criteria"] = deduplicate_evaluation_criteria(raw_eval_list)
 
     # 5. Submission Rules aggregation & deduplication
     seen_sub = set()
@@ -2248,9 +2330,10 @@ def _extract_chunk_facts(chunk_text: str, filename: str, api_key: str, client=No
         messages=[{"role": "user", "content": content}],
     )
 
-    data = _safe_parse_json(response.content[0].text)
+    data, parse_status = _safe_parse_json_with_status(response.content[0].text)
     if not isinstance(data, dict):
         data = {}
+    data["_parse_status"] = parse_status
 
     for r in data.get("requirements", []):
         r.setdefault("source_refs", [{"source_doc": filename, "page": None, "sheet": None, "section": None, "excerpt": r.get("description", "")[:100]}])
@@ -2282,8 +2365,58 @@ def extract_document_facts(doc_text: str, filename: str, api_key: str) -> dict:
     chunks = chunk_document_text(doc_text, max_chunk_chars=_STAGE_A_MAX_CHUNK_CHARS)
 
     chunk_results = []
+    has_recovered_truncation = False
+    has_parse_failure = False
+
     for chunk in chunks:
         res = _extract_chunk_facts(chunk, filename, api_key, client=client)
+        pstatus = res.get("_parse_status")
+        if pstatus == "RECOVERED_TRUNCATED":
+            target_size = max(500, len(chunk) // 2) if len(chunk) > 1000 else len(chunk)
+            retry_subchunks = chunk_document_text(chunk, max_chunk_chars=target_size)
+            if len(retry_subchunks) <= 1:
+                half_pt = len(chunk) // 2
+                split_candidates = [chunk[:half_pt], chunk[half_pt:]] if len(chunk) > 1000 else [chunk]
+                retry_subchunks = [c for c in split_candidates if c.strip()]
+
+            sub_results = []
+            sub_all_complete = True
+            for sc in retry_subchunks:
+                sres = _extract_chunk_facts(sc, filename, api_key, client=client)
+                if sres.get("_parse_status") != "COMPLETE":
+                    sub_all_complete = False
+                sub_results.append(sres)
+            if sub_all_complete:
+                res = aggregate_stage_a_facts(sub_results, filename)
+                res["_parse_status"] = "COMPLETE"
+            else:
+                res = aggregate_stage_a_facts([res] + sub_results, filename)
+                res["_parse_status"] = "RECOVERED_TRUNCATED"
+                has_recovered_truncation = True
+        elif pstatus == "FAILED":
+            # Directive 4: Bounded retry for FAILED chunks using smaller subchunks
+            target_size = max(500, len(chunk) // 2) if len(chunk) > 1000 else len(chunk)
+            retry_subchunks = chunk_document_text(chunk, max_chunk_chars=target_size)
+            if len(retry_subchunks) <= 1:
+                half_pt = len(chunk) // 2
+                split_candidates = [chunk[:half_pt], chunk[half_pt:]] if len(chunk) > 1000 else [chunk]
+                retry_subchunks = [c for c in split_candidates if c.strip()]
+
+            sub_results = []
+            sub_all_complete = True
+            for sc in retry_subchunks:
+                sres = _extract_chunk_facts(sc, filename, api_key, client=client)
+                if sres.get("_parse_status") != "COMPLETE":
+                    sub_all_complete = False
+                sub_results.append(sres)
+            if sub_all_complete and sub_results:
+                res = aggregate_stage_a_facts(sub_results, filename)
+                res["_parse_status"] = "COMPLETE"
+            else:
+                # Retain failure and preserve any recovered partial items
+                res = aggregate_stage_a_facts([res] + sub_results, filename)
+                res["_parse_status"] = "FAILED"
+                has_parse_failure = True
         chunk_results.append(res)
 
     aggregated = aggregate_stage_a_facts(chunk_results, filename)
@@ -2296,15 +2429,17 @@ def extract_document_facts(doc_text: str, filename: str, api_key: str) -> dict:
     # If suspicious and only 1 chunk was extracted, subdivide with smaller chunks for recovery
     while coverage["is_suspicious"] and recovery_attempts < max_recoveries:
         recovery_attempts += 1
-        # Smaller chunk size to force narrower focus on dense blocks
         smaller_chunks = chunk_document_text(doc_text, max_chunk_chars=8000)
         if len(smaller_chunks) > len(chunks):
             retry_results = []
             for schunk in smaller_chunks:
                 rres = _extract_chunk_facts(schunk, filename, api_key, client=client)
+                if rres.get("_parse_status") == "RECOVERED_TRUNCATED":
+                    has_recovered_truncation = True
+                elif rres.get("_parse_status") == "FAILED":
+                    has_parse_failure = True
                 retry_results.append(rres)
             retry_aggregated = aggregate_stage_a_facts(retry_results, filename)
-            # Deterministically merge original aggregated facts with retry facts
             merged_recovery = aggregate_stage_a_facts([aggregated, retry_aggregated], filename)
             merged_cov = inspect_stage_a_coverage(doc_text, merged_recovery, min_signal_count=5)
             aggregated = merged_recovery
@@ -2312,16 +2447,31 @@ def extract_document_facts(doc_text: str, filename: str, api_key: str) -> dict:
             if not coverage["is_suspicious"]:
                 break
         else:
-            # Re-extract chunks that might have dropped facts
             break
 
-    # Attach internal non-schema diagnostic if still suspicious
-    if coverage["is_suspicious"]:
+    # Directive 4: Document diagnostic handling
+    if has_parse_failure:
+        aggregated["_extraction_diagnostic"] = {
+            "status": "PARSE_FAILURE",
+            "recovery_attempts": recovery_attempts,
+            "has_parse_failure": True,
+            "has_recovered_truncation": has_recovered_truncation,
+            "note": "Document facts extraction encountered unrecovered chunk parse failure",
+        }
+    elif coverage["is_suspicious"]:
         aggregated["_extraction_diagnostic"] = {
             "status": "SUSPICIOUS_UNDER_COVERAGE",
             "suspicious_families": coverage["suspicious_families"],
             "signal_counts": coverage["signal_counts"],
             "recovery_attempts": recovery_attempts,
+            "has_recovered_truncation": has_recovered_truncation,
+        }
+    elif has_recovered_truncation:
+        aggregated["_extraction_diagnostic"] = {
+            "status": "RECOVERED_TRUNCATED",
+            "recovery_attempts": recovery_attempts,
+            "has_recovered_truncation": True,
+            "note": "Document facts recovered from truncated JSON parser; bounded retries completed without complete parse",
         }
     else:
         aggregated["_extraction_diagnostic"] = {
@@ -2414,7 +2564,8 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
 
         # Merge other facts
         normalized["dates"].extend(df.get("dates", []))
-        normalized["evaluation_criteria"].extend(df.get("evaluation_criteria", []))
+        raw_pkg_eval = normalized.setdefault("_raw_evaluation_criteria", [])
+        raw_pkg_eval.extend(df.get("evaluation_criteria", []))
         normalized["submission_rules"].extend(df.get("submission_rules", []))
         normalized["deliverables"].extend(df.get("deliverables", []))
         normalized["commercial_clauses"].extend(df.get("commercial_clauses", []))
@@ -2424,6 +2575,11 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
     for r in normalized["requirements"]:
         r.pop("_semantic_candidates", None)
         r.pop("_specific_types", None)
+
+    # Deterministically deduplicate package-level evaluation criteria
+    from evaluation_hierarchy import deduplicate_evaluation_criteria
+    raw_pkg_eval = normalized.pop("_raw_evaluation_criteria", [])
+    normalized["evaluation_criteria"] = deduplicate_evaluation_criteria(raw_pkg_eval)
 
     return normalized
 
@@ -2884,33 +3040,10 @@ def apply_stage_d_authoritative_sections(synth_data: dict, normalized_facts: dic
     brief["qualification_gates"] = gates
 
     # ── evaluation_breakdown — normalized evaluation_criteria ─────────────────
-    # Canonical key: (stage, weight, threshold, notes, first source_doc)
+    # Uses evaluation_hierarchy to preserve full hierarchy while maintaining backward-compatible keys
+    from evaluation_hierarchy import deduplicate_evaluation_criteria
     eval_criteria = normalized_facts.get("evaluation_criteria", [])
-    seen_eval: set[tuple] = set()
-    evals = []
-    for ec in eval_criteria:
-        if not isinstance(ec, dict):
-            continue
-        stage    = (ec.get("stage") or ec.get("criterion") or "").strip()
-        weight   = ec.get("weight") or ec.get("points")
-        thresh   = ec.get("threshold")
-        notes    = ec.get("notes") or ec.get("criterion")
-        src_doc  = None
-        for sref in (ec.get("source_refs") or []):
-            if isinstance(sref, dict) and sref.get("source_doc"):
-                src_doc = sref["source_doc"]
-                break
-        canon = (stage, str(weight), str(thresh), str(notes), src_doc)
-        if not stage or canon in seen_eval:
-            continue
-        seen_eval.add(canon)
-        evals.append({
-            "stage":     stage,
-            "weight":    weight,
-            "threshold": thresh,
-            "notes":     notes,
-        })
-    brief["evaluation_breakdown"] = evals
+    brief["evaluation_breakdown"] = deduplicate_evaluation_criteria(eval_criteria)
 
     # ── submission_requirements — normalized submission_rules ─────────────────
     # Canonical key: (item, format, details, mandatory, first source_doc)
