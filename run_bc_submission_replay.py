@@ -54,8 +54,26 @@ target_files = [
     "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated_0.pdf",
 ]
 
+import argparse
+
+parser = argparse.ArgumentParser(description="British Council Submission Artifact Projection Replay")
+parser.add_argument("--live", action="store_true", default=False, help="Run live Stage A -> Stage D execution via LLM (requires ANTHROPIC_API_KEY)")
+parser.add_argument("--frozen", action="store_true", default=False, help="Run deterministic replay using frozen Attempt 2 facts")
+args = parser.parse_args()
+
+# Determine mode: default to live if specified, or if neither specified require explicit choice or default to frozen if no live
+# As requested: CLI --live and --frozen, default to live when specified or explicitly chosen
+if args.live:
+    replay_mode = "LIVE"
+elif args.frozen:
+    replay_mode = "FROZEN"
+else:
+    # Default to LIVE per directive ("Add CLI flags: --live (default) and --frozen")
+    replay_mode = "LIVE"
+
 print("=" * 75)
 print(f"BRITISH COUNCIL SUBMISSION ARTIFACT PROJECTION REPLAY - {run_started_at}")
+print(f"Replay Mode: {replay_mode}")
 print(f"Code SHA: {code_sha}")
 print(f"Fixture: {fixture_dir}")
 print("=" * 75)
@@ -92,25 +110,29 @@ preprocessing_sec = time.perf_counter() - t0
 print(f"Preprocessed {len(package_files)} files in {preprocessing_sec:.2f}s")
 
 # Stage A Document Facts
-# Check if frozen Stage A document facts exist to enable fast deterministic replay or live extraction
 frozen_stage_a_path = PROJECT_ROOT / "tests" / "acceptance" / "results" / "bc_ir67tvet42026_attempt2_document_facts.json"
+frozen_brief_path = PROJECT_ROOT / "tests" / "acceptance" / "results" / "bc_ir67tvet42026_attempt2_bid_brief.json"
 
 t_a_start = time.perf_counter()
-if frozen_stage_a_path.exists():
-    print(f"\n--- Loading Document Facts from {frozen_stage_a_path.name} ---")
+if replay_mode == "FROZEN":
+    if not frozen_stage_a_path.exists():
+        sys.exit(f"ERROR: Frozen Stage A facts not found at {frozen_stage_a_path}")
+    print(f"\n--- [FROZEN REPLAY] Loading Document Facts from {frozen_stage_a_path.name} ---")
     raw_doc_entries = json.loads(frozen_stage_a_path.read_text(encoding="utf-8"))
     doc_facts_list = [entry["facts"] if "facts" in entry else entry for entry in raw_doc_entries]
-    stage_a_sec = 0.001
+    stage_a_sec = time.perf_counter() - t_a_start
 else:
     api_key = config.get_api_key()
     if not api_key:
-        raise RuntimeError("No Anthropic API key found in configuration and no frozen facts found.")
-    print(f"\n--- Executing Stage A Live Fact Extraction ---")
+        sys.exit("ERROR: --live mode requested but ANTHROPIC_API_KEY is not configured.")
+    print(f"\n--- [LIVE REPLAY] Executing Stage A Live Fact Extraction on {len(package_files)} files ---")
     doc_facts_list = []
     for fname, fbytes in package_files:
         doc_text = package_meta["doc_texts"][fname]
-        print(f"Extracting {fname}...")
+        print(f"  Extracting facts for {fname}...")
+        t_file = time.perf_counter()
         facts = extractor.extract_document_facts(doc_text, fname, api_key)
+        print(f"  Completed {fname} in {time.perf_counter() - t_file:.2f}s")
         doc_facts_list.append(facts)
     stage_a_sec = time.perf_counter() - t_a_start
 
@@ -118,7 +140,7 @@ raw_submission_rules = []
 for df in doc_facts_list:
     if isinstance(df, dict):
         raw_submission_rules.extend(df.get("submission_rules", []))
-print(f"Stage A completed: {len(raw_submission_rules)} raw submission rules")
+print(f"Stage A completed in {stage_a_sec:.2f}s: {len(raw_submission_rules)} raw submission rules")
 
 # Stage B: Package Normalization
 print("\n--- Running Stage B Normalization ---")
@@ -135,19 +157,22 @@ conflicts = extractor.reconcile_package_facts(normalized_facts, package_meta["fi
 stage_c_sec = time.perf_counter() - t_c_start
 print(f"Stage C completed in {stage_c_sec:.4f}s: {len(conflicts)} conflicts")
 
-# Stage D: Synthesis (or Authoritative Projection Rebuild)
-print("\n--- Running Stage D Rebuild & Deterministic Document Projection ---")
+# Stage D: Synthesis
 t_d_start = time.perf_counter()
-# Check if frozen attempt2 bid brief exists for stage D synthesis base
-frozen_brief_path = PROJECT_ROOT / "tests" / "acceptance" / "results" / "bc_ir67tvet42026_attempt2_bid_brief.json"
-if frozen_brief_path.exists():
+if replay_mode == "FROZEN":
+    print("\n--- [FROZEN REPLAY] Loading Base Brief and Applying Authoritative Sections ---")
+    if not frozen_brief_path.exists():
+        sys.exit(f"ERROR: Frozen brief not found at {frozen_brief_path}")
     synth_data = json.loads(frozen_brief_path.read_text(encoding="utf-8"))
+    synth_data = extractor.apply_stage_d_authoritative_sections(synth_data, normalized_facts)
+    stage_d_sec = time.perf_counter() - t_d_start
 else:
-    synth_data = {"bid": {}, "brief": {}}
-
-# Apply deterministic authoritative sections
-synth_data = extractor.apply_stage_d_authoritative_sections(synth_data, normalized_facts)
-stage_d_sec = time.perf_counter() - t_d_start
+    print("\n--- [LIVE REPLAY] Executing Stage D Live Synthesis (synthesize_bid_brief) ---")
+    synth_data = extractor.synthesize_bid_brief(normalized_facts, conflicts, api_key=api_key)
+    # Ensure authoritative sections are applied (synthesize_bid_brief applies them internally, but reaffirm)
+    synth_data = extractor.apply_stage_d_authoritative_sections(synth_data, normalized_facts)
+    stage_d_sec = time.perf_counter() - t_d_start
+print(f"Stage D completed in {stage_d_sec:.2f}s")
 
 # Deterministic Projection: build_submission_documents
 t_proj_start = time.perf_counter()
@@ -197,6 +222,7 @@ output_stats = {
     "execution_metadata": {
         "code_commit_sha": code_sha,
         "run_started_at": run_started_at,
+        "replay_mode": replay_mode,
         "model": model_name,
         "fixture": "british_council_ir67tvet42026",
         "pipeline_stages": ["A", "B", "C", "D", "projection"],

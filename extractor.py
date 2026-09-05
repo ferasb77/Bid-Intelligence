@@ -2279,32 +2279,44 @@ def aggregate_stage_a_facts(chunk_facts_list: list[dict], filename: str) -> dict
                 if obs_at and obs_at not in at_obs:
                     at_obs.append(obs_at)
                 valid_at = [x for x in at_obs if x and x != "Unknown"]
-                existing_sr["artifact_type_conflict"] = len(set(valid_at)) > 1
-                if obs_at and obs_at != "Unknown" and (not existing_sr.get("artifact_type") or existing_sr.get("artifact_type") == "Unknown"):
-                    existing_sr["artifact_type"] = obs_at
+                is_at_conflict = len(set(valid_at)) > 1
+                existing_sr["artifact_type_conflict"] = is_at_conflict
+                if is_at_conflict:
+                    existing_sr["artifact_type"] = "Unknown"
+                elif valid_at and (not existing_sr.get("artifact_type") or existing_sr.get("artifact_type") == "Unknown"):
+                    existing_sr["artifact_type"] = valid_at[0]
 
                 ff_obs = existing_sr.setdefault("file_format_observations", [])
                 if obs_ff and obs_ff not in ff_obs:
                     ff_obs.append(obs_ff)
                 valid_ff = [x for x in ff_obs if x and x != "Unspecified"]
-                existing_sr["file_format_conflict"] = len(set(valid_ff)) > 1
-                if obs_ff and obs_ff != "Unspecified" and (not existing_sr.get("file_format") or existing_sr.get("file_format") == "Unspecified"):
-                    existing_sr["file_format"] = obs_ff
+                is_ff_conflict = len(set(valid_ff)) > 1
+                existing_sr["file_format_conflict"] = is_ff_conflict
+                if is_ff_conflict:
+                    existing_sr["file_format"] = "Multiple / Mixed"
+                elif valid_ff and (not existing_sr.get("file_format") or existing_sr.get("file_format") == "Unspecified"):
+                    existing_sr["file_format"] = valid_ff[0]
 
                 sc_obs = existing_sr.setdefault("submission_channel_observations", [])
                 if obs_sc and obs_sc not in sc_obs:
                     sc_obs.append(obs_sc)
                 valid_sc = [x for x in sc_obs if x and x != "Unspecified"]
-                existing_sr["submission_channel_conflict"] = len(set(valid_sc)) > 1
-                if obs_sc and obs_sc != "Unspecified" and (not existing_sr.get("submission_channel") or existing_sr.get("submission_channel") == "Unspecified"):
-                    existing_sr["submission_channel"] = obs_sc
+                is_sc_conflict = len(set(valid_sc)) > 1
+                existing_sr["submission_channel_conflict"] = is_sc_conflict
+                if is_sc_conflict:
+                    existing_sr["submission_channel"] = "Unspecified"
+                elif valid_sc and (not existing_sr.get("submission_channel") or existing_sr.get("submission_channel") == "Unspecified"):
+                    existing_sr["submission_channel"] = valid_sc[0]
 
                 mand_obs = existing_sr.setdefault("mandatory_observations", [])
                 if obs_mand is not None and obs_mand not in mand_obs:
                     mand_obs.append(obs_mand)
                 valid_mand = [x for x in mand_obs if x is not None]
-                existing_sr["mandatory_conflict"] = len(set(valid_mand)) > 1
-                if existing_sr.get("mandatory") is None and obs_mand is not None:
+                is_mand_conflict = len(set(valid_mand)) > 1
+                existing_sr["mandatory_conflict"] = is_mand_conflict
+                if is_mand_conflict:
+                    existing_sr["mandatory"] = None
+                elif existing_sr.get("mandatory") is None and obs_mand is not None:
                     existing_sr["mandatory"] = obs_mand
 
                 if not existing_sr.get("format") and fmt:
@@ -2317,19 +2329,31 @@ def aggregate_stage_a_facts(chunk_facts_list: list[dict], filename: str) -> dict
                 sr_copy["source_refs"] = incoming_srefs
                 sr_copy["artifact_type_observations"] = [obs_at] if obs_at else []
                 valid_at = [x for x in sr_copy["artifact_type_observations"] if x and x != "Unknown"]
-                sr_copy["artifact_type_conflict"] = len(set(valid_at)) > 1
+                is_at_conflict = len(set(valid_at)) > 1
+                sr_copy["artifact_type_conflict"] = is_at_conflict
+                if is_at_conflict:
+                    sr_copy["artifact_type"] = "Unknown"
 
                 sr_copy["file_format_observations"] = [obs_ff] if obs_ff else []
                 valid_ff = [x for x in sr_copy["file_format_observations"] if x and x != "Unspecified"]
-                sr_copy["file_format_conflict"] = len(set(valid_ff)) > 1
+                is_ff_conflict = len(set(valid_ff)) > 1
+                sr_copy["file_format_conflict"] = is_ff_conflict
+                if is_ff_conflict:
+                    sr_copy["file_format"] = "Multiple / Mixed"
 
                 sr_copy["submission_channel_observations"] = [obs_sc] if obs_sc else []
                 valid_sc = [x for x in sr_copy["submission_channel_observations"] if x and x != "Unspecified"]
-                sr_copy["submission_channel_conflict"] = len(set(valid_sc)) > 1
+                is_sc_conflict = len(set(valid_sc)) > 1
+                sr_copy["submission_channel_conflict"] = is_sc_conflict
+                if is_sc_conflict:
+                    sr_copy["submission_channel"] = "Unspecified"
 
                 sr_copy["mandatory_observations"] = [obs_mand] if obs_mand is not None else []
                 valid_mand = [x for x in sr_copy["mandatory_observations"] if x is not None]
-                sr_copy["mandatory_conflict"] = len(set(valid_mand)) > 1
+                is_mand_conflict = len(set(valid_mand)) > 1
+                sr_copy["mandatory_conflict"] = is_mand_conflict
+                if is_mand_conflict:
+                    sr_copy["mandatory"] = None
 
                 seen_sub[canon] = sr_copy
                 merged["submission_rules"].append(sr_copy)
@@ -2719,8 +2743,11 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
                     if obs and obs not in at_obs:
                         at_obs.append(obs)
                 valid_at = [x for x in at_obs if x and x != "Unknown"]
-                existing["artifact_type_conflict"] = len(set(valid_at)) > 1
-                if valid_at and (not existing.get("artifact_type") or existing.get("artifact_type") == "Unknown"):
+                is_at_conflict = len(set(valid_at)) > 1
+                existing["artifact_type_conflict"] = is_at_conflict
+                if is_at_conflict:
+                    existing["artifact_type"] = "Unknown"
+                elif valid_at and (not existing.get("artifact_type") or existing.get("artifact_type") == "Unknown"):
                     existing["artifact_type"] = valid_at[0]
 
                 ff_obs = existing.setdefault("file_format_observations", [])
@@ -2728,8 +2755,11 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
                     if obs and obs not in ff_obs:
                         ff_obs.append(obs)
                 valid_ff = [x for x in ff_obs if x and x != "Unspecified"]
-                existing["file_format_conflict"] = len(set(valid_ff)) > 1
-                if valid_ff and (not existing.get("file_format") or existing.get("file_format") == "Unspecified"):
+                is_ff_conflict = len(set(valid_ff)) > 1
+                existing["file_format_conflict"] = is_ff_conflict
+                if is_ff_conflict:
+                    existing["file_format"] = "Multiple / Mixed"
+                elif valid_ff and (not existing.get("file_format") or existing.get("file_format") == "Unspecified"):
                     existing["file_format"] = valid_ff[0]
 
                 sc_obs = existing.setdefault("submission_channel_observations", [])
@@ -2737,8 +2767,11 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
                     if obs and obs not in sc_obs:
                         sc_obs.append(obs)
                 valid_sc = [x for x in sc_obs if x and x != "Unspecified"]
-                existing["submission_channel_conflict"] = len(set(valid_sc)) > 1
-                if valid_sc and (not existing.get("submission_channel") or existing.get("submission_channel") == "Unspecified"):
+                is_sc_conflict = len(set(valid_sc)) > 1
+                existing["submission_channel_conflict"] = is_sc_conflict
+                if is_sc_conflict:
+                    existing["submission_channel"] = "Unspecified"
+                elif valid_sc and (not existing.get("submission_channel") or existing.get("submission_channel") == "Unspecified"):
                     existing["submission_channel"] = valid_sc[0]
 
                 mand_obs = existing.setdefault("mandatory_observations", [])
@@ -2746,8 +2779,11 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
                     if obs is not None and obs not in mand_obs:
                         mand_obs.append(obs)
                 valid_mand = [x for x in mand_obs if x is not None]
-                existing["mandatory_conflict"] = len(set(valid_mand)) > 1
-                if valid_mand and existing.get("mandatory") is None:
+                is_mand_conflict = len(set(valid_mand)) > 1
+                existing["mandatory_conflict"] = is_mand_conflict
+                if is_mand_conflict:
+                    existing["mandatory"] = None
+                elif valid_mand and existing.get("mandatory") is None:
                     existing["mandatory"] = valid_mand[0]
 
                 if not existing.get("format") and fmt:
@@ -2759,19 +2795,31 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
                 sr_copy["source_refs"] = validated_srefs
                 sr_copy["artifact_type_observations"] = list(incoming_at_obs)
                 valid_at = [x for x in incoming_at_obs if x and x != "Unknown"]
-                sr_copy["artifact_type_conflict"] = len(set(valid_at)) > 1
+                is_at_conflict = len(set(valid_at)) > 1
+                sr_copy["artifact_type_conflict"] = is_at_conflict
+                if is_at_conflict:
+                    sr_copy["artifact_type"] = "Unknown"
 
                 sr_copy["file_format_observations"] = list(incoming_ff_obs)
                 valid_ff = [x for x in incoming_ff_obs if x and x != "Unspecified"]
-                sr_copy["file_format_conflict"] = len(set(valid_ff)) > 1
+                is_ff_conflict = len(set(valid_ff)) > 1
+                sr_copy["file_format_conflict"] = is_ff_conflict
+                if is_ff_conflict:
+                    sr_copy["file_format"] = "Multiple / Mixed"
 
                 sr_copy["submission_channel_observations"] = list(incoming_sc_obs)
                 valid_sc = [x for x in incoming_sc_obs if x and x != "Unspecified"]
-                sr_copy["submission_channel_conflict"] = len(set(valid_sc)) > 1
+                is_sc_conflict = len(set(valid_sc)) > 1
+                sr_copy["submission_channel_conflict"] = is_sc_conflict
+                if is_sc_conflict:
+                    sr_copy["submission_channel"] = "Unspecified"
 
                 sr_copy["mandatory_observations"] = list(incoming_mand_obs)
                 valid_mand = [x for x in incoming_mand_obs if x is not None]
-                sr_copy["mandatory_conflict"] = len(set(valid_mand)) > 1
+                is_mand_conflict = len(set(valid_mand)) > 1
+                sr_copy["mandatory_conflict"] = is_mand_conflict
+                if is_mand_conflict:
+                    sr_copy["mandatory"] = None
 
                 sub_seen[canon] = sr_copy
                 normalized["submission_rules"].append(sr_copy)
@@ -3232,14 +3280,51 @@ def build_submission_documents(
         if not classification['is_concrete_document']:
             continue
 
-        if classification.get('artifact_type') == 'Pricing / Financial':
+        # Determine orthogonal conflict states and observation lists
+        at_obs = list(sr.get('artifact_type_observations') or ([sr.get('artifact_type')] if sr.get('artifact_type') else []))
+        ff_obs = list(sr.get('file_format_observations') or ([sr.get('file_format')] if sr.get('file_format') else []))
+        sc_obs = list(sr.get('submission_channel_observations') or ([sr.get('submission_channel')] if sr.get('submission_channel') else []))
+        mand_obs = list(sr.get('mandatory_observations') or ([sr.get('mandatory')] if sr.get('mandatory') is not None else []))
+
+        valid_at_obs = [x for x in at_obs if x and x != 'Unknown']
+        at_conflict = bool(sr.get('artifact_type_conflict') or len(set(valid_at_obs)) > 1)
+
+        valid_ff_obs = [x for x in ff_obs if x and x != 'Unspecified']
+        ff_conflict = bool(sr.get('file_format_conflict') or len(set(valid_ff_obs)) > 1)
+
+        valid_sc_obs = [x for x in sc_obs if x and x != 'Unspecified']
+        sc_conflict = bool(sr.get('submission_channel_conflict') or len(set(valid_sc_obs)) > 1)
+
+        valid_mand_obs = [x for x in mand_obs if x is not None]
+        mand_conflict = bool(sr.get('mandatory_conflict') or len(set(valid_mand_obs)) > 1)
+
+        # Conservative conflict resolution for projected metadata
+        if at_conflict:
+            proj_artifact_type = 'Unknown'
+            # doc_type must not be determined from arbitrary conflicting artifact_type
+            if any(kw in item.lower() for kw in ('pricing', 'financial', 'rate card', 'cost')):
+                doc_type = 'Financial'
+            else:
+                doc_type = 'Submission'
+        elif classification.get('artifact_type') == 'Pricing / Financial':
+            proj_artifact_type = 'Pricing / Financial'
             doc_type = 'Financial'
         elif any(kw in item.lower() for kw in ('pricing', 'financial', 'rate card', 'cost')):
+            proj_artifact_type = classification['artifact_type']
             doc_type = 'Financial'
         else:
+            proj_artifact_type = classification['artifact_type']
             doc_type = 'Submission'
 
-        mandatory = sr.get('mandatory')   # None if absent -- not defaulted
+        proj_file_format = 'Multiple / Mixed' if ff_conflict else classification['file_format']
+        proj_submission_channel = 'Unspecified' if sc_conflict else classification['submission_channel']
+
+        # mandatory: None if conflict or absent
+        if mand_conflict:
+            proj_mandatory = None
+        else:
+            proj_mandatory = sr.get('mandatory')
+
         name_key = _canonical_submission_item_identity(item) or item.lower()
 
         # Extract source_refs from submission rule (no manufactured fallbacks)
@@ -3249,7 +3334,6 @@ def build_submission_documents(
                 srefs.append(dict(sref))
 
         if name_key in seen_docs:
-            # Merge provenance and notes if existing
             existing_doc = documents[seen_docs[name_key]]
             existing_srefs = existing_doc.setdefault('source_refs', [])
             existing_keys = {(s.get('source_doc'), s.get('page'), s.get('sheet'), s.get('section'), s.get('excerpt')) for s in existing_srefs if isinstance(s, dict)}
@@ -3260,32 +3344,91 @@ def build_submission_documents(
                     existing_keys.add(k)
             if existing_srefs:
                 existing_doc['provenance_state'] = 'VERIFIED'
-            if existing_doc.get('mandatory') is None and mandatory is not None:
-                existing_doc['mandatory'] = mandatory
+
             if not existing_doc.get('notes') and details:
                 existing_doc['notes'] = details
-            if existing_doc.get('file_format') == 'Unspecified' and classification['file_format'] != 'Unspecified':
-                existing_doc['file_format'] = classification['file_format']
-            if existing_doc.get('submission_channel') == 'Unspecified' and classification['submission_channel'] != 'Unspecified':
-                existing_doc['submission_channel'] = classification['submission_channel']
+
+            # Merge observation history & conflict flags
+            ex_at_obs = existing_doc.setdefault('artifact_type_observations', [])
+            for obs in at_obs:
+                if obs and obs not in ex_at_obs:
+                    ex_at_obs.append(obs)
+            v_at = [x for x in ex_at_obs if x and x != 'Unknown']
+            is_at_c = at_conflict or existing_doc.get('artifact_type_conflict', False) or (len(set(v_at)) > 1)
+            existing_doc['artifact_type_conflict'] = is_at_c
+            if is_at_c:
+                existing_doc['artifact_type'] = 'Unknown'
+                if any(kw in existing_doc['name'].lower() for kw in ('pricing', 'financial', 'rate card', 'cost')):
+                    existing_doc['doc_type'] = 'Financial'
+                else:
+                    existing_doc['doc_type'] = 'Submission'
+            elif v_at and (not existing_doc.get('artifact_type') or existing_doc.get('artifact_type') == 'Unknown'):
+                existing_doc['artifact_type'] = v_at[0]
+                if existing_doc['artifact_type'] == 'Pricing / Financial':
+                    existing_doc['doc_type'] = 'Financial'
+
+            ex_ff_obs = existing_doc.setdefault('file_format_observations', [])
+            for obs in ff_obs:
+                if obs and obs not in ex_ff_obs:
+                    ex_ff_obs.append(obs)
+            v_ff = [x for x in ex_ff_obs if x and x != 'Unspecified']
+            is_ff_c = ff_conflict or existing_doc.get('file_format_conflict', False) or (len(set(v_ff)) > 1)
+            existing_doc['file_format_conflict'] = is_ff_c
+            if is_ff_c:
+                existing_doc['file_format'] = 'Multiple / Mixed'
+            elif v_ff and (not existing_doc.get('file_format') or existing_doc.get('file_format') == 'Unspecified'):
+                existing_doc['file_format'] = v_ff[0]
+
+            ex_sc_obs = existing_doc.setdefault('submission_channel_observations', [])
+            for obs in sc_obs:
+                if obs and obs not in ex_sc_obs:
+                    ex_sc_obs.append(obs)
+            v_sc = [x for x in ex_sc_obs if x and x != 'Unspecified']
+            is_sc_c = sc_conflict or existing_doc.get('submission_channel_conflict', False) or (len(set(v_sc)) > 1)
+            existing_doc['submission_channel_conflict'] = is_sc_c
+            if is_sc_c:
+                existing_doc['submission_channel'] = 'Unspecified'
+            elif v_sc and (not existing_doc.get('submission_channel') or existing_doc.get('submission_channel') == 'Unspecified'):
+                existing_doc['submission_channel'] = v_sc[0]
+
+            ex_mand_obs = existing_doc.setdefault('mandatory_observations', [])
+            for obs in mand_obs:
+                if obs is not None and obs not in ex_mand_obs:
+                    ex_mand_obs.append(obs)
+            v_mand = [x for x in ex_mand_obs if x is not None]
+            is_mand_c = mand_conflict or existing_doc.get('mandatory_conflict', False) or (len(set(v_mand)) > 1)
+            existing_doc['mandatory_conflict'] = is_mand_c
+            if is_mand_c:
+                existing_doc.pop('mandatory', None)
+            elif v_mand and existing_doc.get('mandatory') is None:
+                existing_doc['mandatory'] = v_mand[0]
+
             continue
 
         prov_state = 'VERIFIED' if srefs else 'UNVERIFIED'
         doc: dict = {
-            'name':               item,
-            'doc_type':           doc_type,
-            'owner':              None,
-            'due_date':           submission_deadline,
-            'status':             'Expected',
-            'notes':              details,
-            'file_format':        classification['file_format'],
-            'submission_channel': classification['submission_channel'],
-            'artifact_type':      classification['artifact_type'],
-            'source_refs':        srefs,
-            'provenance_state':   prov_state,
+            'name':                            item,
+            'doc_type':                        doc_type,
+            'owner':                           None,
+            'due_date':                        submission_deadline,
+            'status':                          'Expected',
+            'notes':                           details,
+            'file_format':                     proj_file_format,
+            'submission_channel':              proj_submission_channel,
+            'artifact_type':                   proj_artifact_type,
+            'source_refs':                     srefs,
+            'provenance_state':                prov_state,
+            'artifact_type_observations':      at_obs,
+            'artifact_type_conflict':          at_conflict,
+            'file_format_observations':        ff_obs,
+            'file_format_conflict':            ff_conflict,
+            'submission_channel_observations': sc_obs,
+            'submission_channel_conflict':     sc_conflict,
+            'mandatory_observations':          mand_obs,
+            'mandatory_conflict':              mand_conflict,
         }
-        if mandatory is not None:
-            doc['mandatory'] = mandatory
+        if proj_mandatory is not None:
+            doc['mandatory'] = proj_mandatory
         
         seen_docs[name_key] = len(documents)
         documents.append(doc)
@@ -3539,6 +3682,22 @@ def apply_stage_d_authoritative_sections(synth_data: dict, normalized_facts: dic
             entry["submission_channel"] = sr["submission_channel"]
         if sr.get("source_refs") is not None:
             entry["source_refs"] = sr["source_refs"]
+        if sr.get("artifact_type_observations") is not None:
+            entry["artifact_type_observations"] = sr["artifact_type_observations"]
+        if sr.get("artifact_type_conflict") is not None:
+            entry["artifact_type_conflict"] = sr["artifact_type_conflict"]
+        if sr.get("file_format_observations") is not None:
+            entry["file_format_observations"] = sr["file_format_observations"]
+        if sr.get("file_format_conflict") is not None:
+            entry["file_format_conflict"] = sr["file_format_conflict"]
+        if sr.get("submission_channel_observations") is not None:
+            entry["submission_channel_observations"] = sr["submission_channel_observations"]
+        if sr.get("submission_channel_conflict") is not None:
+            entry["submission_channel_conflict"] = sr["submission_channel_conflict"]
+        if sr.get("mandatory_observations") is not None:
+            entry["mandatory_observations"] = sr["mandatory_observations"]
+        if sr.get("mandatory_conflict") is not None:
+            entry["mandatory_conflict"] = sr["mandatory_conflict"]
         sub_reqs.append(entry)
     brief["submission_requirements"] = sub_reqs
 

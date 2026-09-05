@@ -652,3 +652,153 @@ class TestGenericIntegrityPass(unittest.TestCase):
         self.assertEqual(len(docs), 1)
         self.assertEqual(docs[0]["doc_type"], "Financial")
 
+    # Conflict Integrity & Permutation Invariance Tests A-H
+    def test_conflict_A_consistent_format_no_conflict(self):
+        rules = [
+            {"item": "Proposal", "file_format": "PDF", "source_refs": [{"source_doc": "a.pdf"}]},
+            {"item": "Proposal", "file_format": "PDF", "source_refs": [{"source_doc": "b.pdf"}]},
+        ]
+        docs = build_submission_documents(rules)
+        self.assertEqual(len(docs), 1)
+        doc = docs[0]
+        self.assertEqual(doc["file_format"], "PDF")
+        self.assertFalse(doc["file_format_conflict"])
+        self.assertEqual(doc["file_format_observations"], ["PDF"])
+
+    def test_conflict_B_format_conflict_multiple_mixed_and_permutation(self):
+        rules_order1 = [
+            {"item": "Proposal", "file_format": "PDF"},
+            {"item": "Proposal", "file_format": "DOCX"},
+        ]
+        rules_order2 = [
+            {"item": "Proposal", "file_format": "DOCX"},
+            {"item": "Proposal", "file_format": "PDF"},
+        ]
+        docs1 = build_submission_documents(rules_order1)
+        docs2 = build_submission_documents(rules_order2)
+        for docs in (docs1, docs2):
+            self.assertEqual(len(docs), 1)
+            doc = docs[0]
+            self.assertEqual(doc["file_format"], "Multiple / Mixed")
+            self.assertTrue(doc["file_format_conflict"])
+            self.assertEqual(set(doc["file_format_observations"]), {"PDF", "DOCX"})
+
+    def test_conflict_C_channel_conflict_unspecified_and_permutation(self):
+        rules_order1 = [
+            {"item": "Submission Form", "submission_channel": "Portal"},
+            {"item": "Submission Form", "submission_channel": "Email"},
+        ]
+        rules_order2 = [
+            {"item": "Submission Form", "submission_channel": "Email"},
+            {"item": "Submission Form", "submission_channel": "Portal"},
+        ]
+        docs1 = build_submission_documents(rules_order1)
+        docs2 = build_submission_documents(rules_order2)
+        for docs in (docs1, docs2):
+            self.assertEqual(len(docs), 1)
+            doc = docs[0]
+            self.assertEqual(doc["submission_channel"], "Unspecified")
+            self.assertTrue(doc["submission_channel_conflict"])
+            self.assertEqual(set(doc["submission_channel_observations"]), {"Portal", "Email"})
+
+    def test_conflict_D_mandatory_conflict_omits_key_and_permutation(self):
+        rules_order1 = [
+            {"item": "Safety Policy Document", "file_format": "PDF", "mandatory": 1},
+            {"item": "Safety Policy Document", "file_format": "PDF", "mandatory": 0},
+        ]
+        rules_order2 = [
+            {"item": "Safety Policy Document", "file_format": "PDF", "mandatory": 0},
+            {"item": "Safety Policy Document", "file_format": "PDF", "mandatory": 1},
+        ]
+        docs1 = build_submission_documents(rules_order1)
+        docs2 = build_submission_documents(rules_order2)
+        for docs in (docs1, docs2):
+            self.assertEqual(len(docs), 1)
+            doc = docs[0]
+            self.assertNotIn("mandatory", doc)
+            self.assertTrue(doc["mandatory_conflict"])
+            self.assertEqual(set(doc["mandatory_observations"]), {0, 1})
+
+    def test_conflict_E_artifact_type_conflict_unknown_doc_type_no_arbitrary_winner(self):
+        rules_order1 = [
+            {"item": "Annex 3", "artifact_type": "Form / Annex"},
+            {"item": "Annex 3", "artifact_type": "Pricing / Financial"},
+        ]
+        rules_order2 = [
+            {"item": "Annex 3", "artifact_type": "Pricing / Financial"},
+            {"item": "Annex 3", "artifact_type": "Form / Annex"},
+        ]
+        docs1 = build_submission_documents(rules_order1)
+        docs2 = build_submission_documents(rules_order2)
+        for docs in (docs1, docs2):
+            self.assertEqual(len(docs), 1)
+            doc = docs[0]
+            self.assertEqual(doc["artifact_type"], "Unknown")
+            self.assertTrue(doc["artifact_type_conflict"])
+            self.assertEqual(set(doc["artifact_type_observations"]), {"Form / Annex", "Pricing / Financial"})
+            # "Annex 3" has no pricing keywords, so doc_type falls back to Submission, not arbitrary Pricing
+            self.assertEqual(doc["doc_type"], "Submission")
+
+    def test_conflict_F_artifact_type_conflict_with_pricing_keyword_sets_financial(self):
+        rules = [
+            {"item": "Pricing Schedule", "artifact_type": "Form / Annex"},
+            {"item": "Pricing Schedule", "artifact_type": "Evidence / Attachment"},
+        ]
+        docs = build_submission_documents(rules)
+        self.assertEqual(len(docs), 1)
+        doc = docs[0]
+        self.assertEqual(doc["artifact_type"], "Unknown")
+        self.assertTrue(doc["artifact_type_conflict"])
+        self.assertEqual(doc["doc_type"], "Financial")
+
+    def test_conflict_G_duplicate_consistent_observations_no_false_conflict(self):
+        rules = [
+            {"item": "Doc A", "file_format": "PDF", "submission_channel": "Portal", "mandatory": 1, "artifact_type": "Proposal / Response"},
+            {"item": "Doc A", "file_format": "PDF", "submission_channel": "Portal", "mandatory": 1, "artifact_type": "Proposal / Response"},
+        ]
+        docs = build_submission_documents(rules)
+        self.assertEqual(len(docs), 1)
+        doc = docs[0]
+        self.assertFalse(doc["file_format_conflict"])
+        self.assertFalse(doc["submission_channel_conflict"])
+        self.assertFalse(doc["mandatory_conflict"])
+        self.assertFalse(doc["artifact_type_conflict"])
+        self.assertEqual(doc["file_format"], "PDF")
+        self.assertEqual(doc["submission_channel"], "Portal")
+        self.assertEqual(doc["mandatory"], 1)
+        self.assertEqual(doc["artifact_type"], "Proposal / Response")
+
+    def test_conflict_H_apply_stage_d_authoritative_sections_preserves_conflicts(self):
+        normalized_facts = {
+            "submission_rules": [
+                {
+                    "item": "Annex 3",
+                    "file_format": "Multiple / Mixed",
+                    "file_format_conflict": True,
+                    "file_format_observations": ["PDF", "DOCX"],
+                    "submission_channel": "Unspecified",
+                    "submission_channel_conflict": True,
+                    "submission_channel_observations": ["Portal", "Email"],
+                    "artifact_type": "Unknown",
+                    "artifact_type_conflict": True,
+                    "artifact_type_observations": ["Form / Annex", "Pricing / Financial"],
+                    "mandatory_conflict": True,
+                    "mandatory_observations": [0, 1],
+                    "source_refs": [{"source_doc": "a.docx"}],
+                }
+            ]
+        }
+        synth_data = {"brief": {}}
+        rebuilt = apply_stage_d_authoritative_sections(synth_data, normalized_facts)
+        sub_reqs = rebuilt["brief"]["submission_requirements"]
+        self.assertEqual(len(sub_reqs), 1)
+        req = sub_reqs[0]
+        self.assertTrue(req["file_format_conflict"])
+        self.assertEqual(req["file_format_observations"], ["PDF", "DOCX"])
+        self.assertTrue(req["submission_channel_conflict"])
+        self.assertEqual(req["submission_channel_observations"], ["Portal", "Email"])
+        self.assertTrue(req["artifact_type_conflict"])
+        self.assertEqual(req["artifact_type_observations"], ["Form / Annex", "Pricing / Financial"])
+        self.assertTrue(req["mandatory_conflict"])
+        self.assertEqual(req["mandatory_observations"], [0, 1])
+
