@@ -1,7 +1,8 @@
 {
   "execution_metadata": {
-    "code_commit_sha": "82cb5bffcfc2366146cf1b2e68c01be5c8d176d6",
-    "run_started_at": "2026-09-05T21:38:57.258306+00:00",
+    "code_commit_sha": "802faa659905b07cbc081443c188fb644def1b35",
+    "run_started_at": "2026-09-05T22:40:53.979144+00:00",
+    "replay_mode": "FROZEN",
     "model": "claude-haiku-4-5-20251001",
     "fixture": "british_council_ir67tvet42026",
     "pipeline_stages": [
@@ -56,13 +57,13 @@
     }
   ],
   "timings": {
-    "preprocessing_sec": 1.1012,
-    "stage_a_sec": 0.001,
-    "stage_b_sec": 0.0965,
-    "stage_c_sec": 0.01,
-    "stage_d_sec": 0.0008,
+    "preprocessing_sec": 1.0474,
+    "stage_a_sec": 0.0007,
+    "stage_b_sec": 0.0962,
+    "stage_c_sec": 0.0107,
+    "stage_d_sec": 0.0007,
     "projection_sec": 0.0004,
-    "total_pipeline_sec": 1.2099
+    "total_pipeline_sec": 1.1562
   },
   "raw_submission_rules_count": 14,
   "normalized_submission_rules_count": 14,
@@ -236,6 +237,16 @@
       "artifact_type": "Questionnaire / Workbook",
       "source_refs": [],
       "provenance_state": "UNVERIFIED",
+      "artifact_type_observations": [],
+      "artifact_type_conflict": false,
+      "file_format_observations": [],
+      "file_format_conflict": false,
+      "submission_channel_observations": [],
+      "submission_channel_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "mandatory_conflict": false,
       "mandatory": 1
     },
     {
@@ -250,6 +261,16 @@
       "artifact_type": "Form / Annex",
       "source_refs": [],
       "provenance_state": "UNVERIFIED",
+      "artifact_type_observations": [],
+      "artifact_type_conflict": false,
+      "file_format_observations": [],
+      "file_format_conflict": false,
+      "submission_channel_observations": [],
+      "submission_channel_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "mandatory_conflict": false,
       "mandatory": 1
     },
     {
@@ -264,6 +285,16 @@
       "artifact_type": "Pricing / Financial",
       "source_refs": [],
       "provenance_state": "UNVERIFIED",
+      "artifact_type_observations": [],
+      "artifact_type_conflict": false,
+      "file_format_observations": [],
+      "file_format_conflict": false,
+      "submission_channel_observations": [],
+      "submission_channel_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "mandatory_conflict": false,
       "mandatory": 1
     },
     {
@@ -278,6 +309,16 @@
       "artifact_type": "Proposal / Response",
       "source_refs": [],
       "provenance_state": "UNVERIFIED",
+      "artifact_type_observations": [],
+      "artifact_type_conflict": false,
+      "file_format_observations": [],
+      "file_format_conflict": false,
+      "submission_channel_observations": [],
+      "submission_channel_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "mandatory_conflict": false,
       "mandatory": 1
     },
     {
@@ -292,6 +333,16 @@
       "artifact_type": "Pricing / Financial",
       "source_refs": [],
       "provenance_state": "UNVERIFIED",
+      "artifact_type_observations": [],
+      "artifact_type_conflict": false,
+      "file_format_observations": [],
+      "file_format_conflict": false,
+      "submission_channel_observations": [],
+      "submission_channel_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "mandatory_conflict": false,
       "mandatory": 1
     },
     {
@@ -306,6 +357,16 @@
       "artifact_type": "Form / Annex",
       "source_refs": [],
       "provenance_state": "UNVERIFIED",
+      "artifact_type_observations": [],
+      "artifact_type_conflict": false,
+      "file_format_observations": [],
+      "file_format_conflict": false,
+      "submission_channel_observations": [],
+      "submission_channel_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "mandatory_conflict": false,
       "mandatory": 1
     },
     {
@@ -320,6 +381,16 @@
       "artifact_type": "Form / Annex",
       "source_refs": [],
       "provenance_state": "UNVERIFIED",
+      "artifact_type_observations": [],
+      "artifact_type_conflict": false,
+      "file_format_observations": [],
+      "file_format_conflict": false,
+      "submission_channel_observations": [],
+      "submission_channel_conflict": false,
+      "mandatory_observations": [
+        0
+      ],
+      "mandatory_conflict": false,
       "mandatory": 0
     }
   ],

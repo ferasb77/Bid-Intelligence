@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-05  
 **Branch:** `fix/submission-artifact-projection`  
-**Code Commit SHA:** `82cb5bffcfc2366146cf1b2e68c01be5c8d176d6`  
+**Code Commit SHA:** `802faa659905b07cbc081443c188fb644def1b35`  
 **Base Commit SHA:** `797d1c4d88fbef44a9772d5e3b615f1d23c0b0ef` (PR #9 merged)  
 **Author:** Antigravity  
 
@@ -11,7 +11,7 @@
 ## 1. Executive Summary & Root Cause Analysis
 
 ### Problem
-In earlier iterations of the Bid Intelligence extraction and projection layer, genuine submission artifacts (such as `Annex 3 (Supplier Response)`) were silently dropped from the projected submission document checklist (`documents` table and Stage 5 SUBMIT checklist).
+In earlier iterations of the Bid Intelligence extraction and projection layer, genuine submission artifacts (such as `Annex 3 (Supplier Response)`) were silently dropped from the projected submission document checklist (`documents` table and Stage 5 SUBMIT checklist). Furthermore, cross-document observation conflicts could be silently collapsed in projected document metadata if conflicts occurred across duplicate rules.
 
 ### Root Cause
 1. **Conflation of Format and Channel**: In Stage A extraction and downstream classification, delivery modes (`Portal`, `Email`, `Electronic Portal`) were recorded in the `format` field.
@@ -20,6 +20,7 @@ In earlier iterations of the Bid Intelligence extraction and projection layer, g
    - **Artifact Identity**: What must be submitted (e.g., Annex 3, Pricing Approach, Signed Declaration).
    - **File Format**: Physical representation (PDF, DOCX, XLSX, Spreadsheet, Online Form, Unspecified).
    - **Submission Channel**: Delivery mechanism (Portal, Email, E-procurement, Courier, Unspecified).
+4. **Silent Collapse of Projection Conflicts**: Multi-document conflict flags (`file_format_conflict`, `submission_channel_conflict`, `mandatory_conflict`, `artifact_type_conflict`) were tracked in normalization but not consistently preserved through projected document dictionaries and authoritative Stage D section rebuilding.
 
 ---
 
@@ -47,21 +48,27 @@ In earlier iterations of the Bid Intelligence extraction and projection layer, g
    - **Observation History & Conflict Tracking**: Tracks multi-document observation history (`artifact_type_observations`, `file_format_observations`, `submission_channel_observations`, `mandatory_observations`) and flags conflicts across documents.
    - **Canonical Item Identity**: Stable canonical item mapping via `_canonical_submission_item_identity(item)` to ensure punctuation/spacing variants aggregate together cleanly.
 
-4. **Deterministic Document Projection (`build_submission_documents`)**:
+4. **Deterministic Document Projection with Conflict Invariance (`build_submission_documents`)**:
    - Projects genuine artifacts into `documents` table records.
    - Maps `artifact_type == "Pricing / Financial"` directly to `doc_type = "Financial"`.
-   - Retains all existing fields: `name`, `doc_type` (`Financial` vs `Submission`), `owner`, `due_date`, `status`, `notes`, `mandatory` (1, 0, or omitted if None).
-   - Attaches `file_format`, `submission_channel`, `artifact_type`, merged `source_refs`, and `provenance_state` (`VERIFIED` vs `UNVERIFIED`).
+   - **Conflict Preservation and Conservative Semantics**:
+     - `file_format_conflict == True` $\to$ `file_format = "Multiple / Mixed"`, observations preserved.
+     - `submission_channel_conflict == True` $\to$ `submission_channel = "Unspecified"`, observations preserved.
+     - `mandatory_conflict == True` $\to$ `mandatory` omitted (None), observations preserved.
+     - `artifact_type_conflict == True` $\to$ `artifact_type = "Unknown"`, `doc_type` not chosen arbitrarily from first winner (falls back to keyword check or Submission).
+     - Full order independence: (PDF then DOCX) == (DOCX then PDF).
+   - Retains all existing fields: `name`, `doc_type`, `owner`, `due_date`, `status`, `notes`.
+   - Attaches observation arrays and conflict flags: `artifact_type_observations`, `artifact_type_conflict`, `file_format_observations`, `file_format_conflict`, `submission_channel_observations`, `submission_channel_conflict`, `mandatory_observations`, `mandatory_conflict`.
 
 5. **Stage D Authoritative Section Applicator**:
-   - `apply_stage_d_authoritative_sections()` rebuilds `brief["submission_requirements"]` from normalized facts, preventing AI synthesis from dropping submission requirements.
+   - `apply_stage_d_authoritative_sections()` rebuilds `brief["submission_requirements"]` from normalized facts, preserving observation arrays and conflict flags, and preventing AI synthesis from dropping submission requirements.
 
 ---
 
 ## 3. Test Suite Verification
 
 ### Regression Test Suite: `tests/test_submission_artifact_projection.py`
-- **41/41 tests passed**:
+- **49/49 tests passed**:
   - **Test A**: Pure portal delivery instruction (`"Submit via portal"`) -> `PROCESS_ONLY` -> excluded.
   - **Test B**: Named annex with Portal channel (`"Annex 3 (Supplier Response)"`, `format="Portal"`) -> `ARTIFACT` -> included.
   - **Test C**: Legacy `format="Portal/Email"` with artifact evidence -> channel normalized, artifact preserved.
@@ -99,12 +106,21 @@ In earlier iterations of the Bid Intelligence extraction and projection layer, g
     - Item 7: Observation history and conflict tracking across Stage B package normalization.
     - Item 8: Canonical item identity aggregates slight name variations.
     - Item 9: Artifact type `Pricing / Financial` sets `doc_type = "Financial"`.
+  - **Conflict & Permutation Invariance Suite (Tests A-H)**:
+    - **Conflict Test A**: Consistent format observations produce no conflict (`PDF` format preserved).
+    - **Conflict Test B**: Format conflict (`PDF` + `DOCX`) resolves to `Multiple / Mixed`, sets `file_format_conflict=True`, preserves observations under both permutation orders.
+    - **Conflict Test C**: Channel conflict (`Portal` + `Email`) resolves to `Unspecified`, sets `submission_channel_conflict=True`, preserves observations under both permutation orders.
+    - **Conflict Test D**: Mandatory conflict (`1` + `0`) omits `mandatory` key, sets `mandatory_conflict=True`, preserves observations under both permutation orders.
+    - **Conflict Test E**: Artifact type conflict (`Form / Annex` + `Pricing / Financial`) resolves to `Unknown`, does not select arbitrary winner, falls back conservatively under both permutation orders.
+    - **Conflict Test F**: Artifact type conflict with pricing keyword in item name correctly identifies `doc_type = "Financial"`.
+    - **Conflict Test G**: Duplicate consistent observations do not trigger false conflicts.
+    - **Conflict Test H**: `apply_stage_d_authoritative_sections()` preserves all observation arrays and conflict booleans in `brief["submission_requirements"]`.
 
 ### Existing Test Suites
 - `tests/test_submission_document_provenance.py`: **75/75 passed** (including Bank of Canada frozen fixture replay).
 - `tests/test_submit_state_consistency.py`: **22/22 passed**.
 - `tests/test_stage_d_completeness.py`: **47/47 passed**.
-- **Full test suite (`pytest tests/ -q`)**: **431 passed, 1 skipped, 0 failed, 19 subtests passed** in 61.8s.
+- **Full test suite (`pytest tests/ -q`)**: **439 passed, 1 skipped, 0 failed, 19 subtests passed** in 62.6s.
 
 ---
 
@@ -112,7 +128,8 @@ In earlier iterations of the Bid Intelligence extraction and projection layer, g
 
 **Replay Runner:** `run_bc_submission_replay.py`  
 **Replay Artifact:** `tests/acceptance/results/bc_submission_artifact_projection_replay.json`  
-**Code Commit SHA:** `82cb5bffcfc2366146cf1b2e68c01be5c8d176d6`  
+**Code Commit SHA:** `802faa659905b07cbc081443c188fb644def1b35`  
+**Replay Mode:** `FROZEN` (Explicitly labeled; `--live` supported with full A$\to$D pipeline execution)  
 
 ### Projected Submission Document Checklist (7 Items)
 
@@ -139,3 +156,4 @@ In earlier iterations of the Bid Intelligence extraction and projection layer, g
 5. **No Invented Defaults**: 0 invented documents (no `Technical Proposal.pdf` or `Financial Envelope.pdf`).
 6. **No Database Migration**: 0 migrations added (No Migration 004).
 7. **Clean Provenance State**: All projected documents correctly report `provenance_state` without manufacturing synthetic refs.
+8. **Explicit Replay Mode**: Replay artifacts and logs explicitly distinguish between `FROZEN` (deterministic baseline using Attempt 2 facts) and `LIVE` (full LLM pipeline execution).
