@@ -1,8 +1,8 @@
 # SUBMISSION ARTIFACT PROJECTION INTEGRITY REPORT
 
-**Date:** 2026-09-04  
+**Date:** 2026-09-05  
 **Branch:** `fix/submission-artifact-projection`  
-**Code Commit SHA:** `81fbaa779133a922eb12b7cd65935a8725822c7a`  
+**Code Commit SHA:** `82cb5bffcfc2366146cf1b2e68c01be5c8d176d6`  
 **Base Commit SHA:** `797d1c4d88fbef44a9772d5e3b615f1d23c0b0ef` (PR #9 merged)  
 **Author:** Antigravity  
 
@@ -23,25 +23,35 @@ In earlier iterations of the Bid Intelligence extraction and projection layer, g
 
 ---
 
-## 2. Orthogonal Solution Architecture
+## 2. Orthogonal Solution Architecture & Generic Integrity Hardening
 
 1. **Orthogonal Classifier (`classify_submission_rule`)**:
    - Classifies any submission rule into `ARTIFACT`, `PROCESS_ONLY`, `EMBEDDED_RESPONSE`, or `UNKNOWN`.
    - Independently detects `artifact_type`, `file_format`, and `submission_channel`.
-   - Strips delivery channel noise from legacy format strings so that genuine artifacts (`Annex 3 (Supplier Response)`) with `format="Portal/Email"` resolve with `submission_channel="Portal"` and clean artifact projection.
+   - **Authoritative Orthogonal Precedence**:
+     - Explicit `artifact_type == "Process Instruction"` unconditionally resolves to `PROCESS_ONLY` (`is_concrete_document = False`).
+     - `file_format == "Online Form"` with `artifact_type in ("Questionnaire / Workbook", "Form / Annex")` and no independence signals resolves to `EMBEDDED_RESPONSE` (`is_concrete_document = False`).
+     - Explicit authoritative artifact types (`Proposal / Response`, `Declaration / Certification`, `Evidence / Attachment`, `Pricing / Financial`, `Form / Annex`) with non-online-form format resolve to `ARTIFACT` (`is_concrete_document = True`), guarded by `has_explicit_artifact_type` so inferred types never override format exclusions.
+   - **Physical Format vs. Independence Signals**: Physical formats (`PDF`, `DOCX`, `XLSX`, `XLS`, `Spreadsheet`, `Online Form`, `Hard Copy`) are decoupled from independence phrases (`Separate File`, `Separate Document`, `Attachment`). `file_format` is never populated with `'Separate Document'`.
+   - **Controlled Channel Enum**: Normalized channels via `_CONTROLLED_CHANNEL_MAP` (`Portal`, `Email`, `E-procurement`, `Courier`, `Physical`, `Upload`, `Unspecified`).
    - Preserves `_is_concrete_submission_document(item, fmt, details)` as a backward-compatible wrapper.
 
 2. **Stage A Fact Extraction Prompt**:
    - Explicit instructions in `STAGE_A_FACT_EXTRACTION_PROMPT` explaining that artifact identity, file format, and submission channel are independent.
    - Dedicated schema fields: `artifact_type`, `file_format`, `submission_channel`, `format`, `details`, `mandatory`, and `source_refs`.
 
-3. **Stage A & Stage B Provenance Preservation**:
+3. **Stage A & Stage B Provenance Preservation & Observation History**:
    - `aggregate_stage_a_facts()` and `normalize_package_facts()` preserve orthogonal dimensions and merge `source_refs` across chunks and documents.
+   - **Zero Synthetic Fallbacks**: Never manufactures synthetic source references (`source_doc = filename`, `excerpt = item/details`) when the source model emitted none.
+   - **Sheet-Aware Provenance Identity**: Merge keys and deduplication incorporate `(source_doc, page, sheet, section, excerpt)`.
+   - **Observation History & Conflict Tracking**: Tracks multi-document observation history (`artifact_type_observations`, `file_format_observations`, `submission_channel_observations`, `mandatory_observations`) and flags conflicts across documents.
+   - **Canonical Item Identity**: Stable canonical item mapping via `_canonical_submission_item_identity(item)` to ensure punctuation/spacing variants aggregate together cleanly.
 
 4. **Deterministic Document Projection (`build_submission_documents`)**:
    - Projects genuine artifacts into `documents` table records.
+   - Maps `artifact_type == "Pricing / Financial"` directly to `doc_type = "Financial"`.
    - Retains all existing fields: `name`, `doc_type` (`Financial` vs `Submission`), `owner`, `due_date`, `status`, `notes`, `mandatory` (1, 0, or omitted if None).
-   - Attaches `file_format`, `submission_channel`, `artifact_type`, and merged `source_refs`.
+   - Attaches `file_format`, `submission_channel`, `artifact_type`, merged `source_refs`, and `provenance_state` (`VERIFIED` vs `UNVERIFIED`).
 
 5. **Stage D Authoritative Section Applicator**:
    - `apply_stage_d_authoritative_sections()` rebuilds `brief["submission_requirements"]` from normalized facts, preventing AI synthesis from dropping submission requirements.
@@ -50,8 +60,8 @@ In earlier iterations of the Bid Intelligence extraction and projection layer, g
 
 ## 3. Test Suite Verification
 
-### New Test Suite: `tests/test_submission_artifact_projection.py`
-- **24/24 tests passed**:
+### Regression Test Suite: `tests/test_submission_artifact_projection.py`
+- **41/41 tests passed**:
   - **Test A**: Pure portal delivery instruction (`"Submit via portal"`) -> `PROCESS_ONLY` -> excluded.
   - **Test B**: Named annex with Portal channel (`"Annex 3 (Supplier Response)"`, `format="Portal"`) -> `ARTIFACT` -> included.
   - **Test C**: Legacy `format="Portal/Email"` with artifact evidence -> channel normalized, artifact preserved.
@@ -73,42 +83,59 @@ In earlier iterations of the Bid Intelligence extraction and projection layer, g
   - **Test S**: `mandatory=0` -> preserved.
   - **Test T**: Source references merged on duplicate artifacts.
   - **Test U**: Mixed package containing both process instructions and artifacts on same channel.
-  - **Pipeline Tests**: Stage A aggregation, Stage B normalization, and Stage D authoritative rebuild preservation.
+  - **Generic Integrity Items 1-9**:
+    - Item 1: Explicit Process Instruction unconditionally excluded.
+    - Item 1: Online Form questionnaire without independence signals classified as Embedded Response.
+    - Item 1: Explicit artifact type overrides legacy format exclusion.
+    - Item 2: Physical format separated from independence signal (`file_format != 'Separate Document'`).
+    - Item 2: Format matching precedence (`.xlsx` over `.xls`).
+    - Item 3: Electronic bid submission channel phrase not excluded when artifact noun is present.
+    - Item 4: Controlled channel mapping (`Portal`, `Email`, `E-procurement`, etc.).
+    - Item 5: No synthetic fallback source_refs manufactured in Stage A.
+    - Item 5: No synthetic fallback source_refs manufactured in Stage B.
+    - Item 5: Provenance state verified when source_refs present, unverified when empty.
+    - Item 6: Sheet identity preserved in source reference merging.
+    - Item 7: Observation history and conflict tracking in Stage A.
+    - Item 7: Observation history and conflict tracking across Stage B package normalization.
+    - Item 8: Canonical item identity aggregates slight name variations.
+    - Item 9: Artifact type `Pricing / Financial` sets `doc_type = "Financial"`.
 
 ### Existing Test Suites
 - `tests/test_submission_document_provenance.py`: **75/75 passed** (including Bank of Canada frozen fixture replay).
 - `tests/test_submit_state_consistency.py`: **22/22 passed**.
 - `tests/test_stage_d_completeness.py`: **47/47 passed**.
-- Full test suite: **414 passed**, 1 skipped, 0 failed.
+- **Full test suite (`pytest tests/ -q`)**: **431 passed, 1 skipped, 0 failed, 19 subtests passed** in 61.8s.
 
 ---
 
 ## 4. Benchmark Replay: British Council IR67TVET42026
 
+**Replay Runner:** `run_bc_submission_replay.py`  
 **Replay Artifact:** `tests/acceptance/results/bc_submission_artifact_projection_replay.json`  
-**Code Commit SHA:** `81fbaa779133a922eb12b7cd65935a8725822c7a`  
+**Code Commit SHA:** `82cb5bffcfc2366146cf1b2e68c01be5c8d176d6`  
 
 ### Projected Submission Document Checklist (7 Items)
 
-| Document Name | doc_type | mandatory | File Format | Submission Channel | Status |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Annex 2 (Procurement Specific Questionnaire)** | Submission | 1 (Required) | Separate Document | Unspecified | Expected |
-| **Annex 2a (Ratio Analysis)** | Submission | 1 (Required) | Separate Document | Unspecified | Expected |
-| **Audited Financial Accounts** | Financial | 1 (Required) | Separate Document | Unspecified | Expected |
-| **Annex 3 (Supplier Response)** | Submission | 1 (Required) | Unspecified | Portal | Expected |
-| **Annex 4 (Pricing Approach)** | Financial | 1 (Required) | Separate Document | Unspecified | Expected |
-| **Submission Checklist** | Submission | 1 (Required) | Unspecified | Portal | Expected |
-| **Appendix A (Confidential Information Declaration)** | Submission | 0 (Optional) | Separate Document | Unspecified | Expected |
+| Document Name | doc_type | mandatory | File Format | Submission Channel | Provenance State | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Annex 2 (Procurement Specific Questionnaire)** | Submission | 1 (Required) | Unspecified | Unspecified | UNVERIFIED | Expected |
+| **Annex 2a (Ratio Analysis)** | Submission | 1 (Required) | Unspecified | Unspecified | UNVERIFIED | Expected |
+| **Audited Financial Accounts** | Financial | 1 (Required) | Unspecified | Unspecified | UNVERIFIED | Expected |
+| **Annex 3 (Supplier Response)** | Submission | 1 (Required) | Unspecified | Portal | UNVERIFIED | Expected |
+| **Annex 4 (Pricing Approach)** | Financial | 1 (Required) | Unspecified | Unspecified | UNVERIFIED | Expected |
+| **Submission Checklist** | Submission | 1 (Required) | Unspecified | Portal | UNVERIFIED | Expected |
+| **Appendix A (Confidential Information Declaration)** | Submission | 0 (Optional) | Unspecified | Unspecified | UNVERIFIED | Expected |
 
 ### Human Review Verification
 1. **Annex 3 (Supplier Response)**: Correctly projected! Channel identified as `Portal`. Not dropped.
 2. **Annex 4 (Pricing Approach)**: Correctly projected as `Financial`!
 3. **Audited Financial Accounts**: Correctly projected as `Financial`!
 4. **Pure Process Rules Excluded**:
-   - `"Submission Portal"` (`https://tap.tcsapps.com...`) -> Excluded.
-   - `"Requirements Costs Tab"` (Workbook tab) -> Excluded.
-   - `"Assumptions and Exclusions Tab"` (Workbook tab) -> Excluded.
-   - `"Pricing Currency"` (Text entry rule) -> Excluded.
-   - `"Portal Submission"` (Packaging instruction) -> Excluded.
+   - `"Submission Portal"` (`https://tap.tcsapps.com...`) -> Excluded (`PROCESS_ONLY`).
+   - `"Requirements Costs Tab"` (Workbook tab) -> Excluded (`EMBEDDED_RESPONSE`).
+   - `"Assumptions and Exclusions Tab"` (Workbook tab) -> Excluded (`EMBEDDED_RESPONSE`).
+   - `"Pricing Currency"` (Text entry rule) -> Excluded (`UNKNOWN` / non-artifact).
+   - `"Portal Submission"` (Packaging instruction) -> Excluded (`PROCESS_ONLY`).
 5. **No Invented Defaults**: 0 invented documents (no `Technical Proposal.pdf` or `Financial Envelope.pdf`).
 6. **No Database Migration**: 0 migrations added (No Migration 004).
+7. **Clean Provenance State**: All projected documents correctly report `provenance_state` without manufacturing synthetic refs.
