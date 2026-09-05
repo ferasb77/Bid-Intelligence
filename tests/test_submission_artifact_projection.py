@@ -405,3 +405,250 @@ class TestSubmissionProvenancePipeline(unittest.TestCase):
         self.assertEqual(sub_reqs[0]["artifact_type"], "Proposal / Response")
         self.assertEqual(sub_reqs[0]["file_format"], "DOCX")
         self.assertEqual(sub_reqs[0]["submission_channel"], "Portal")
+
+
+class TestGenericIntegrityPass(unittest.TestCase):
+    """
+    Tests covering Pre-PR Generic Integrity Pass items:
+    1. Authoritative Orthogonal Fields
+    2. Separation of Physical Format from Independence Signals
+    3. Removal of Channel Language from Hard Negatives
+    4. Controlled Channel Normalization
+    5. No Synthetic / Manufactured Source Provenance
+    6. Sheet-Aware Provenance Identity
+    7. Preservation of Observation Conflicts Across Stage A -> B
+    8. Canonical Item Identity
+    9. Use artifact_type for doc_type
+    """
+
+    # Item 1: Authoritative Orthogonal Fields
+    def test_item1_authoritative_process_instruction_with_format_pdf(self):
+        # item="Submission Naming Convention", artifact_type="Process Instruction", file_format="PDF" -> PROCESS_ONLY
+        res = classify_submission_rule(
+            item="Submission Naming Convention",
+            artifact_type="Process Instruction",
+            file_format="PDF",
+        )
+        self.assertEqual(res["classification"], "PROCESS_ONLY")
+        self.assertFalse(res["is_concrete_document"])
+
+    def test_item1_authoritative_online_form_embedded_response(self):
+        # item="Supplier Questionnaire", artifact_type="Questionnaire / Workbook", file_format="Online Form", channel="Portal"
+        res = classify_submission_rule(
+            item="Supplier Questionnaire",
+            artifact_type="Questionnaire / Workbook",
+            file_format="Online Form",
+            submission_channel="Portal",
+        )
+        self.assertEqual(res["classification"], "EMBEDDED_RESPONSE")
+        self.assertFalse(res["is_concrete_document"])
+
+    def test_item1_authoritative_signed_declaration(self):
+        # item="Signed Declaration", artifact_type="Declaration / Certification", file_format="PDF", channel="Email"
+        res = classify_submission_rule(
+            item="Signed Declaration",
+            artifact_type="Declaration / Certification",
+            file_format="PDF",
+            submission_channel="Email",
+        )
+        self.assertEqual(res["classification"], "ARTIFACT")
+        self.assertTrue(res["is_concrete_document"])
+
+    def test_item1_authoritative_evidence_attachment_unspecified_format(self):
+        # item="OEM Authorization Letter", artifact_type="Evidence / Attachment", file_format="Unspecified", channel="Portal"
+        res = classify_submission_rule(
+            item="OEM Authorization Letter",
+            artifact_type="Evidence / Attachment",
+            file_format="Unspecified",
+            submission_channel="Portal",
+        )
+        self.assertEqual(res["classification"], "ARTIFACT")
+        self.assertTrue(res["is_concrete_document"])
+
+    # Item 2: Separation of Physical Format from Independence Signals
+    def test_item2_separate_document_not_in_file_format(self):
+        res = classify_submission_rule(
+            item="Annex 3",
+            fmt="Separate Document",
+        )
+        self.assertEqual(res["classification"], "ARTIFACT")
+        self.assertTrue(res["is_concrete_document"])
+        self.assertEqual(res["file_format"], "Unspecified")
+
+    def test_item2_pdf_separate_document_format_precedence(self):
+        res = classify_submission_rule(
+            item="Annex 3",
+            fmt="PDF / Separate Document",
+        )
+        self.assertEqual(res["classification"], "ARTIFACT")
+        self.assertTrue(res["is_concrete_document"])
+        self.assertEqual(res["file_format"], "PDF")
+
+    def test_item2_xlsx_vs_xls_precedence(self):
+        res = classify_submission_rule(
+            item="Pricing Schedule",
+            fmt="xlsx",
+        )
+        self.assertEqual(res["file_format"], "XLSX")
+
+    # Item 3: Channel language in legacy format
+    def test_item3_annex_electronic_bid_submission_format(self):
+        res = classify_submission_rule(
+            item="Annex 3 Supplier Response",
+            fmt="Electronic Bid Submission",
+        )
+        self.assertEqual(res["classification"], "ARTIFACT")
+        self.assertTrue(res["is_concrete_document"])
+        self.assertIn(res["submission_channel"], ("Portal", "Upload", "E-procurement"))
+
+    def test_item3_pure_electronic_bid_submission_header(self):
+        res = classify_submission_rule(
+            item="Electronic Bid Submission",
+            fmt="Electronic Bid Submission",
+        )
+        self.assertEqual(res["classification"], "PROCESS_ONLY")
+        self.assertFalse(res["is_concrete_document"])
+
+    # Item 4: Deterministic controlled channel mapping
+    def test_item4_upload_channel_mapping(self):
+        res = classify_submission_rule(
+            item="Pricing Document",
+            fmt="Upload",
+            details="upload file to system",
+        )
+        self.assertEqual(res["submission_channel"], "Upload")
+
+    def test_item4_merx_maps_to_portal(self):
+        res = classify_submission_rule(
+            item="Proposal Document",
+            submission_channel="merx",
+            file_format="PDF",
+        )
+        self.assertEqual(res["submission_channel"], "Portal")
+
+    # Item 5: No synthetic / manufactured source provenance
+    def test_item5_no_synthetic_source_refs_projected(self):
+        rules = [
+            {
+                "item": "Annex 3 Supplier Response",
+                "artifact_type": "Proposal / Response",
+                "file_format": "DOCX",
+                "submission_channel": "Portal",
+                "source_refs": [],
+            }
+        ]
+        docs = build_submission_documents(rules)
+        self.assertEqual(len(docs), 1)
+        self.assertEqual(docs[0]["source_refs"], [])
+        self.assertEqual(docs[0]["provenance_state"], "UNVERIFIED")
+
+    def test_item5_valid_source_refs_projected_verified(self):
+        rules = [
+            {
+                "item": "Annex 3 Supplier Response",
+                "artifact_type": "Proposal / Response",
+                "file_format": "DOCX",
+                "submission_channel": "Portal",
+                "source_refs": [{"source_doc": "tender.pdf", "page": 5, "sheet": None, "section": "3.1", "excerpt": "Submit Annex 3"}],
+            }
+        ]
+        docs = build_submission_documents(rules)
+        self.assertEqual(len(docs), 1)
+        self.assertEqual(len(docs[0]["source_refs"]), 1)
+        self.assertEqual(docs[0]["provenance_state"], "VERIFIED")
+
+    # Item 6: Sheet-aware provenance identity
+    def test_item6_sheet_aware_provenance_distinct_sheets(self):
+        df = {
+            "submission_rules": [
+                {
+                    "item": "Pricing Schedule",
+                    "artifact_type": "Pricing / Financial",
+                    "file_format": "XLSX",
+                    "source_refs": [
+                        {"source_doc": "wb.xlsx", "page": None, "sheet": "Sheet1", "section": "Summary", "excerpt": "Costs"},
+                        {"source_doc": "wb.xlsx", "page": None, "sheet": "Sheet2", "section": "Details", "excerpt": "Rates"},
+                    ],
+                }
+            ]
+        }
+        meta = {"files": ["wb.xlsx"], "doc_metadata": {"wb.xlsx": {"sheets": ["Sheet1", "Sheet2"]}}}
+        normalized = normalize_package_facts([df], meta)
+        srefs = normalized["submission_rules"][0]["source_refs"]
+        self.assertEqual(len(srefs), 2)
+        sheets = {s.get("sheet") for s in srefs}
+        self.assertEqual(sheets, {"Sheet1", "Sheet2"})
+
+    # Item 7: Preservation of Observation Conflicts Across Stage A -> B
+    def test_item7_observation_conflicts_tracking(self):
+        doc1_facts = {
+            "submission_rules": [
+                {
+                    "item": "Annex 3 (Supplier Response)",
+                    "artifact_type": "Proposal / Response",
+                    "file_format": "DOCX",
+                    "submission_channel": "Portal",
+                    "mandatory": 1,
+                    "source_refs": [{"source_doc": "doc1.docx", "page": 1}],
+                }
+            ]
+        }
+        doc2_facts = {
+            "submission_rules": [
+                {
+                    "item": "Annex 3 (Supplier Response)",
+                    "artifact_type": "Proposal / Response",
+                    "file_format": "PDF",
+                    "submission_channel": "Email",
+                    "mandatory": 0,
+                    "source_refs": [{"source_doc": "doc2.docx", "page": 2}],
+                }
+            ]
+        }
+        normalized = normalize_package_facts([doc1_facts, doc2_facts], {"files": ["doc1.docx", "doc2.docx"]})
+        self.assertEqual(len(normalized["submission_rules"]), 1)
+        sr = normalized["submission_rules"][0]
+        self.assertTrue(sr["file_format_conflict"])
+        self.assertTrue(sr["submission_channel_conflict"])
+        self.assertTrue(sr["mandatory_conflict"])
+        self.assertFalse(sr["artifact_type_conflict"])
+        self.assertIn("DOCX", sr["file_format_observations"])
+        self.assertIn("PDF", sr["file_format_observations"])
+
+    # Item 8: Canonical item identity merges variants
+    def test_item8_canonical_identity_merges_instruction_variants(self):
+        doc1_facts = {
+            "submission_rules": [
+                {
+                    "item": "Annex 3 (Supplier Response)",
+                    "format": "DOCX",
+                    "details": "Upload completed form to portal",
+                }
+            ]
+        }
+        doc2_facts = {
+            "submission_rules": [
+                {
+                    "item": "Annex 3 - Supplier Response",
+                    "format": "Email",
+                    "details": "Also send copy by email",
+                }
+            ]
+        }
+        normalized = normalize_package_facts([doc1_facts, doc2_facts], {"files": []})
+        self.assertEqual(len(normalized["submission_rules"]), 1)
+
+    # Item 9: Use artifact_type for doc_type
+    def test_item9_artifact_type_pricing_financial_sets_financial(self):
+        rules = [
+            {
+                "item": "Annex 4",
+                "artifact_type": "Pricing / Financial",
+                "file_format": "XLSX",
+                "submission_channel": "Portal",
+            }
+        ]
+        docs = build_submission_documents(rules)
+        self.assertEqual(len(docs), 1)
+        self.assertEqual(docs[0]["doc_type"], "Financial")
+
