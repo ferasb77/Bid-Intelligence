@@ -165,8 +165,10 @@ def _normalized_value(family, kind, raw):
                 "guarantee_status": _text(raw.get("guarantee_status")).upper() or "UNSPECIFIED",
                 "period_basis": _text(raw.get("period_basis")) or None}, "NORMALIZED"
     if family == "MILESTONE":
-        date_value, precision, time_value = raw.get("date") or value, raw.get("precision") or "DATE", raw.get("time")
+        date_value, precision, time_value = raw.get("date") or value, _text(raw.get("precision") or "DATE").upper(), raw.get("time")
+        if precision == "DAY": precision = "DATE"
         try:
+            if precision not in {"DATE", "DATETIME", "MONTH", "YEAR", "UNKNOWN"}: raise ValueError
             if precision == "DATE": date.fromisoformat(str(date_value))
             if time_value is not None and not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?", str(time_value)): raise ValueError
         except (TypeError, ValueError):
@@ -174,8 +176,10 @@ def _normalized_value(family, kind, raw):
         return {"date": date_value, "time": time_value, "timezone": raw.get("timezone"), "precision": precision}, "NORMALIZED"
     if family == "CONTRACT_TERM":
         if kind in {"COMMENCEMENT_DATE", "END_DATE"}:
-            date_value, precision = raw.get("date") or value, raw.get("precision") or "DATE"
+            date_value, precision = raw.get("date") or value, _text(raw.get("precision") or "DATE").upper()
+            if precision == "DAY": precision = "DATE"
             try:
+                if precision not in {"DATE", "MONTH", "YEAR", "UNKNOWN"}: raise ValueError
                 if precision == "DATE": date.fromisoformat(str(date_value))
             except (TypeError, ValueError):
                 return {"date": date_value, "precision": precision}, "UNPARSED"
