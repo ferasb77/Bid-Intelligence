@@ -5,7 +5,9 @@
 - Repository: `ferasb77/Bid-Intelligence`
 - Branch: `fix/legacy-xls-ingestion`
 - Verified base: `18649f9401caff34c178c3dbad0e65ce51eb49de`
-- Production commit: `516008d1fe3a06a3740091ed8d0f6c3df6a877b3`
+- Production commits:
+  - `516008d1fe3a06a3740091ed8d0f6c3df6a877b3` — native XLS ingestion
+  - `7595ef2c23a6825f03e91529abb72f91e825bc50` — time-only value integrity
 - Scope: ingestion-only native Excel 97–2003 BIFF support
 
 ## Parser and dependency
@@ -69,7 +71,11 @@ Row N: ...
 - Integer-valued numerics omit `.0`; decimals avoid binary-float noise.
 - Ordinary percentage formats render human-visible values (`0.25` with `0%`
   becomes `25%`). Complex formats fall back to deterministic raw numerics.
-- Dates use workbook datemode and render as ISO dates or local ISO datetimes.
+- Date-only cells use workbook datemode and render as ISO dates.
+- Time-only cells render as `HH:MM:SS` without an Excel epoch date.
+- Combined date/time cells render as local ISO datetimes.
+- Elapsed formats such as `[h]:mm` fall back to deterministic raw numeric text
+  rather than being represented as calendar values.
 - No timezone or currency is inferred.
 
 ## Formula and security policy
@@ -97,12 +103,13 @@ package files continue.
 ## Synthetic fixture
 
 - File: `tests/fixtures/xls/synthetic_legacy.xls`
-- SHA-256: `c0b4f6b74241ceab73377135cd6f70e5c75d503e7ae26f5ca06b8e08e6e46ccd`
+- SHA-256: `55672271c1a62b7c69bd9844426dc088f797416cc2e7135c9c3cdec75c1fa6e1`
 - Format: BIFF8
 - Sheets: visible, hidden, very-hidden, and empty sheets in workbook order
 - Coverage: merged heading, physical blank-row gap, Unicode, integer, decimal,
-  boolean false, numeric zero, percentages, leap-day date, datetime, and a
-  formula without a cached result
+  boolean false, numeric zero, percentages, leap-day date, datetime, `h:mm`
+  and `h:mm:ss` time-only values, `[h]:mm` elapsed duration, and a formula
+  without a cached result
 - Additional deterministic cases: known Excel error mapping, fake XLS bytes,
   truncated OLE bytes, direct upload, ZIP admission, and package continuation
 
@@ -140,6 +147,30 @@ python -m pytest -q
 Result: **576 passed, 1 skipped, 19 subtests passed, 0 failures**. The run
 reported 118 existing Supabase deprecation warnings. These are local results;
 no GitHub CI result is claimed.
+
+### Final time-only correction validation
+
+Focused command:
+
+```text
+python -m pytest tests/test_xls_ingestion.py tests/integration/test_procurement_package_ingestion.py tests/test_streamlined_workflow.py -q
+```
+
+Result: **47 passed, 0 failed**.
+
+The corrected fixture proves:
+
+- date-only: `2028-02-29`
+- datetime: `2028-02-29T13:45:30`
+- `h:mm`: `13:45:00`
+- `h:mm:ss`: `13:45:30`
+- Excel 1900 and 1904 date modes do not introduce phantom epoch dates for
+  time-only values
+- no timezone is added
+- `[h]:mm` elapsed value `1.5` remains `1.5`, without a calendar date
+
+Final full-suite result: **580 passed, 1 skipped, 19 subtests passed, 0
+failures** with 118 existing Supabase deprecation warnings.
 
 ## British Council XLS preprocessing
 
