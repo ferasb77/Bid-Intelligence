@@ -181,3 +181,17 @@ Validation after this correction:
 - Full repository suite: 561 passed, 1 skipped, 19 subtests passed, 0 failures
 - No live AI calls were required because the provider contract did not change
 - Database schema, migrations, model, Stage A recovery/chunking, and Stage D guard remain unchanged
+
+## PR #12 canonical conflict and citation-lineage correction
+
+Canonical conflicts now have narrow projection handling for structured fields. `scope` remains a scalar-valued object; affected field and observation IDs require string lists; `incompatible_values` preserves JSON-safe normalized scalar or flat-object values without stringifying them; and `resolved_by` remains null or a string. Arbitrary nested values still fail closed. Verified submission-date and estimated-value conflicts both pass Stage D projection with exact normalized structures, while scalar procurement-mechanic contradictions remain supported.
+
+Canonical evidence pointers now use the numeric index of the observation in the authoritative canonical list, for example `/normalized_facts/_canonical_opportunity/observations/0/source_refs/0`. Stable observation IDs remain entity and evidence-owner identities. Every tested pointer resolves through `resolve_pointer()` to the exact authoritative source ref. Reversing Stage A observation order produces the same canonical observation order, authoritative snapshot, and pointer set; nonexistent indexes fail closed.
+
+Final deterministic validation:
+
+- Focused canonical and Stage D projection suites: 126 passed
+- Full repository suite: 565 passed, 1 skipped, 19 subtests passed, 0 failures
+- No live AI calls were required
+- No Migration 004, database schema, model, Stage A recovery/chunking, or Stage D guard changes
+- Full British Council acceptance remains unclaimed; automatic maximum-term arithmetic remains deferred
