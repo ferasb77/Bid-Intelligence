@@ -1,0 +1,580 @@
+"""Deterministic projection, boundary, authority, and private recovery tests."""
+import copy
+import json
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+import extractor
+import stage_d_checkpoints as cp
+import stage_d_projection as proj
+
+
+@pytest.fixture(autouse=True)
+def checkpoint_off(monkeypatch):
+    monkeypatch.setenv("CHECKPOINT_MODE", "off")
+    monkeypatch.delenv("CHECKPOINT_ROOT", raising=False)
+
+
+def facts():
+    return {
+        "doc_metadata": {"title": "Service tender", "client": "Buyer"},
+        "requirements": [{"req_id": "M1", "category": "Mandatory",
+                          "requirement_type": "Delivery / SLA", "description": "Provide support.",
+                          "evidence": "Submit a support procedure.", "qual_status": "UNKNOWN",
+                          "evidence_status": "MISSING", "source_refs": [
+                              {"source_doc": "scope.pdf", "page": 2, "excerpt": "Provide support.",
+                               "verified": True, "cells": "A2:A4"}]}],
+        "dates": [{"milestone": "Closing", "date": None}],
+        "evaluation_criteria": [{"stage": "Technical", "parent_stage": None, "weight": "70 points",
+                                 "weight_basis": "Overall", "threshold": "50 points", "source_refs": []}],
+        "submission_rules": [{"item": "Response", "details": "Upload the response.", "format": "PDF",
+                              "artifact_type": "Proposal / Response", "mandatory": 1,
+                              "mandatory_observations": [1, 0], "mandatory_conflict": True}],
+        "deliverables": [{"title": "Support", "description": "Operate support services."}],
+        "commercial_clauses": [{"topic": "Term", "details": "One year."}],
+        "contract_risks": [{"risk": "Liability", "details": "Uncapped liability."}],
+    }
+
+
+def conflicts():
+    return [{"conflict_id": "CONF-DATE-1", "conflict_type": "DATE_CONFLICT",
+             "classification": "TRUE_CONFLICT", "source_validity": "PHYSICAL_BOTH",
+             "source_a": {"doc": "a.pdf", "ref": "Closing", "text": "Close on 1 October."},
+             "source_b": {"doc": "b.pdf", "ref": "Closing", "text": "Close on 3 October."}}]
+
+
+def empty_response():
+    return {"synthesis": {
+        "bid": {"title": None, "client": None, "file_number": None, "owner": None,
+                "sensitivity": "Standard", "submission_deadline": None, "clarification_deadline": None,
+                "value_cad": None, "notes": None},
+        "brief": {"executive_summary": None, "opportunity_type": None, "contract_term": "Not stated",
+                  "procurement_model": None, "scope_categories": []}, "outline": []}, "citations": []}
+
+
+def supported_response(projection):
+    response = empty_response()
+    req = projection["prompt_context"]["requirements"][0]
+    response["synthesis"]["brief"]["executive_summary"] = "The buyer requires support."
+    response["citations"] = [{"output_pointer": "/brief/executive_summary", "supports": [
+        {"entity_id": req["requirement_id"], "field_pointer": "/description", "evidence_refs": req["evidence_refs"]}]}]
+    return response
+
+
+def model_client(response=None, stop_reason="end_turn"):
+    client = MagicMock()
+    client.with_options.return_value = client
+    raw = json.dumps(empty_response() if response is None else response)
+    client.messages.create.return_value = SimpleNamespace(
+        content=[SimpleNamespace(type="text", text=raw)], stop_reason=stop_reason)
+    return client
+
+
+def test_occurrence_bijection_duplicates_and_original_ids():
+    nf = facts()
+    nf["requirements"] *= 3
+    before = copy.deepcopy(nf)
+    result = proj.build_stage_d_synthesis_projection(nf, [])
+    reqs = result["prompt_context"]["requirements"]
+    assert len(reqs) == 3
+    assert len({r["requirement_id"] for r in reqs}) == 3
+    assert {r["req_id"] for r in reqs} == {"M1"}
+    assert sorted(int(r["requirement_id"].rsplit("-", 1)[1]) for r in reqs) == [1, 2, 3]
+    for key, record in result["sidecar"]["requirements"].items():
+        assert proj.resolve_pointer(result["sidecar"]["authoritative_inputs"], record["source_pointer"]) == before["requirements"][0]
+    assert nf == before
+
+
+def test_source_refs_shared_owners_and_exact_snapshot():
+    nf = facts()
+    nf["requirements"].append({**copy.deepcopy(nf["requirements"][0]), "description": "Supply another service."})
+    projection = proj.build_stage_d_synthesis_projection(nf, [])
+    assert all("source_refs" not in r for r in projection["prompt_context"]["requirements"])
+    evidence = list(projection["sidecar"]["evidence"].values())
+    assert len(evidence) == 1 and len(evidence[0]["owners"]) == 2
+    assert evidence[0]["original"] == nf["requirements"][0]["source_refs"][0]
+    assert len(evidence[0]["source_pointers"]) == 2
+    assert projection["sidecar"]["authoritative_inputs"]["normalized_facts"] == nf
+
+
+def test_already_inline_has_no_second_excerpt():
+    result = proj.build_stage_d_synthesis_projection(facts(), [])
+    inline = next(iter(result["prompt_context"]["evidence_context"].values()))
+    assert inline["excerpt_mode"] == "ALREADY_INLINE" and "text" not in inline
+    owner = next(r for r in result["prompt_context"]["requirements"] if r["requirement_id"] == inline["owner_id"])
+    assert proj.resolve_pointer(owner, inline["field_pointer"]) == "Provide support."
+
+
+def test_full_excerpt_preserves_final_negation():
+    nf = facts()
+    excerpt = "Long contractual context. " * 100 + "This does NOT apply to public holidays."
+    nf["requirements"][0]["source_refs"][0]["excerpt"] = excerpt
+    result = proj.build_stage_d_synthesis_projection(nf, [])
+    inline = next(iter(result["prompt_context"]["evidence_context"].values()))
+    assert inline["excerpt_mode"] == "FULL" and inline["text"] == excerpt
+
+
+@pytest.mark.parametrize("ref", [{"source_doc": "a.pdf"}, {"source_doc": "a.pdf", "excerpt": None}, {}])
+def test_unavailable_does_not_invent_provenance(ref):
+    nf = facts()
+    nf["requirements"][0]["source_refs"] = [ref]
+    p = proj.build_stage_d_synthesis_projection(nf, [])
+    ev = next(iter(p["prompt_context"]["evidence_context"].values()))
+    assert ev["excerpt_mode"] == "UNAVAILABLE" and ev["verification"] == "UNKNOWN"
+    assert "page" not in ev and "text" not in ev
+
+
+def test_reordering_and_refs_order_preserve_ids_and_missing_fields():
+    nf = facts()
+    nf["requirements"].append({"description": "Other requirement", "source_refs": []})
+    nf["requirements"][0]["source_refs"].append({"source_doc": "other.pdf"})
+    p1 = proj.build_stage_d_synthesis_projection(nf, [])
+    nf["requirements"].reverse()
+    nf["requirements"][1]["source_refs"].reverse()
+    p2 = proj.build_stage_d_synthesis_projection(nf, [])
+    assert {r["requirement_id"] for r in p1["prompt_context"]["requirements"]} == {r["requirement_id"] for r in p2["prompt_context"]["requirements"]}
+    assert any("req_id" not in r and "requirement_type" not in r for r in p2["prompt_context"]["requirements"])
+
+
+@pytest.mark.parametrize("refs", [None, {}, "x", ["bad"], [{"excerpt": 12}], [{"source_doc": []}], [{"page": {"value": 2}}]])
+def test_malformed_source_refs_fail(refs):
+    nf = facts()
+    nf["requirements"][0]["source_refs"] = refs
+    with pytest.raises(proj.ProjectionValidationError):
+        proj.build_stage_d_synthesis_projection(nf, [])
+
+
+@pytest.mark.parametrize("section", ["requirements", *proj.FACT_SECTIONS])
+def test_unknown_substantive_fields_fail(section):
+    nf = facts()
+    nf[section][0]["new_obligation"] = "Must not disappear"
+    with pytest.raises(proj.ProjectionValidationError, match="UNCLASSIFIED_PROJECTION_FIELD"):
+        proj.build_stage_d_synthesis_projection(nf, [])
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), {1: "not a JSON key"}, {1, 2}])
+def test_non_json_values_fail(bad):
+    with pytest.raises(proj.ProjectionValidationError):
+        proj.canonical_json(bad)
+
+
+def test_collision_fails_hard():
+    with patch.object(proj, "digest", return_value="0" * 64):
+        with pytest.raises(proj.ProjectionValidationError, match="HASH_COLLISION"):
+            proj.build_stage_d_synthesis_projection(facts(), [])
+
+
+def test_evaluation_and_submission_content_preserved():
+    nf = facts()
+    nf["evaluation_criteria"][0]["weight_observations"] = [
+        {"raw_weight": "70 points", "value": 70, "unit": "Points", "basis": "Overall", "source_refs": [{"source_doc": "eval.pdf", "excerpt": "70 points"}]}]
+    nf["evaluation_criteria"][0]["role_observations"] = ["Award Criterion"]
+    nf["evaluation_criteria"][0]["weight_conflict"] = True
+    p = proj.build_stage_d_synthesis_projection(nf, [])
+    for section in ("evaluation_criteria", "submission_rules"):
+        out = p["prompt_context"]["facts"][section][0]
+        for key, value in nf[section][0].items():
+            if key not in ("source_refs", "weight_observations"):
+                assert out[key] == value
+    observation = p["prompt_context"]["facts"]["evaluation_criteria"][0]["weight_observations"][0]
+    assert observation["value"] == 70 and "source_refs" not in observation and observation["evidence_refs"]
+    assert p["sidecar"]["authoritative_inputs"]["normalized_facts"] == nf
+
+
+def test_conflicts_remain_unresolved_and_full():
+    c = conflicts()
+    p = proj.build_stage_d_synthesis_projection(facts(), c)
+    out = p["prompt_context"]["detected_conflicts"][0]
+    assert out["resolution_state"] == "UNRESOLVED"
+    assert out["source_a"]["text"] == c[0]["source_a"]["text"]
+    assert p["sidecar"]["authoritative_inputs"]["conflicts"] == c
+    assert set(out["evidence_refs"]) <= p["sidecar"]["evidence"].keys()
+
+
+def test_valid_field_citation():
+    p = proj.build_stage_d_synthesis_projection(facts(), [])
+    response = supported_response(p)
+    result = proj.validate_stage_d_response(json.dumps(response), p)
+    assert result["status"] == "VALIDATED" and result["citations"] == response["citations"]
+
+
+@pytest.mark.parametrize("change,error", [
+    ({"entity_id": "R-invented"}, "UNKNOWN_ENTITY_ID"),
+    ({"evidence_refs": ["E-invented"]}, "UNKNOWN_EVIDENCE_ID"),
+    ({"field_pointer": "/source_refs/0/excerpt"}, "MISSING_POINTER"),
+    ({"field_pointer": "/requirement_id"}, "NON_SUBSTANTIVE_SUPPORT_FIELD"),
+])
+def test_invalid_citations(change, error):
+    p = proj.build_stage_d_synthesis_projection(facts(), [])
+    r = supported_response(p)
+    r["citations"][0]["supports"][0].update(change)
+    with pytest.raises(proj.ProjectionValidationError, match=error):
+        proj.validate_stage_d_response(r, p)
+
+
+def test_cross_owner_evidence_rejected():
+    nf = facts()
+    nf["deliverables"][0]["source_refs"] = [{"source_doc": "other.pdf", "excerpt": "Other scope"}]
+    p = proj.build_stage_d_synthesis_projection(nf, [])
+    r = supported_response(p)
+    r["citations"][0]["supports"][0]["evidence_refs"] = p["prompt_context"]["facts"]["deliverables"][0]["evidence_refs"]
+    with pytest.raises(proj.ProjectionValidationError, match="WRONG_EVIDENCE_OWNER"):
+        proj.validate_stage_d_response(r, p)
+
+
+def test_required_proof_does_not_set_bidder_capability():
+    nf = facts()
+    p = proj.build_stage_d_synthesis_projection(nf, [])
+    r = supported_response(p)
+    r["synthesis"]["brief"]["executive_summary"] = "The buyer requires a support procedure."
+    r["citations"][0]["supports"][0]["field_pointer"] = "/evidence"
+    accepted = proj.validate_stage_d_response(r, p)
+    final = extractor._assemble_procurement_result(extractor.apply_stage_d_authoritative_sections(accepted["synthesis"], nf), nf, [])
+    assert final["requirements"][0]["qual_status"] == "UNKNOWN"
+    assert final["requirements"][0]["evidence_status"] == "MISSING"
+    r["synthesis"]["bid"]["qual_status"] = "PASS"
+    with pytest.raises(proj.ProjectionValidationError, match="INVALID_RESPONSE_SCHEMA"):
+        proj.validate_stage_d_response(r, p)
+
+
+@pytest.mark.parametrize("raw", ['{}', '{"synthesis":{},"synthesis":{}}', '{"synthesis":', '```json\n{}\n```'])
+def test_partial_or_invalid_output_rejected(raw):
+    with pytest.raises(proj.ProjectionValidationError):
+        proj.validate_stage_d_response(raw, proj.build_stage_d_synthesis_projection(facts(), []))
+
+
+def test_uncited_output_and_authoritative_overwrite_rejected():
+    p = proj.build_stage_d_synthesis_projection(facts(), [])
+    r = empty_response()
+    r["synthesis"]["brief"]["executive_summary"] = "Unsupported assertion"
+    with pytest.raises(proj.ProjectionValidationError, match="UNCITED_OUTPUT_FIELD"):
+        proj.validate_stage_d_response(r, p)
+    r = empty_response()
+    r["synthesis"]["brief"]["qualification_gates"] = []
+    with pytest.raises(proj.ProjectionValidationError, match="INVALID_RESPONSE_SCHEMA"):
+        proj.validate_stage_d_response(r, p)
+
+
+def test_conflicting_deadline_selection_rejected():
+    nf = facts()
+    nf["doc_metadata"]["submission_deadline"] = "2026-10-01"
+    p = proj.build_stage_d_synthesis_projection(nf, conflicts())
+    f = next(f for f in p["prompt_context"]["facts"]["metadata"] if f["key"] == "submission_deadline")
+    r = empty_response()
+    r["synthesis"]["bid"]["submission_deadline"] = f["value"]
+    r["citations"] = [{"output_pointer": "/bid/submission_deadline", "supports": [{"entity_id": f["fact_id"], "field_pointer": "/value", "evidence_refs": []}]}]
+    with pytest.raises(proj.ProjectionValidationError, match="UNRESOLVED_CONFLICT_SELECTION"):
+        proj.validate_stage_d_response(r, p)
+
+
+def test_proposal_outline_and_separate_notes_support():
+    p = proj.build_stage_d_synthesis_projection(facts(), [])
+    r = empty_response()
+    r["synthesis"]["outline"] = [{"sort_order": 9, "section_num": "9", "title": "Support approach", "owner": None, "word_limit": None, "status": "Not Started", "notes": None}]
+    r["citations"] = [{"section_index": 0, "kind": "proposal", "supports": [p["prompt_context"]["requirements"][0]["requirement_id"]]}]
+    accepted = proj.validate_stage_d_response(r, p)
+    assert accepted["synthesis"]["outline"][0]["notes"] == "Suggested proposal structure."
+    assert accepted["synthesis"]["outline"][0]["sort_order"] == 0
+    r["synthesis"]["outline"][0]["notes"] = "Bidder is qualified."
+    with pytest.raises(proj.ProjectionValidationError, match="UNCITED_OUTPUT_FIELD"):
+        proj.validate_stage_d_response(r, p)
+
+
+def test_seven_authoritative_sections_and_final_assembly():
+    nf, c = facts(), conflicts()
+    client = model_client()
+    with patch("extractor.get_anthropic_client", return_value=client):
+        actual = extractor.synthesize_bid_brief(nf, c, "not-a-key")
+    expected = extractor.apply_stage_d_authoritative_sections({}, copy.deepcopy(nf))
+    for key in proj.AUTHORITATIVE_SECTIONS:
+        assert actual["brief"][key] == expected["brief"][key]
+    final = extractor._assemble_procurement_result(actual, nf, c)
+    assert final["requirements"] == nf["requirements"]
+    assert final["documents"] == extractor.build_submission_documents(nf["submission_rules"], submission_deadline=None)
+    assert final["brief"]["document_conflicts"] == c
+    client.with_options.assert_called_once_with(max_retries=0)
+
+
+@pytest.mark.parametrize("total,allowed", [(580000, True), (580001, False)])
+def test_exact_guard_dispatch_boundary(total, allowed):
+    nf = facts()
+    p = proj.build_stage_d_synthesis_projection(nf, [])
+    base = proj.finalize_stage_d_request(p, "")["diagnostics"]["total_prompt_chars"]
+    instruction = "x" * (total - base)
+    client = model_client()
+    with patch("extractor.STAGE_D_SYNTHESIS_PROMPT", instruction), patch("extractor.get_anthropic_client", return_value=client):
+        if allowed:
+            extractor.synthesize_bid_brief(nf, [], "not-a-key")
+            request = client.messages.create.call_args.kwargs["messages"][0]["content"][0]["text"]
+            assert len(request) == 580000
+        else:
+            with pytest.raises(extractor.StageDContextTooLargeError):
+                extractor.synthesize_bid_brief(nf, [], "not-a-key")
+            client.messages.create.assert_not_called()
+
+
+def test_unicode_sizes_and_digests_exact():
+    nf = facts()
+    nf["requirements"][0]["description"] = "مرحبا 世界 🌍"
+    p = proj.build_stage_d_synthesis_projection(nf, [])
+    before = copy.deepcopy(p)
+    r = proj.finalize_stage_d_request(p, "日本語")
+    d = r["diagnostics"]
+    assert d["total_prompt_chars"] == len(r["request_text"])
+    assert d["total_prompt_utf8_bytes"] == len(r["request_text"].encode("utf-8")) > d["total_prompt_chars"]
+    assert sum(d["size_by_section"].values()) == d["prompt_context_chars"]
+    assert d["prompt_digest"] == proj.text_digest(r["request_text"])
+    assert d["sidecar_digest"] == proj.digest(p["sidecar"])
+    assert d["total_prompt_tokens"] is None and p == before
+
+
+def test_empty_statistics_and_tampered_projection():
+    p = proj.build_stage_d_synthesis_projection({}, [])
+    assert p["diagnostics"]["average_projected_requirement_size"] is None
+    p["prompt_context"]["requirements"].append({})
+    with pytest.raises(proj.ProjectionValidationError, match="PROJECTION_INTEGRITY_FAILURE"):
+        proj.validate_stage_d_response(empty_response(), p)
+
+
+def test_null_category_is_preserved_without_inference():
+    nf = {"requirements": [{"description": "An obligation", "category": None}]}
+    p = proj.build_stage_d_synthesis_projection(nf, [])
+    assert p["prompt_context"]["requirements"][0]["category"] is None
+    assert p["diagnostics"]["counts_by_category"] == {"": 1}
+
+
+def test_finalizer_rejects_changed_projection_before_request():
+    p = proj.build_stage_d_synthesis_projection(facts(), [])
+    p["prompt_context"]["requirements"][0]["description"] = "Changed"
+    with pytest.raises(proj.ProjectionValidationError, match="PROJECTION_INTEGRITY_FAILURE"):
+        proj.finalize_stage_d_request(p, "instructions")
+
+
+def test_evaluation_points_cannot_become_outline_word_limit():
+    nf = facts()
+    nf["evaluation_criteria"][0]["weight_value"] = 70
+    p = proj.build_stage_d_synthesis_projection(nf, [])
+    r = empty_response()
+    eid = p["prompt_context"]["facts"]["evaluation_criteria"][0]["fact_id"]
+    r["synthesis"]["outline"] = [{"sort_order": 0, "section_num": "1", "title": "Approach", "owner": None,
+                                   "word_limit": 70, "status": "Not Started", "notes": None}]
+    r["citations"] = [{"section_index": 0, "kind": "proposal", "supports": [eid]},
+                      {"output_pointer": "/outline/0/word_limit", "supports": [
+                          {"entity_id": eid, "field_pointer": "/weight_value", "evidence_refs": []}]}]
+    with pytest.raises(proj.ProjectionValidationError, match="UNSUPPORTED_EXACT_VALUE"):
+        proj.validate_stage_d_response(r, p)
+
+
+@pytest.mark.parametrize("mode,blocks", [("off", False), ("best_effort", False), ("required", True)])
+def test_checkpoint_modes_control_next_expensive_stage(mode, blocks, tmp_path, monkeypatch):
+    monkeypatch.setenv("CHECKPOINT_MODE", mode)
+    monkeypatch.setenv("CHECKPOINT_ROOT", str(tmp_path))
+    with patch.object(cp, "_atomic_write", side_effect=OSError("disk full")) as write, patch("extractor.extract_document_with_metadata", return_value=("text", {})), patch("extractor.extract_document_facts", return_value={}) as stage_a, patch("extractor.normalize_package_facts", return_value=facts()), patch("extractor.reconcile_package_facts", return_value=[]), patch("extractor.get_anthropic_client", return_value=model_client()):
+        if blocks:
+            with pytest.raises(cp.CheckpointError):
+                extractor.extract_procurement_package([("a.txt", b"source")], "secret-key")
+            stage_a.assert_not_called()
+        else:
+            result, _ = extractor.extract_procurement_package([("a.txt", b"source")], "secret-key")
+            assert result["requirements"] == facts()["requirements"]
+            stage_a.assert_called_once()
+        if mode == "off":
+            write.assert_not_called()
+
+
+def test_required_stage_a_write_failure_stops_next_document(tmp_path):
+    original = cp._atomic_write
+    def fail_document(path, raw):
+        if path.name == "document-0001.json":
+            raise OSError("disk full")
+        return original(path, raw)
+    with cp.checkpoint_run([("a.txt", b"a"), ("b.txt", b"b")], mode="required", root=tmp_path), patch.object(cp, "_atomic_write", side_effect=fail_document), patch("extractor.extract_document_with_metadata", return_value=("text", {})), patch("extractor.extract_document_facts", return_value={}) as stage_a:
+        with pytest.raises(cp.CheckpointError):
+            extractor.extract_procurement_package([("a.txt", b"a"), ("b.txt", b"b")], "secret")
+        assert stage_a.call_count == 1
+
+
+def test_diagnostics_and_failure_saved_before_dispatch(tmp_path):
+    with cp.checkpoint_run(mode="required", root=tmp_path) as store, patch("extractor._STAGE_D_CONTEXT_CHAR_LIMIT", 1), patch("extractor.get_anthropic_client") as client:
+        with pytest.raises(extractor.StageDContextTooLargeError):
+            extractor.synthesize_bid_brief(facts(), [], "secret-key")
+        client.assert_not_called()
+        d = json.loads((store.root / "stage-d/size-diagnostics.json").read_text())
+        assert d["dispatch_allowed"] is False
+        assert (store.root / "stage-d/sidecar.json").exists()
+        assert len((store.root / "stage-d/request.txt").read_text(encoding="utf-8")) == d["total_prompt_chars"]
+        assert "secret-key" not in "".join(p.read_text(encoding="utf-8") for p in store.root.rglob("*.json"))
+
+
+def test_one_retry_same_facts_and_strict_stop_reason(tmp_path):
+    client = model_client()
+    bad = SimpleNamespace(content=[SimpleNamespace(type="text", text="{}")], stop_reason="max_tokens")
+    client.messages.create.side_effect = [bad, client.messages.create.return_value]
+    with cp.checkpoint_run(mode="required", root=tmp_path) as store, patch("extractor.get_anthropic_client", return_value=client):
+        extractor.synthesize_bid_brief(facts(), [], "secret-key")
+        assert client.messages.create.call_count == 2
+        requests = [c.kwargs["messages"][0]["content"][0]["text"] for c in client.messages.create.call_args_list]
+        assert requests[0].split(proj.REQUEST_SEPARATOR)[1] == requests[1].split(proj.REQUEST_SEPARATOR)[1]
+        assert (store.root / "stage-d/attempt-01/validation.json").exists()
+        assert (store.root / "stage-d/attempt-02/validation.json").exists()
+
+
+def test_two_failures_raise_without_third_attempt():
+    client = model_client({})
+    with patch("extractor.get_anthropic_client", return_value=client), pytest.raises(proj.ProjectionValidationError):
+        extractor.synthesize_bid_brief(facts(), [], "secret")
+    assert client.messages.create.call_count == 2
+
+
+def test_api_error_then_validation_error_share_retry_budget():
+    import anthropic
+    import httpx
+    client = model_client({})
+    error = anthropic.APIConnectionError(request=httpx.Request("POST", "https://example.invalid"))
+    client.messages.create.side_effect = [error, client.messages.create.return_value]
+    with patch("extractor.get_anthropic_client", return_value=client), pytest.raises(proj.ProjectionValidationError):
+        extractor.synthesize_bid_brief(facts(), [], "secret")
+    assert client.messages.create.call_count == 2
+
+
+def test_authoritative_invariant_failure_is_not_retried(tmp_path):
+    client = model_client()
+    original = extractor.apply_stage_d_authoritative_sections
+    def divergent(synthesis, normalized):
+        result = original(synthesis, normalized)
+        if synthesis:
+            result["brief"]["key_dates"] = [{"invented": True}]
+        return result
+    with cp.checkpoint_run(mode="required", root=tmp_path) as store, patch("extractor.get_anthropic_client", return_value=client), patch("extractor.apply_stage_d_authoritative_sections", side_effect=divergent):
+        with pytest.raises(proj.ProjectionValidationError, match="AUTHORITATIVE_INVARIANT"):
+            extractor.synthesize_bid_brief(facts(), [], "secret")
+        assert (store.root / "stage-d/attempt-01/assembly-validation.json").exists()
+    assert client.messages.create.call_count == 1
+
+
+def make_checkpoint(tmp_path):
+    sources = [("a.txt", b"source")]
+    store = cp.CheckpointStore(sources, mode="required", root=tmp_path)
+    store.write("stage-a/document-facts.json", [{}])
+    store.write("stage-b/normalized-facts.json", facts())
+    store.write("stage-c/conflicts.json", [])
+    return store, sources
+
+
+def test_d_only_replay_zero_stage_a_calls(tmp_path):
+    store, sources = make_checkpoint(tmp_path)
+    with patch("extractor.extract_document_facts") as stage_a, patch("extractor.normalize_package_facts") as stage_b, patch("extractor.reconcile_package_facts") as stage_c, patch("extractor.get_anthropic_client", return_value=model_client()):
+        final, _ = cp.resume_procurement_checkpoint(store.root, sources, "secret", checkpoint_root=tmp_path)
+        assert final["requirements"] == facts()["requirements"]
+        stage_a.assert_not_called()
+        stage_b.assert_not_called()
+        stage_c.assert_not_called()
+
+
+def test_partial_stage_a_resume_extracts_only_missing_document(tmp_path):
+    sources = [("a.txt", b"a"), ("b.txt", b"b")]
+    store = cp.CheckpointStore(sources, mode="required", root=tmp_path)
+    metadata = {"files": ["a.txt", "b.txt"], "doc_texts": {"a.txt": "text-a", "b.txt": "text-b"}, "doc_metadata": {}}
+    store.write("preprocessed-inputs.json", cp.pack_preprocessed(metadata))
+    store.write("stage-a/document-0001.json", {"requirements": []})
+    with patch("extractor.extract_document_facts", return_value={}) as stage_a, patch("extractor.normalize_package_facts", return_value=facts()) as stage_b, patch("extractor.reconcile_package_facts", return_value=[]), patch("extractor.get_anthropic_client", return_value=model_client()):
+        cp.resume_procurement_checkpoint(store.root, sources, "secret", checkpoint_root=tmp_path)
+        stage_a.assert_called_once_with("text-b", "b.txt", "secret")
+        assert stage_b.call_args.args[0] == [{"requirements": []}, {}]
+
+
+def test_complete_pipeline_required_bundle_has_all_boundaries(tmp_path):
+    sources = [("a.txt", b"a")]
+    with cp.checkpoint_run(sources, mode="required", root=tmp_path) as store, patch("extractor.extract_document_with_metadata", return_value=("text", {})), patch("extractor.extract_document_facts", return_value={}), patch("extractor.normalize_package_facts", return_value=facts()), patch("extractor.reconcile_package_facts", return_value=[]), patch("extractor.get_anthropic_client", return_value=model_client()):
+        extractor.extract_procurement_package(sources, "secret")
+        assert {"preprocessed-inputs.json", "stage-a/document-0001.json", "stage-a/document-facts.json",
+                "stage-b/normalized-facts.json", "stage-c/conflicts.json", "stage-d/projection.json",
+                "stage-d/sidecar.json", "stage-d/request.txt", "stage-d/size-diagnostics.json",
+                "stage-d/attempt-01/response.json", "stage-d/attempt-01/validation.json",
+                "stage-d/final-result.json"} <= store.manifest["artifacts"].keys()
+        assert cp.load_verified_checkpoint(store.root, sources)["artifacts"]["stage-b/normalized-facts.json"] == facts()
+
+
+@pytest.mark.parametrize("corruption", ["source", "checksum", "version", "missing", "traversal"])
+def test_resume_rejects_stale_or_corrupt_checkpoint(tmp_path, corruption):
+    store, sources = make_checkpoint(tmp_path)
+    versions = cp.runtime_versions()
+    if corruption == "source":
+        sources = [("a.txt", b"changed")]
+    elif corruption == "checksum":
+        (store.root / "stage-c/conflicts.json").write_text("[{}]")
+    elif corruption == "version":
+        versions["upstream_code_digest"] = "changed"
+    elif corruption == "missing":
+        (store.root / "stage-b/normalized-facts.json").unlink()
+    else:
+        manifest = json.loads((store.root / "manifest.json").read_text())
+        manifest["artifacts"]["../../outside.json"] = manifest["artifacts"]["stage-c/conflicts.json"]
+        (store.root / "manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(cp.CheckpointError):
+        cp.load_verified_checkpoint(store.root, sources, versions=versions)
+
+
+def test_d_version_change_reuses_only_verified_upstream(tmp_path):
+    store, sources = make_checkpoint(tmp_path)
+    versions = cp.runtime_versions()
+    versions["projection_version"] = "stage-d-projection/2"
+    versions["code_sha"] = "next-commit"
+    verified = cp.load_verified_checkpoint(store.root, sources, versions=versions)
+    assert verified["stage_d_rebuild_required"] and verified["stage_d_version_changed"]
+    assert verified["code_sha_changed"]
+
+
+def test_checkpoint_forbids_repository_destination():
+    with pytest.raises(cp.CheckpointError):
+        cp.CheckpointStore([], mode="required", root=cp.REPOSITORY / "private-checkpoints")
+
+
+def test_preprocessing_roundtrip_preserves_types():
+    metadata = {"pages": {1: "text"}, "rows_per_sheet": {"A": (1, 3, {1, 3})}}
+    assert cp.unpack_preprocessed(json.loads(json.dumps(cp.pack_preprocessed(metadata)))) == metadata
+
+
+def synthetic_large_facts(count=559):
+    """Generic mechanical fixture, not British Council acceptance."""
+    common = "Apply the documented service requirements. " * 8 + "Exceptions require written approval."
+    refs = [{"source_doc": f"service-schedule-{i}.pdf", "page": i + 1, "section": "Service conditions", "excerpt": common, "verified": True} for i in range(4)]
+    return {"requirements": [
+        {"req_id": f"M{i}", "category": "Mandatory", "requirement_type": "Delivery / SLA",
+         "description": f"Service obligation {i}: " + "Provide monitored support and document escalation procedures. " * 4,
+         "evidence": "Provide the service procedure and escalation records.", "qual_status": "UNKNOWN",
+         "evidence_status": "MISSING", "source_refs": copy.deepcopy(refs)} for i in range(count)]}
+
+
+def test_synthetic_559_mechanical_scalability():
+    nf = synthetic_large_facts()
+    p = proj.build_stage_d_synthesis_projection(nf, [])
+    d = proj.finalize_stage_d_request(p, extractor.STAGE_D_SYNTHESIS_PROMPT)["diagnostics"]
+    old = len(extractor.LEGACY_STAGE_D_SYNTHESIS_PROMPT + "\n\nNORMALIZED PROCUREMENT FACTS MODEL:\n" + json.dumps(extractor.build_stage_d_context(nf, []), indent=2))
+    assert d["requirement_count"] == 559 and d["omitted_requirement_count"] == 0
+    assert d["evidence_id_count"] == 4
+    assert all(len(e["owners"]) == 559 for e in p["sidecar"]["evidence"].values())
+    assert d["total_prompt_chars"] < 580000 and d["total_prompt_chars"] < old * .75
+
+
+@pytest.mark.parametrize("prefix", ["boc_2026_026", "bc_ir67tvet42026_attempt2"])
+def test_retained_frozen_authority_regression(prefix):
+    root = Path(__file__).parent / "acceptance" / "results"
+    source = root / (prefix + "_normalized_facts.json")
+    if not source.exists():
+        pytest.skip("Optional local retained fixture is unavailable")
+    nf = json.loads(source.read_text(encoding="utf-8"))
+    c = json.loads((root / (prefix + "_conflicts.json")).read_text(encoding="utf-8"))
+    before = copy.deepcopy(nf)
+    p = proj.build_stage_d_synthesis_projection(nf, c)
+    accepted = proj.validate_stage_d_response(empty_response(), p)
+    actual = extractor.apply_stage_d_authoritative_sections(accepted["synthesis"], copy.deepcopy(nf))
+    expected = extractor.apply_stage_d_authoritative_sections({}, copy.deepcopy(nf))
+    assert {k: actual["brief"][k] for k in proj.AUTHORITATIVE_SECTIONS} == {k: expected["brief"][k] for k in proj.AUTHORITATIVE_SECTIONS}
+    final = extractor._assemble_procurement_result(actual, nf, c)
+    assert final["requirements"] == before["requirements"] and nf == before
+    assert final["brief"]["document_conflicts"] == c
+    assert final["documents"] == extractor.build_submission_documents(before["submission_rules"], submission_deadline=None)

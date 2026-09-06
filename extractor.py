@@ -173,7 +173,7 @@ Return ONLY valid JSON with this exact schema:
 }
 """
 
-STAGE_D_SYNTHESIS_PROMPT = """You are an executive bid director synthesizing a Bid Brief from normalized procurement facts.
+LEGACY_STAGE_D_SYNTHESIS_PROMPT = """You are an executive bid director synthesizing a Bid Brief from normalized procurement facts.
 You MUST synthesize ONLY from the supplied normalized facts and detected cross-document conflicts.
 Do NOT invent facts not present in the normalized data model.
 
@@ -248,6 +248,9 @@ Return ONLY valid JSON with this exact schema:
 """
 
 
+
+
+from stage_d_projection import SYNTHESIS_PROMPT as STAGE_D_SYNTHESIS_PROMPT
 
 
 # ── DOCUMENT TEXT EXTRACTORS & DETERMINISTIC MARKERS ─────────────────────────
@@ -3819,64 +3822,86 @@ def apply_stage_d_authoritative_sections(synth_data: dict, normalized_facts: dic
 
 
 def synthesize_bid_brief(normalized_facts: dict, conflicts: list[dict], api_key: str) -> dict:
-    """
-    STAGE D: Synthesize the executive Bid Brief from the COMPLETE normalized/reconciled facts.
+    """Stage D only: complete projection, bounded retry, strict authoritative output."""
+    from stage_d_checkpoints import checkpoint_run
+    with checkpoint_run() as checkpoint:
+        return _synthesize_projected_bid_brief(normalized_facts, conflicts, api_key, checkpoint)
 
-    Pipeline:
-    1. build_stage_d_context()              — lossless, integrity-checked context
-    2. Context-size preflight               — explicit failure before API call if too large
-    3. Anthropic synthesis call             — AI interprets the complete context
-    4. apply_stage_d_authoritative_sections() — ensures structured sections survive AI omission
-    """
-    client = get_anthropic_client(api_key=api_key)
-    model = "claude-haiku-4-5-20251001"
 
-    # Step 1: Build complete, lossless Stage D context
-    stage_d_context = build_stage_d_context(normalized_facts, conflicts)
-
-    # Step 2: Context-size preflight — serialize and check BEFORE making the API call
-    prompt_text = STAGE_D_SYNTHESIS_PROMPT + "\n\nNORMALIZED PROCUREMENT FACTS MODEL:\n"
-    facts_summary = json.dumps(stage_d_context, indent=2)
-    total_chars = len(prompt_text) + len(facts_summary)
-
-    if total_chars > _STAGE_D_CONTEXT_CHAR_LIMIT:
-        ci = stage_d_context["context_integrity"]
-        raise StageDContextTooLargeError(
-            f"Stage D context is complete but too large for safe synthesis. "
-            f"No requirements were silently omitted. "
-            f"Source requirement count: {ci['source_requirement_count']}. "
-            f"Serialized context size: {total_chars:,} characters "
-            f"(limit: {_STAGE_D_CONTEXT_CHAR_LIMIT:,} characters). "
-            f"Reduce excerpt verbosity or split the package before synthesis."
-        )
-
-    content = [
-        {
-            "type": "text",
-            "text": prompt_text + facts_summary
-        }
-    ]
-
-    response = client.messages.create(
-        model=model,
-        max_tokens=8000,
-        messages=[{"role": "user", "content": content}],
+def _synthesize_projected_bid_brief(normalized_facts, conflicts, api_key, checkpoint):
+    import copy
+    from stage_d_projection import (
+        build_stage_d_synthesis_projection, finalize_stage_d_request,
+        validate_stage_d_response, ProjectionValidationError, AUTHORITATIVE_SECTIONS,
     )
-
-    synth_data = _safe_parse_json(response.content[0].text)
-    if not isinstance(synth_data, dict):
-        synth_data = {}
-
-    # Step 4: Deterministically apply authoritative evidence-backed sections
-    synth_data = apply_stage_d_authoritative_sections(synth_data, normalized_facts)
-
-    return synth_data
-
+    try:
+        projection = build_stage_d_synthesis_projection(normalized_facts, conflicts)
+    except ProjectionValidationError as exc:
+        checkpoint.write("stage-d/validation.json", {"status": "FAILED", "code": exc.code})
+        raise
+    checkpoint.write("stage-d/projection.json", projection["prompt_context"])
+    checkpoint.write("stage-d/sidecar.json", projection["sidecar"])
+    correction = ""
+    client = None
+    for attempt in (1, 2):
+        finalized = finalize_stage_d_request(projection, STAGE_D_SYNTHESIS_PROMPT + correction,
+                                            guard_chars=_STAGE_D_CONTEXT_CHAR_LIMIT)
+        checkpoint.write("stage-d/size-diagnostics.json", finalized["diagnostics"])
+        checkpoint.write("stage-d/request.txt", finalized["request_text"], text=True)
+        prefix = f"stage-d/attempt-{attempt:02d}"
+        checkpoint.write(prefix + "/size-diagnostics.json", finalized["diagnostics"])
+        checkpoint.write(prefix + "/request.txt", finalized["request_text"], text=True)
+        if not finalized["diagnostics"]["dispatch_allowed"]:
+            checkpoint.write(prefix + "/validation.json", {"status": "BLOCKED", "code": "CONTEXT_TOO_LARGE"})
+            raise StageDContextTooLargeError(
+                "Stage D context is complete but too large for safe synthesis. "
+                "No requirements were silently omitted. "
+                f"Source requirement count: {projection['diagnostics']['requirement_count']}. "
+                f"Serialized context size: {finalized['diagnostics']['total_prompt_chars']:,} characters "
+                f"(limit: {_STAGE_D_CONTEXT_CHAR_LIMIT:,} characters)."
+            )
+        try:
+            if client is None:
+                # Disable SDK retries only for D; a single loop owns the budget.
+                client = get_anthropic_client(api_key=api_key).with_options(max_retries=0)
+            response = client.messages.create(
+                model="claude-haiku-4-5-20251001", max_tokens=8000,
+                messages=[{"role": "user", "content": [{"type": "text", "text": finalized["request_text"]}]}],
+            )
+            text = "".join(block.text for block in response.content if block.type == "text")
+            checkpoint.write(prefix + "/response.json", {"text": text, "stop_reason": response.stop_reason})
+            if response.stop_reason != "end_turn":
+                raise ProjectionValidationError("INCOMPLETE_MODEL_RESPONSE")
+            validated = validate_stage_d_response(text, projection)
+        except (ProjectionValidationError, anthropic.APIError) as exc:
+            code = exc.code if isinstance(exc, ProjectionValidationError) else type(exc).__name__
+            checkpoint.write(prefix + "/validation.json", {"status": "FAILED", "code": code})
+            if attempt == 2:
+                raise
+            correction = "\nPrevious attempt rejected: " + code + ". Return complete valid JSON with valid field citations."
+            continue
+        checkpoint.write(prefix + "/validation.json", validated)
+        # Always use a copy of the original authoritative inputs, never the prompt projection.
+        result = apply_stage_d_authoritative_sections(validated["synthesis"], copy.deepcopy(normalized_facts))
+        expected = apply_stage_d_authoritative_sections({}, copy.deepcopy(normalized_facts))
+        if any(result["brief"].get(k) != expected["brief"][k] for k in AUTHORITATIVE_SECTIONS):
+            checkpoint.write(prefix + "/assembly-validation.json", {"status": "FAILED", "code": "AUTHORITATIVE_INVARIANT"})
+            raise ProjectionValidationError("AUTHORITATIVE_INVARIANT")
+        if normalized_facts != projection["sidecar"]["authoritative_inputs"]["normalized_facts"] or conflicts != projection["sidecar"]["authoritative_inputs"]["conflicts"]:
+            raise ProjectionValidationError("AUTHORITATIVE_INPUT_MUTATION")
+        checkpoint.write("stage-d/synthesis-result.json", result)
+        return result
 
 
 # ── MAIN ORCHESTRATOR ─────────────────────────────────────────────────────────
 
 def extract_procurement_package(package_files: list[tuple[str, bytes]], api_key: str) -> tuple[dict, str]:
+    from stage_d_checkpoints import checkpoint_run
+    with checkpoint_run(package_files) as checkpoint:
+        return _extract_procurement_package(package_files, api_key, checkpoint)
+
+
+def _extract_procurement_package(package_files, api_key, checkpoint):
     """
     Genuine 4-Stage Ingestion & Extraction Pipeline:
     1. STAGE A: Document Fact Extraction with Deterministic Markers.
@@ -3898,24 +3923,41 @@ def extract_procurement_package(package_files: list[tuple[str, bytes]], api_key:
         package_metadata["doc_texts"][fname] = doc_text
         extracted_docs.append((fname, doc_text))
 
+    if checkpoint.mode != "off":
+        from stage_d_checkpoints import pack_preprocessed
+        checkpoint.write("preprocessed-inputs.json", pack_preprocessed(package_metadata))
+
     # STAGE A: Extract facts per document
     doc_facts_list = []
-    for fname, doc_text in extracted_docs:
+    for index, (fname, doc_text) in enumerate(extracted_docs, 1):
         facts = extract_document_facts(doc_text, fname, api_key)
         doc_facts_list.append(facts)
+        checkpoint.write(f"stage-a/document-{index:04d}.json", facts)
+    checkpoint.write("stage-a/document-facts.json", doc_facts_list)
 
     # STAGE B: Package Normalization & Provenance Validation
     normalized_facts = normalize_package_facts(doc_facts_list, package_metadata)
+    checkpoint.write("stage-b/normalized-facts.json", normalized_facts)
 
     # STAGE C: Reconciliation & Conflict Analysis
     conflicts = reconcile_package_facts(normalized_facts, package_metadata["files"])
+    checkpoint.write("stage-c/conflicts.json", conflicts)
 
     # STAGE D: Executive Bid Brief Synthesis
     synth_output = synthesize_bid_brief(normalized_facts, conflicts, api_key)
 
-    # Assemble Final Output
+    result = _assemble_procurement_result(synth_output, normalized_facts, conflicts)
+    checkpoint.write("stage-d/final-result.json", result)
+    return result, "claude-haiku-4-5-20251001 (Staged Pipeline A->B->C->D)"
+
+
+def _assemble_procurement_result(synth_output, normalized_facts, conflicts):
+    # Existing final assembly; normalized records and deterministic helpers own data.
+    import copy
+    from stage_d_projection import ProjectionValidationError
+    original_facts, original_conflicts = copy.deepcopy(normalized_facts), copy.deepcopy(conflicts)
     bid = synth_output.get("bid", {})
-    brief = synth_output.get("brief", {})
+    brief = dict(synth_output.get("brief", {}))
     outline = synth_output.get("outline", [])
 
     # Ensure document_conflicts is attached to brief
@@ -3940,7 +3982,16 @@ def extract_procurement_package(package_files: list[tuple[str, bytes]], api_key:
         "outline": outline
     }
 
-    return result, "claude-haiku-4-5-20251001 (Staged Pipeline A->B->C->D)"
+    expected_documents = build_submission_documents(
+        original_facts.get("submission_rules", []),
+        submission_deadline=bid.get("submission_deadline"),
+    )
+    if (result["requirements"] != original_facts.get("requirements", [])
+            or result["documents"] != expected_documents
+            or result["brief"]["document_conflicts"] != original_conflicts
+            or normalized_facts != original_facts or conflicts != original_conflicts):
+        raise ProjectionValidationError("FINAL_ASSEMBLY_INVARIANT")
+    return result
 
 
 # Legacy Single-File Compatibility Alias
