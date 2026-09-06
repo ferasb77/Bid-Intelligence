@@ -51,6 +51,16 @@ def _norm(value):
     return _text(value).casefold()
 
 
+def _valid_iso_date(value):
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(value or "")):
+        return False
+    try:
+        date.fromisoformat(str(value))
+        return True
+    except ValueError:
+        return False
+
+
 def _scope(raw):
     scope = raw.get("scope") if isinstance(raw.get("scope"), dict) else {}
     for key in ("component", "lot", "category", "period_basis", "option_sequence", "option_id"):
@@ -169,7 +179,8 @@ def _normalized_value(family, kind, raw):
         if precision == "DAY": precision = "DATE"
         try:
             if precision not in {"DATE", "DATETIME", "MONTH", "YEAR", "UNKNOWN"}: raise ValueError
-            if precision == "DATE": date.fromisoformat(str(date_value))
+            if precision in {"DATE", "DATETIME"} and not _valid_iso_date(date_value): raise ValueError
+            if precision == "DATETIME" and time_value is None: raise ValueError
             if time_value is not None and not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?", str(time_value)): raise ValueError
         except (TypeError, ValueError):
             return {"date": date_value, "time": time_value, "timezone": raw.get("timezone"), "precision": precision}, "UNPARSED"
@@ -322,6 +333,8 @@ def _resolve_simple(field, observations, conflicts):
         # Component/lot events remain in the ledger and never compete for an
         # opportunity-level executive deadline.
         candidates = [o for o in candidates if not o.get("scope")]
+        if field in {"submission_deadline", "clarification_deadline"}:
+            candidates = [o for o in candidates if o.get("normalized_value", {}).get("precision") in {"DATE", "DATETIME"}]
     eligible = [o for o in candidates if o["provenance_status"] == "VERIFIED"]
     if not candidates:
         return _empty("UNVERIFIED" if any(o["family"] == family and o["semantic_kind"] in kinds for o in observations) else "MISSING")
@@ -336,8 +349,9 @@ def _resolve_simple(field, observations, conflicts):
     support = next(iter(groups.values()))
     value = support[0]["original_value"]
     if family == "MILESTONE": value = support[0]["normalized_value"]
+    superseded = any((o.get("supersession") or {}).get("resolution_state") == "RESOLVED" for o in support)
     return {"status": "RESOLVED", "value": value, "observation_ids": sorted(o["observation_id"] for o in support),
-            "conflict_ids": [], "resolution_basis": "EXACT_AGREEMENT", "provenance_status": "VERIFIED"}
+            "conflict_ids": [], "resolution_basis": "RESOLVED_BY_SUPERSESSION" if superseded else "EXACT_AGREEMENT", "provenance_status": "VERIFIED"}
 
 
 def _resolve_client(observations, conflicts):
@@ -443,7 +457,9 @@ def resolve_canonical_opportunity(canonical):
     for field, (family, kinds) in FIELD_KINDS.items():
         present = any(o["family"] == family and o["semantic_kind"] in kinds for o in observations)
         if field == "client": present = present or any(o["family"] == "IDENTITY" and o["semantic_kind"] == "ISSUING_AUTHORITY" for o in observations)
-        result["coverage"][field] = {"typed_observations_present": present, "canonical_conflict_authoritative": present}
+        state = result["resolved"][field]
+        result["coverage"][field] = {"typed_observations_present": present,
+            "canonical_conflict_authoritative": state["status"] == "CONFLICTED" or state.get("resolution_basis") == "RESOLVED_BY_SUPERSESSION"}
     result["coverage"]["contract_term"] = {"typed_observations_present": any(o["family"] == "CONTRACT_TERM" for o in observations), "canonical_conflict_authoritative": any(o["family"] == "CONTRACT_TERM" for o in observations)}
     result["conflicts"] = sorted(conflicts, key=lambda c: c["conflict_id"])
     result["integrity_diagnostics"].update({"observation_count": len(observations), "conflict_count": len(conflicts),
@@ -460,7 +476,24 @@ def apply_legacy_conflict_fallback(canonical, legacy_conflicts):
         field = ("clarification_deadline" if any(x in text for x in ("clarification deadline", "question deadline", "questions deadline"))
                  else "submission_deadline" if any(x in text for x in ("submission deadline", "closing date", "response deadline"))
                  else "contract_term" if any(x in text for x in ("contract term", "contract duration", "initial term")) else None)
-        if not field or result.get("coverage", {}).get(field, {}).get("typed_observations_present"):
+        if not field:
+            continue
+        resolved = result.get("resolved", {}).get(field, {})
+        if resolved.get("status") == "CONFLICTED":
+            continue
+        safely_superseded = False
+        if resolved.get("resolution_basis") == "RESOLVED_BY_SUPERSESSION":
+            legacy_text = _norm(canonical_json(conflict))
+            for observation in result.get("observations", []):
+                sup = observation.get("supersession") or {}
+                if (observation["observation_id"] in resolved.get("observation_ids", [])
+                        and sup.get("resolution_state") == "RESOLVED"
+                        and _norm(sup.get("old_value")) in legacy_text
+                        and _norm(sup.get("new_value")) in legacy_text):
+                    safely_superseded = True
+                    break
+        if safely_superseded:
+            result["coverage"].setdefault(field, {})["legacy_conflict_accounted_by_supersession"] = True
             continue
         cid = str(conflict.get("conflict_id") or _id("legacy_conf_", conflict))
         result["resolved"][field] = _empty("CONFLICTED", [cid])

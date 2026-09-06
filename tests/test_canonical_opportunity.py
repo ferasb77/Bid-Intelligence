@@ -193,6 +193,43 @@ def test_partial_coverage_uses_only_field_specific_legacy_fallback():
     assert c["resolved"]["clarification_deadline"]["status"] == "RESOLVED"
 
 
+def test_single_typed_submission_value_cannot_override_legacy_disagreement():
+    c = resolved([{"typed_observations": [obs("SUBMISSION_DEADLINE", "2030-10-01", family="MILESTONE", date="2030-10-01")]}],
+                 {**metadata("a.pdf"), "doc_texts": {"a.pdf": "[[SOURCE: a.pdf | PAGE: 1]]\n2030-10-01"}})
+    c = apply_legacy_conflict_fallback(c, [{"conflict_id": "legacy-submit", "conflict_type": "DATE_CONFLICT",
+        "topic": "Submission deadline", "source_a": {"text": "2030-10-01"}, "source_b": {"text": "2030-10-03"}}])
+    assert c["resolved"]["submission_deadline"]["status"] == "CONFLICTED"
+    assert c["resolved"]["submission_deadline"]["value"] is None
+
+
+def test_envelope_and_bilingual_conflicts_suppress_no_dates_or_term():
+    items = [obs("SUBMISSION_DEADLINE", "2030-10-01", family="MILESTONE", date="2030-10-01"),
+             obs("CLARIFICATION_DEADLINE", "2030-09-20", family="MILESTONE", date="2030-09-20"),
+             obs("INITIAL_DURATION", "24 months", family="CONTRACT_TERM", duration=24, unit="months")]
+    meta = metadata("a.pdf"); meta["doc_texts"]["a.pdf"] += " 2030-10-01 2030-09-20 24 months"
+    c = resolved([{"typed_observations": items}], meta)
+    c = apply_legacy_conflict_fallback(c, [{"conflict_id": "env", "conflict_type": "ENVELOPE_CONFLICT", "topic": "Envelope"},
+                                            {"conflict_id": "lang", "conflict_type": "BILINGUAL_SCOPE_CONFLICT", "topic": "Bilingual scope"}])
+    assert c["resolved"]["submission_deadline"]["status"] == "RESOLVED"
+    assert c["resolved"]["clarification_deadline"]["status"] == "RESOLVED"
+    assert c["resolved"]["contract_term"]["status"] == "RESOLVED"
+
+
+def test_verified_supersession_accounts_for_corresponding_legacy_disagreement():
+    old = obs("SUBMISSION_DEADLINE", "2030-10-01", doc="old.pdf", family="MILESTONE", date="2030-10-01")
+    new = obs("SUBMISSION_DEADLINE", "2030-10-03", doc="new.pdf", family="MILESTONE", date="2030-10-03")
+    new["supersession"] = {"basis": "EXPLICIT_EXTENSION", "target_family": "MILESTONE",
+        "target_semantic_kind": "SUBMISSION_DEADLINE", "old_value": "2030-10-01", "new_value": "2030-10-03", "scope": {},
+        "source_refs": [{"source_doc": "new.pdf", "page": 1, "excerpt": "2030-10-01 to 2030-10-03"}]}
+    meta = metadata("old.pdf", "new.pdf"); meta["doc_texts"]["new.pdf"] += " 2030-10-01 to 2030-10-03"
+    c = resolved([{"typed_observations": [old]}, {"typed_observations": [new]}], meta)
+    c = apply_legacy_conflict_fallback(c, [{"conflict_id": "legacy-submit", "conflict_type": "DATE_CONFLICT",
+        "topic": "Submission deadline", "source_a": {"text": "2030-10-01"}, "source_b": {"text": "2030-10-03"}}])
+    assert c["resolved"]["submission_deadline"]["status"] == "RESOLVED"
+    assert c["resolved"]["submission_deadline"]["value"]["date"] == "2030-10-03"
+    assert c["coverage"]["submission_deadline"]["legacy_conflict_accounted_by_supersession"] is True
+
+
 def test_repeatable_extensions_and_human_display():
     items = [obs("INITIAL_DURATION", "24 months", family="CONTRACT_TERM", duration=24, unit="months"),
              obs("EXTENSION_OPTION", "12 months", family="CONTRACT_TERM", duration=12, unit="months", optional=True),
@@ -228,6 +265,33 @@ def test_valid_leap_date_time_and_no_timezone_inference():
     assert c["resolved"]["submission_deadline"]["value"]["timezone"] is None
     item["time"] = "25:00"
     assert resolved([{"typed_observations": [item]}], meta)["observations"][0]["normalization_state"] == "UNPARSED"
+
+
+def test_headline_deadline_precision_requires_day_level_validity():
+    cases = [
+        ("DATE", "2032-02-29", None, "RESOLVED"),
+        ("DATETIME", "2032-02-29", "09:30", "RESOLVED"),
+        ("DATETIME", "2032-02-30", "09:30", "UNVERIFIED"),
+        ("DATETIME", "2032-02-29", "29:30", "UNVERIFIED"),
+        ("MONTH", "2032-02", None, "UNVERIFIED"),
+        ("YEAR", "2032", None, "UNVERIFIED"),
+        ("UNKNOWN", "early 2032", None, "UNVERIFIED"),
+    ]
+    for precision, value, time, status in cases:
+        item = obs("SUBMISSION_DEADLINE", value, family="MILESTONE", date=value, precision=precision)
+        if time is not None: item["time"] = time
+        meta = metadata("a.pdf"); meta["doc_texts"]["a.pdf"] += " " + value
+        c = resolved([{"typed_observations": [item]}], meta)
+        assert c["resolved"]["submission_deadline"]["status"] == status
+        assert len(c["observations"]) == 1
+
+
+def test_datetime_requires_explicit_valid_time():
+    item = obs("CLARIFICATION_DEADLINE", "2032-02-29", family="MILESTONE", date="2032-02-29", precision="DATETIME")
+    meta = metadata("a.pdf"); meta["doc_texts"]["a.pdf"] += " 2032-02-29"
+    c = resolved([{"typed_observations": [item]}], meta)
+    assert c["observations"][0]["normalization_state"] == "UNPARSED"
+    assert c["resolved"]["clarification_deadline"]["status"] == "UNVERIFIED"
 
 
 def test_observation_order_does_not_change_authoritative_object_or_digest():
