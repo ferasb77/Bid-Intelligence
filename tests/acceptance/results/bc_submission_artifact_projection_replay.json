@@ -1,0 +1,482 @@
+{
+  "execution_metadata": {
+    "code_commit_sha": "802faa659905b07cbc081443c188fb644def1b35",
+    "run_started_at": "2026-09-05T22:40:53.979144+00:00",
+    "replay_mode": "FROZEN",
+    "model": "claude-haiku-4-5-20251001",
+    "fixture": "british_council_ir67tvet42026",
+    "pipeline_stages": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "projection"
+    ],
+    "projection_mode": "orthogonal_submission_semantics"
+  },
+  "input_files": [
+    {
+      "filename": "annex_1_-_terms_and_condition_of_contract_ir67tvet42026.pdf",
+      "sha256": "dccb7ff288fad8f8d11bd2f524f8d5ebc8e37b07164c5dce2077cd937d38d474",
+      "chars": 111883
+    },
+    {
+      "filename": "annex_2_-_procurement_specific_questionnaire_1.docx",
+      "sha256": "08970b7e7c7356d40529121d51d50238659a22a7555bb9a63ae69c87b8a239e6",
+      "chars": 24452
+    },
+    {
+      "filename": "annex_2a_procurement_specific_questionnaire_ratio_analysis_1.xls",
+      "sha256": "fa0a7cb3f96dba015f0d442b0b12190d55691a7836663ee6bc16ed89a6656ead",
+      "chars": 146
+    },
+    {
+      "filename": "annex_3_-_supplier_response_ir67tvet42026.docx",
+      "sha256": "6203c30a22f8f73982a0f9e492d0b991c971198797cb8ad479749f1f51446f03",
+      "chars": 11422
+    },
+    {
+      "filename": "annex_4_-_pricing_approach_ir67tvet42026.xlsx",
+      "sha256": "49d63be566d0df3a688529b5807ced7aa0f7583d6156a8282fb908639b5ca56f",
+      "chars": 9645
+    },
+    {
+      "filename": "appendix_1_-_service_level_agreement_template.pdf",
+      "sha256": "701f711fa95b3b722d9ad2bb34b4be6ee1384ac4f2f260db758bbbc43321a791",
+      "chars": 1240
+    },
+    {
+      "filename": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated.pdf",
+      "sha256": "607e6634ed36f440bc88a6dd2c2103973d46a6112f00aacc1c0e3f5c6fd268b7",
+      "chars": 60210
+    },
+    {
+      "filename": "itt_-_ir67tvet42026_-_smart_classroom_setup_-_updated_0.pdf",
+      "sha256": "607e6634ed36f440bc88a6dd2c2103973d46a6112f00aacc1c0e3f5c6fd268b7",
+      "chars": 60260
+    }
+  ],
+  "timings": {
+    "preprocessing_sec": 1.0474,
+    "stage_a_sec": 0.0007,
+    "stage_b_sec": 0.0962,
+    "stage_c_sec": 0.0107,
+    "stage_d_sec": 0.0007,
+    "projection_sec": 0.0004,
+    "total_pipeline_sec": 1.1562
+  },
+  "raw_submission_rules_count": 14,
+  "normalized_submission_rules_count": 14,
+  "projected_submission_documents_count": 7,
+  "classification_results": [
+    {
+      "item": "Annex 1 (Terms and Conditions) Acceptance",
+      "format": "Checklist Confirmation",
+      "details": "Confirm acceptance including any changes made via clarifications during tender process",
+      "mandatory": 1,
+      "classification": "UNKNOWN",
+      "is_concrete_document": false,
+      "resolved_artifact_type": "Form / Annex",
+      "resolved_file_format": "Unspecified",
+      "resolved_submission_channel": "Unspecified"
+    },
+    {
+      "item": "Annex 2 (Procurement Specific Questionnaire)",
+      "format": "Separate Document",
+      "details": "Complete questionnaire and all associated supporting documentation",
+      "mandatory": 1,
+      "classification": "ARTIFACT",
+      "is_concrete_document": true,
+      "resolved_artifact_type": "Questionnaire / Workbook",
+      "resolved_file_format": "Unspecified",
+      "resolved_submission_channel": "Unspecified"
+    },
+    {
+      "item": "Annex 2a (Ratio Analysis)",
+      "format": "Separate Document",
+      "details": "Complete Procurement Specific Questionnaire Ratio Analysis and all associated documentation",
+      "mandatory": 1,
+      "classification": "ARTIFACT",
+      "is_concrete_document": true,
+      "resolved_artifact_type": "Form / Annex",
+      "resolved_file_format": "Unspecified",
+      "resolved_submission_channel": "Unspecified"
+    },
+    {
+      "item": "Audited Financial Accounts",
+      "format": "Separate Document",
+      "details": "Two years of audited financial accounts (as part of Annex 2)",
+      "mandatory": 1,
+      "classification": "ARTIFACT",
+      "is_concrete_document": true,
+      "resolved_artifact_type": "Pricing / Financial",
+      "resolved_file_format": "Unspecified",
+      "resolved_submission_channel": "Unspecified"
+    },
+    {
+      "item": "Annex 3 (Supplier Response)",
+      "format": "Portal/Email",
+      "details": "Completed tender responses in accordance with ITT requirements; responses must not be altered from original questions; any alterations result in zero mark",
+      "mandatory": 1,
+      "classification": "ARTIFACT",
+      "is_concrete_document": true,
+      "resolved_artifact_type": "Proposal / Response",
+      "resolved_file_format": "Unspecified",
+      "resolved_submission_channel": "Portal"
+    },
+    {
+      "item": "Annex 4 (Pricing Approach)",
+      "format": "Separate Document",
+      "details": "Completed pricing proposal with all costs included",
+      "mandatory": 1,
+      "classification": "ARTIFACT",
+      "is_concrete_document": true,
+      "resolved_artifact_type": "Pricing / Financial",
+      "resolved_file_format": "Unspecified",
+      "resolved_submission_channel": "Unspecified"
+    },
+    {
+      "item": "Submission Checklist",
+      "format": "Portal/Email",
+      "details": "Must be completed and signed by authorised representative; failure to provide all mandatory documentation may result in rejection",
+      "mandatory": 1,
+      "classification": "ARTIFACT",
+      "is_concrete_document": true,
+      "resolved_artifact_type": "Form / Annex",
+      "resolved_file_format": "Unspecified",
+      "resolved_submission_channel": "Portal"
+    },
+    {
+      "item": "Appendix A (Confidential Information Declaration)",
+      "format": "Separate Document",
+      "details": "Required only if supplier designates any information as confidential or commercially sensitive; includes reasons and exemption duration",
+      "mandatory": 0,
+      "classification": "ARTIFACT",
+      "is_concrete_document": true,
+      "resolved_artifact_type": "Form / Annex",
+      "resolved_file_format": "Unspecified",
+      "resolved_submission_channel": "Unspecified"
+    },
+    {
+      "item": "Company Details",
+      "format": "Portal/Email",
+      "details": "Company name, address, registration, contact name, email, and telephone number to be provided at top of Annex 3",
+      "mandatory": 1,
+      "classification": "PROCESS_ONLY",
+      "is_concrete_document": false,
+      "resolved_artifact_type": "Unknown",
+      "resolved_file_format": "Unspecified",
+      "resolved_submission_channel": "Portal"
+    },
+    {
+      "item": "Submission Portal",
+      "format": "Portal/Email",
+      "details": "Submit to https://tap.tcsapps.com/tap2/#/bc-supplier-registration (first time) or https://tap.tcsapps.com/tap2/#/login-supplier?tenant=BritishCouncil&langCd=en (existing supplier) or moiz.khalid@britishcouncil.org by Response Deadline; all communication via correspondence tab",
+      "mandatory": 1,
+      "classification": "PROCESS_ONLY",
+      "is_concrete_document": false,
+      "resolved_artifact_type": "Process Instruction",
+      "resolved_file_format": "Unspecified",
+      "resolved_submission_channel": "Portal"
+    },
+    {
+      "item": "Requirements Costs Tab",
+      "format": "Excel Sheet (yellow-highlighted fields)",
+      "details": "All relevant costs must be inserted in the Requirements Costs tab with per-unit costs, applicable taxes, and total costs for each line item",
+      "mandatory": 1,
+      "classification": "EMBEDDED_RESPONSE",
+      "is_concrete_document": false,
+      "resolved_artifact_type": "Pricing / Financial",
+      "resolved_file_format": "Spreadsheet",
+      "resolved_submission_channel": "Unspecified"
+    },
+    {
+      "item": "Assumptions and Exclusions Tab",
+      "format": "Excel Sheet",
+      "details": "Suppliers must list and explain all assumptions and/or exclusions related to costing provided",
+      "mandatory": 1,
+      "classification": "EMBEDDED_RESPONSE",
+      "is_concrete_document": false,
+      "resolved_artifact_type": "Unknown",
+      "resolved_file_format": "Spreadsheet",
+      "resolved_submission_channel": "Unspecified"
+    },
+    {
+      "item": "Pricing Currency",
+      "format": "Text Entry",
+      "details": "All rates quoted in PKR; all charges inclusive of applicable taxes with tax details enlisted",
+      "mandatory": 1,
+      "classification": "UNKNOWN",
+      "is_concrete_document": false,
+      "resolved_artifact_type": "Pricing / Financial",
+      "resolved_file_format": "Unspecified",
+      "resolved_submission_channel": "Unspecified"
+    },
+    {
+      "item": "Portal Submission",
+      "format": "Electronic Portal or Email",
+      "details": "Submit complete Annex 4 document with all mandatory documentation to British Council e-Tendering portal (https://tap.tcsapps.com/tap2/) or email moiz.khalid@britishcouncil.org by Response Deadline specified in ITT Timescales",
+      "mandatory": 1,
+      "classification": "PROCESS_ONLY",
+      "is_concrete_document": false,
+      "resolved_artifact_type": "Process Instruction",
+      "resolved_file_format": "Unspecified",
+      "resolved_submission_channel": "Portal"
+    }
+  ],
+  "projected_submission_documents": [
+    {
+      "name": "Annex 2 (Procurement Specific Questionnaire)",
+      "doc_type": "Submission",
+      "owner": null,
+      "due_date": null,
+      "status": "Expected",
+      "notes": "Complete questionnaire and all associated supporting documentation",
+      "file_format": "Unspecified",
+      "submission_channel": "Unspecified",
+      "artifact_type": "Questionnaire / Workbook",
+      "source_refs": [],
+      "provenance_state": "UNVERIFIED",
+      "artifact_type_observations": [],
+      "artifact_type_conflict": false,
+      "file_format_observations": [],
+      "file_format_conflict": false,
+      "submission_channel_observations": [],
+      "submission_channel_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "mandatory_conflict": false,
+      "mandatory": 1
+    },
+    {
+      "name": "Annex 2a (Ratio Analysis)",
+      "doc_type": "Submission",
+      "owner": null,
+      "due_date": null,
+      "status": "Expected",
+      "notes": "Complete Procurement Specific Questionnaire Ratio Analysis and all associated documentation",
+      "file_format": "Unspecified",
+      "submission_channel": "Unspecified",
+      "artifact_type": "Form / Annex",
+      "source_refs": [],
+      "provenance_state": "UNVERIFIED",
+      "artifact_type_observations": [],
+      "artifact_type_conflict": false,
+      "file_format_observations": [],
+      "file_format_conflict": false,
+      "submission_channel_observations": [],
+      "submission_channel_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "mandatory_conflict": false,
+      "mandatory": 1
+    },
+    {
+      "name": "Audited Financial Accounts",
+      "doc_type": "Financial",
+      "owner": null,
+      "due_date": null,
+      "status": "Expected",
+      "notes": "Two years of audited financial accounts (as part of Annex 2)",
+      "file_format": "Unspecified",
+      "submission_channel": "Unspecified",
+      "artifact_type": "Pricing / Financial",
+      "source_refs": [],
+      "provenance_state": "UNVERIFIED",
+      "artifact_type_observations": [],
+      "artifact_type_conflict": false,
+      "file_format_observations": [],
+      "file_format_conflict": false,
+      "submission_channel_observations": [],
+      "submission_channel_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "mandatory_conflict": false,
+      "mandatory": 1
+    },
+    {
+      "name": "Annex 3 (Supplier Response)",
+      "doc_type": "Submission",
+      "owner": null,
+      "due_date": null,
+      "status": "Expected",
+      "notes": "Completed tender responses in accordance with ITT requirements; responses must not be altered from original questions; any alterations result in zero mark",
+      "file_format": "Unspecified",
+      "submission_channel": "Portal",
+      "artifact_type": "Proposal / Response",
+      "source_refs": [],
+      "provenance_state": "UNVERIFIED",
+      "artifact_type_observations": [],
+      "artifact_type_conflict": false,
+      "file_format_observations": [],
+      "file_format_conflict": false,
+      "submission_channel_observations": [],
+      "submission_channel_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "mandatory_conflict": false,
+      "mandatory": 1
+    },
+    {
+      "name": "Annex 4 (Pricing Approach)",
+      "doc_type": "Financial",
+      "owner": null,
+      "due_date": null,
+      "status": "Expected",
+      "notes": "Completed pricing proposal with all costs included",
+      "file_format": "Unspecified",
+      "submission_channel": "Unspecified",
+      "artifact_type": "Pricing / Financial",
+      "source_refs": [],
+      "provenance_state": "UNVERIFIED",
+      "artifact_type_observations": [],
+      "artifact_type_conflict": false,
+      "file_format_observations": [],
+      "file_format_conflict": false,
+      "submission_channel_observations": [],
+      "submission_channel_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "mandatory_conflict": false,
+      "mandatory": 1
+    },
+    {
+      "name": "Submission Checklist",
+      "doc_type": "Submission",
+      "owner": null,
+      "due_date": null,
+      "status": "Expected",
+      "notes": "Must be completed and signed by authorised representative; failure to provide all mandatory documentation may result in rejection",
+      "file_format": "Unspecified",
+      "submission_channel": "Portal",
+      "artifact_type": "Form / Annex",
+      "source_refs": [],
+      "provenance_state": "UNVERIFIED",
+      "artifact_type_observations": [],
+      "artifact_type_conflict": false,
+      "file_format_observations": [],
+      "file_format_conflict": false,
+      "submission_channel_observations": [],
+      "submission_channel_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "mandatory_conflict": false,
+      "mandatory": 1
+    },
+    {
+      "name": "Appendix A (Confidential Information Declaration)",
+      "doc_type": "Submission",
+      "owner": null,
+      "due_date": null,
+      "status": "Expected",
+      "notes": "Required only if supplier designates any information as confidential or commercially sensitive; includes reasons and exemption duration",
+      "file_format": "Unspecified",
+      "submission_channel": "Unspecified",
+      "artifact_type": "Form / Annex",
+      "source_refs": [],
+      "provenance_state": "UNVERIFIED",
+      "artifact_type_observations": [],
+      "artifact_type_conflict": false,
+      "file_format_observations": [],
+      "file_format_conflict": false,
+      "submission_channel_observations": [],
+      "submission_channel_conflict": false,
+      "mandatory_observations": [
+        0
+      ],
+      "mandatory_conflict": false,
+      "mandatory": 0
+    }
+  ],
+  "excluded_rules": [
+    {
+      "item": "Annex 1 (Terms and Conditions) Acceptance",
+      "format": "Checklist Confirmation",
+      "details": "Confirm acceptance including any changes made via clarifications during tender process",
+      "mandatory": 1,
+      "classification": "UNKNOWN",
+      "is_concrete_document": false,
+      "resolved_artifact_type": "Form / Annex",
+      "resolved_file_format": "Unspecified",
+      "resolved_submission_channel": "Unspecified"
+    },
+    {
+      "item": "Company Details",
+      "format": "Portal/Email",
+      "details": "Company name, address, registration, contact name, email, and telephone number to be provided at top of Annex 3",
+      "mandatory": 1,
+      "classification": "PROCESS_ONLY",
+      "is_concrete_document": false,
+      "resolved_artifact_type": "Unknown",
+      "resolved_file_format": "Unspecified",
+      "resolved_submission_channel": "Portal"
+    },
+    {
+      "item": "Submission Portal",
+      "format": "Portal/Email",
+      "details": "Submit to https://tap.tcsapps.com/tap2/#/bc-supplier-registration (first time) or https://tap.tcsapps.com/tap2/#/login-supplier?tenant=BritishCouncil&langCd=en (existing supplier) or moiz.khalid@britishcouncil.org by Response Deadline; all communication via correspondence tab",
+      "mandatory": 1,
+      "classification": "PROCESS_ONLY",
+      "is_concrete_document": false,
+      "resolved_artifact_type": "Process Instruction",
+      "resolved_file_format": "Unspecified",
+      "resolved_submission_channel": "Portal"
+    },
+    {
+      "item": "Requirements Costs Tab",
+      "format": "Excel Sheet (yellow-highlighted fields)",
+      "details": "All relevant costs must be inserted in the Requirements Costs tab with per-unit costs, applicable taxes, and total costs for each line item",
+      "mandatory": 1,
+      "classification": "EMBEDDED_RESPONSE",
+      "is_concrete_document": false,
+      "resolved_artifact_type": "Pricing / Financial",
+      "resolved_file_format": "Spreadsheet",
+      "resolved_submission_channel": "Unspecified"
+    },
+    {
+      "item": "Assumptions and Exclusions Tab",
+      "format": "Excel Sheet",
+      "details": "Suppliers must list and explain all assumptions and/or exclusions related to costing provided",
+      "mandatory": 1,
+      "classification": "EMBEDDED_RESPONSE",
+      "is_concrete_document": false,
+      "resolved_artifact_type": "Unknown",
+      "resolved_file_format": "Spreadsheet",
+      "resolved_submission_channel": "Unspecified"
+    },
+    {
+      "item": "Pricing Currency",
+      "format": "Text Entry",
+      "details": "All rates quoted in PKR; all charges inclusive of applicable taxes with tax details enlisted",
+      "mandatory": 1,
+      "classification": "UNKNOWN",
+      "is_concrete_document": false,
+      "resolved_artifact_type": "Pricing / Financial",
+      "resolved_file_format": "Unspecified",
+      "resolved_submission_channel": "Unspecified"
+    },
+    {
+      "item": "Portal Submission",
+      "format": "Electronic Portal or Email",
+      "details": "Submit complete Annex 4 document with all mandatory documentation to British Council e-Tendering portal (https://tap.tcsapps.com/tap2/) or email moiz.khalid@britishcouncil.org by Response Deadline specified in ITT Timescales",
+      "mandatory": 1,
+      "classification": "PROCESS_ONLY",
+      "is_concrete_document": false,
+      "resolved_artifact_type": "Process Instruction",
+      "resolved_file_format": "Unspecified",
+      "resolved_submission_channel": "Portal"
+    }
+  ],
+  "provenance_validation_state": {
+    "total_projected_documents": 7,
+    "verified_documents": 0,
+    "unverified_documents": 7,
+    "all_projected_have_provenance_state": true
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "execution_metadata": {
+    "replay_mode": "LIVE",
+    "outcome": "BLOCKED_STAGE_D_CONTEXT_LIMIT",
+    "code_commit_sha": "802faa659905b07cbc081443c188fb644def1b35",
+    "model": "claude-haiku-4-5-20251001",
+    "fixture": "british_council_ir67tvet42026",
+    "attempts_count": 2,
+    "pipeline_stages_completed": [
+      "A",
+      "B",
+      "C"
+    ],
+    "pipeline_stages_blocked": [
+      "D",
+      "projection"
+    ]
+  },
+  "input_metrics": {
+    "source_files_count": 8,
+    "total_preprocessed_characters": 279258
+  },
+  "timings": {
+    "preprocessing_sec": 1.21,
+    "stage_a_sec": 2929.66,
+    "stage_b_sec": 0.3897,
+    "stage_c_sec": 0.0529,
+    "stage_d_sec": 0.0
+  },
+  "stage_metrics": {
+    "stage_a_raw_submission_rules_count": 106,
+    "stage_b_normalized_submission_rules_count": 76,
+    "stage_c_conflicts_count": 7,
+    "source_requirement_count": 559
+  },
+  "stage_d_capacity_diagnostics": {
+    "preflight_guard": "StageDContextTooLargeError",
+    "serialized_stage_d_context_characters": 1045967,
+    "safe_stage_d_limit_characters": 580000,
+    "excess_characters": 465967,
+    "stage_d_api_dispatch_occurred": false,
+    "silent_omission_occurred": false,
+    "guard_message": "Stage D context is complete but too large for safe synthesis. No requirements were silently omitted. Source requirement count: 559. Serialized context size: 1,045,967 characters (limit: 580,000 characters). Reduce excerpt verbosity or split the package before synthesis."
+  },
+  "integrity_notes": {
+    "submission_projection_remediation_status": "NOT_FAILED",
+    "cause_of_block": "Downstream Stage D synthesis context capacity threshold exceeded on full 8-file package extraction.",
+    "code_modifications_after_failure": false
+  }
+}

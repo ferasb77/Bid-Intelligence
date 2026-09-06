@@ -89,6 +89,27 @@ CRITICAL EVALUATION HIERARCHY & WEIGHTING RULES:
 - "threshold": minimum passing score or threshold (e.g. "70% minimum"). Thresholds are NOT weights.
 - Include "source_refs" for each evaluation criterion.
 
+CRITICAL SUBMISSION RULE ORTHOGONAL DIMENSIONS:
+- "item": What is to be submitted or what the rule describes. Keep the official name (e.g. "Annex 3 (Supplier Response)", "Pricing Approach", "Signed Declaration").
+- "artifact_type": Controlled category:
+    "Proposal / Response"       -> Main technical proposal or response narrative document.
+    "Form / Annex"              -> Standard forms, schedules, annexes, questionnaires, templates.
+    "Pricing / Financial"       -> Costing workbooks, fee tables, pricing forms, rate cards.
+    "Declaration / Certification" -> Signed declarations, compliance certifications, attestations.
+    "Evidence / Attachment"     -> Audited financial accounts, resumes, case studies, sample files.
+    "Process Instruction"       -> Pure delivery or process rules without an independent artifact (e.g. "Submit via portal", "Page limit 20 pages").
+    "Other Artifact"            -> Other independent submission items.
+    "Unknown"                   -> If unclassifiable.
+- "file_format": Physical file format requested (e.g. "PDF", "DOCX", "XLSX", "Spreadsheet", "Online Form", "Hard Copy", "Multiple / Mixed", "Unspecified").
+    CRITICAL: Portal and Email are DELIVERY CHANNELS, not file formats! Never write "Portal" or "Email" as the file_format. If no format is stated, use "Unspecified".
+- "submission_channel": Delivery or transmission mechanism (e.g. "Portal", "Email", "E-procurement", "Courier", "Physical", "Upload", "Unspecified").
+- "details": Packaging rules, page limits, signature requirements, or submission portal URLs.
+- "mandatory": 1 if compulsory, 0 if optional/if-applicable, null if unspecified.
+- CRITICAL PRINCIPLE: Artifact identity, file format, and submission channel are independent concepts.
+  A required document submitted via a portal or email is STILL a required artifact (e.g. item="Annex 3 (Supplier Response)", file_format="Unspecified", submission_channel="Portal").
+  Do NOT drop or merge away genuine submission artifacts merely because a portal or email delivery instruction is mentioned!
+  Do NOT invent documents from pure process instructions (e.g. "Submit via portal" is a Process Instruction, not an artifact).
+
 Return ONLY valid JSON with this exact schema:
 {
   "doc_metadata": {
@@ -129,7 +150,16 @@ Return ONLY valid JSON with this exact schema:
     }
   ],
   "submission_rules": [
-    {"item": "Submission component name", "format": "PDF / Separate File / Portal", "details": "Packaging / page limit rule", "mandatory": 1}
+    {
+      "item": "Submission component name",
+      "artifact_type": "Proposal / Response|Form / Annex|Pricing / Financial|Declaration / Certification|Evidence / Attachment|Process Instruction|Other Artifact|Unknown",
+      "file_format": "PDF|DOCX|XLSX|Spreadsheet|Online Form|Hard Copy|Multiple / Mixed|Unspecified",
+      "submission_channel": "Portal|Email|E-procurement|Courier|Physical|Upload|Unspecified",
+      "format": "Physical format or delivery note (backward compatible string)",
+      "details": "Packaging / page limit / portal instruction",
+      "mandatory": 1,
+      "source_refs": []
+    }
   ],
   "deliverables": [
     {"title": "Deliverable output", "description": "What must be produced", "category": "Core|Optional"}
@@ -2206,7 +2236,7 @@ def aggregate_stage_a_facts(chunk_facts_list: list[dict], filename: str) -> dict
     merged["evaluation_criteria"] = deduplicate_evaluation_criteria(raw_eval_list)
 
     # 5. Submission Rules aggregation & deduplication
-    seen_sub = set()
+    seen_sub = {}
     for cf in chunk_facts_list:
         if not isinstance(cf, dict):
             continue
@@ -2216,13 +2246,117 @@ def aggregate_stage_a_facts(chunk_facts_list: list[dict], filename: str) -> dict
             item = (sr.get("item") or "").strip()
             fmt = str(sr.get("format") or "").strip()
             details = str(sr.get("details") or "").strip()
-            canon = (item.lower(), fmt.lower(), details.lower())
-            if not item or canon in seen_sub:
+            if not item:
                 continue
-            seen_sub.add(canon)
-            sr_copy = dict(sr)
-            sr_copy.setdefault("source_doc", filename)
-            merged["submission_rules"].append(sr_copy)
+            canon = _canonical_submission_item_identity(item) or item.lower()
+            
+            # Extract and normalize source_refs (sheet-aware, no fabricated fallbacks)
+            incoming_srefs = []
+            for sref in (sr.get("source_refs") or []):
+                if isinstance(sref, dict):
+                    sref_copy = dict(sref)
+                    sref_copy.setdefault("source_doc", filename)
+                    incoming_srefs.append(sref_copy)
+
+            # Observation tracking
+            obs_at = sr.get("artifact_type")
+            obs_ff = sr.get("file_format")
+            obs_sc = sr.get("submission_channel")
+            obs_mand = sr.get("mandatory")
+
+            if canon in seen_sub:
+                existing_sr = seen_sub[canon]
+                # Merge source_refs with sheet-aware identity
+                existing_sref_keys = {(s.get("source_doc"), s.get("page"), s.get("sheet"), s.get("section"), s.get("excerpt")) for s in existing_sr.get("source_refs", []) if isinstance(s, dict)}
+                for s in incoming_srefs:
+                    k = (s.get("source_doc"), s.get("page"), s.get("sheet"), s.get("section"), s.get("excerpt"))
+                    if k not in existing_sref_keys:
+                        existing_sr.setdefault("source_refs", []).append(s)
+                        existing_sref_keys.add(k)
+                
+                # Track observations & conflicts
+                at_obs = existing_sr.setdefault("artifact_type_observations", [])
+                if obs_at and obs_at not in at_obs:
+                    at_obs.append(obs_at)
+                valid_at = [x for x in at_obs if x and x != "Unknown"]
+                is_at_conflict = len(set(valid_at)) > 1
+                existing_sr["artifact_type_conflict"] = is_at_conflict
+                if is_at_conflict:
+                    existing_sr["artifact_type"] = "Unknown"
+                elif valid_at and (not existing_sr.get("artifact_type") or existing_sr.get("artifact_type") == "Unknown"):
+                    existing_sr["artifact_type"] = valid_at[0]
+
+                ff_obs = existing_sr.setdefault("file_format_observations", [])
+                if obs_ff and obs_ff not in ff_obs:
+                    ff_obs.append(obs_ff)
+                valid_ff = [x for x in ff_obs if x and x != "Unspecified"]
+                is_ff_conflict = len(set(valid_ff)) > 1
+                existing_sr["file_format_conflict"] = is_ff_conflict
+                if is_ff_conflict:
+                    existing_sr["file_format"] = "Multiple / Mixed"
+                elif valid_ff and (not existing_sr.get("file_format") or existing_sr.get("file_format") == "Unspecified"):
+                    existing_sr["file_format"] = valid_ff[0]
+
+                sc_obs = existing_sr.setdefault("submission_channel_observations", [])
+                if obs_sc and obs_sc not in sc_obs:
+                    sc_obs.append(obs_sc)
+                valid_sc = [x for x in sc_obs if x and x != "Unspecified"]
+                is_sc_conflict = len(set(valid_sc)) > 1
+                existing_sr["submission_channel_conflict"] = is_sc_conflict
+                if is_sc_conflict:
+                    existing_sr["submission_channel"] = "Unspecified"
+                elif valid_sc and (not existing_sr.get("submission_channel") or existing_sr.get("submission_channel") == "Unspecified"):
+                    existing_sr["submission_channel"] = valid_sc[0]
+
+                mand_obs = existing_sr.setdefault("mandatory_observations", [])
+                if obs_mand is not None and obs_mand not in mand_obs:
+                    mand_obs.append(obs_mand)
+                valid_mand = [x for x in mand_obs if x is not None]
+                is_mand_conflict = len(set(valid_mand)) > 1
+                existing_sr["mandatory_conflict"] = is_mand_conflict
+                if is_mand_conflict:
+                    existing_sr["mandatory"] = None
+                elif existing_sr.get("mandatory") is None and obs_mand is not None:
+                    existing_sr["mandatory"] = obs_mand
+
+                if not existing_sr.get("format") and fmt:
+                    existing_sr["format"] = fmt
+                if not existing_sr.get("details") and details:
+                    existing_sr["details"] = details
+            else:
+                sr_copy = dict(sr)
+                sr_copy.setdefault("source_doc", filename)
+                sr_copy["source_refs"] = incoming_srefs
+                sr_copy["artifact_type_observations"] = [obs_at] if obs_at else []
+                valid_at = [x for x in sr_copy["artifact_type_observations"] if x and x != "Unknown"]
+                is_at_conflict = len(set(valid_at)) > 1
+                sr_copy["artifact_type_conflict"] = is_at_conflict
+                if is_at_conflict:
+                    sr_copy["artifact_type"] = "Unknown"
+
+                sr_copy["file_format_observations"] = [obs_ff] if obs_ff else []
+                valid_ff = [x for x in sr_copy["file_format_observations"] if x and x != "Unspecified"]
+                is_ff_conflict = len(set(valid_ff)) > 1
+                sr_copy["file_format_conflict"] = is_ff_conflict
+                if is_ff_conflict:
+                    sr_copy["file_format"] = "Multiple / Mixed"
+
+                sr_copy["submission_channel_observations"] = [obs_sc] if obs_sc else []
+                valid_sc = [x for x in sr_copy["submission_channel_observations"] if x and x != "Unspecified"]
+                is_sc_conflict = len(set(valid_sc)) > 1
+                sr_copy["submission_channel_conflict"] = is_sc_conflict
+                if is_sc_conflict:
+                    sr_copy["submission_channel"] = "Unspecified"
+
+                sr_copy["mandatory_observations"] = [obs_mand] if obs_mand is not None else []
+                valid_mand = [x for x in sr_copy["mandatory_observations"] if x is not None]
+                is_mand_conflict = len(set(valid_mand)) > 1
+                sr_copy["mandatory_conflict"] = is_mand_conflict
+                if is_mand_conflict:
+                    sr_copy["mandatory"] = None
+
+                seen_sub[canon] = sr_copy
+                merged["submission_rules"].append(sr_copy)
 
     # 6. Deliverables aggregation & deduplication
     seen_deliv = set()
@@ -2566,10 +2700,129 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
         normalized["dates"].extend(df.get("dates", []))
         raw_pkg_eval = normalized.setdefault("_raw_evaluation_criteria", [])
         raw_pkg_eval.extend(df.get("evaluation_criteria", []))
-        normalized["submission_rules"].extend(df.get("submission_rules", []))
         normalized["deliverables"].extend(df.get("deliverables", []))
         normalized["commercial_clauses"].extend(df.get("commercial_clauses", []))
         normalized["contract_risks"].extend(df.get("contract_risks", []))
+
+        # Deduplicate and merge submission_rules across package documents
+        sub_seen = {}  # canon -> rule dict in normalized["submission_rules"]
+        for ex in normalized["submission_rules"]:
+            c = _canonical_submission_item_identity(ex.get("item", "")) or ex.get("item", "").lower()
+            sub_seen[c] = ex
+
+        for sr in df.get("submission_rules", []):
+            if not isinstance(sr, dict):
+                continue
+            item = (sr.get("item") or "").strip()
+            fmt = str(sr.get("format") or "").strip()
+            details = str(sr.get("details") or "").strip()
+            if not item:
+                continue
+            canon = _canonical_submission_item_identity(item) or item.lower()
+            
+            raw_srefs = sr.get("source_refs") or []
+            validated_srefs = validate_source_refs(raw_srefs, package_metadata) if raw_srefs else []
+
+            incoming_at_obs = sr.get("artifact_type_observations") or ([sr.get("artifact_type")] if sr.get("artifact_type") else [])
+            incoming_ff_obs = sr.get("file_format_observations") or ([sr.get("file_format")] if sr.get("file_format") else [])
+            incoming_sc_obs = sr.get("submission_channel_observations") or ([sr.get("submission_channel")] if sr.get("submission_channel") else [])
+            incoming_mand_obs = sr.get("mandatory_observations") or ([sr.get("mandatory")] if sr.get("mandatory") is not None else [])
+
+            if canon in sub_seen:
+                existing = sub_seen[canon]
+                existing_sref_keys = {(s.get("source_doc"), s.get("page"), s.get("sheet"), s.get("section"), s.get("excerpt")) for s in existing.get("source_refs", []) if isinstance(s, dict)}
+                for s in validated_srefs:
+                    k = (s.get("source_doc"), s.get("page"), s.get("sheet"), s.get("section"), s.get("excerpt"))
+                    if k not in existing_sref_keys:
+                        existing.setdefault("source_refs", []).append(s)
+                        existing_sref_keys.add(k)
+                
+                # Merge observations and update conflicts
+                at_obs = existing.setdefault("artifact_type_observations", [])
+                for obs in incoming_at_obs:
+                    if obs and obs not in at_obs:
+                        at_obs.append(obs)
+                valid_at = [x for x in at_obs if x and x != "Unknown"]
+                is_at_conflict = len(set(valid_at)) > 1
+                existing["artifact_type_conflict"] = is_at_conflict
+                if is_at_conflict:
+                    existing["artifact_type"] = "Unknown"
+                elif valid_at and (not existing.get("artifact_type") or existing.get("artifact_type") == "Unknown"):
+                    existing["artifact_type"] = valid_at[0]
+
+                ff_obs = existing.setdefault("file_format_observations", [])
+                for obs in incoming_ff_obs:
+                    if obs and obs not in ff_obs:
+                        ff_obs.append(obs)
+                valid_ff = [x for x in ff_obs if x and x != "Unspecified"]
+                is_ff_conflict = len(set(valid_ff)) > 1
+                existing["file_format_conflict"] = is_ff_conflict
+                if is_ff_conflict:
+                    existing["file_format"] = "Multiple / Mixed"
+                elif valid_ff and (not existing.get("file_format") or existing.get("file_format") == "Unspecified"):
+                    existing["file_format"] = valid_ff[0]
+
+                sc_obs = existing.setdefault("submission_channel_observations", [])
+                for obs in incoming_sc_obs:
+                    if obs and obs not in sc_obs:
+                        sc_obs.append(obs)
+                valid_sc = [x for x in sc_obs if x and x != "Unspecified"]
+                is_sc_conflict = len(set(valid_sc)) > 1
+                existing["submission_channel_conflict"] = is_sc_conflict
+                if is_sc_conflict:
+                    existing["submission_channel"] = "Unspecified"
+                elif valid_sc and (not existing.get("submission_channel") or existing.get("submission_channel") == "Unspecified"):
+                    existing["submission_channel"] = valid_sc[0]
+
+                mand_obs = existing.setdefault("mandatory_observations", [])
+                for obs in incoming_mand_obs:
+                    if obs is not None and obs not in mand_obs:
+                        mand_obs.append(obs)
+                valid_mand = [x for x in mand_obs if x is not None]
+                is_mand_conflict = len(set(valid_mand)) > 1
+                existing["mandatory_conflict"] = is_mand_conflict
+                if is_mand_conflict:
+                    existing["mandatory"] = None
+                elif valid_mand and existing.get("mandatory") is None:
+                    existing["mandatory"] = valid_mand[0]
+
+                if not existing.get("format") and fmt:
+                    existing["format"] = fmt
+                if not existing.get("details") and details:
+                    existing["details"] = details
+            else:
+                sr_copy = dict(sr)
+                sr_copy["source_refs"] = validated_srefs
+                sr_copy["artifact_type_observations"] = list(incoming_at_obs)
+                valid_at = [x for x in incoming_at_obs if x and x != "Unknown"]
+                is_at_conflict = len(set(valid_at)) > 1
+                sr_copy["artifact_type_conflict"] = is_at_conflict
+                if is_at_conflict:
+                    sr_copy["artifact_type"] = "Unknown"
+
+                sr_copy["file_format_observations"] = list(incoming_ff_obs)
+                valid_ff = [x for x in incoming_ff_obs if x and x != "Unspecified"]
+                is_ff_conflict = len(set(valid_ff)) > 1
+                sr_copy["file_format_conflict"] = is_ff_conflict
+                if is_ff_conflict:
+                    sr_copy["file_format"] = "Multiple / Mixed"
+
+                sr_copy["submission_channel_observations"] = list(incoming_sc_obs)
+                valid_sc = [x for x in incoming_sc_obs if x and x != "Unspecified"]
+                is_sc_conflict = len(set(valid_sc)) > 1
+                sr_copy["submission_channel_conflict"] = is_sc_conflict
+                if is_sc_conflict:
+                    sr_copy["submission_channel"] = "Unspecified"
+
+                sr_copy["mandatory_observations"] = list(incoming_mand_obs)
+                valid_mand = [x for x in incoming_mand_obs if x is not None]
+                is_mand_conflict = len(set(valid_mand)) > 1
+                sr_copy["mandatory_conflict"] = is_mand_conflict
+                if is_mand_conflict:
+                    sr_copy["mandatory"] = None
+
+                sub_seen[canon] = sr_copy
+                normalized["submission_rules"].append(sr_copy)
 
     # Clean up internal candidate accumulation tracking from final normalized requirements
     for r in normalized["requirements"]:
@@ -2638,11 +2891,24 @@ _FORMAT_NEGATIVE_PHRASES = frozenset([
     'reference only',
     'for reference',
     'available for reference',
-    'electronic bid submission',  # portal delivery packaging container, not a file
 ])
 
-# Format phrases positively and explicitly establishing an independent file or package.
-_EXPLICIT_INDEPENDENT_FORMAT_PHRASES = frozenset([
+# Signals indicating physical file format
+_FILE_FORMAT_SIGNALS = {
+    'excel spreadsheet': 'Spreadsheet',
+    'excel workbook': 'Spreadsheet',
+    'spreadsheet': 'Spreadsheet',
+    'online form': 'Online Form',
+    'hard copy': 'Hard Copy',
+    'excel': 'Spreadsheet',
+    'docx': 'DOCX',
+    'xlsx': 'XLSX',
+    'pdf': 'PDF',
+    'xls': 'XLS',
+}
+
+# Signals indicating packaging or standalone independence (NOT physical format)
+_ARTIFACT_INDEPENDENCE_SIGNALS = frozenset([
     'separate file',
     'separate files',
     'separate submission',
@@ -2654,15 +2920,25 @@ _EXPLICIT_INDEPENDENT_FORMAT_PHRASES = frozenset([
     'attached file',
     'attached files',
     'attached samples',
-    'pdf',
-    'docx',
-    'xlsx',
-    'xls',
-    'spreadsheet',
-    'excel workbook',
-    'excel spreadsheet',
-    'excel',
 ])
+
+# Controlled channel mapping
+_CONTROLLED_CHANNEL_MAP = {
+    'electronic bid submission': 'E-procurement',
+    'electronic submission': 'E-procurement',
+    'portal': 'Portal',
+    'merx': 'Portal',
+    'buyandsell': 'Portal',
+    'email': 'Email',
+    'e-procurement': 'E-procurement',
+    'eprocurement': 'E-procurement',
+    'courier': 'Courier',
+    'physical delivery': 'Physical',
+    'physical': 'Physical',
+    'upload': 'Upload',
+    'upload file': 'Upload',
+    'upload proposal': 'Upload',
+}
 
 # Generic document formats that qualify as independent when paired with
 # a strong standalone submission artifact noun in the item title.
@@ -2687,6 +2963,7 @@ _PROCESS_ITEM_PHRASES = frozenset([
     'maximum response length', 'maximum length',
     'response length', 'response limit',
     'portal submission', 'online portal',
+    'submission portal',
     'currency and tax',
     'assumptions and restrictions',
     'response format',
@@ -2722,9 +2999,234 @@ _WORKBOOK_TAB_RE = _re.compile(
 _STRONG_STANDALONE_ARTIFACT_RE = _re.compile(
     r"(?i)\b(?:"
     r"forms?|proposals?|questionnaires?|templates?|annex(?:es)?|schedules?|"
-    r"pricing\s+forms?|rate\s+cards?|work\s*plans?"
+    r"pricing\s+forms?|rate\s+cards?|work\s*plans?|accounts?|checklists?"
     r")\b"
 )
+
+def _canonical_submission_item_identity(item: str) -> str:
+    """
+    Extract a stable canonical identifier for a submission item.
+    Normalizes official identifiers (Annex, Form, Schedule, Envelope) and punctuation
+    so variations in format/details text do not split the same logical artifact.
+    """
+    if not item:
+        return ""
+    text = item.strip().lower()
+    m = _re.search(r'\b(annex|appendix|schedule|form|envelope)\s+([a-z0-9]+)\b', text)
+    if m:
+        return f"{m.group(1)} {m.group(2)}"
+    return _re.sub(r'[\W_]+', ' ', text).strip()
+
+
+def classify_submission_rule(
+    item: str,
+    fmt: str | None = None,
+    details: str | None = None,
+    artifact_type: str | None = None,
+    file_format: str | None = None,
+    submission_channel: str | None = None,
+    **kwargs
+) -> dict:
+    '''
+    Classify a submission rule across the three orthogonal dimensions:
+      1. Artifact Identity (What is to be submitted)
+      2. File Format (Physical representation: PDF, DOCX, XLSX, etc.)
+      3. Submission Channel (Delivery mechanism: Portal, Email, Courier, etc.)
+
+    Returns a dict containing:
+      - is_concrete_document: bool
+      - classification: 'ARTIFACT' | 'PROCESS_ONLY' | 'EMBEDDED_RESPONSE' | 'UNKNOWN'
+      - artifact_type: str
+      - file_format: str
+      - submission_channel: str
+    '''
+    item_clean = (item or '').strip()
+    fmt_raw = (fmt or kwargs.get('format') or '').strip()
+    details_clean = (details or '').strip()
+
+    if not item_clean:
+        return {
+            'is_concrete_document': False,
+            'classification': 'UNKNOWN',
+            'artifact_type': artifact_type or 'Unknown',
+            'file_format': file_format or 'Unspecified',
+            'submission_channel': submission_channel or 'Unspecified',
+        }
+
+    item_lower = item_clean.lower()
+    fmt_lower = fmt_raw.lower()
+    details_lower = details_clean.lower()
+
+    # Determine submission channel from controlled mapping or text scan
+    resolved_channel = 'Unspecified'
+    if submission_channel and submission_channel.strip() and submission_channel.strip() != 'Unspecified':
+        raw_sc = submission_channel.strip().lower()
+        resolved_channel = _CONTROLLED_CHANNEL_MAP.get(raw_sc, submission_channel.strip().title())
+    else:
+        # Check fmt and details
+        for raw_k, norm_v in sorted(_CONTROLLED_CHANNEL_MAP.items(), key=lambda x: len(x[0]), reverse=True):
+            if raw_k in fmt_lower or raw_k in details_lower:
+                resolved_channel = norm_v
+                break
+
+    # Determine file format (strictly physical format, never 'Separate Document' / 'Separate File')
+    resolved_format = 'Unspecified'
+    has_independence_signal = False
+    if file_format and file_format.strip() and file_format.strip() != 'Unspecified':
+        ff_str = file_format.strip()
+        ff_lower = ff_str.lower()
+        if ff_lower in _ARTIFACT_INDEPENDENCE_SIGNALS:
+            has_independence_signal = True
+            resolved_format = 'Unspecified'
+        elif ff_lower in _FILE_FORMAT_SIGNALS:
+            resolved_format = _FILE_FORMAT_SIGNALS[ff_lower]
+        else:
+            resolved_format = ff_str
+    
+    if resolved_format == 'Unspecified' and fmt_raw:
+        # Scan for physical formats first (descending length so 'xlsx' matches before 'xls')
+        for sig, norm_val in sorted(_FILE_FORMAT_SIGNALS.items(), key=lambda x: len(x[0]), reverse=True):
+            if sig in fmt_lower:
+                resolved_format = norm_val
+                break
+        for ind in _ARTIFACT_INDEPENDENCE_SIGNALS:
+            if ind in fmt_lower:
+                has_independence_signal = True
+                break
+
+    # Determine artifact type
+    resolved_artifact_type = artifact_type or 'Unknown'
+    if resolved_artifact_type == 'Unknown':
+        if any(kw in item_lower for kw in ('pricing', 'financial', 'rate card', 'cost')):
+            resolved_artifact_type = 'Pricing / Financial'
+        elif any(kw in item_lower for kw in ('proposal', 'response')):
+            resolved_artifact_type = 'Proposal / Response'
+        elif any(kw in item_lower for kw in ('questionnaire',)):
+            resolved_artifact_type = 'Questionnaire / Workbook'
+        elif any(kw in item_lower for kw in ('annex', 'form', 'template', 'schedule', 'checklist')):
+            resolved_artifact_type = 'Form / Annex'
+        elif any(kw in item_lower for kw in ('declaration', 'certif')):
+            resolved_artifact_type = 'Declaration / Certification'
+        elif any(kw in item_lower for kw in ('sample', 'evidence', 'accounts', 'attachment')):
+            resolved_artifact_type = 'Evidence / Attachment'
+
+    # Hard negative format signals (embedded content, form entry, etc.)
+    if any(p in fmt_lower for p in _FORMAT_NEGATIVE_PHRASES):
+        return {
+            'is_concrete_document': False,
+            'classification': 'EMBEDDED_RESPONSE',
+            'artifact_type': resolved_artifact_type,
+            'file_format': resolved_format if resolved_format != 'Unspecified' else 'Online Form',
+            'submission_channel': resolved_channel,
+        }
+
+    # Workbook tab inside another workbook
+    if _WORKBOOK_TAB_RE.search(item_clean):
+        return {
+            'is_concrete_document': False,
+            'classification': 'EMBEDDED_RESPONSE',
+            'artifact_type': resolved_artifact_type,
+            'file_format': resolved_format,
+            'submission_channel': resolved_channel,
+        }
+
+    # Process / portal / formatting instruction in item text or envelope container
+    is_envelope_container = bool(_re.search(r'(?i)^\s*envelope\s+\d+\b', item_clean))
+    is_pure_bid_submission_header = (item_lower == 'electronic bid submission')
+
+    if is_envelope_container or is_pure_bid_submission_header or any(p in item_lower for p in _PROCESS_ITEM_PHRASES):
+        return {
+            'is_concrete_document': False,
+            'classification': 'PROCESS_ONLY',
+            'artifact_type': 'Process Instruction',
+            'file_format': resolved_format,
+            'submission_channel': resolved_channel,
+        }
+
+    # Quantified constraint in item text
+    if _QUANTITY_CONSTRAINT_RE.search(item_clean):
+        return {
+            'is_concrete_document': False,
+            'classification': 'PROCESS_ONLY',
+            'artifact_type': 'Process Instruction',
+            'file_format': resolved_format,
+            'submission_channel': resolved_channel,
+        }
+
+    # Details reveal reference-only or non-evaluated intent
+    if any(p in details_lower for p in _PROCESS_DETAILS_PHRASES):
+        return {
+            'is_concrete_document': False,
+            'classification': 'PROCESS_ONLY',
+            'artifact_type': 'Process Instruction',
+            'file_format': resolved_format,
+            'submission_channel': resolved_channel,
+        }
+
+    # Explicit normalized orthogonal inputs
+    if artifact_type == 'Process Instruction':
+        return {
+            'is_concrete_document': False,
+            'classification': 'PROCESS_ONLY',
+            'artifact_type': 'Process Instruction',
+            'file_format': resolved_format,
+            'submission_channel': resolved_channel,
+        }
+
+    if resolved_format == 'Online Form' and resolved_artifact_type in ('Questionnaire / Workbook', 'Form / Annex') and not has_independence_signal:
+        return {
+            'is_concrete_document': False,
+            'classification': 'EMBEDDED_RESPONSE',
+            'artifact_type': resolved_artifact_type,
+            'file_format': 'Online Form',
+            'submission_channel': resolved_channel,
+        }
+
+    has_explicit_artifact_type = bool(artifact_type and artifact_type.strip() and artifact_type.strip() != 'Unknown')
+    if has_explicit_artifact_type and resolved_artifact_type in ('Proposal / Response', 'Declaration / Certification', 'Evidence / Attachment', 'Pricing / Financial', 'Form / Annex') and resolved_format != 'Online Form':
+        return {
+            'is_concrete_document': True,
+            'classification': 'ARTIFACT',
+            'artifact_type': resolved_artifact_type,
+            'file_format': resolved_format,
+            'submission_channel': resolved_channel,
+        }
+
+    # Explicit independent file/package format signal
+    if has_independence_signal or resolved_format != 'Unspecified':
+        return {
+            'is_concrete_document': True,
+            'classification': 'ARTIFACT',
+            'artifact_type': resolved_artifact_type,
+            'file_format': resolved_format,
+            'submission_channel': resolved_channel,
+        }
+
+    # Normalize residual format after stripping channel phrases
+    residual_fmt = fmt_lower
+    for ch_phrase in ('electronic portal or email', 'portal/email', 'electronic portal', 'online portal', 'electronic submission', 'electronic bid submission', 'portal', 'email', 'merx', 'buyandsell', 'upload'):
+        residual_fmt = residual_fmt.replace(ch_phrase, '')
+    residual_fmt = residual_fmt.strip(' /,-')
+
+    # 7. Residual format is empty, generic document, or unspecified AND item title has strong standalone artifact noun
+    if (not residual_fmt or residual_fmt in _GENERIC_DOCUMENT_FORMAT_PHRASES):
+        if _STRONG_STANDALONE_ARTIFACT_RE.search(item_clean):
+            return {
+                'is_concrete_document': True,
+                'classification': 'ARTIFACT',
+                'artifact_type': resolved_artifact_type,
+                'file_format': resolved_format,
+                'submission_channel': resolved_channel,
+            }
+
+    # 8. Fallback
+    return {
+        'is_concrete_document': False,
+        'classification': 'PROCESS_ONLY' if (resolved_channel != 'Unspecified' or not fmt_raw) else 'UNKNOWN',
+        'artifact_type': resolved_artifact_type,
+        'file_format': resolved_format,
+        'submission_channel': resolved_channel,
+    }
 
 
 def _is_concrete_submission_document(
@@ -2733,59 +3235,10 @@ def _is_concrete_submission_document(
     details: str | None = None,
 ) -> bool:
     '''
-    Return True only when normalized evidence establishes the rule as a
-    DISCRETE, INDEPENDENTLY TRACKED submission artefact.
-
-    Decision logic (in priority order):
-    1. Empty item -> False.
-    2. Format contains embedded, integrated, form entry, checklist, or mixed marker -> False.
-    3. Workbook tab inside another workbook -> False.
-    4. Item text contains a process/portal/format instruction -> False.
-    5. Item text matches a quantified-constraint pattern -> False.
-    6. Details text reveals reference-only or process intent -> False.
-    7. Format is an explicit independent file/package format -> True.
-    8. Format is generic document (or unspecified) AND item title has strong
-       standalone artifact noun -> True.
-    9. Conservative fallback -> False.
+    Backward-compatible predicate: Return True only when normalized evidence establishes
+    the rule as a DISCRETE, INDEPENDENTLY TRACKED submission artefact.
     '''
-    if not item or not item.strip():
-        return False
-
-    item_lower = item.strip().lower()
-    fmt_lower  = (fmt or '').strip().lower()
-    details_lower = (details or '').strip().lower()
-
-    # Step 2: Hard negative format signals (embedded, form entry, mixed/ambiguous, etc.)
-    if any(p in fmt_lower for p in _FORMAT_NEGATIVE_PHRASES):
-        return False
-
-    # Step 3: Workbook tab that is part of a parent workbook
-    if _WORKBOOK_TAB_RE.search(item):
-        return False
-
-    # Step 4: Process / portal / formatting instruction in item
-    if any(p in item_lower for p in _PROCESS_ITEM_PHRASES):
-        return False
-
-    # Step 5: Quantified constraint in item
-    if _QUANTITY_CONSTRAINT_RE.search(item):
-        return False
-
-    # Step 6: Details reveal reference-only or non-evaluated intent
-    if any(p in details_lower for p in _PROCESS_DETAILS_PHRASES):
-        return False
-
-    # Step 7: Explicit independent file/package format signal
-    if any(p in fmt_lower for p in _EXPLICIT_INDEPENDENT_FORMAT_PHRASES):
-        return True
-
-    # Step 8: Generic document or unspecified format + strong standalone artifact noun
-    if (not fmt_lower or fmt_lower in _GENERIC_DOCUMENT_FORMAT_PHRASES):
-        if _STRONG_STANDALONE_ARTIFACT_RE.search(item):
-            return True
-
-    # Step 9: Conservative fallback
-    return False
+    return classify_submission_rule(item, fmt, details)['is_concrete_document']
 
 
 def build_submission_documents(
@@ -2799,39 +3252,187 @@ def build_submission_documents(
     registry. Only rules representing a DISCRETE, INDEPENDENTLY TRACKED
     submission artefact or package item are included.
 
+    Deduplicates identical artifacts while merging source_refs.
+
     mandatory semantics:
       1   -> REQUIRED
       0   -> OPTIONAL
       absent/None -> UNKNOWN (key omitted from record)
     '''
     documents = []
+    seen_docs = {}  # name.lower() -> index in documents
+
     for sr in (submission_rules or []):
         if not isinstance(sr, dict):
             continue
-        item    = (sr.get('item') or '').strip()
-        fmt     = sr.get('format') or ''
+        item = (sr.get('item') or '').strip()
+        fmt = sr.get('format') or ''
         details = sr.get('details') or ''
-        if not _is_concrete_submission_document(item, fmt, details):
+        
+        classification = classify_submission_rule(
+            item=item,
+            fmt=fmt,
+            details=details,
+            artifact_type=sr.get('artifact_type'),
+            file_format=sr.get('file_format'),
+            submission_channel=sr.get('submission_channel'),
+        )
+        if not classification['is_concrete_document']:
             continue
 
-        doc_type = (
-            'Financial'
-            if any(kw in item.lower()
-                   for kw in ('pricing', 'financial', 'rate card', 'cost'))
-            else 'Submission'
-        )
-        mandatory = sr.get('mandatory')   # None if absent -- not defaulted
+        # Determine orthogonal conflict states and observation lists
+        at_obs = list(sr.get('artifact_type_observations') or ([sr.get('artifact_type')] if sr.get('artifact_type') else []))
+        ff_obs = list(sr.get('file_format_observations') or ([sr.get('file_format')] if sr.get('file_format') else []))
+        sc_obs = list(sr.get('submission_channel_observations') or ([sr.get('submission_channel')] if sr.get('submission_channel') else []))
+        mand_obs = list(sr.get('mandatory_observations') or ([sr.get('mandatory')] if sr.get('mandatory') is not None else []))
+
+        valid_at_obs = [x for x in at_obs if x and x != 'Unknown']
+        at_conflict = bool(sr.get('artifact_type_conflict') or len(set(valid_at_obs)) > 1)
+
+        valid_ff_obs = [x for x in ff_obs if x and x != 'Unspecified']
+        ff_conflict = bool(sr.get('file_format_conflict') or len(set(valid_ff_obs)) > 1)
+
+        valid_sc_obs = [x for x in sc_obs if x and x != 'Unspecified']
+        sc_conflict = bool(sr.get('submission_channel_conflict') or len(set(valid_sc_obs)) > 1)
+
+        valid_mand_obs = [x for x in mand_obs if x is not None]
+        mand_conflict = bool(sr.get('mandatory_conflict') or len(set(valid_mand_obs)) > 1)
+
+        # Conservative conflict resolution for projected metadata
+        if at_conflict:
+            proj_artifact_type = 'Unknown'
+            # doc_type must not be determined from arbitrary conflicting artifact_type
+            if any(kw in item.lower() for kw in ('pricing', 'financial', 'rate card', 'cost')):
+                doc_type = 'Financial'
+            else:
+                doc_type = 'Submission'
+        elif classification.get('artifact_type') == 'Pricing / Financial':
+            proj_artifact_type = 'Pricing / Financial'
+            doc_type = 'Financial'
+        elif any(kw in item.lower() for kw in ('pricing', 'financial', 'rate card', 'cost')):
+            proj_artifact_type = classification['artifact_type']
+            doc_type = 'Financial'
+        else:
+            proj_artifact_type = classification['artifact_type']
+            doc_type = 'Submission'
+
+        proj_file_format = 'Multiple / Mixed' if ff_conflict else classification['file_format']
+        proj_submission_channel = 'Unspecified' if sc_conflict else classification['submission_channel']
+
+        # mandatory: None if conflict or absent
+        if mand_conflict:
+            proj_mandatory = None
+        else:
+            proj_mandatory = sr.get('mandatory')
+
+        name_key = _canonical_submission_item_identity(item) or item.lower()
+
+        # Extract source_refs from submission rule (no manufactured fallbacks)
+        srefs = []
+        for sref in (sr.get('source_refs') or []):
+            if isinstance(sref, dict):
+                srefs.append(dict(sref))
+
+        if name_key in seen_docs:
+            existing_doc = documents[seen_docs[name_key]]
+            existing_srefs = existing_doc.setdefault('source_refs', [])
+            existing_keys = {(s.get('source_doc'), s.get('page'), s.get('sheet'), s.get('section'), s.get('excerpt')) for s in existing_srefs if isinstance(s, dict)}
+            for s in srefs:
+                k = (s.get('source_doc'), s.get('page'), s.get('sheet'), s.get('section'), s.get('excerpt'))
+                if k not in existing_keys:
+                    existing_srefs.append(s)
+                    existing_keys.add(k)
+            if existing_srefs:
+                existing_doc['provenance_state'] = 'VERIFIED'
+
+            if not existing_doc.get('notes') and details:
+                existing_doc['notes'] = details
+
+            # Merge observation history & conflict flags
+            ex_at_obs = existing_doc.setdefault('artifact_type_observations', [])
+            for obs in at_obs:
+                if obs and obs not in ex_at_obs:
+                    ex_at_obs.append(obs)
+            v_at = [x for x in ex_at_obs if x and x != 'Unknown']
+            is_at_c = at_conflict or existing_doc.get('artifact_type_conflict', False) or (len(set(v_at)) > 1)
+            existing_doc['artifact_type_conflict'] = is_at_c
+            if is_at_c:
+                existing_doc['artifact_type'] = 'Unknown'
+                if any(kw in existing_doc['name'].lower() for kw in ('pricing', 'financial', 'rate card', 'cost')):
+                    existing_doc['doc_type'] = 'Financial'
+                else:
+                    existing_doc['doc_type'] = 'Submission'
+            elif v_at and (not existing_doc.get('artifact_type') or existing_doc.get('artifact_type') == 'Unknown'):
+                existing_doc['artifact_type'] = v_at[0]
+                if existing_doc['artifact_type'] == 'Pricing / Financial':
+                    existing_doc['doc_type'] = 'Financial'
+
+            ex_ff_obs = existing_doc.setdefault('file_format_observations', [])
+            for obs in ff_obs:
+                if obs and obs not in ex_ff_obs:
+                    ex_ff_obs.append(obs)
+            v_ff = [x for x in ex_ff_obs if x and x != 'Unspecified']
+            is_ff_c = ff_conflict or existing_doc.get('file_format_conflict', False) or (len(set(v_ff)) > 1)
+            existing_doc['file_format_conflict'] = is_ff_c
+            if is_ff_c:
+                existing_doc['file_format'] = 'Multiple / Mixed'
+            elif v_ff and (not existing_doc.get('file_format') or existing_doc.get('file_format') == 'Unspecified'):
+                existing_doc['file_format'] = v_ff[0]
+
+            ex_sc_obs = existing_doc.setdefault('submission_channel_observations', [])
+            for obs in sc_obs:
+                if obs and obs not in ex_sc_obs:
+                    ex_sc_obs.append(obs)
+            v_sc = [x for x in ex_sc_obs if x and x != 'Unspecified']
+            is_sc_c = sc_conflict or existing_doc.get('submission_channel_conflict', False) or (len(set(v_sc)) > 1)
+            existing_doc['submission_channel_conflict'] = is_sc_c
+            if is_sc_c:
+                existing_doc['submission_channel'] = 'Unspecified'
+            elif v_sc and (not existing_doc.get('submission_channel') or existing_doc.get('submission_channel') == 'Unspecified'):
+                existing_doc['submission_channel'] = v_sc[0]
+
+            ex_mand_obs = existing_doc.setdefault('mandatory_observations', [])
+            for obs in mand_obs:
+                if obs is not None and obs not in ex_mand_obs:
+                    ex_mand_obs.append(obs)
+            v_mand = [x for x in ex_mand_obs if x is not None]
+            is_mand_c = mand_conflict or existing_doc.get('mandatory_conflict', False) or (len(set(v_mand)) > 1)
+            existing_doc['mandatory_conflict'] = is_mand_c
+            if is_mand_c:
+                existing_doc.pop('mandatory', None)
+            elif v_mand and existing_doc.get('mandatory') is None:
+                existing_doc['mandatory'] = v_mand[0]
+
+            continue
+
+        prov_state = 'VERIFIED' if srefs else 'UNVERIFIED'
         doc: dict = {
-            'name':     item,
-            'doc_type': doc_type,
-            'owner':    None,
-            'due_date': submission_deadline,
-            'status':   'Expected',
-            'notes':    details,
+            'name':                            item,
+            'doc_type':                        doc_type,
+            'owner':                           None,
+            'due_date':                        submission_deadline,
+            'status':                          'Expected',
+            'notes':                           details,
+            'file_format':                     proj_file_format,
+            'submission_channel':              proj_submission_channel,
+            'artifact_type':                   proj_artifact_type,
+            'source_refs':                     srefs,
+            'provenance_state':                prov_state,
+            'artifact_type_observations':      at_obs,
+            'artifact_type_conflict':          at_conflict,
+            'file_format_observations':        ff_obs,
+            'file_format_conflict':            ff_conflict,
+            'submission_channel_observations': sc_obs,
+            'submission_channel_conflict':     sc_conflict,
+            'mandatory_observations':          mand_obs,
+            'mandatory_conflict':              mand_conflict,
         }
-        if mandatory is not None:
-            doc['mandatory'] = mandatory
+        if proj_mandatory is not None:
+            doc['mandatory'] = proj_mandatory
+        
+        seen_docs[name_key] = len(documents)
         documents.append(doc)
+
     return documents
 
 
@@ -3066,11 +3667,38 @@ def apply_stage_d_authoritative_sections(synth_data: dict, normalized_facts: dic
         if not item or canon in seen_sub:
             continue
         seen_sub.add(canon)
-        sub_reqs.append({
+        entry = {
             "item":    item,
             "format":  fmt,
             "details": details,
-        })
+        }
+        if mand is not None:
+            entry["mandatory"] = mand
+        if sr.get("artifact_type") is not None:
+            entry["artifact_type"] = sr["artifact_type"]
+        if sr.get("file_format") is not None:
+            entry["file_format"] = sr["file_format"]
+        if sr.get("submission_channel") is not None:
+            entry["submission_channel"] = sr["submission_channel"]
+        if sr.get("source_refs") is not None:
+            entry["source_refs"] = sr["source_refs"]
+        if sr.get("artifact_type_observations") is not None:
+            entry["artifact_type_observations"] = sr["artifact_type_observations"]
+        if sr.get("artifact_type_conflict") is not None:
+            entry["artifact_type_conflict"] = sr["artifact_type_conflict"]
+        if sr.get("file_format_observations") is not None:
+            entry["file_format_observations"] = sr["file_format_observations"]
+        if sr.get("file_format_conflict") is not None:
+            entry["file_format_conflict"] = sr["file_format_conflict"]
+        if sr.get("submission_channel_observations") is not None:
+            entry["submission_channel_observations"] = sr["submission_channel_observations"]
+        if sr.get("submission_channel_conflict") is not None:
+            entry["submission_channel_conflict"] = sr["submission_channel_conflict"]
+        if sr.get("mandatory_observations") is not None:
+            entry["mandatory_observations"] = sr["mandatory_observations"]
+        if sr.get("mandatory_conflict") is not None:
+            entry["mandatory_conflict"] = sr["mandatory_conflict"]
+        sub_reqs.append(entry)
     brief["submission_requirements"] = sub_reqs
 
     # ── key_dates — normalized dates ──────────────────────────────────────────
