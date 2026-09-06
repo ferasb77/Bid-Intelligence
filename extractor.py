@@ -501,6 +501,25 @@ def _xls_percent_text(value, format_string: str) -> str | None:
     return f"{scaled:.{places}f}%"
 
 
+def _xls_temporal_format_kind(format_string: str) -> str:
+    """Classify a narrow Excel date/time format without interpreting literals."""
+    fmt = (format_string or "").split(";", 1)[0].lower()
+    if re.search(r"\[(?:h+|m+|s+)\]", fmt):
+        return "ELAPSED"
+    fmt = re.sub(r'"(?:[^"]|"")*"', "", fmt)
+    fmt = re.sub(r"\\.|_.|\*.", "", fmt)
+    fmt = re.sub(r"\[[^]]+\]", "", fmt)
+    has_date = bool(re.search(r"[yd]", fmt))
+    has_time = bool(re.search(r"[hs]", fmt) or "am/pm" in fmt or "a/p" in fmt)
+    if has_date and has_time:
+        return "DATE_TIME"
+    if has_date:
+        return "DATE_ONLY"
+    if has_time:
+        return "TIME_ONLY"
+    return "UNKNOWN"
+
+
 def _xls_cell_text(cell, workbook) -> str | None:
     """Convert one inert xlrd cell value to deterministic Stage A prompt text."""
     import xlrd
@@ -516,10 +535,16 @@ def _xls_cell_text(cell, workbook) -> str | None:
         return xlrd.error_text_from_code.get(cell.value, f"#ERROR({cell.value})")
     if cell.ctype == xlrd.XL_CELL_DATE:
         try:
+            fmt = workbook.format_map[workbook.xf_list[cell.xf_index].format_key].format_str
+            temporal_kind = _xls_temporal_format_kind(fmt)
+            if temporal_kind in {"ELAPSED", "UNKNOWN"}:
+                return _xls_decimal_text(cell.value)
             value = xlrd.xldate_as_datetime(cell.value, workbook.datemode)
-            fmt = workbook.format_map[workbook.xf_list[cell.xf_index].format_key].format_str.lower()
-            has_time = bool(re.search(r"(?:h|s|am/pm)", re.sub(r'"[^"]*"', "", fmt)))
-            return value.isoformat(timespec="seconds") if has_time else value.date().isoformat()
+            if temporal_kind == "TIME_ONLY":
+                return value.time().isoformat(timespec="seconds")
+            if temporal_kind == "DATE_TIME":
+                return value.isoformat(timespec="seconds")
+            return value.date().isoformat()
         except (KeyError, ValueError, OverflowError):
             return _xls_decimal_text(cell.value)
     if cell.ctype == xlrd.XL_CELL_NUMBER:
@@ -664,7 +689,7 @@ def extract_document_with_metadata(file_bytes: bytes, filename: str) -> tuple[st
         return f"[[SOURCE: {filename}]]\n" + txt, {"type": "text", "len": len(txt)}
     else:
         # Unsupported format (e.g. .doc)
-        return f"[[SOURCE: {filename}]]\n[Unsupported file format. Please upload PDF, DOCX, XLSX, CSV, or TXT]", {"unsupported": True}
+        return f"[[SOURCE: {filename}]]\n[Unsupported file format. Please upload PDF, DOCX, XLSX, XLS, CSV, or TXT]", {"unsupported": True}
 
 
 def extract_text_from_file(file_bytes: bytes, filename: str) -> str:

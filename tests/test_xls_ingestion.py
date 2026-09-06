@@ -10,6 +10,7 @@ import xlrd
 from canonical_opportunity import _validate_ref as validate_canonical_ref
 from extractor import (
     _xls_cell_text,
+    _xls_temporal_format_kind,
     extract_document_with_metadata,
     extract_xls_with_metadata,
     unpack_procurement_package,
@@ -49,6 +50,35 @@ class TestLegacyXlsExtraction(unittest.TestCase):
         self.assertIn("Row 14: 2028-02-29", self.text)
         self.assertIn("Row 15: 2028-02-29T13:45:30", self.text)
         self.assertNotIn("+00:00", self.text)
+
+    def test_time_only_values_do_not_invent_epoch_dates_or_timezone(self):
+        self.assertIn("Row 17: 13:45:00", self.text)
+        self.assertIn("Row 18: 13:45:30", self.text)
+        self.assertNotRegex(self.text, r"(?:1899|1900|1904)-.*13:45")
+        self.assertNotIn("+00:00", self.text)
+
+    def test_elapsed_time_format_falls_back_to_non_calendar_numeric_text(self):
+        self.assertIn("Row 19: 1.5", self.text)
+        row = next(line for line in self.text.splitlines() if line.startswith("Row 19:"))
+        self.assertNotRegex(row, r"\d{4}-\d{2}-\d{2}")
+
+    def test_time_only_rendering_is_epoch_independent(self):
+        cell = SimpleNamespace(ctype=xlrd.XL_CELL_DATE, value=0.5729166666666666, xf_index=0)
+        for datemode in (0, 1):
+            workbook = SimpleNamespace(
+                datemode=datemode,
+                xf_list=[SimpleNamespace(format_key=1)],
+                format_map={1: SimpleNamespace(format_str="h:mm")},
+            )
+            rendered = _xls_cell_text(cell, workbook)
+            self.assertEqual(rendered, "13:45:00")
+            self.assertNotRegex(rendered, r"1899|1900|1904")
+
+    def test_temporal_format_classifier_ignores_literals_and_metadata(self):
+        self.assertEqual(_xls_temporal_format_kind('[$-409]yyyy-mm-dd'), "DATE_ONLY")
+        self.assertEqual(_xls_temporal_format_kind('yyyy\\-mm\\-dd h\\:mm'), "DATE_TIME")
+        self.assertEqual(_xls_temporal_format_kind('[Red]h:mm "local"'), "TIME_ONLY")
+        self.assertEqual(_xls_temporal_format_kind('[h]:mm'), "ELAPSED")
 
     def test_cached_formula_is_not_evaluated_or_exposed(self):
         self.assertEqual(self.meta["formula_policy"], "CACHED_VALUES")

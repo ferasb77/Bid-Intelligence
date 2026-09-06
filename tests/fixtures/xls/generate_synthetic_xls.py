@@ -25,6 +25,9 @@ def main():
     data.write(13, 0, datetime(2028, 2, 29), xlwt.easyxf(num_format_str="YYYY-MM-DD"))
     data.write(14, 0, datetime(2028, 2, 29, 13, 45, 30), xlwt.easyxf(num_format_str="YYYY-MM-DD hh:mm:ss"))
     data.write(15, 0, xlwt.Formula("B10+C10"))
+    data.write(16, 0, 0.5729166666666666, xlwt.easyxf(num_format_str="h:mm"))
+    data.write(17, 0, 0.5732638888888889, xlwt.easyxf(num_format_str="h:mm:ss"))
+    data.write(18, 0, 1.5, xlwt.easyxf(num_format_str="[h]:mm"))
 
     hidden = book.add_sheet("Hidden Guidance")
     hidden.visibility = 1
