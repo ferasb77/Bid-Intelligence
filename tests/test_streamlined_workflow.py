@@ -288,7 +288,7 @@ class TestSubmissionGatingDocumentLogic(unittest.TestCase):
 class TestFormatSupportAndXLSXCoordinates(unittest.TestCase):
     """Scenario 6: File format handling and real Excel row coordinate preservation."""
 
-    def test_doc_and_xls_rejected_as_unsupported(self):
+    def test_doc_rejected_and_xls_admitted_with_parse_diagnostic(self):
         raw_files = [
             ("legacy_doc.doc", b"Old binary doc"),
             ("legacy_sheet.xls", b"Old binary xls"),
@@ -298,7 +298,7 @@ class TestFormatSupportAndXLSXCoordinates(unittest.TestCase):
         unpacked_names = [f[0] for f in unpacked]
 
         self.assertNotIn("legacy_doc.doc", unpacked_names)
-        self.assertNotIn("legacy_sheet.xls", unpacked_names)
+        self.assertIn("legacy_sheet.xls", unpacked_names)
         self.assertIn("valid.pdf", unpacked_names)
         self.assertTrue(any(".doc" in w for w in warnings))
         self.assertTrue(any(".xls" in w for w in warnings))

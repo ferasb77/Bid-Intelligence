@@ -453,6 +453,175 @@ def extract_xlsx_with_metadata(file_bytes: bytes, filename: str) -> tuple[str, d
     return f"[[SOURCE: {filename}]]\n[XLSX parsing failed: unreadable spreadsheet]", meta
 
 
+_OLE_COMPOUND_SIGNATURE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+_XLS_MAX_ROWS = 65536
+_XLS_MAX_COLUMNS = 256
+_XLS_BIFF_LABELS = {
+    20: "BIFF2", 21: "BIFF2.1", 30: "BIFF3", 40: "BIFF4",
+    45: "BIFF4W", 50: "BIFF5", 70: "BIFF7", 80: "BIFF8",
+}
+
+
+def _xls_failure(filename: str, status: str, reason: str) -> tuple[str, dict]:
+    """Return inert marked text and deterministic metadata for an unreadable XLS."""
+    return f"[[SOURCE: {filename}]]\n[XLS parsing failed: {reason}]", {
+        "type": "xls",
+        "parse_status": status,
+        "format": None,
+        "sheets": [],
+        "rows_per_sheet": {},
+        "sheet_visibility": {},
+        "merged_ranges": {},
+        "formula_policy": "CACHED_VALUES",
+        "warnings": [f"Could not parse legacy workbook '{filename}': {reason}"],
+    }
+
+
+def _xls_decimal_text(value) -> str:
+    """Render an xlrd numeric value without float noise or a redundant .0."""
+    from decimal import Decimal, InvalidOperation
+    try:
+        rendered = format(Decimal(str(value)), "f")
+    except (InvalidOperation, ValueError):
+        return str(value)
+    if "." in rendered:
+        rendered = rendered.rstrip("0").rstrip(".")
+    return "0" if rendered in {"-0", ""} else rendered
+
+
+def _xls_percent_text(value, format_string: str) -> str | None:
+    """Render ordinary Excel percentage formats; decline complex custom formats."""
+    section = (format_string or "").split(";", 1)[0].replace("\\", "")
+    section = re.sub(r"\[[^]]+\]", "", section).strip()
+    if not re.fullmatch(r"[+-]?[#0,]+(?:\.([#0]+))?%", section):
+        return None
+    decimals_match = re.search(r"\.([#0]+)%$", section)
+    places = len(decimals_match.group(1)) if decimals_match else 0
+    scaled = float(value) * 100
+    return f"{scaled:.{places}f}%"
+
+
+def _xls_cell_text(cell, workbook) -> str | None:
+    """Convert one inert xlrd cell value to deterministic Stage A prompt text."""
+    import xlrd
+
+    if cell.ctype in (xlrd.XL_CELL_EMPTY, xlrd.XL_CELL_BLANK):
+        return None
+    if cell.ctype == xlrd.XL_CELL_TEXT:
+        value = str(cell.value).strip()
+        return value or None
+    if cell.ctype == xlrd.XL_CELL_BOOLEAN:
+        return "True" if bool(cell.value) else "False"
+    if cell.ctype == xlrd.XL_CELL_ERROR:
+        return xlrd.error_text_from_code.get(cell.value, f"#ERROR({cell.value})")
+    if cell.ctype == xlrd.XL_CELL_DATE:
+        try:
+            value = xlrd.xldate_as_datetime(cell.value, workbook.datemode)
+            fmt = workbook.format_map[workbook.xf_list[cell.xf_index].format_key].format_str.lower()
+            has_time = bool(re.search(r"(?:h|s|am/pm)", re.sub(r'"[^"]*"', "", fmt)))
+            return value.isoformat(timespec="seconds") if has_time else value.date().isoformat()
+        except (KeyError, ValueError, OverflowError):
+            return _xls_decimal_text(cell.value)
+    if cell.ctype == xlrd.XL_CELL_NUMBER:
+        try:
+            fmt = workbook.format_map[workbook.xf_list[cell.xf_index].format_key].format_str
+        except (KeyError, IndexError):
+            fmt = ""
+        percentage = _xls_percent_text(cell.value, fmt)
+        return percentage if percentage is not None else _xls_decimal_text(cell.value)
+    return str(cell.value).strip() or None
+
+
+def extract_xls_with_metadata(file_bytes: bytes, filename: str) -> tuple[str, dict]:
+    """Extract legacy BIFF XLS data without evaluating formulas or external content."""
+    if not file_bytes:
+        return _xls_failure(filename, "CORRUPT", "empty or corrupt legacy workbook")
+    if not file_bytes.startswith(_OLE_COMPOUND_SIGNATURE):
+        return _xls_failure(filename, "UNSUPPORTED_XLS_VARIANT", "not an OLE/BIFF legacy workbook")
+
+    workbook = None
+    try:
+        import xlrd
+        workbook = xlrd.open_workbook(
+            file_contents=file_bytes,
+            formatting_info=True,
+            on_demand=True,
+            ragged_rows=True,
+        )
+        meta = {
+            "type": "xls",
+            "parse_status": "PARSED",
+            "format": _XLS_BIFF_LABELS.get(workbook.biff_version, f"BIFF{workbook.biff_version}"),
+            "sheets": list(workbook.sheet_names()),
+            "rows_per_sheet": {},
+            "sheet_visibility": {},
+            "merged_ranges": {},
+            "formula_policy": "CACHED_VALUES",
+            "warnings": [],
+        }
+        sheets_text = []
+        visibility = {0: "VISIBLE", 1: "HIDDEN", 2: "VERY_HIDDEN"}
+        for sheet_index, sheetname in enumerate(meta["sheets"]):
+            sheet = workbook.sheet_by_index(sheet_index)
+            meta["sheet_visibility"][sheetname] = visibility.get(getattr(sheet, "visibility", None), "UNKNOWN")
+            if sheet.nrows > _XLS_MAX_ROWS or sheet.ncols > _XLS_MAX_COLUMNS:
+                return _xls_failure(filename, "LIMIT_EXCEEDED", "workbook exceeds BIFF row or column limits")
+
+            merged = []
+            for row_low, row_high, col_low, col_high in sheet.merged_cells:
+                start = xlrd.formula.cellname(row_low, col_low)
+                end = xlrd.formula.cellname(row_high - 1, col_high - 1)
+                merged.append(f"{start}:{end}")
+            meta["merged_ranges"][sheetname] = merged
+
+            rows_text = []
+            non_empty_indices = []
+            for row_index in range(sheet.nrows):
+                row_values = []
+                for cell in sheet.row(row_index):
+                    value = _xls_cell_text(cell, workbook)
+                    if value is not None:
+                        row_values.append(value)
+                if row_values:
+                    physical_row = row_index + 1
+                    non_empty_indices.append(physical_row)
+                    rows_text.append(f"Row {physical_row}: " + " | ".join(row_values))
+
+            if rows_text:
+                min_row, max_row = non_empty_indices[0], non_empty_indices[-1]
+                meta["rows_per_sheet"][sheetname] = (min_row, max_row, set(non_empty_indices))
+                sheets_text.append(
+                    f"[[SOURCE: {filename} | SHEET: {sheetname} | ROWS: {min_row}-{max_row}]]\n"
+                    + "\n".join(rows_text)
+                )
+            else:
+                meta["rows_per_sheet"][sheetname] = (0, 0, set())
+
+        if not sheets_text:
+            meta["parse_status"] = "EMPTY_WORKBOOK"
+            meta["warnings"].append(f"Legacy workbook '{filename}' contains no readable cell values")
+            return f"[[SOURCE: {filename}]]\n[XLS workbook contains no readable cell values]", meta
+        return "\n\n".join(sheets_text), meta
+    except Exception as exc:
+        message = str(exc).casefold()
+        exc_name = type(exc).__name__.casefold()
+        if "encrypt" in message or "password" in message:
+            status, reason = "ENCRYPTED", "encrypted/password-protected workbook; provide an unlocked or exported XLSX copy"
+        elif "unsupported format" in message or "expected bof" in message:
+            status, reason = "UNSUPPORTED_XLS_VARIANT", "unsupported legacy workbook variant"
+        elif "compdoc" in exc_name or "corrupt" in message or "truncat" in message or "sector" in message:
+            status, reason = "CORRUPT", "corrupt or truncated legacy workbook"
+        else:
+            status, reason = "PARSER_ERROR", "legacy workbook parser error; provide an unlocked or exported XLSX copy"
+        return _xls_failure(filename, status, reason)
+    finally:
+        if workbook is not None:
+            try:
+                workbook.release_resources()
+            except Exception:
+                pass
+
+
 def extract_csv_with_metadata(file_bytes: bytes, filename: str) -> tuple[str, dict]:
     """Extract CSV text with real row coordinate markers."""
     meta = {"rows_count": 0, "non_empty_rows": set()}
@@ -486,13 +655,15 @@ def extract_document_with_metadata(file_bytes: bytes, filename: str) -> tuple[st
         return extract_docx_with_metadata(file_bytes, filename)
     elif name_lower.endswith(".xlsx"):
         return extract_xlsx_with_metadata(file_bytes, filename)
+    elif name_lower.endswith(".xls"):
+        return extract_xls_with_metadata(file_bytes, filename)
     elif name_lower.endswith(".csv"):
         return extract_csv_with_metadata(file_bytes, filename)
     elif name_lower.endswith(".txt") or name_lower.endswith(".md"):
         txt = file_bytes.decode("utf-8", errors="ignore")
         return f"[[SOURCE: {filename}]]\n" + txt, {"type": "text", "len": len(txt)}
     else:
-        # Unsupported format (e.g. .doc or .xls)
+        # Unsupported format (e.g. .doc)
         return f"[[SOURCE: {filename}]]\n[Unsupported file format. Please upload PDF, DOCX, XLSX, CSV, or TXT]", {"unsupported": True}
 
 
@@ -508,10 +679,10 @@ def unpack_procurement_package(raw_files: list[tuple[str, bytes]]) -> tuple[list
     """
     Unpack uploaded files, safely extracting ZIP archives.
     Rejects path traversal (e.g. ../ or absolute paths), filters unsupported binaries (.exe, .bin)
-    and legacy unsupported office formats (.doc, .xls), returning (supported_files, warnings).
+    and legacy unsupported office formats (.doc), returning (supported_files, warnings).
     """
-    supported_extensions = {".pdf", ".docx", ".xlsx", ".csv", ".txt", ".md"}
-    unsupported_legacy = {".doc", ".xls"}
+    supported_extensions = {".pdf", ".docx", ".xlsx", ".xls", ".csv", ".txt", ".md"}
+    unsupported_legacy = {".doc"}
     unpacked = []
     warnings = []
 
@@ -555,6 +726,15 @@ def unpack_procurement_package(raw_files: list[tuple[str, bytes]]) -> tuple[list
                 warnings.append(f"Skipped legacy format '{fname_clean}'. Convert to modern .docx / .xlsx format.")
             else:
                 warnings.append(f"Ignored unsupported file: {fname_clean}")
+
+    # Preflight supported XLS files so parse failures are visible through the
+    # existing package-warning channel. Keep failed files in the package: their
+    # inert marked diagnostic is still useful and must not abort other files.
+    for supported_name, supported_bytes in unpacked:
+        if supported_name.lower().endswith(".xls"):
+            _, xls_meta = extract_xls_with_metadata(supported_bytes, supported_name)
+            if xls_meta.get("parse_status") not in {"PARSED", "EMPTY_WORKBOOK"}:
+                warnings.extend(xls_meta.get("warnings", []))
 
     return unpacked, warnings
 
