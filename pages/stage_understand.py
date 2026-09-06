@@ -55,9 +55,9 @@ def page_understand(bid_id: int):
 
     # Decode JSON fields from brief_row if present
     exec_summary = brief_row.get("executive_summary") or bid.get("notes") or "Executive summary pending synthesis."
-    opp_type = brief_row.get("opportunity_type") or "Competitive Procurement"
+    opp_type = brief_row.get("opportunity_type") or "Not classified"
     contract_term = brief_row.get("contract_term") or "Not stated"
-    proc_model = brief_row.get("procurement_model") or "Standard Procurement"
+    proc_model = brief_row.get("procurement_model") or "Not classified"
     scope_cats = _ensure_list(brief_row.get("scope_categories"))
     deliverables = _ensure_list(brief_row.get("deliverables_summary"))
     qual_gates = _ensure_list(brief_row.get("qualification_gates"))

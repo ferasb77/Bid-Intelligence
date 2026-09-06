@@ -169,8 +169,58 @@ Return ONLY valid JSON with this exact schema:
   ],
   "contract_risks": [
     {"risk": "AI Restrictions|IP Ownership|Liability|Subcontractors", "severity": "High|Medium|Low", "details": "Contractual risk details"}
+  ],
+  "typed_observations": [
+    {
+      "family": "IDENTITY|MILESTONE|CONTRACT_TERM|MONETARY|PROCUREMENT_MECHANIC|DOCUMENT_ROLE",
+      "semantic_kind": "Controlled kind from the instructions below",
+      "original_value": "Exact source value or wording",
+      "source_doc": "<filename>",
+      "source_refs": [],
+      "scope": {"component": null, "lot": null, "category": null},
+      "date": null, "time": null, "timezone": null, "precision": null,
+      "amount": null, "currency": null, "tax_basis": null,
+      "guarantee_status": null, "period_basis": null,
+      "duration": null, "unit": null, "option_count": null, "optional": null,
+      "document_role": null, "document_role_basis": null,
+      "supersession": {
+        "basis": "EXPLICIT_REVISED_VALUE|EXPLICIT_EXTENSION|EXPLICIT_REPLACEMENT|EXPLICIT_SUPERSEDES_STATEMENT|EXPLICIT_OLD_TO_NEW_RELATIONSHIP",
+        "target_family": "MILESTONE",
+        "target_semantic_kind": "SUBMISSION_DEADLINE",
+        "old_value": "Exact old source value",
+        "new_value": "Exact new source value",
+        "scope": {},
+        "source_refs": []
+      }
+    }
   ]
 }
+
+TYPED OBSERVATION RULES:
+- Emit one atomic observation for each source occurrence in these families. Do not repeat
+  the same fact in multiple typed observations and do not choose package-wide winners.
+- Identity kinds: OPPORTUNITY_TITLE, DOCUMENT_TITLE, BUYER_NAME, ISSUING_AUTHORITY,
+  SOLICITATION_NUMBER, DOCUMENT_REFERENCE_NUMBER.
+- Milestone kinds: SUBMISSION_DEADLINE, CLARIFICATION_DEADLINE, INTENT_TO_BID_DEADLINE,
+  SITE_VISIT, BRIEFING, PRESENTATION_OR_DEMO, AWARD_DATE, CONTRACT_START, CONTRACT_END,
+  IMPLEMENTATION_DEADLINE, DELIVERY_DEADLINE, BID_VALIDITY_END, PUBLICATION_DATE,
+  AMENDMENT_DATE, PAYMENT_MILESTONE, OTHER, UNKNOWN.
+- Contract-term kinds: INITIAL_DURATION, COMMENCEMENT_DATE, END_DATE, EXTENSION_OPTION,
+  RENEWAL_OPTION, MAXIMUM_TERM, TERMINATION_CONDITION, TERM_STATEMENT.
+- Monetary kinds include ESTIMATED_CONTRACT_VALUE, MAXIMUM_CONTRACT_VALUE,
+  FRAMEWORK_CEILING, BUDGET, ANNUAL_VALUE, LOT_VALUE, MINIMUM_SPEND, GUARANTEED_SPEND,
+  FORECAST_VALUE, EVALUATION_SCENARIO_VALUE, RATE_CAP, UNIT_RATE, MILESTONE_PAYMENT.
+- Procurement mechanics are atomic: RFP, ITT, RFQ, SINGLE_SUPPLIER_AWARD,
+  MULTIPLE_SUPPLIER_AWARD, STANDING_OFFER, FRAMEWORK, PANEL, CALL_OFF, LOTS,
+  FIXED_PRICE, RATE_CARD, HOURLY_RATE, DAILY_RATE, MILESTONE_PAYMENT, SUBSCRIPTION,
+  RETAINER, RATE_CAP, ESCALATION_CAP, NO_GUARANTEED_VOLUME, EXTENSION_PRICING,
+  EVALUATED_SCENARIO.
+- Do not infer currency, authority, amendment precedence, optionality, time, or timezone.
+- Every typed observation needs an exact excerpt and only source coordinates present in
+  the input markers. Document role needs cited structural wording; filename alone is not proof.
+- Use supersession only for an explicit old-to-new statement and quote that statement.
+  Emit source-level family, kind, old/new values, exact scope, and source_refs. Never
+  emit or invent canonical observation IDs; Stage B/C resolves targets after IDs exist.
 """
 
 LEGACY_STAGE_D_SYNTHESIS_PROMPT = """You are an executive bid director synthesizing a Bid Brief from normalized procurement facts.
@@ -2138,6 +2188,7 @@ def aggregate_stage_a_facts(chunk_facts_list: list[dict], filename: str) -> dict
         "deliverables": [],
         "commercial_clauses": [],
         "contract_risks": []
+        ,"typed_observations": []
     }
 
     # 1. Conservative metadata merge
@@ -2224,6 +2275,15 @@ def aggregate_stage_a_facts(chunk_facts_list: list[dict], filename: str) -> dict
             d_copy = dict(d)
             d_copy.setdefault("source_doc", filename)
             merged["dates"].append(d_copy)
+
+    # Typed observations are the authoritative representation for new executive
+    # fact families. Preserve each physical occurrence; canonicalization later
+    # collapses repeated extraction of the same occurrence deterministically.
+    for cf in chunk_facts_list:
+        if isinstance(cf, dict):
+            merged["typed_observations"].extend(
+                copy for copy in (dict(x) for x in (cf.get("typed_observations") or []) if isinstance(x, dict))
+            )
 
     # 4. Evaluation Criteria aggregation & deduplication using evaluation_hierarchy
     from evaluation_hierarchy import deduplicate_evaluation_criteria, normalize_evaluation_criterion
@@ -2635,6 +2695,7 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
         "deliverables": [],
         "commercial_clauses": [],
         "contract_risks": []
+        ,"_canonical_opportunity": None
     }
 
     req_seen = {}
@@ -2837,6 +2898,9 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
     raw_pkg_eval = normalized.pop("_raw_evaluation_criteria", [])
     normalized["evaluation_criteria"] = deduplicate_evaluation_criteria(raw_pkg_eval)
 
+    from canonical_opportunity import build_canonical_opportunity
+    normalized["_canonical_opportunity"] = build_canonical_opportunity(doc_facts_list, package_metadata)
+
     return normalized
 
 
@@ -2846,7 +2910,15 @@ def reconcile_package_facts(normalized_facts: dict, package_files: list[str]) ->
     """
     STAGE C: Compare normalized facts to detect cross-document conflicts & addenda overrides.
     """
-    return detect_document_conflicts(normalized_facts, package_files)
+    conflicts = detect_document_conflicts(normalized_facts, package_files)
+    canonical = normalized_facts.get("_canonical_opportunity")
+    if canonical:
+        from canonical_opportunity import apply_legacy_conflict_fallback, resolve_canonical_opportunity
+        canonical = resolve_canonical_opportunity(canonical)
+        canonical = apply_legacy_conflict_fallback(canonical, conflicts)
+        normalized_facts["_canonical_opportunity"] = canonical
+        conflicts.extend(canonical.get("conflicts", []))
+    return conflicts
 
 
 # -- SUBMISSION DOCUMENT PROJECTION -----------------------------------------
@@ -3875,6 +3947,11 @@ def _synthesize_projected_bid_brief(normalized_facts, conflicts, api_key, checkp
             checkpoint.write(prefix + "/response.json", {"text": text, "stop_reason": response.stop_reason})
             if response.stop_reason != "end_turn":
                 raise ProjectionValidationError("INCOMPLETE_MODEL_RESPONSE")
+            canonical = normalized_facts.get("_canonical_opportunity")
+            if canonical and canonical.get("observations"):
+                from canonical_opportunity import remove_authoritative_values_for_validation
+                from stage_d_projection import strict_json, canonical_json
+                text = canonical_json(remove_authoritative_values_for_validation(strict_json(text), canonical))
             validated = validate_stage_d_response(text, projection)
         except (ProjectionValidationError, anthropic.APIError) as exc:
             code = exc.code if isinstance(exc, ProjectionValidationError) else type(exc).__name__
@@ -3889,6 +3966,10 @@ def _synthesize_projected_bid_brief(normalized_facts, conflicts, api_key, checkp
         checkpoint.write(prefix + "/validation.json", validated)
         # Always use a copy of the original authoritative inputs, never the prompt projection.
         result = apply_stage_d_authoritative_sections(validated["synthesis"], copy.deepcopy(normalized_facts))
+        canonical = normalized_facts.get("_canonical_opportunity")
+        if canonical and canonical.get("observations"):
+            from canonical_opportunity import apply_authoritative_values
+            result = apply_authoritative_values(result, canonical)
         expected = apply_stage_d_authoritative_sections({}, copy.deepcopy(normalized_facts))
         if any(result["brief"].get(k) != expected["brief"][k] for k in AUTHORITATIVE_SECTIONS):
             checkpoint.write(prefix + "/assembly-validation.json", {"status": "FAILED", "code": "AUTHORITATIVE_INVARIANT"})
@@ -3944,10 +4025,12 @@ def _extract_procurement_package(package_files, api_key, checkpoint):
     # STAGE B: Package Normalization & Provenance Validation
     normalized_facts = normalize_package_facts(doc_facts_list, package_metadata)
     checkpoint.write("stage-b/normalized-facts.json", normalized_facts)
+    checkpoint.write("stage-b/canonical-observation-ledger.json", normalized_facts.get("_canonical_opportunity"))
 
     # STAGE C: Reconciliation & Conflict Analysis
     conflicts = reconcile_package_facts(normalized_facts, package_metadata["files"])
     checkpoint.write("stage-c/conflicts.json", conflicts)
+    checkpoint.write("stage-c/canonical-opportunity.json", normalized_facts.get("_canonical_opportunity"))
 
     # STAGE D: Executive Bid Brief Synthesis
     synth_output = synthesize_bid_brief(normalized_facts, conflicts, api_key)

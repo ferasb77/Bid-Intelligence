@@ -77,6 +77,154 @@ def model_client(response=None, stop_reason="end_turn"):
     return client
 
 
+def canonical_mechanic_facts():
+    from canonical_opportunity import build_canonical_opportunity, resolve_canonical_opportunity
+    nf = facts()
+    text = "[[SOURCE: mechanics.pdf | PAGE: 1]]\nRequest for advisory support through an RFP."
+    raw = [{"typed_observations": [{"family": "PROCUREMENT_MECHANIC", "semantic_kind": "RFP",
+        "original_value": "RFP", "source_doc": "mechanics.pdf",
+        "source_refs": [{"source_doc": "mechanics.pdf", "page": 1, "excerpt": "RFP"}]}]}]
+    nf["_canonical_opportunity"] = resolve_canonical_opportunity(build_canonical_opportunity(raw,
+        {"files": ["mechanics.pdf"], "doc_metadata": {"mechanics.pdf": {"page_count": 1}}, "doc_texts": {"mechanics.pdf": text}}))
+    return nf
+
+
+def canonical_tier2_response(projection):
+    response = empty_response()
+    mechanic = ctx(projection)["canonical_opportunity"]["observations"][0]
+    response["synthesis"]["brief"]["opportunity_type"] = "Advisory"
+    response["citations"] = [{"output_pointer": "/brief/opportunity_type", "supports": [{
+        "entity_id": mechanic["observation_id"], "field_pointer": "/original_value",
+        "evidence_refs": mechanic["evidence_refs"]}]}]
+    return response
+
+
+def test_canonical_mechanic_observation_is_citable_for_tier2():
+    p = proj.build_stage_d_synthesis_projection(canonical_mechanic_facts(), [])
+    assert proj.validate_stage_d_response(canonical_tier2_response(p), p)["status"] == "VALIDATED"
+
+
+def test_unknown_canonical_alias_is_rejected():
+    p = proj.build_stage_d_synthesis_projection(canonical_mechanic_facts(), [])
+    response = canonical_tier2_response(p); response["citations"][0]["supports"][0]["entity_id"] = "o999"
+    with pytest.raises(proj.ProjectionValidationError, match="UNKNOWN_ENTITY_ID"):
+        proj.validate_stage_d_response(response, p)
+
+
+def test_canonical_wrong_owner_and_hidden_pointer_are_rejected():
+    p = proj.build_stage_d_synthesis_projection(canonical_mechanic_facts(), [])
+    response = canonical_tier2_response(p)
+    requirement = ctx(p)["requirements"][0]
+    response["citations"][0]["supports"][0]["evidence_refs"] = requirement["evidence_refs"]
+    with pytest.raises(proj.ProjectionValidationError, match="WRONG_EVIDENCE_OWNER"):
+        proj.validate_stage_d_response(response, p)
+    response = canonical_tier2_response(p); response["citations"][0]["supports"][0]["field_pointer"] = "/document_role_basis"
+    with pytest.raises(proj.ProjectionValidationError, match="MISSING_POINTER"):
+        proj.validate_stage_d_response(response, p)
+
+
+def test_tier2_cannot_be_supported_only_by_unrelated_requirement():
+    p = proj.build_stage_d_synthesis_projection(canonical_mechanic_facts(), [])
+    response = empty_response(); requirement = ctx(p)["requirements"][0]
+    response["synthesis"]["brief"]["opportunity_type"] = "Advisory"
+    response["citations"] = [{"output_pointer": "/brief/opportunity_type", "supports": [{"entity_id": requirement["requirement_id"],
+        "field_pointer": "/description", "evidence_refs": requirement["evidence_refs"]}]}]
+    with pytest.raises(proj.ProjectionValidationError, match="UNSUPPORTED_TIER2_CLASSIFICATION"):
+        proj.validate_stage_d_response(response, p)
+
+
+def test_mechanic_contradiction_disables_stage_d_tier2_schema():
+    from canonical_opportunity import build_canonical_opportunity, resolve_canonical_opportunity
+    nf = facts()
+    text = "[[SOURCE: mechanics.pdf | PAGE: 1]]\nsingle supplier and multiple supplier"
+    raw = [{"typed_observations": [{"family": "PROCUREMENT_MECHANIC", "semantic_kind": kind,
+        "original_value": value, "source_doc": "mechanics.pdf",
+        "source_refs": [{"source_doc": "mechanics.pdf", "page": 1, "excerpt": value}]}
+        for kind, value in (("SINGLE_SUPPLIER_AWARD", "single supplier"), ("MULTIPLE_SUPPLIER_AWARD", "multiple supplier"))]}]
+    nf["_canonical_opportunity"] = resolve_canonical_opportunity(build_canonical_opportunity(raw,
+        {"files": ["mechanics.pdf"], "doc_metadata": {"mechanics.pdf": {"page_count": 1}}, "doc_texts": {"mechanics.pdf": text}}))
+    p = proj.build_stage_d_synthesis_projection(nf, nf["_canonical_opportunity"]["conflicts"])
+    assert nf["_canonical_opportunity"]["resolved"]["procurement_model"]["status"] == "CONFLICTED"
+    schema = proj.stage_d_output_config(p)["format"]["schema"]
+    assert schema["properties"]["synthesis"]["properties"]["brief"]["properties"]["procurement_model"] == {"type": "null"}
+
+
+def test_canonical_date_conflict_projects_structured_values_losslessly():
+    text = "[[SOURCE: dates.pdf | PAGE: 1]]\n2030-10-01 and 2030-10-03"
+    raw = [{"typed_observations": [{"family": "MILESTONE", "semantic_kind": "SUBMISSION_DEADLINE",
+        "original_value": value, "date": value, "precision": "DATE", "source_doc": "dates.pdf",
+        "source_refs": [{"source_doc": "dates.pdf", "page": 1, "excerpt": value}]} for value in ("2030-10-01", "2030-10-03")]}]
+    metadata = {"files": ["dates.pdf"], "doc_metadata": {"dates.pdf": {"page_count": 1}}, "doc_texts": {"dates.pdf": text}}
+    nf = extractor.normalize_package_facts(raw, metadata)
+    conflicts = extractor.reconcile_package_facts(nf, ["dates.pdf"])
+    canonical_conflict = next(c for c in conflicts if c.get("affected_fields") == ["/resolved/submission_deadline"])
+    p = proj.build_stage_d_synthesis_projection(nf, conflicts)
+    expanded = proj.expand_prompt_context(p["prompt_context"])
+    projected = next(c for c in expanded["detected_conflicts"] if c["incompatible_values"] == canonical_conflict["incompatible_values"])
+    assert projected["incompatible_values"] == [
+        {"date": "2030-10-01", "precision": "DATE", "time": None, "timezone": None},
+        {"date": "2030-10-03", "precision": "DATE", "time": None, "timezone": None},
+    ]
+
+
+def test_canonical_money_conflict_projects_structured_values_losslessly():
+    from canonical_opportunity import build_canonical_opportunity, resolve_canonical_opportunity
+    text = "[[SOURCE: money.pdf | PAGE: 1]]\nCAD 100 exclusive and USD 200 inclusive"
+    raw = [{"typed_observations": [{"family": "MONETARY", "semantic_kind": "ESTIMATED_CONTRACT_VALUE",
+        "original_value": amount, "amount": amount, "currency": currency, "tax_basis": tax, "source_doc": "money.pdf",
+        "source_refs": [{"source_doc": "money.pdf", "page": 1, "excerpt": excerpt}]}
+        for amount, currency, tax, excerpt in (("100", "CAD", "EXCLUSIVE", "CAD 100 exclusive"), ("200", "USD", "INCLUSIVE", "USD 200 inclusive"))]}]
+    nf = facts(); nf["_canonical_opportunity"] = resolve_canonical_opportunity(build_canonical_opportunity(raw,
+        {"files": ["money.pdf"], "doc_metadata": {"money.pdf": {"page_count": 1}}, "doc_texts": {"money.pdf": text}}))
+    conflicts = nf["_canonical_opportunity"]["conflicts"]
+    p = proj.build_stage_d_synthesis_projection(nf, conflicts)
+    expanded = proj.expand_prompt_context(p["prompt_context"])
+    assert expanded["detected_conflicts"][0]["incompatible_values"] == conflicts[0]["incompatible_values"]
+    assert all(isinstance(value, dict) for value in expanded["detected_conflicts"][0]["incompatible_values"])
+
+
+def test_unsupported_nested_conflict_value_fails_closed():
+    bad = conflicts()[0]
+    bad["incompatible_values"] = [{"date": {"nested": "forbidden"}}]
+    with pytest.raises(proj.ProjectionValidationError, match="INVALID_FIELD_TYPE"):
+        proj.build_stage_d_synthesis_projection(facts(), [bad])
+
+
+def test_canonical_evidence_source_pointers_resolve_exactly_and_deterministically():
+    nf = canonical_mechanic_facts()
+    p = proj.build_stage_d_synthesis_projection(nf, [])
+    pointers = []
+    for evidence in p["sidecar"]["evidence"].values():
+        for pointer in evidence["source_pointers"]:
+            if "/_canonical_opportunity/observations/" not in pointer:
+                continue
+            pointers.append(pointer)
+            actual = proj.resolve_pointer(p["sidecar"]["authoritative_inputs"], pointer)
+            tokens = pointer.split("/")
+            observation = nf["_canonical_opportunity"]["observations"][int(tokens[4])]
+            assert actual == observation["source_refs"][int(tokens[-1])]
+    assert pointers and all("/observations/obs_" not in pointer for pointer in pointers)
+    with pytest.raises(proj.ProjectionValidationError, match="MISSING_POINTER"):
+        proj.resolve_pointer(p["sidecar"]["authoritative_inputs"], "/normalized_facts/_canonical_opportunity/observations/999/source_refs/0")
+
+    from canonical_opportunity import build_canonical_opportunity, resolve_canonical_opportunity
+    text = "[[SOURCE: mechanics.pdf | PAGE: 1]]\nRFP rate card"
+    observations = [{"family": "PROCUREMENT_MECHANIC", "semantic_kind": kind, "original_value": value,
+                     "source_doc": "mechanics.pdf", "source_refs": [{"source_doc": "mechanics.pdf", "page": 1, "excerpt": value}]}
+                    for kind, value in (("RFP", "RFP"), ("RATE_CARD", "rate card"))]
+    meta = {"files": ["mechanics.pdf"], "doc_metadata": {"mechanics.pdf": {"page_count": 1}}, "doc_texts": {"mechanics.pdf": text}}
+    projections = []
+    for ordered in (observations, list(reversed(observations))):
+        candidate = facts()
+        candidate["_canonical_opportunity"] = resolve_canonical_opportunity(build_canonical_opportunity(
+            [{"typed_observations": ordered}], meta))
+        projections.append(proj.build_stage_d_synthesis_projection(candidate, []))
+    assert projections[0]["sidecar"]["authoritative_inputs"]["normalized_facts"]["_canonical_opportunity"]["observations"] == projections[1]["sidecar"]["authoritative_inputs"]["normalized_facts"]["_canonical_opportunity"]["observations"]
+    pointer_sets = [sorted(pointer for evidence in projection["sidecar"]["evidence"].values() for pointer in evidence["source_pointers"]
+                           if "/_canonical_opportunity/observations/" in pointer) for projection in projections]
+    assert pointer_sets[0] == pointer_sets[1]
+
+
 def test_occurrence_bijection_duplicates_and_original_ids():
     nf = facts()
     nf["requirements"] *= 3
