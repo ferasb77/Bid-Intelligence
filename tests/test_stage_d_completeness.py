@@ -653,13 +653,32 @@ class TestStageDContextSizePreflight(unittest.TestCase):
         import unittest.mock as mock
 
         mock_response = mock.MagicMock()
-        mock_response.content = [mock.MagicMock(text="{}")]
+        # The preflight test supplies a valid v1 response. Empty JSON is now
+        # explicitly rejected by the separate strict-response tests.
+        response = {
+            "synthesis": {
+                "bid": {"title": None, "client": None, "file_number": None,
+                        "owner": None, "sensitivity": "Standard",
+                        "submission_deadline": None, "clarification_deadline": None,
+                        "value_cad": None, "notes": None},
+                "brief": {"executive_summary": None, "opportunity_type": None,
+                          "contract_term": "Not stated", "procurement_model": None,
+                          "scope_categories": []},
+                "outline": [],
+            },
+            "citations": [],
+        }
+        mock_response.content = [mock.MagicMock(type="text", text=json.dumps(response))]
+        mock_response.stop_reason = "end_turn"
         mock_client = mock.MagicMock()
+        mock_client.with_options.return_value = mock_client
         mock_client.messages.create.return_value = mock_response
 
         with mock.patch("extractor.get_anthropic_client", return_value=mock_client):
             result = synthesize_bid_brief(self._minimal_nf(), [], api_key="test")
         self.assertIsInstance(result, dict)
+        mock_client.messages.create.assert_called_once()
+        self.assertIn("qualification_gates", result["brief"])
 
 
 if __name__ == "__main__":
