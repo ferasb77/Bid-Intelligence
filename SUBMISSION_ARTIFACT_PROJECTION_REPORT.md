@@ -157,3 +157,41 @@ In earlier iterations of the Bid Intelligence extraction and projection layer, g
 6. **No Database Migration**: 0 migrations added (No Migration 004).
 7. **Clean Provenance State**: All projected documents correctly report `provenance_state` without manufacturing synthetic refs.
 8. **Explicit Replay Mode**: Replay artifacts and logs explicitly distinguish between `FROZEN` (deterministic baseline using Attempt 2 facts) and `LIVE` (full LLM pipeline execution).
+
+---
+
+## 5. Live Benchmark Replay & Stage D Capacity Block Record
+
+**Live Failure Artifact:** `tests/acceptance/results/bc_submission_artifact_projection_live_failure.json`  
+**Production Code SHA:** `802faa659905b07cbc081443c188fb644def1b35`  
+**Model:** `claude-haiku-4-5-20251001`  
+**Replay Mode:** `LIVE`  
+**Outcome:** `BLOCKED_STAGE_D_CONTEXT_LIMIT`  
+**Attempts Count:** 2 (both halted at the identical preflight guard; live replay attempted twice only)  
+
+### Execution & Stage Metrics
+- **Input Documents:** 8 fixture files preprocessed in 1.21s (279,258 characters).
+- **Stage A (Live Document Fact Extraction):** Completed across all 8 files via live Claude Haiku calls in **2,929.66s** (~48.8 minutes).
+  - Raw submission rules extracted: **106**.
+- **Stage B (Package Normalization):** Completed in **0.3897s**.
+  - Normalized submission rules: **76**.
+- **Stage C (Cross-Document Reconciliation):** Completed in **0.0529s**.
+  - Conflicts detected: **7**.
+- **Stage D (Executive Bid Brief Synthesis):** **HALTED BEFORE API DISPATCH**.
+  - Source requirements extracted across package: **559**.
+  - Serialized Stage D context size: **1,045,967 characters**.
+  - Safe Stage D input limit (`_STAGE_D_CONTEXT_CHAR_LIMIT`): **580,000 characters**.
+  - Excess over safe threshold: **465,967 characters**.
+  - Preflight guard triggered: `extractor.StageDContextTooLargeError`.
+  - Stage D API dispatch did not occur.
+  - No requirements were silently omitted.
+
+### Integrity & Root Cause Analysis
+> [!IMPORTANT]
+> **Stage D Context Limit vs. Submission Projection Integrity**:
+> The Submission Artifact Projection remediation itself is not known to have failed. Stages A, B, and C successfully extracted and normalized 76 orthogonal submission rules across the live 8-document package with observation tracking and conflict flags.
+> Full live end-to-end acceptance could not complete because a separate, pre-existing downstream Stage D context-capacity constraint was encountered on the 559-requirement procurement package.
+> 
+> - **LIVE ACCEPTANCE PASSED is NOT claimed.**
+> - The Stage D context-capacity block is **not** a submission-projection defect; it is an existing architectural constraint in Stage D synthesis when handling very large requirement registers (>500 requirements with source references).
+> - No production code (`extractor.py`), test code, or replay runner code was altered after the failure.
