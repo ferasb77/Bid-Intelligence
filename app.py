@@ -225,15 +225,15 @@ def page_new_bid():
     st.markdown(
         '<div class="info-box">'
         'Upload your complete procurement package (Main RFP, Appendices, Workbooks, Addenda, or a ZIP archive). '
-        'Supported formats: <strong>PDF, DOCX, XLSX, CSV, TXT, ZIP</strong>. Claude will analyze all documents through a staged pipeline, '
+        'Supported formats: <strong>PDF, DOCX, XLSX, XLS, CSV, TXT, ZIP</strong>. Claude will analyze all documents through a staged pipeline, '
         'reconcile cross-document conflicts, extract the compliance matrix with validated source traceability, and synthesize the executive Bid Brief.'
         '</div>',
         unsafe_allow_html=True
     )
     from extractor import extract_procurement_package, unpack_procurement_package
     uploaded_files = st.file_uploader(
-        "Upload procurement documents or ZIP archive (PDF, DOCX, XLSX, CSV, TXT, ZIP)",
-        type=["pdf", "docx", "xlsx", "csv", "txt", "zip"],
+        "Upload procurement documents or ZIP archive (PDF, DOCX, XLSX, XLS, CSV, TXT, ZIP)",
+        type=["pdf", "docx", "xlsx", "xls", "csv", "txt", "zip"],
         accept_multiple_files=True,
         key="pkg_uploader"
     )

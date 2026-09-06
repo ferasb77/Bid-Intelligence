@@ -34,7 +34,7 @@ class TestProcurementPackageIngestion(unittest.TestCase):
             z.writestr("../../etc/passwd", "Root exploit.")
             # Unsupported binary
             z.writestr("malicious_executable.exe", b"MZ\x90\x00BinaryExe")
-            # Unsupported legacy formats
+            # Unsupported legacy DOC and supported-but-malformed legacy XLS
             z.writestr("legacy.doc", b"Old binary doc")
             z.writestr("legacy.xls", b"Old binary xls")
             # Hidden system file
@@ -52,17 +52,19 @@ class TestProcurementPackageIngestion(unittest.TestCase):
         self.assertIn("Pricing_Template.xlsx", unpacked_names)
         self.assertIn("Schedule_1.txt", unpacked_names)
 
-        # Path traversal files, binaries, and legacy files MUST be rejected
+        # Path traversal files, binaries, and legacy DOC MUST be rejected.
+        # XLS is admitted and its parser failure is reported without aborting the package.
         self.assertNotIn("../malicious_file.txt", unpacked_names)
         self.assertNotIn("../../etc/passwd", unpacked_names)
         self.assertNotIn("malicious_executable.exe", unpacked_names)
         self.assertNotIn("legacy.doc", unpacked_names)
-        self.assertNotIn("legacy.xls", unpacked_names)
+        self.assertIn("legacy.xls", unpacked_names)
         self.assertNotIn(".DS_Store", unpacked_names)
 
         # Warnings should record the rejections
         self.assertTrue(any("Security Alert" in w for w in warnings))
         self.assertTrue(any("malicious_executable.exe" in w for w in warnings))
+        self.assertTrue(any("legacy.xls" in w for w in warnings))
 
     def test_multi_document_preserves_filenames_and_markers(self):
         """Verify deterministic source markers are inserted for multi-document packages."""
