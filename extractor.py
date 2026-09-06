@@ -183,7 +183,15 @@ Return ONLY valid JSON with this exact schema:
       "guarantee_status": null, "period_basis": null,
       "duration": null, "unit": null, "option_count": null, "optional": null,
       "document_role": null, "document_role_basis": null,
-      "supersession": null
+      "supersession": {
+        "basis": "EXPLICIT_REVISED_VALUE|EXPLICIT_EXTENSION|EXPLICIT_REPLACEMENT|EXPLICIT_SUPERSEDES_STATEMENT|EXPLICIT_OLD_TO_NEW_RELATIONSHIP",
+        "target_family": "MILESTONE",
+        "target_semantic_kind": "SUBMISSION_DEADLINE",
+        "old_value": "Exact old source value",
+        "new_value": "Exact new source value",
+        "scope": {},
+        "source_refs": []
+      }
     }
   ]
 }
@@ -211,6 +219,8 @@ TYPED OBSERVATION RULES:
 - Every typed observation needs an exact excerpt and only source coordinates present in
   the input markers. Document role needs cited structural wording; filename alone is not proof.
 - Use supersession only for an explicit old-to-new statement and quote that statement.
+  Emit source-level family, kind, old/new values, exact scope, and source_refs. Never
+  emit or invent canonical observation IDs; Stage B/C resolves targets after IDs exist.
 """
 
 LEGACY_STAGE_D_SYNTHESIS_PROMPT = """You are an executive bid director synthesizing a Bid Brief from normalized procurement facts.
@@ -2903,8 +2913,9 @@ def reconcile_package_facts(normalized_facts: dict, package_files: list[str]) ->
     conflicts = detect_document_conflicts(normalized_facts, package_files)
     canonical = normalized_facts.get("_canonical_opportunity")
     if canonical:
-        from canonical_opportunity import resolve_canonical_opportunity
+        from canonical_opportunity import apply_legacy_conflict_fallback, resolve_canonical_opportunity
         canonical = resolve_canonical_opportunity(canonical)
+        canonical = apply_legacy_conflict_fallback(canonical, conflicts)
         normalized_facts["_canonical_opportunity"] = canonical
         conflicts.extend(canonical.get("conflicts", []))
     return conflicts

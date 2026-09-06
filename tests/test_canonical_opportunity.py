@@ -2,7 +2,7 @@ import copy
 import itertools
 
 from canonical_opportunity import (
-    SCHEMA_VERSION, apply_authoritative_values, build_canonical_opportunity,
+    SCHEMA_VERSION, apply_authoritative_values, apply_legacy_conflict_fallback, build_canonical_opportunity,
     compact_stage_d_summary, remove_authoritative_values_for_validation,
     resolve_canonical_opportunity,
 )
@@ -139,7 +139,7 @@ def test_duplicate_physical_occurrence_collapses_with_occurrences():
     item = obs("OPPORTUNITY_TITLE", "Tender Alpha")
     c = resolved([{"typed_observations": [copy.deepcopy(item), copy.deepcopy(item)]}])
     assert len(c["observations"]) == 1
-    assert len(c["observations"][0]["extraction_occurrences"]) == 2
+    assert c["observations"][0]["extraction_occurrences"][0]["count"] == 2
 
 
 def test_model_copies_of_authoritative_values_are_removed_before_validation():
@@ -148,3 +148,98 @@ def test_model_copies_of_authoritative_values_are_removed_before_validation():
     cleaned = remove_authoritative_values_for_validation(response, c)
     assert cleaned["synthesis"]["bid"]["title"] is None
     assert response["synthesis"]["bid"]["title"] == "Tender Alpha"
+
+
+def test_exact_marker_locator_matching_adversarial_cases():
+    text = "[[SOURCE: a.pdf | PAGE: 10]]\nwrong Tender Alpha\n[[SOURCE: a.pdf | PAGE: 1]]\nright Buyer Corp"
+    meta = {"files": ["a.pdf"], "doc_metadata": {"a.pdf": {"page_count": 10}}, "doc_texts": {"a.pdf": text}}
+    c = resolved([{"typed_observations": [obs("OPPORTUNITY_TITLE", "Tender Alpha")]}], meta)
+    assert c["observations"][0]["provenance_status"] != "VERIFIED"
+    assert resolved([{"typed_observations": [obs("BUYER_NAME", "Buyer Corp")]}], meta)["resolved"]["client"]["status"] == "RESOLVED"
+
+
+def test_rows_are_structural_ranges_not_digit_substrings():
+    text = "[[SOURCE: a.pdf | SHEET: Data | ROWS: 10-20]]\nTender Alpha"
+    meta = {"files": ["a.pdf"], "doc_metadata": {"a.pdf": {"sheets": ["Data"]}}, "doc_texts": {"a.pdf": text}}
+    item = obs("OPPORTUNITY_TITLE", "Tender Alpha"); item["source_refs"][0].update(sheet="Data", row=1); item["source_refs"][0].pop("page")
+    assert resolved([{"typed_observations": [item]}], meta)["observations"][0]["provenance_status"] != "VERIFIED"
+    item["source_refs"][0]["row"] = 10
+    assert resolved([{"typed_observations": [item]}], meta)["observations"][0]["provenance_status"] == "VERIFIED"
+
+
+def test_stage_a_shaped_source_supersession_resolves_after_ids_exist():
+    old = obs("SUBMISSION_DEADLINE", "2030-01-01", doc="old.pdf", family="MILESTONE", date="2030-01-01")
+    new = obs("SUBMISSION_DEADLINE", "2030-01-02", doc="new.pdf", family="MILESTONE", date="2030-01-02")
+    new["supersession"] = {"basis": "EXPLICIT_EXTENSION", "target_family": "MILESTONE",
+        "target_semantic_kind": "SUBMISSION_DEADLINE", "old_value": "2030-01-01", "new_value": "2030-01-02", "scope": {},
+        "source_refs": [{"source_doc": "new.pdf", "page": 1, "excerpt": "2030-01-01 2030-01-02"}]}
+    meta = metadata("old.pdf", "new.pdf"); meta["doc_texts"]["new.pdf"] += " 2030-01-01 2030-01-02"
+    c = resolved([{"typed_observations": [old]}, {"typed_observations": [new]}], meta)
+    assert {o["original_value"]: o["supersession_state"] for o in c["observations"]} == {"2030-01-01": "SUPERSEDED", "2030-01-02": "ACTIVE"}
+    assert c["resolved"]["submission_deadline"]["value"]["date"] == "2030-01-02"
+
+
+def test_different_later_date_without_supersession_conflicts():
+    c = resolved([{"typed_observations": [obs("SUBMISSION_DEADLINE", "2030-01-01", family="MILESTONE", date="2030-01-01"),
+                                          obs("SUBMISSION_DEADLINE", "2030-01-02", family="MILESTONE", date="2030-01-02")]}])
+    assert c["resolved"]["submission_deadline"]["status"] == "CONFLICTED"
+
+
+def test_partial_coverage_uses_only_field_specific_legacy_fallback():
+    c = resolved([{"typed_observations": [obs("CLARIFICATION_DEADLINE", "2030-01-01", family="MILESTONE", date="2030-01-01")]}])
+    c = apply_legacy_conflict_fallback(c, [{"conflict_id": "legacy", "conflict_type": "DATE_CONFLICT", "topic": "Submission deadline"},
+                                            {"conflict_id": "env", "conflict_type": "ENVELOPE_CONFLICT", "topic": "Envelope"}])
+    assert c["resolved"]["submission_deadline"]["status"] == "CONFLICTED"
+    assert c["resolved"]["clarification_deadline"]["status"] == "RESOLVED"
+
+
+def test_repeatable_extensions_and_human_display():
+    items = [obs("INITIAL_DURATION", "24 months", family="CONTRACT_TERM", duration=24, unit="months"),
+             obs("EXTENSION_OPTION", "12 months", family="CONTRACT_TERM", duration=12, unit="months", optional=True),
+             obs("EXTENSION_OPTION", "6 months", family="CONTRACT_TERM", duration=6, unit="months", optional=True, conditions="approval")]
+    meta = metadata("a.pdf"); meta["doc_texts"]["a.pdf"] += " 24 months 12 months 6 months approval"
+    c = resolved([{"typed_observations": items}], meta)
+    assert c["resolved"]["contract_term"]["status"] == "RESOLVED"
+    display = apply_authoritative_values({"bid": {}, "brief": {}}, c)["brief"]["contract_term"]
+    assert "Optional extension: 12 months" in display and "Optional extension: 6 months subject to approval" in display
+    assert "{" not in display
+
+
+def test_same_identified_option_disagreement_conflicts():
+    items = [obs("EXTENSION_OPTION", "12 months", family="CONTRACT_TERM", duration=12, unit="months", option_sequence="1"),
+             obs("EXTENSION_OPTION", "6 months", family="CONTRACT_TERM", duration=6, unit="months", option_sequence="1")]
+    meta = metadata("a.pdf"); meta["doc_texts"]["a.pdf"] += " 12 months 6 months"
+    assert resolved([{"typed_observations": items}], meta)["resolved"]["contract_term"]["status"] == "CONFLICTED"
+
+
+def test_invalid_family_kind_and_dates_are_retained_as_diagnostics_or_unparsed():
+    malformed = obs("NOT_A_REAL_KIND", "x")
+    invalid_date = obs("SUBMISSION_DEADLINE", "2030-02-29", family="MILESTONE", date="2030-02-29")
+    c = resolved([{"typed_observations": [malformed, invalid_date]}])
+    assert c["integrity_diagnostics"]["invalid_observations"][0]["validation_state"] == "INVALID_FAMILY_KIND"
+    assert c["observations"][0]["normalization_state"] == "UNPARSED"
+    assert c["resolved"]["submission_deadline"]["status"] == "UNVERIFIED"
+
+
+def test_valid_leap_date_time_and_no_timezone_inference():
+    item = obs("SUBMISSION_DEADLINE", "2032-02-29", family="MILESTONE", date="2032-02-29", time="23:59")
+    meta = metadata("a.pdf"); meta["doc_texts"]["a.pdf"] += " 2032-02-29"
+    c = resolved([{"typed_observations": [item]}], meta)
+    assert c["resolved"]["submission_deadline"]["value"]["timezone"] is None
+    item["time"] = "25:00"
+    assert resolved([{"typed_observations": [item]}], meta)["observations"][0]["normalization_state"] == "UNPARSED"
+
+
+def test_observation_order_does_not_change_authoritative_object_or_digest():
+    items = [obs("OPPORTUNITY_TITLE", "Tender Alpha"), obs("BUYER_NAME", "Buyer Corp"), obs("SOLICITATION_NUMBER", "SOL-7")]
+    outputs = [resolved([{"typed_observations": list(p)}]) for p in itertools.permutations(items)]
+    assert all(x == outputs[0] for x in outputs)
+
+
+def test_buyer_precedes_distinct_issuing_authority_and_issuer_is_fallback():
+    buyer = obs("BUYER_NAME", "Buyer Corp")
+    issuer = obs("ISSUING_AUTHORITY", "Tender Alpha")
+    c = resolved([{"typed_observations": [buyer, issuer]}])
+    assert c["resolved"]["client"]["value"] == "Buyer Corp"
+    fallback = resolved([{"typed_observations": [issuer]}])
+    assert fallback["resolved"]["client"]["resolution_basis"] == "ISSUING_AUTHORITY_FALLBACK"

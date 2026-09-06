@@ -77,6 +77,62 @@ def model_client(response=None, stop_reason="end_turn"):
     return client
 
 
+def canonical_mechanic_facts():
+    from canonical_opportunity import build_canonical_opportunity, resolve_canonical_opportunity
+    nf = facts()
+    text = "[[SOURCE: mechanics.pdf | PAGE: 1]]\nRequest for advisory support through an RFP."
+    raw = [{"typed_observations": [{"family": "PROCUREMENT_MECHANIC", "semantic_kind": "RFP",
+        "original_value": "RFP", "source_doc": "mechanics.pdf",
+        "source_refs": [{"source_doc": "mechanics.pdf", "page": 1, "excerpt": "RFP"}]}]}]
+    nf["_canonical_opportunity"] = resolve_canonical_opportunity(build_canonical_opportunity(raw,
+        {"files": ["mechanics.pdf"], "doc_metadata": {"mechanics.pdf": {"page_count": 1}}, "doc_texts": {"mechanics.pdf": text}}))
+    return nf
+
+
+def canonical_tier2_response(projection):
+    response = empty_response()
+    mechanic = ctx(projection)["canonical_opportunity"]["observations"][0]
+    response["synthesis"]["brief"]["opportunity_type"] = "Advisory"
+    response["citations"] = [{"output_pointer": "/brief/opportunity_type", "supports": [{
+        "entity_id": mechanic["observation_id"], "field_pointer": "/original_value",
+        "evidence_refs": mechanic["evidence_refs"]}]}]
+    return response
+
+
+def test_canonical_mechanic_observation_is_citable_for_tier2():
+    p = proj.build_stage_d_synthesis_projection(canonical_mechanic_facts(), [])
+    assert proj.validate_stage_d_response(canonical_tier2_response(p), p)["status"] == "VALIDATED"
+
+
+def test_unknown_canonical_alias_is_rejected():
+    p = proj.build_stage_d_synthesis_projection(canonical_mechanic_facts(), [])
+    response = canonical_tier2_response(p); response["citations"][0]["supports"][0]["entity_id"] = "o999"
+    with pytest.raises(proj.ProjectionValidationError, match="UNKNOWN_ENTITY_ID"):
+        proj.validate_stage_d_response(response, p)
+
+
+def test_canonical_wrong_owner_and_hidden_pointer_are_rejected():
+    p = proj.build_stage_d_synthesis_projection(canonical_mechanic_facts(), [])
+    response = canonical_tier2_response(p)
+    requirement = ctx(p)["requirements"][0]
+    response["citations"][0]["supports"][0]["evidence_refs"] = requirement["evidence_refs"]
+    with pytest.raises(proj.ProjectionValidationError, match="WRONG_EVIDENCE_OWNER"):
+        proj.validate_stage_d_response(response, p)
+    response = canonical_tier2_response(p); response["citations"][0]["supports"][0]["field_pointer"] = "/document_role_basis"
+    with pytest.raises(proj.ProjectionValidationError, match="MISSING_POINTER"):
+        proj.validate_stage_d_response(response, p)
+
+
+def test_tier2_cannot_be_supported_only_by_unrelated_requirement():
+    p = proj.build_stage_d_synthesis_projection(canonical_mechanic_facts(), [])
+    response = empty_response(); requirement = ctx(p)["requirements"][0]
+    response["synthesis"]["brief"]["opportunity_type"] = "Advisory"
+    response["citations"] = [{"output_pointer": "/brief/opportunity_type", "supports": [{"entity_id": requirement["requirement_id"],
+        "field_pointer": "/description", "evidence_refs": requirement["evidence_refs"]}]}]
+    with pytest.raises(proj.ProjectionValidationError, match="UNSUPPORTED_TIER2_CLASSIFICATION"):
+        proj.validate_stage_d_response(response, p)
+
+
 def test_occurrence_bijection_duplicates_and_original_ids():
     nf = facts()
     nf["requirements"] *= 3
