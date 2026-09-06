@@ -3848,9 +3848,11 @@ def _synthesize_projected_bid_brief(normalized_facts, conflicts, api_key, checkp
                                             guard_chars=_STAGE_D_CONTEXT_CHAR_LIMIT)
         checkpoint.write("stage-d/size-diagnostics.json", finalized["diagnostics"])
         checkpoint.write("stage-d/request.txt", finalized["request_text"], text=True)
+        checkpoint.write("stage-d/output-config.json", finalized["output_config"])
         prefix = f"stage-d/attempt-{attempt:02d}"
         checkpoint.write(prefix + "/size-diagnostics.json", finalized["diagnostics"])
         checkpoint.write(prefix + "/request.txt", finalized["request_text"], text=True)
+        checkpoint.write(prefix + "/output-config.json", finalized["output_config"])
         if not finalized["diagnostics"]["dispatch_allowed"]:
             checkpoint.write(prefix + "/validation.json", {"status": "BLOCKED", "code": "CONTEXT_TOO_LARGE"})
             raise StageDContextTooLargeError(
@@ -3866,6 +3868,7 @@ def _synthesize_projected_bid_brief(normalized_facts, conflicts, api_key, checkp
                 client = get_anthropic_client(api_key=api_key).with_options(max_retries=0)
             response = client.messages.create(
                 model="claude-haiku-4-5-20251001", max_tokens=8000,
+                output_config=finalized["output_config"],
                 messages=[{"role": "user", "content": [{"type": "text", "text": finalized["request_text"]}]}],
             )
             text = "".join(block.text for block in response.content if block.type == "text")
@@ -3875,6 +3878,9 @@ def _synthesize_projected_bid_brief(normalized_facts, conflicts, api_key, checkp
             validated = validate_stage_d_response(text, projection)
         except (ProjectionValidationError, anthropic.APIError) as exc:
             code = exc.code if isinstance(exc, ProjectionValidationError) else type(exc).__name__
+            if isinstance(exc, anthropic.APIStatusError):
+                # Private checkpoint only: preserve provider contract diagnostics, never headers.
+                checkpoint.write(prefix + "/provider-error.json", {"status_code": exc.status_code, "body": exc.body})
             checkpoint.write(prefix + "/validation.json", {"status": "FAILED", "code": code})
             if attempt == 2:
                 raise

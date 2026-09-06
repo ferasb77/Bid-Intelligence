@@ -18,6 +18,10 @@ def checkpoint_off(monkeypatch):
     monkeypatch.delenv("CHECKPOINT_ROOT", raising=False)
 
 
+def ctx(projection):
+    return proj.expand_prompt_context(projection["prompt_context"])
+
+
 def facts():
     return {
         "doc_metadata": {"title": "Service tender", "client": "Buyer"},
@@ -57,7 +61,7 @@ def empty_response():
 
 def supported_response(projection):
     response = empty_response()
-    req = projection["prompt_context"]["requirements"][0]
+    req = ctx(projection)["requirements"][0]
     response["synthesis"]["brief"]["executive_summary"] = "The buyer requires support."
     response["citations"] = [{"output_pointer": "/brief/executive_summary", "supports": [
         {"entity_id": req["requirement_id"], "field_pointer": "/description", "evidence_refs": req["evidence_refs"]}]}]
@@ -78,11 +82,11 @@ def test_occurrence_bijection_duplicates_and_original_ids():
     nf["requirements"] *= 3
     before = copy.deepcopy(nf)
     result = proj.build_stage_d_synthesis_projection(nf, [])
-    reqs = result["prompt_context"]["requirements"]
+    reqs = ctx(result)["requirements"]
     assert len(reqs) == 3
     assert len({r["requirement_id"] for r in reqs}) == 3
     assert {r["req_id"] for r in reqs} == {"M1"}
-    assert sorted(int(r["requirement_id"].rsplit("-", 1)[1]) for r in reqs) == [1, 2, 3]
+    assert sorted(int(result["sidecar"]["prompt_aliases"][r["requirement_id"]].rsplit("-", 1)[1]) for r in reqs) == [1, 2, 3]
     for key, record in result["sidecar"]["requirements"].items():
         assert proj.resolve_pointer(result["sidecar"]["authoritative_inputs"], record["source_pointer"]) == before["requirements"][0]
     assert nf == before
@@ -92,7 +96,7 @@ def test_source_refs_shared_owners_and_exact_snapshot():
     nf = facts()
     nf["requirements"].append({**copy.deepcopy(nf["requirements"][0]), "description": "Supply another service."})
     projection = proj.build_stage_d_synthesis_projection(nf, [])
-    assert all("source_refs" not in r for r in projection["prompt_context"]["requirements"])
+    assert all("source_refs" not in r for r in ctx(projection)["requirements"])
     evidence = list(projection["sidecar"]["evidence"].values())
     assert len(evidence) == 1 and len(evidence[0]["owners"]) == 2
     assert evidence[0]["original"] == nf["requirements"][0]["source_refs"][0]
@@ -102,9 +106,9 @@ def test_source_refs_shared_owners_and_exact_snapshot():
 
 def test_already_inline_has_no_second_excerpt():
     result = proj.build_stage_d_synthesis_projection(facts(), [])
-    inline = next(iter(result["prompt_context"]["evidence_context"].values()))
+    inline = next(iter(ctx(result)["evidence_context"].values()))
     assert inline["excerpt_mode"] == "ALREADY_INLINE" and "text" not in inline
-    owner = next(r for r in result["prompt_context"]["requirements"] if r["requirement_id"] == inline["owner_id"])
+    owner = next(r for r in ctx(result)["requirements"] if r["requirement_id"] == inline["owner_id"])
     assert proj.resolve_pointer(owner, inline["field_pointer"]) == "Provide support."
 
 
@@ -113,7 +117,7 @@ def test_full_excerpt_preserves_final_negation():
     excerpt = "Long contractual context. " * 100 + "This does NOT apply to public holidays."
     nf["requirements"][0]["source_refs"][0]["excerpt"] = excerpt
     result = proj.build_stage_d_synthesis_projection(nf, [])
-    inline = next(iter(result["prompt_context"]["evidence_context"].values()))
+    inline = next(iter(ctx(result)["evidence_context"].values()))
     assert inline["excerpt_mode"] == "FULL" and inline["text"] == excerpt
 
 
@@ -122,8 +126,8 @@ def test_unavailable_does_not_invent_provenance(ref):
     nf = facts()
     nf["requirements"][0]["source_refs"] = [ref]
     p = proj.build_stage_d_synthesis_projection(nf, [])
-    ev = next(iter(p["prompt_context"]["evidence_context"].values()))
-    assert ev["excerpt_mode"] == "UNAVAILABLE" and ev["verification"] == "UNKNOWN"
+    ev = next(iter(ctx(p)["evidence_context"].values()))
+    assert ev["excerpt_mode"] == "UNAVAILABLE" and ev["verified"] is None
     assert "page" not in ev and "text" not in ev
 
 
@@ -135,8 +139,8 @@ def test_reordering_and_refs_order_preserve_ids_and_missing_fields():
     nf["requirements"].reverse()
     nf["requirements"][1]["source_refs"].reverse()
     p2 = proj.build_stage_d_synthesis_projection(nf, [])
-    assert {r["requirement_id"] for r in p1["prompt_context"]["requirements"]} == {r["requirement_id"] for r in p2["prompt_context"]["requirements"]}
-    assert any("req_id" not in r and "requirement_type" not in r for r in p2["prompt_context"]["requirements"])
+    assert {r["requirement_id"] for r in ctx(p1)["requirements"]} == {r["requirement_id"] for r in ctx(p2)["requirements"]}
+    assert any("req_id" not in r and "requirement_type" not in r for r in ctx(p2)["requirements"])
 
 
 @pytest.mark.parametrize("refs", [None, {}, "x", ["bad"], [{"excerpt": 12}], [{"source_doc": []}], [{"page": {"value": 2}}]])
@@ -175,11 +179,11 @@ def test_evaluation_and_submission_content_preserved():
     nf["evaluation_criteria"][0]["weight_conflict"] = True
     p = proj.build_stage_d_synthesis_projection(nf, [])
     for section in ("evaluation_criteria", "submission_rules"):
-        out = p["prompt_context"]["facts"][section][0]
+        out = ctx(p)["facts"][section][0]
         for key, value in nf[section][0].items():
             if key not in ("source_refs", "weight_observations"):
                 assert out[key] == value
-    observation = p["prompt_context"]["facts"]["evaluation_criteria"][0]["weight_observations"][0]
+    observation = ctx(p)["facts"]["evaluation_criteria"][0]["weight_observations"][0]
     assert observation["value"] == 70 and "source_refs" not in observation and observation["evidence_refs"]
     assert p["sidecar"]["authoritative_inputs"]["normalized_facts"] == nf
 
@@ -187,11 +191,11 @@ def test_evaluation_and_submission_content_preserved():
 def test_conflicts_remain_unresolved_and_full():
     c = conflicts()
     p = proj.build_stage_d_synthesis_projection(facts(), c)
-    out = p["prompt_context"]["detected_conflicts"][0]
+    out = ctx(p)["detected_conflicts"][0]
     assert out["resolution_state"] == "UNRESOLVED"
     assert out["source_a"]["text"] == c[0]["source_a"]["text"]
     assert p["sidecar"]["authoritative_inputs"]["conflicts"] == c
-    assert set(out["evidence_refs"]) <= p["sidecar"]["evidence"].keys()
+    assert {p["sidecar"]["prompt_aliases"][e] for e in out["evidence_refs"]} <= p["sidecar"]["evidence"].keys()
 
 
 def test_valid_field_citation():
@@ -220,7 +224,7 @@ def test_cross_owner_evidence_rejected():
     nf["deliverables"][0]["source_refs"] = [{"source_doc": "other.pdf", "excerpt": "Other scope"}]
     p = proj.build_stage_d_synthesis_projection(nf, [])
     r = supported_response(p)
-    r["citations"][0]["supports"][0]["evidence_refs"] = p["prompt_context"]["facts"]["deliverables"][0]["evidence_refs"]
+    r["citations"][0]["supports"][0]["evidence_refs"] = ctx(p)["facts"]["deliverables"][0]["evidence_refs"]
     with pytest.raises(proj.ProjectionValidationError, match="WRONG_EVIDENCE_OWNER"):
         proj.validate_stage_d_response(r, p)
 
@@ -262,7 +266,7 @@ def test_conflicting_deadline_selection_rejected():
     nf = facts()
     nf["doc_metadata"]["submission_deadline"] = "2026-10-01"
     p = proj.build_stage_d_synthesis_projection(nf, conflicts())
-    f = next(f for f in p["prompt_context"]["facts"]["metadata"] if f["key"] == "submission_deadline")
+    f = next(f for f in ctx(p)["facts"]["metadata"] if f["key"] == "submission_deadline")
     r = empty_response()
     r["synthesis"]["bid"]["submission_deadline"] = f["value"]
     r["citations"] = [{"output_pointer": "/bid/submission_deadline", "supports": [{"entity_id": f["fact_id"], "field_pointer": "/value", "evidence_refs": []}]}]
@@ -274,7 +278,7 @@ def test_proposal_outline_and_separate_notes_support():
     p = proj.build_stage_d_synthesis_projection(facts(), [])
     r = empty_response()
     r["synthesis"]["outline"] = [{"sort_order": 9, "section_num": "9", "title": "Support approach", "owner": None, "word_limit": None, "status": "Not Started", "notes": None}]
-    r["citations"] = [{"section_index": 0, "kind": "proposal", "supports": [p["prompt_context"]["requirements"][0]["requirement_id"]]}]
+    r["citations"] = [{"section_index": 0, "kind": "proposal", "supports": [ctx(p)["requirements"][0]["requirement_id"]]}]
     accepted = proj.validate_stage_d_response(r, p)
     assert accepted["synthesis"]["outline"][0]["notes"] == "Suggested proposal structure."
     assert accepted["synthesis"]["outline"][0]["sort_order"] == 0
@@ -309,7 +313,7 @@ def test_exact_guard_dispatch_boundary(total, allowed):
         if allowed:
             extractor.synthesize_bid_brief(nf, [], "not-a-key")
             request = client.messages.create.call_args.kwargs["messages"][0]["content"][0]["text"]
-            assert len(request) == 580000
+            assert len(request) + len(proj.canonical_json(client.messages.create.call_args.kwargs["output_config"])) == 580000
         else:
             with pytest.raises(extractor.StageDContextTooLargeError):
                 extractor.synthesize_bid_brief(nf, [], "not-a-key")
@@ -323,12 +327,46 @@ def test_unicode_sizes_and_digests_exact():
     before = copy.deepcopy(p)
     r = proj.finalize_stage_d_request(p, "日本語")
     d = r["diagnostics"]
-    assert d["total_prompt_chars"] == len(r["request_text"])
-    assert d["total_prompt_utf8_bytes"] == len(r["request_text"].encode("utf-8")) > d["total_prompt_chars"]
+    serialized = r["request_text"] + proj.canonical_json(r["output_config"])
+    assert d["total_prompt_chars"] == len(serialized)
+    assert d["total_prompt_utf8_bytes"] == len(serialized.encode("utf-8")) > d["total_prompt_chars"]
     assert sum(d["size_by_section"].values()) == d["prompt_context_chars"]
-    assert d["prompt_digest"] == proj.text_digest(r["request_text"])
+    assert d["prompt_digest"] == proj.text_digest(serialized)
     assert d["sidecar_digest"] == proj.digest(p["sidecar"])
     assert d["total_prompt_tokens"] is None and p == before
+
+
+def test_native_schema_preserves_contract_and_required_citation_keys():
+    import jsonschema
+    schema = proj.stage_d_output_config()["format"]["schema"]
+    jsonschema.Draft202012Validator.check_schema(schema)
+    response = empty_response()
+    jsonschema.validate(response, schema)
+    response["citations"] = [{"output_pointer": "/brief/executive_summary", "supports": [
+        {"entity_id": "r1", "field_pointer": "/description", "evidence_refs": []}]}]
+    jsonschema.validate(response, schema)
+    del response["citations"][0]["supports"][0]["evidence_refs"]
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(response, schema)
+
+
+def test_native_schema_enforces_existing_alias_and_conflict_constraints():
+    import jsonschema
+    p = proj.build_stage_d_synthesis_projection(facts(), conflicts())
+    schema = proj.stage_d_output_config(p)["format"]["schema"]
+    response = empty_response()
+    jsonschema.validate(response, schema)
+    response["synthesis"]["bid"]["clarification_deadline"] = "2026-01-01"
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(response, schema)
+    response = empty_response()
+    response["citations"] = [{"section_index": 0, "kind": "proposal", "supports": ["r999999"]}]
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(response, schema)
+    response = empty_response()
+    response["synthesis"]["brief"]["procurement_model"] = "Invented model"
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(response, schema)
 
 
 def test_empty_statistics_and_tampered_projection():
@@ -342,7 +380,7 @@ def test_empty_statistics_and_tampered_projection():
 def test_null_category_is_preserved_without_inference():
     nf = {"requirements": [{"description": "An obligation", "category": None}]}
     p = proj.build_stage_d_synthesis_projection(nf, [])
-    assert p["prompt_context"]["requirements"][0]["category"] is None
+    assert ctx(p)["requirements"][0]["category"] is None
     assert p["diagnostics"]["counts_by_category"] == {"": 1}
 
 
@@ -358,7 +396,7 @@ def test_evaluation_points_cannot_become_outline_word_limit():
     nf["evaluation_criteria"][0]["weight_value"] = 70
     p = proj.build_stage_d_synthesis_projection(nf, [])
     r = empty_response()
-    eid = p["prompt_context"]["facts"]["evaluation_criteria"][0]["fact_id"]
+    eid = ctx(p)["facts"]["evaluation_criteria"][0]["fact_id"]
     r["synthesis"]["outline"] = [{"sort_order": 0, "section_num": "1", "title": "Approach", "owner": None,
                                    "word_limit": 70, "status": "Not Started", "notes": None}]
     r["citations"] = [{"section_index": 0, "kind": "proposal", "supports": [eid]},
@@ -405,7 +443,9 @@ def test_diagnostics_and_failure_saved_before_dispatch(tmp_path):
         d = json.loads((store.root / "stage-d/size-diagnostics.json").read_text())
         assert d["dispatch_allowed"] is False
         assert (store.root / "stage-d/sidecar.json").exists()
-        assert len((store.root / "stage-d/request.txt").read_text(encoding="utf-8")) == d["total_prompt_chars"]
+        request = (store.root / "stage-d/request.txt").read_text(encoding="utf-8")
+        config = json.loads((store.root / "stage-d/output-config.json").read_text(encoding="utf-8"))
+        assert len(request) + len(proj.canonical_json(config)) == d["total_prompt_chars"]
         assert "secret-key" not in "".join(p.read_text(encoding="utf-8") for p in store.root.rglob("*.json"))
 
 
@@ -521,7 +561,7 @@ def test_resume_rejects_stale_or_corrupt_checkpoint(tmp_path, corruption):
 def test_d_version_change_reuses_only_verified_upstream(tmp_path):
     store, sources = make_checkpoint(tmp_path)
     versions = cp.runtime_versions()
-    versions["projection_version"] = "stage-d-projection/2"
+    versions["projection_version"] = "stage-d-projection/3"
     versions["code_sha"] = "next-commit"
     verified = cp.load_verified_checkpoint(store.root, sources, versions=versions)
     assert verified["stage_d_rebuild_required"] and verified["stage_d_version_changed"]
@@ -578,3 +618,101 @@ def test_retained_frozen_authority_regression(prefix):
     assert final["requirements"] == before["requirements"] and nf == before
     assert final["brief"]["document_conflicts"] == c
     assert final["documents"] == extractor.build_submission_documents(before["submission_rules"], submission_deadline=None)
+
+
+def test_prompt_aliases_are_bijective_and_resolved_citations_keep_full_ids():
+    nf = facts()
+    nf["requirements"] *= 2
+    p = proj.build_stage_d_synthesis_projection(nf, conflicts())
+    aliases = p["sidecar"]["prompt_aliases"]
+    assert len(set(aliases.values())) == len(aliases)
+    assert set(aliases.values()) == set().union(*(p["sidecar"][k] for k in ("requirements", "facts", "conflicts", "evidence")))
+    for alias, full in aliases.items():
+        assert alias[0].upper() == full[0]
+        assert len(full.split("-")[1]) == 64
+    response = supported_response(p)
+    accepted = proj.validate_stage_d_response(response, p)
+    supplied = response["citations"][0]["supports"][0]
+    resolved = accepted["resolved_citations"][0]["supports"][0]
+    assert resolved["entity_id"] == aliases[supplied["entity_id"]]
+    assert resolved["evidence_refs"] == [aliases[e] for e in supplied["evidence_refs"]]
+
+
+def test_full_sidecar_id_is_not_a_prompt_alias():
+    p = proj.build_stage_d_synthesis_projection(facts(), [])
+    r = supported_response(p)
+    support = r["citations"][0]["supports"][0]
+    support["entity_id"] = p["sidecar"]["prompt_aliases"][support["entity_id"]]
+    with pytest.raises(proj.ProjectionValidationError, match="UNKNOWN_ENTITY_ID"):
+        proj.validate_stage_d_response(r, p)
+
+
+def test_alias_map_tampering_fails_integrity():
+    p = proj.build_stage_d_synthesis_projection(facts(), [])
+    p["sidecar"]["prompt_aliases"]["r1"] = "R-" + "0" * 64 + "-1"
+    with pytest.raises(proj.ProjectionValidationError, match="PROJECTION_INTEGRITY_FAILURE"):
+        proj.validate_stage_d_response(empty_response(), p)
+
+
+def test_table_roundtrip_preserves_missing_null_and_long_text():
+    rows = [{"description": "A full obligation. " * 40, "evidence": "Proof", "category": "Mandatory", "rfso_ref": None}
+            for _ in range(100)]
+    del rows[0]["rfso_ref"]
+    rows[1]["evidence"] = None
+    packed = proj._pack_records(rows)
+    assert isinstance(packed, dict)
+    assert proj._unpack_records(packed) == rows
+    assert "rfso_ref" not in proj._unpack_records(packed)[0]
+    assert proj._unpack_records(packed)[1]["rfso_ref"] is None
+
+
+def test_shared_required_proof_is_exact_and_descriptions_remain_direct():
+    nf = facts()
+    proof = "Provide the complete procedure and supporting documentation. " * 8
+    nf["requirements"] = [{"description": f"Obligation {i}: r1 e1 f1 are literal source text.", "evidence": proof} for i in range(40)]
+    p = proj.build_stage_d_synthesis_projection(nf, [])
+    assert list(p["prompt_context"]["required_proof_text"].values()) == [proof]
+    for r in ctx(p)["requirements"]:
+        original = proj.resolve_pointer(p["sidecar"]["authoritative_inputs"], p["sidecar"]["requirements"][p["sidecar"]["prompt_aliases"][r["requirement_id"]]]["source_pointer"])
+        assert r["description"] == original["description"] and r["evidence"] == proof
+    wire_rows = proj._unpack_records(p["prompt_context"]["requirements"])
+    assert all(isinstance(r["description"], str) and isinstance(r["evidence"], dict) for r in wire_rows)
+
+
+def test_locator_navigation_remains_in_sidecar_with_source_identity_inline():
+    nf = facts()
+    p = proj.build_stage_d_synthesis_projection(nf, [])
+    alias, inline = next(iter(ctx(p)["evidence_context"].items()))
+    original = p["sidecar"]["evidence"][p["sidecar"]["prompt_aliases"][alias]]
+    assert ctx(p)["sources"][inline["source_id"]] == original["source_doc"]
+    assert inline["verified"] is True
+    assert "page" not in inline and "cells" not in inline
+    assert original["page"] == 2 and original["cells"] == "A2:A4"
+
+
+def test_high_cardinality_559_capacity_preserves_every_occurrence():
+    from scripts.measure_stage_d_projection import synthetic_high_cardinality_facts
+    nf, c = synthetic_high_cardinality_facts()
+    p = proj.build_stage_d_synthesis_projection(nf, c)
+    logical = ctx(p)
+    d = proj.finalize_stage_d_request(p, extractor.STAGE_D_SYNTHESIS_PROMPT)["diagnostics"]
+    assert d["requirement_count"] == 559 and d["omitted_requirement_count"] == 0
+    assert d["evidence_id_count"] == 1061 and d["total_prompt_chars"] <= 580000
+    assert len({r["evidence"] for r in nf["requirements"]}) == 559  # No favorable proof sharing in this stress.
+    assert "required_proof_text" not in p["prompt_context"]
+    assert sum(len(r["source_refs"]) for r in nf["requirements"]) == 839
+    assert sum(len(e["source_pointers"]) for e in p["sidecar"]["evidence"].values() if e["origin_kind"] == "source_ref") == 1053
+    for r in logical["requirements"]:
+        full = p["sidecar"]["prompt_aliases"][r["requirement_id"]]
+        original = proj.resolve_pointer(p["sidecar"]["authoritative_inputs"], p["sidecar"]["requirements"][full]["source_pointer"])
+        for key in original.keys() - {"source_refs"}:
+            assert r[key] == original[key]
+        for e in r["evidence_refs"]:
+            assert full in p["sidecar"]["evidence"][p["sidecar"]["prompt_aliases"][e]]["owners"]
+    accepted = proj.validate_stage_d_response(empty_response(), p)
+    actual = extractor.apply_stage_d_authoritative_sections(accepted["synthesis"], copy.deepcopy(nf))
+    expected = extractor.apply_stage_d_authoritative_sections({}, copy.deepcopy(nf))
+    assert {k: actual["brief"][k] for k in proj.AUTHORITATIVE_SECTIONS} == {k: expected["brief"][k] for k in proj.AUTHORITATIVE_SECTIONS}
+    final = extractor._assemble_procurement_result(actual, nf, c)
+    assert final["requirements"] == nf["requirements"] and final["brief"]["document_conflicts"] == c
+    assert final["documents"] == extractor.build_submission_documents(nf["submission_rules"], submission_deadline=None)

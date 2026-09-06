@@ -9,9 +9,40 @@ import json
 import statistics
 from collections import Counter
 
-PROJECTION_VERSION = "stage-d-projection/1"
+PROJECTION_VERSION = "stage-d-projection/2"
 GUARD_CHARS = 580_000
 REQUEST_SEPARATOR = "\n\nNORMALIZED PROCUREMENT SYNTHESIS PROJECTION:\n"
+RESPONSE_REMINDER = '''
+
+END OF INPUT FACTS. NOW RETURN THE RESPONSE OBJECT.
+The first character of your response MUST be { and the last MUST be }.
+Return bare JSON, never Markdown or code fences. Do not add explanations outside JSON.
+Use exactly synthesis and citations as top-level keys, with every required synthesis key.
+Keep executive_summary to 2-3 sentences, scope_categories to at most 6 items, and outline
+to 4-6 suggested headings. Use null for outline notes and word_limit; weights are not limits.
+For each substantive field, cite materially relevant existing entity aliases and visible
+field names. Every field support MUST contain entity_id, field_pointer, and evidence_refs.
+Use evidence_refs: [] when not quoting an excerpt; entity and field still trace to full
+authoritative provenance. Never guess evidence IDs. Any supplied evidence ID must belong
+to that exact entity. Metadata citations also require evidence_refs: [].
+Pointers use /outline/0/title or /brief/scope_categories/0, NEVER brackets like /outline[0].
+Suggested outline titles use section_index, kind: proposal, and supports: [existing IDs].
+Do not cite null/default fields. Do not claim bidder possession or resolve conflicts.
+Classifications need materially relevant support: Mandatory/Rated categories and pricing
+instructions do not establish opportunity_type. Delivery scope alone does not establish
+Single Contract or a multi-vendor arrangement. Use null when the supplied facts do not
+establish the classification. Scope categories should be short labels, not specifications.
+If conflicts exist, BOTH deadline fields MUST be null and contract_term MUST be Not stated.
+Do not state a disputed alternative as a fact anywhere in summary, notes, or categories.
+Before writing the executive summary, check every conflict topic. Omit disputed obligations
+from that summary or explicitly say their scope is unresolved IN THE SAME SENTENCE.
+An uncertainty disclaimer in notes does not qualify an unconditional summary assertion.
+Keep the summary high-level; omit equipment quantities, site names and numerical service
+targets unless essential and directly supported by its cited fields. Scope labels must
+accurately include every cited item; do not group unlike items under a narrower label.
+Use existing entity aliases only; never extrapolate an alias from a source requirement number.
+No Markdown fence. Return the JSON object now.
+'''
 
 
 class ProjectionValidationError(RuntimeError):
@@ -129,6 +160,107 @@ def _substantive_fields(record, path=""):
             for index, item in enumerate(value):
                 if isinstance(item, dict):
                     yield from _substantive_fields(item, ptr + "/" + str(index))
+
+
+def _map_record_ids(record, mapping):
+    """Map link slots only. Never replace strings inside substantive text."""
+    if isinstance(record, list):
+        return [_map_record_ids(item, mapping) for item in record]
+    if not isinstance(record, dict):
+        return copy.deepcopy(record)
+    result = {}
+    for key, value in record.items():
+        if key in {"requirement_id", "fact_id", "conflict_projection_id", "evidence_ref", "owner_id"}:
+            result[key] = mapping[value]
+        elif key == "evidence_refs":
+            result[key] = [mapping[v] for v in value]
+        else:
+            result[key] = _map_record_ids(value, mapping)
+    return result
+
+
+def _map_context_ids(context, mapping):
+    result = {k: _map_record_ids(v, mapping) for k, v in context.items() if k != "evidence_context"}
+    result["evidence_context"] = {mapping[k]: _map_record_ids(v, mapping) for k, v in context["evidence_context"].items()}
+    return result
+
+
+def _pack_records(records):
+    """Lossless row representation; choose it only when it saves characters."""
+    if not records:
+        return records
+    columns = sorted({key for record in records for key in record})
+    table = {"columns": columns, "rows": [[r.get(k) for k in columns] for r in records]}
+    absent = {k: [i for i, r in enumerate(records) if k not in r] for k in columns if any(k not in r for r in records)}
+    if absent:
+        table["absent"] = absent
+    return table if len(canonical_json(table)) < len(canonical_json(records)) else records
+
+
+def _unpack_records(value):
+    if isinstance(value, list):
+        return copy.deepcopy(value)
+    if not isinstance(value, dict) or not {"columns", "rows"} <= value.keys() or value.keys() - {"columns", "rows", "absent"}:
+        _fail("INVALID_PROMPT_TABLE")
+    columns, rows = value["columns"], value["rows"]
+    if not isinstance(columns, list) or any(not isinstance(k, str) for k in columns) or len(set(columns)) != len(columns) or not isinstance(rows, list):
+        _fail("INVALID_PROMPT_TABLE")
+    absent = value.get("absent", {})
+    if (not isinstance(absent, dict) or any(k not in columns for k in absent)
+            or any(not isinstance(indices, list) or any(type(i) is not int or not 0 <= i < len(rows) for i in indices)
+                   or len(set(indices)) != len(indices) for indices in absent.values())):
+        _fail("INVALID_PROMPT_TABLE")
+    absent = {k: set(indices) for k, indices in absent.items()}
+    result = []
+    for i, row in enumerate(rows):
+        if not isinstance(row, list) or len(row) != len(columns):
+            _fail("INVALID_PROMPT_TABLE")
+        result.append({k: copy.deepcopy(v) for k, v in zip(columns, row) if i not in absent.get(k, set())})
+    return result
+
+
+def _pack_prompt_context(context):
+    result = copy.deepcopy(context)
+    # Exact text sharing, not semantic merging: descriptions stay directly in
+    # each row and every required-proof field reconstructs to the original text.
+    counts = Counter(r["evidence"] for r in context["requirements"] if isinstance(r.get("evidence"), str))
+    shared = {f"p{i}": text for i, text in enumerate(sorted(text for text, count in counts.items()
+                                                          if count > 1 and len(text) > 40), 1)}
+    by_text = {text: alias for alias, text in shared.items()}
+    for record in result["requirements"]:
+        if isinstance(record.get("evidence"), str) and record["evidence"] in by_text:
+            record["evidence"] = {"proof_ref": by_text[record["evidence"]]}
+    if shared:
+        result["required_proof_text"] = shared
+    result["requirements"] = _pack_records(result["requirements"])
+    result["facts"] = {k: _pack_records(v) for k, v in context["facts"].items()}
+    result["detected_conflicts"] = _pack_records(context["detected_conflicts"])
+    evidence = [{"evidence_id": key, **value} for key, value in context["evidence_context"].items()]
+    packed = _pack_records(evidence)
+    if isinstance(packed, dict) and len(canonical_json(packed)) < len(canonical_json(context["evidence_context"])):
+        result["evidence_context"] = {"table": packed}
+    return result
+
+
+def expand_prompt_context(context):
+    """Decode rows without changing IDs or any substantive cell value."""
+    result = copy.deepcopy(context)
+    result["requirements"] = _unpack_records(context["requirements"])
+    proof_text = result.pop("required_proof_text", {})
+    for record in result["requirements"]:
+        if isinstance(record.get("evidence"), dict):
+            reference = record["evidence"]
+            if reference.keys() != {"proof_ref"} or reference["proof_ref"] not in proof_text:
+                _fail("INVALID_PROOF_REFERENCE")
+            record["evidence"] = proof_text[reference["proof_ref"]]
+    result["facts"] = {k: _unpack_records(v) for k, v in context["facts"].items()}
+    result["detected_conflicts"] = _unpack_records(context["detected_conflicts"])
+    if "table" in context["evidence_context"]:
+        rows = _unpack_records(context["evidence_context"]["table"])
+        result["evidence_context"] = {r["evidence_id"]: {k: v for k, v in r.items() if k != "evidence_id"} for r in rows}
+        if len(rows) != len(result["evidence_context"]):
+            _fail("INVALID_PROMPT_TABLE")
+    return result
 
 
 def build_stage_d_synthesis_projection(normalized_facts, conflicts):
@@ -275,11 +407,21 @@ def build_stage_d_synthesis_projection(normalized_facts, conflicts):
     for index, record in enumerate(conflicts):
         add_record(record, "conflicts", f"/conflicts/{index}", "C", "conflicts", context["detected_conflicts"])
 
+    source_names = sorted({r["source_doc"] for r in sidecar["evidence"].values() if r.get("source_doc")})
+    source_aliases = {name: f"d{i}" for i, name in enumerate(source_names, 1)}
+    context["sources"] = {alias: name for name, alias in source_aliases.items()}
+    sidecar["prompt_sources"] = copy.deepcopy(context["sources"])
     for eid, record in sorted(sidecar["evidence"].items()):
         record["owners"].sort()
         record["source_pointers"].sort()
-        inline = {k: record[k] for k in LOCATORS if k in record and record[k] is not None}
-        inline["verification"] = record["verification"]
+        # Locations used for navigation stay authoritative in the sidecar.
+        # Retain source identity, sheet/section interpretation, and truth state.
+        inline = {k: record[k] for k in ("sheet", "section") if record.get(k) is not None}
+        if record.get("source_doc"):
+            inline["source_id"] = source_aliases[record["source_doc"]]
+        if inline.get("section") and any(visible[owner].get("rfso_ref") == inline["section"] for owner in record["owners"]):
+            del inline["section"]  # Exact reference already in an owning record.
+        inline["verified"] = {"SOURCE_MARKED_VERIFIED": True, "SOURCE_MARKED_UNVERIFIED": False, "UNKNOWN": None}[record["verification"]]
         excerpt = record["excerpt"]
         matches = sorted((owner, ptr) for owner in record["owners"]
                          for ptr, text in _substantive_fields(visible[owner]) if excerpt and excerpt in text)
@@ -305,21 +447,32 @@ def build_stage_d_synthesis_projection(normalized_facts, conflicts):
     context["context_integrity"] = {"source_requirement_count": len(source), "included_requirement_count": len(source),
                                     "omitted_requirement_count": 0, "counts_by_category": categories,
                                     "requirement_bijection_verified": True, "conflicts_count": len(conflicts)}
+    aliases = {}
+    for prefix, collection in (("r", "requirements"), ("e", "evidence"), ("f", "facts"), ("c", "conflicts")):
+        for index, full_id in enumerate(sorted(sidecar[collection]), 1):
+            aliases[f"{prefix}{index}"] = full_id
+    sidecar["prompt_aliases"] = aliases
+    context = _map_context_ids(context, {full: alias for alias, full in aliases.items()})
+    logical_context = context
+    context = _pack_prompt_context(logical_context)
+    sidecar["prompt_required_proof_text"] = copy.deepcopy(context.get("required_proof_text", {}))
+    if expand_prompt_context(context) != logical_context:
+        _fail("PROMPT_TABLE_ROUNDTRIP_FAILURE")
     context_text, sidecar_text = canonical_json(context), canonical_json(sidecar)
-    sizes = [len(canonical_json(r)) for r in context["requirements"]]
+    sizes = [len(canonical_json(r)) for r in logical_context["requirements"]]
     section_sizes = {k: len(canonical_json(v)) for k, v in context.items() if k != "facts"}
     section_sizes.update({k: len(canonical_json(v)) for k, v in context["facts"].items()})
     section_sizes["structure"] = len(context_text) - sum(section_sizes.values())
     diagnostics = {
         "projection_version": PROJECTION_VERSION, **context["context_integrity"], "requirement_count": len(source),
-        "fact_counts_by_section": {k: len(v) for k, v in context["facts"].items()},
+        "fact_counts_by_section": {k: len(v) for k, v in logical_context["facts"].items()},
         "prompt_context_chars": len(context_text), "prompt_context_utf8_bytes": len(context_text.encode("utf-8")),
         "size_by_section": section_sizes, "evidence_context_chars": len(canonical_json(context["evidence_context"])),
         "sidecar_chars": len(sidecar_text), "sidecar_bytes": len(sidecar_text.encode("utf-8")),
         "evidence_id_count": len(sidecar["evidence"]),
         "provenance_available_count": sum(bool(v["evidence_refs"]) for v in visible.values()),
         "provenance_unavailable_count": sum(not v["evidence_refs"] for v in visible.values()),
-        "inline_evidence_text_chars": sum(len(v.get("text", "")) for v in context["evidence_context"].values()),
+        "inline_evidence_text_chars": sum(len(v.get("text", "")) for v in logical_context["evidence_context"].values()),
         "average_projected_requirement_size": statistics.mean(sizes) if sizes else None,
         "median_projected_requirement_size": statistics.median(sizes) if sizes else None,
         "maximum_projected_requirement_size": max(sizes) if sizes else None,
@@ -327,6 +480,46 @@ def build_stage_d_synthesis_projection(normalized_facts, conflicts):
         "total_prompt_tokens": None, "token_measurement_method": "UNAVAILABLE",
     }
     return {"prompt_context": context, "sidecar": sidecar, "diagnostics": diagnostics}
+
+
+def stage_d_output_config(projection=None):
+    """Provider shape constraint; local authority/citation validation remains mandatory."""
+    def obj(properties):
+        return {"type": "object", "properties": properties, "required": list(properties),
+                "additionalProperties": False}
+
+    string = {"type": "string"}
+    nullable = {"type": ["string", "null"]}
+    null = {"type": "null"}
+    entity = string
+    if projection is not None:
+        aliases = sorted(k for k in projection["sidecar"]["prompt_aliases"] if not k.startswith("e"))
+        if aliases:
+            entity = {"type": "string", "enum": aliases}
+    def array(items):
+        return {"type": "array", "items": items}
+
+    bid = obj({k: null if k in ("owner", "value_cad") else
+               {"type": "string", "enum": ["Standard"]} if k == "sensitivity" else nullable
+               for k in sorted(BID_KEYS)})
+    brief = obj({"executive_summary": nullable, "contract_term": nullable,
+                 "opportunity_type": {"anyOf": [{"type": "string", "enum": ["Services RFP", "Standing Offer", "Panel Agreement", "Software/Systems", "Advisory"]}, null]},
+                 "procurement_model": {"anyOf": [{"type": "string", "enum": ["Single Contract", "Standing Offer Panel", "Multi-vendor Call-off"]}, null]},
+                 "scope_categories": array(string)})
+    if projection is not None and projection["sidecar"]["authoritative_inputs"]["conflicts"]:
+        bid["properties"]["submission_deadline"] = null
+        bid["properties"]["clarification_deadline"] = null
+        brief["properties"]["contract_term"] = {"type": "string", "enum": ["Not stated"]}
+    outline = obj({"sort_order": {"type": "integer"}, "section_num": string, "title": string,
+                   "owner": null, "word_limit": {"type": ["integer", "null"]},
+                   "status": {"type": "string", "enum": ["Not Started"]}, "notes": nullable})
+    support = obj({"entity_id": entity, "field_pointer": string, "evidence_refs": array(string)})
+    citation = {"anyOf": [obj({"output_pointer": string, "supports": array(support)}),
+                           obj({"section_index": {"type": "integer"},
+                                "kind": {"type": "string", "enum": ["proposal"]}, "supports": array(entity)})]}
+    schema = obj({"synthesis": obj({"bid": bid, "brief": brief, "outline": array(outline)}),
+                  "citations": array(citation)})
+    return {"format": {"type": "json_schema", "schema": schema}}
 
 
 def finalize_stage_d_request(projection, prompt_instructions, *, guard_chars=GUARD_CHARS):
@@ -342,13 +535,19 @@ def finalize_stage_d_request(projection, prompt_instructions, *, guard_chars=GUA
         raise ProjectionValidationError("PROJECTION_INTEGRITY_FAILURE") from exc
     context_text = canonical_json(projection["prompt_context"])
     fixed = prompt_instructions + REQUEST_SEPARATOR
-    request = fixed + context_text
+    request = fixed + context_text + RESPONSE_REMINDER
+    output_config = stage_d_output_config(projection)
+    config_text = canonical_json(output_config)
+    total_chars = len(request) + len(config_text)
     diagnostics = {**copy.deepcopy(projection["diagnostics"]),
-                   "fixed_instruction_chars": len(fixed), "total_prompt_chars": len(request),
-                   "total_prompt_utf8_bytes": len(request.encode("utf-8")),
-                   "guard_chars": guard_chars, "headroom_chars": guard_chars - len(request),
-                   "dispatch_allowed": len(request) <= guard_chars, "prompt_digest": text_digest(request)}
-    return {"request_text": request, "diagnostics": diagnostics}
+                   "fixed_instruction_chars": len(fixed) + len(RESPONSE_REMINDER) + len(config_text),
+                   "request_text_chars": len(request), "output_config_chars": len(config_text),
+                   "total_prompt_chars": total_chars,
+                   "total_prompt_utf8_bytes": len((request + config_text).encode("utf-8")),
+                   "provider_internal_prompt_chars": None,
+                   "guard_chars": guard_chars, "headroom_chars": guard_chars - total_chars,
+                   "dispatch_allowed": total_chars <= guard_chars, "prompt_digest": text_digest(request + config_text)}
+    return {"request_text": request, "output_config": output_config, "diagnostics": diagnostics}
 
 
 def _unique_pairs(pairs):
@@ -427,10 +626,30 @@ def validate_stage_d_response(response, projection):
         if item["word_limit"] is not None and (type(item["word_limit"]) is not int or item["word_limit"] <= 0):
             _fail("INVALID_RESPONSE_SCHEMA", "word_limit")
 
-    entities = {r["requirement_id"]: r for r in projection["prompt_context"]["requirements"]}
-    entities.update({f["fact_id"]: f for records in projection["prompt_context"]["facts"].values() for f in records})
-    entities.update({c["conflict_projection_id"]: c for c in projection["prompt_context"]["detected_conflicts"]})
     sidecar = projection["sidecar"]
+    expanded = _map_context_ids(expand_prompt_context(projection["prompt_context"]), sidecar["prompt_aliases"])
+    entities = {r["requirement_id"]: r for r in expanded["requirements"]}
+    entities.update({f["fact_id"]: f for records in expanded["facts"].values() for f in records})
+    entities.update({c["conflict_projection_id"]: c for c in expanded["detected_conflicts"]})
+    prompt_citations = copy.deepcopy(data["citations"])
+
+    def full_id(alias, code):
+        if not isinstance(alias, str) or alias not in sidecar["prompt_aliases"]:
+            _fail(code)
+        return sidecar["prompt_aliases"][alias]
+
+    for citation in data["citations"]:
+        if not isinstance(citation, dict) or not isinstance(citation.get("supports"), list):
+            _fail("INVALID_CITATION")
+        if "section_index" in citation:
+            citation["supports"] = [full_id(v, "UNKNOWN_ENTITY_ID") for v in citation["supports"]]
+        else:
+            for support in citation["supports"]:
+                _exact_keys(support, {"entity_id", "field_pointer", "evidence_refs"}, "support")
+                support["entity_id"] = full_id(support["entity_id"], "UNKNOWN_ENTITY_ID")
+                if not isinstance(support["evidence_refs"], list):
+                    _fail("INVALID_CITATION")
+                support["evidence_refs"] = [full_id(v, "UNKNOWN_EVIDENCE_ID") for v in support["evidence_refs"]]
     supported = {}
     proposals = set()
 
@@ -543,12 +762,26 @@ def validate_stage_d_response(response, projection):
                     if label and label not in legacy[key]:
                         legacy[key].append(label)
     result["brief"]["source_citations"] = {k: "; ".join(sorted(v)) or None for k, v in legacy.items()}
-    return {"synthesis": result, "citations": copy.deepcopy(data["citations"]), "status": "VALIDATED"}
+    return {"synthesis": result, "citations": prompt_citations,
+            "resolved_citations": copy.deepcopy(data["citations"]), "status": "VALIDATED"}
 
 
 SYNTHESIS_PROMPT = '''You are an executive bid director synthesizing a Bid Brief from normalized procurement facts.
-Use ONLY the supplied stage-d-projection/1 facts. The sidecar is authoritative;
+Use ONLY the supplied stage-d-projection/2 facts. The sidecar is authoritative;
 the projection includes every normalized requirement once. Do not repeat the register.
+Some record families use lossless tables: columns names each cell in rows by its
+position. Each row is one individual requirement/fact, never a group. The optional
+absent map lists missing row indices per column name; other nulls are explicit.
+Cite the row's requirement_id/fact_id and the COLUMN NAME as field_pointer, e.g.
+/description. Evidence tables use evidence_id for each row. Do not cite row indices.
+The sources dictionary resolves d1 etc. to full source filenames. Evidence source_id
+points there. Page/row/cell navigation remains in the sidecar; section may be omitted
+only when exactly repeated in an owning requirement's rfso_ref. verified:null means
+unknown provenance, not verified. No evidence text or obligation was shortened.
+An evidence field {"proof_ref":"p1"} is the exact required-proof text in
+required_proof_text.p1, shared without summarization. Read that full text and cite
+the requirement's /evidence field, not p1 as an entity. Required proof is never
+proof of bidder possession. Requirement descriptions always remain directly in rows.
 Mandatory does NOT automatically mean supplier qualification. Only Mandatory
 Supplier Qualification requirements are qualification gates. Never infer bidder
 capability, PASS, evidence readiness, certifications held, or capacity from buyer
@@ -579,13 +812,15 @@ unless a cited numeric source field explicitly establishes it.
 
 Every non-null substantive output field needs a citation. Cite each scope_categories item.
 Citation: {"output_pointer":"/brief/executive_summary","supports":[
-{"entity_id":"R-<full digest>-1","field_pointer":"/description","evidence_refs":["E-<full digest>"]}]}.
-Pointers address synthesis, without a /synthesis prefix. Use exact supplied entity IDs.
+{"entity_id":"r1","field_pointer":"/description","evidence_refs":["e1"]}]}.
+Pointers address synthesis, without a /synthesis prefix. Use exact supplied prompt-local
+aliases: r1 for a requirement, f1 for a fact, c1 for a conflict, e1 for evidence.
+Aliases are local to this request and resolve to full stable IDs in the sidecar.
 For metadata use fact_id and /value. For facts use fact_id and a visible scalar field.
 Evidence must belong to the cited entity. If provenance is unavailable use [];
 do not fabricate evidence or quote unavailable excerpts. Cite no hidden sidecar fields.
 No character spans. Citations establish traceability, not proof of semantic entailment.
-For a suggested outline title use {"section_index":0,"kind":"proposal","supports":["R-...","F-..."]}.
+For a suggested outline title use {"section_index":0,"kind":"proposal","supports":["r1","f1"]}.
 Outline notes and word_limit need separate field citations when non-null.
 Do not cite operational defaults, nulls, Not stated, or the citations themselves.
 Return valid complete JSON only, no markdown, extra keys, or source_citations field.
