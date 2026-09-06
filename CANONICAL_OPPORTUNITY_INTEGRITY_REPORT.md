@@ -149,3 +149,20 @@ The full canonical ledger remains sidecar-only. The prompt contains only resolve
 - GitHub CI: not run or claimed
 
 The final remediation does not change migrations, database schema, model, Stage A chunking/retry/recovery, or the Stage D guard. Full British Council acceptance remains unclaimed.
+
+## Final pre-PR safety correction
+
+Two deterministic safety gaps were corrected after the final remediation review.
+
+Canonical conflict coverage is no longer inferred from the presence of any typed observation. A mapped legacy submission, clarification, or contract-term conflict keeps that field unresolved unless the canonical field is already conflicted or a verified source-level supersession accounts for both legacy alternatives. A lone typed October 1 submission deadline therefore cannot override a legacy October 1 versus October 3 disagreement. A verified October 1 to October 3 amendment continues to resolve October 3. Clarification remains independent, and envelope/bilingual conflicts suppress no dates or term.
+
+Headline submission and clarification deadlines now require day-level authority. `DATE` requires strict `YYYY-MM-DD` and a valid calendar date. `DATETIME` requires the same valid date plus a valid 24-hour time; its date component may resolve the headline. `MONTH`, `YEAR`, and `UNKNOWN` precision observations remain in the ledger but cannot independently resolve an executive deadline. Invalid dates and times remain `UNPARSED`, and timezone is never inferred.
+
+No live AI calls were needed because neither correction changes the provider contract.
+
+Validation after this correction:
+
+- Focused canonical/Stage C/Stage D suites: 236 passed, 5 subtests passed
+- Full repository suite: 555 passed, 1 skipped, 19 subtests passed, 0 failures
+- Database schema and migrations: unchanged; no Migration 004
+- Model, Stage A chunking/retry/recovery, and Stage D guard: unchanged
