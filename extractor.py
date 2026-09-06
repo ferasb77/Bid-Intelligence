@@ -3936,6 +3936,11 @@ def _synthesize_projected_bid_brief(normalized_facts, conflicts, api_key, checkp
             checkpoint.write(prefix + "/response.json", {"text": text, "stop_reason": response.stop_reason})
             if response.stop_reason != "end_turn":
                 raise ProjectionValidationError("INCOMPLETE_MODEL_RESPONSE")
+            canonical = normalized_facts.get("_canonical_opportunity")
+            if canonical and canonical.get("observations"):
+                from canonical_opportunity import remove_authoritative_values_for_validation
+                from stage_d_projection import strict_json, canonical_json
+                text = canonical_json(remove_authoritative_values_for_validation(strict_json(text), canonical))
             validated = validate_stage_d_response(text, projection)
         except (ProjectionValidationError, anthropic.APIError) as exc:
             code = exc.code if isinstance(exc, ProjectionValidationError) else type(exc).__name__

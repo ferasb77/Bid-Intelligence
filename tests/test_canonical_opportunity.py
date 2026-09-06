@@ -3,7 +3,8 @@ import itertools
 
 from canonical_opportunity import (
     SCHEMA_VERSION, apply_authoritative_values, build_canonical_opportunity,
-    compact_stage_d_summary, resolve_canonical_opportunity,
+    compact_stage_d_summary, remove_authoritative_values_for_validation,
+    resolve_canonical_opportunity,
 )
 
 
@@ -139,3 +140,11 @@ def test_duplicate_physical_occurrence_collapses_with_occurrences():
     c = resolved([{"typed_observations": [copy.deepcopy(item), copy.deepcopy(item)]}])
     assert len(c["observations"]) == 1
     assert len(c["observations"][0]["extraction_occurrences"]) == 2
+
+
+def test_model_copies_of_authoritative_values_are_removed_before_validation():
+    c = resolved([{"typed_observations": [obs("OPPORTUNITY_TITLE", "Tender Alpha")]}])
+    response = {"synthesis": {"bid": {"title": "Tender Alpha"}, "brief": {}}, "citations": []}
+    cleaned = remove_authoritative_values_for_validation(response, c)
+    assert cleaned["synthesis"]["bid"]["title"] is None
+    assert response["synthesis"]["bid"]["title"] == "Tender Alpha"

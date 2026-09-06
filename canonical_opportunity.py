@@ -376,3 +376,23 @@ def apply_authoritative_values(synthesis, canonical):
         if resolved.get("status") == "RESOLVED": brief[field] = resolved.get("value")
         elif not resolved.get("stage_d_tier2_permitted"): brief[field] = None
     return out
+
+
+def remove_authoritative_values_for_validation(response, canonical):
+    """Remove model copies of deterministic fields before legacy citation checks.
+
+    The validated synthesis receives the authoritative values afterward. Tier-2
+    classifications remain untouched only where deterministic resolution permits them.
+    """
+    out = copy.deepcopy(response)
+    synthesis = out.get("synthesis", {})
+    bid, brief = synthesis.get("bid", {}), synthesis.get("brief", {})
+    for field in ("title", "client", "file_number", "submission_deadline", "clarification_deadline"):
+        if canonical.get("resolved", {}).get(field, {}).get("status") == "RESOLVED":
+            bid[field] = None
+    if canonical.get("resolved", {}).get("contract_term", {}).get("status") == "RESOLVED":
+        brief["contract_term"] = "Not stated"
+    for field in ("opportunity_type", "procurement_model"):
+        if canonical.get("resolved", {}).get(field, {}).get("status") == "RESOLVED":
+            brief[field] = None
+    return out
