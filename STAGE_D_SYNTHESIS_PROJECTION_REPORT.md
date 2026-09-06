@@ -1,5 +1,30 @@
 # Stage D Synthesis Projection — Implementation Report
 
+## Final capacity and live-contract remediation (2026-09-06)
+
+The high-cardinality deterministic case now fits the unchanged 580,000-character guard. It preserves 559/559 requirements, 1,053 source-ref occurrences, 1,061 unique evidence IDs, four unresolved conflicts, and all populated non-requirement families. The same input measured 903,897 characters under the prior representation and 563,925 characters after prompt-local aliases, lossless row tables, shared source names, and inline locator reduction. Headroom is 16,075 characters (2.772%). This meets the required limit but not the preferred 10% headroom target; further reduction was not taken because the remaining content is semantic text or contract structure.
+
+Full SHA-256 identifiers and complete provenance remain in the authoritative sidecar. Prompt aliases are deterministic and resolve back to those identifiers. Tables preserve missing versus explicit-null fields, and reduced inline locators retain their complete forms in the sidecar. The request-size guard includes both user text and the serialized provider output schema; provider-internal prompt expansion is unavailable and therefore reported as unknown.
+
+The final Stage D contract smokes used retained Stage B/C artifacts, required external checkpoints, and `claude-haiku-4-5-20251001`. Neither smoke called Stages A, B, or C:
+
+| Fixture | Requirements / conflicts | Prompt chars | Final attempts | JSON / citations / authority / assembly | Manual semantic review |
+|---|---:|---:|---:|---|---|
+| British Council attempt 2 | 41 / 0 | 49,075 | 1 | PASS / PASS / PASS / PASS | CLEAR |
+| Frozen Bank of Canada | 98 / 3 | 120,406 | 1 | PASS / PASS / PASS / PASS | CLEAR |
+
+The manual review covered executive summary, opportunity type, procurement model, scope categories, proposal outline, and citations. It found no invented bidder capabilities, no treatment of required proof as possessed evidence, no conflict resolution, no fabricated procurement facts, and no buyer-mandated characterization of suggested outline headings. Bank's summary explicitly describes the bilingualism scope as unresolved, and both deadline fields remain null. This is a human semantic assessment, not a claim of deterministic entailment.
+
+The compatibility work retained all failures. Across the remediation there were 21 API requests: 17 model responses and four provider-side schema rejections before generation. Earlier outputs included fenced JSON, missing citation keys, invalid ownership/IDs, an unresolved-conflict selection, and invalid or missing pointers. Those attempts remain in private checkpoint bundles; the sanitized evidence records the failure-code set without procurement excerpts.
+
+Native JSON output uses `output_config.format` with a JSON schema, following the [Anthropic structured outputs documentation](https://platform.claude.com/docs/en/build-with-claude/structured-outputs). Local citation ownership, exact-value, authority, and final-assembly validation still run after provider schema validation. The schema narrows conflict-sensitive fields and entity aliases using facts already present in each projection; it does not weaken downstream validation.
+
+Focused validation completed with 282 passed and 19 subtests passed. The final full suite completed with 522 passed, 1 skipped, 19 subtests passed, and zero failures. These are local results; no GitHub CI claim is made. Production/test commit: `3904fadbc1499e7e4278dbdc95e60fd55eb9c47a`.
+
+The real 559-requirement British Council Stage B/C dataset was not recovered or measured. **FULL BRITISH COUNCIL CAPACITY ACCEPTANCE REMAINS NOT PROVEN.** Stage A was not rerun.
+
+The sections below preserve the earlier implementation report as historical evidence and should be read in that context.
+
 ## Outcome and scope
 
 Implemented the versioned Stage D projection, provenance sidecar, field-level citations, strict response validation, private checkpoints, and deterministic resume support. The existing authoritative applicator and final submission-document builder remain authoritative. The public extraction return shape remains bid/brief/requirements/documents/outline.
