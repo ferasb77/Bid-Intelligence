@@ -430,7 +430,7 @@ def _resolve_money(observations, conflicts):
     groups = {}
     for o in candidates: groups.setdefault(canonical_json(o["normalized_value"]), []).append(o)
     if len(groups) != 1:
-        c = _conflict("headline_value", candidates, sorted(json.loads(v) for v in groups)); conflicts.append(c)
+        c = _conflict("headline_value", candidates, sorted((json.loads(v) for v in groups), key=canonical_json)); conflicts.append(c)
         return _empty("CONFLICTED", [c["conflict_id"]])
     support = next(iter(groups.values()))
     return {"status": "RESOLVED", "value": support[0]["normalized_value"], "observation_ids": sorted(o["observation_id"] for o in support),

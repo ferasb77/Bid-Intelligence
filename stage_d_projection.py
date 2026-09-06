@@ -383,6 +383,22 @@ def build_stage_d_synthesis_projection(normalized_facts, conflicts):
                 if not isinstance(value, dict) or any(not isinstance(k, str) or isinstance(v, (dict, list)) for k, v in value.items()):
                     _fail("INVALID_FIELD_TYPE", f"{pointer}/{key}")
                 projected[key] = copy.deepcopy(value)
+            elif section == "conflicts" and key in {"affected_fields", "affected_observation_ids"}:
+                if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+                    _fail("INVALID_FIELD_TYPE", f"{pointer}/{key}")
+                projected[key] = copy.deepcopy(value)
+            elif section == "conflicts" and key == "incompatible_values":
+                if not isinstance(value, list):
+                    _fail("INVALID_FIELD_TYPE", f"{pointer}/{key}")
+                scalar = lambda item: item is None or type(item) in (str, bool, int, float)
+                if any(not (scalar(item) or (isinstance(item, dict)
+                           and all(isinstance(k, str) and scalar(v) for k, v in item.items()))) for item in value):
+                    _fail("INVALID_FIELD_TYPE", f"{pointer}/{key}")
+                projected[key] = copy.deepcopy(value)
+            elif section == "conflicts" and key == "resolved_by":
+                if value is not None and not isinstance(value, str):
+                    _fail("INVALID_FIELD_TYPE", f"{pointer}/{key}")
+                projected[key] = value
             else:
                 # Scalar observations must not hide arbitrary new nested facts.
                 if isinstance(value, dict) or (isinstance(value, list) and any(isinstance(v, (dict, list)) for v in value)):
@@ -432,13 +448,13 @@ def build_stage_d_synthesis_projection(normalized_facts, conflicts):
 
     sidecar["canonical_observations"] = {}
     if canonical:
-        for obs in canonical.get("observations", []):
+        for observation_index, obs in enumerate(canonical.get("observations", [])):
             if obs.get("family") != "PROCUREMENT_MECHANIC" or obs.get("provenance_status") != "VERIFIED":
                 continue
             oid = obs["observation_id"]
             shown = {k: copy.deepcopy(obs.get(k)) for k in ("observation_id", "family", "semantic_kind", "original_value", "normalized_value", "scope", "source_doc")}
             visible[oid] = shown
-            refs = [evidence({**ref, "verified": True}, "source_ref", oid, f"/normalized_facts/_canonical_opportunity/observations/{oid}/source_refs/{i}")
+            refs = [evidence({**ref, "verified": True}, "source_ref", oid, f"/normalized_facts/_canonical_opportunity/observations/{observation_index}/source_refs/{i}")
                     for i, ref in enumerate(obs.get("source_refs", []))]
             shown["evidence_refs"] = refs
             sidecar["canonical_observations"][oid] = {"visible": shown, "evidence_refs": refs}
