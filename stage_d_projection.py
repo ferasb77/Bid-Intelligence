@@ -282,7 +282,9 @@ def build_stage_d_synthesis_projection(normalized_facts, conflicts):
     canonical = normalized_facts.get("_canonical_opportunity")
     if canonical:
         from canonical_opportunity import compact_stage_d_summary
-        canonical_aliases = {f"o{i}": oid for i, oid in enumerate(sorted(o["observation_id"] for o in canonical.get("observations", [])), 1)}
+        citable = sorted(o["observation_id"] for o in canonical.get("observations", [])
+                          if o.get("family") == "PROCUREMENT_MECHANIC" and o.get("provenance_status") == "VERIFIED")
+        canonical_aliases = {f"o{i}": oid for i, oid in enumerate(citable, 1)}
         reverse_canonical_aliases = {value: key for key, value in canonical_aliases.items()}
         def alias_canonical(value):
             if isinstance(value, str):

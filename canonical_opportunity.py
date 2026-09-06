@@ -472,7 +472,7 @@ def compact_stage_d_summary(canonical):
     """Prompt-safe canonical view; full ledger remains in the sidecar."""
     mechanics = sorted({o["semantic_kind"] for o in canonical.get("observations", []) if o["family"] == "PROCUREMENT_MECHANIC" and o["provenance_status"] == "VERIFIED"})
     return {"schema_version": SCHEMA_VERSION,
-            "resolved": {k: {x: v.get(x) for x in ("status", "value", "observation_ids", "conflict_ids", "resolution_basis", "stage_d_tier2_permitted") if x in v}
+            "resolved": {k: {x: v.get(x) for x in ("status", "value", "conflict_ids", "resolution_basis", "stage_d_tier2_permitted") if x in v}
                          for k, v in sorted(canonical.get("resolved", {}).items())},
             "conflicts": [{k: c.get(k) for k in ("conflict_id", "state", "semantic_kind", "affected_fields", "link_status", "incompatible_values")} for c in canonical.get("conflicts", [])],
             "observations": [{"observation_id": o["observation_id"], "family": o["family"], "semantic_kind": o["semantic_kind"],
