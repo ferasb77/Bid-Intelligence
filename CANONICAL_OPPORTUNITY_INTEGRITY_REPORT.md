@@ -166,3 +166,18 @@ Validation after this correction:
 - Full repository suite: 555 passed, 1 skipped, 19 subtests passed, 0 failures
 - Database schema and migrations: unchanged; no Migration 004
 - Model, Stage A chunking/retry/recovery, and Stage D guard: unchanged
+
+## PR #12 final review correction
+
+Excel cell containment now converts column labels to base-26 column indices before comparing boundaries (`A=1`, `Z=26`, `AA=27`). Tests prove that `AA5` is outside `A1:Z10`, `Z5` is inside `A1:AA10`, and `AA5` is inside `Z1:AB10`; multi-letter boundaries remain exact.
+
+Contract-term resolution now excludes `UNPARSED` and `EMPTY` observations. Invalid commencement or end dates remain in the observation ledger but leave the canonical term unresolved when no valid term evidence exists. Valid and partial-precision term dates render as `Commencement date: …` and `End date: …` without Python dictionary representations.
+
+Tier-1 procurement classification now uses only verified, active, unscoped `PROCUREMENT_MECHANIC` observations. Single- and multiple-supplier award assertions at opportunity scope create a field-linked `/resolved/procurement_model` conflict, disable Tier-2 resolution, and constrain the Stage D output schema to null. Scoped lot/component mechanics do not determine the opportunity-level model. Classification support IDs contain only the decisive mechanic observations; pricing mechanics and same-named monetary observations are excluded.
+
+Validation after this correction:
+
+- Focused canonical/Stage C/Stage D suites: 242 passed, 5 subtests passed
+- Full repository suite: 561 passed, 1 skipped, 19 subtests passed, 0 failures
+- No live AI calls were required because the provider contract did not change
+- Database schema, migrations, model, Stage A recovery/chunking, and Stage D guard remain unchanged
