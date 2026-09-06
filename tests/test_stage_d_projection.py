@@ -133,6 +133,22 @@ def test_tier2_cannot_be_supported_only_by_unrelated_requirement():
         proj.validate_stage_d_response(response, p)
 
 
+def test_mechanic_contradiction_disables_stage_d_tier2_schema():
+    from canonical_opportunity import build_canonical_opportunity, resolve_canonical_opportunity
+    nf = facts()
+    text = "[[SOURCE: mechanics.pdf | PAGE: 1]]\nsingle supplier and multiple supplier"
+    raw = [{"typed_observations": [{"family": "PROCUREMENT_MECHANIC", "semantic_kind": kind,
+        "original_value": value, "source_doc": "mechanics.pdf",
+        "source_refs": [{"source_doc": "mechanics.pdf", "page": 1, "excerpt": value}]}
+        for kind, value in (("SINGLE_SUPPLIER_AWARD", "single supplier"), ("MULTIPLE_SUPPLIER_AWARD", "multiple supplier"))]}]
+    nf["_canonical_opportunity"] = resolve_canonical_opportunity(build_canonical_opportunity(raw,
+        {"files": ["mechanics.pdf"], "doc_metadata": {"mechanics.pdf": {"page_count": 1}}, "doc_texts": {"mechanics.pdf": text}}))
+    p = proj.build_stage_d_synthesis_projection(nf, nf["_canonical_opportunity"]["conflicts"])
+    assert nf["_canonical_opportunity"]["resolved"]["procurement_model"]["status"] == "CONFLICTED"
+    schema = proj.stage_d_output_config(p)["format"]["schema"]
+    assert schema["properties"]["synthesis"]["properties"]["brief"]["properties"]["procurement_model"] == {"type": "null"}
+
+
 def test_occurrence_bijection_duplicates_and_original_ids():
     nf = facts()
     nf["requirements"] *= 3

@@ -307,3 +307,72 @@ def test_buyer_precedes_distinct_issuing_authority_and_issuer_is_fallback():
     assert c["resolved"]["client"]["value"] == "Buyer Corp"
     fallback = resolved([{"typed_observations": [issuer]}])
     assert fallback["resolved"]["client"]["resolution_basis"] == "ISSUING_AUTHORITY_FALLBACK"
+
+
+def test_excel_multi_letter_cell_ranges_use_numeric_column_order():
+    def provenance(marker_range, requested):
+        text = f"[[SOURCE: a.xlsx | SHEET: Data | CELLS: {marker_range}]]\nTender Alpha"
+        meta = {"files": ["a.xlsx"], "doc_metadata": {"a.xlsx": {"sheets": ["Data"]}}, "doc_texts": {"a.xlsx": text}}
+        item = obs("OPPORTUNITY_TITLE", "Tender Alpha", doc="a.xlsx")
+        item["source_refs"][0] = {"source_doc": "a.xlsx", "sheet": "Data", "cell": requested, "excerpt": "Tender Alpha"}
+        return resolved([{"typed_observations": [item]}], meta)["observations"][0]["provenance_status"]
+    assert provenance("A1:Z10", "AA5") != "VERIFIED"
+    assert provenance("A1:AA10", "Z5") == "VERIFIED"
+    assert provenance("Z1:AB10", "AA5") == "VERIFIED"
+    assert provenance("AA1:AB10", "Z5") != "VERIFIED"
+
+
+def test_term_dates_exclude_unparsed_and_display_valid_values():
+    valid = [obs("COMMENCEMENT_DATE", "2030-01-01", family="CONTRACT_TERM", date="2030-01-01", precision="DATE"),
+             obs("END_DATE", "2030-12-31", family="CONTRACT_TERM", date="2030-12-31", precision="DATE")]
+    meta = metadata("a.pdf"); meta["doc_texts"]["a.pdf"] += " 2030-01-01 2030-12-31"
+    c = resolved([{"typed_observations": valid}], meta)
+    display = apply_authoritative_values({"bid": {}, "brief": {}}, c)["brief"]["contract_term"]
+    assert "Commencement date: 2030-01-01" in display and "End date: 2030-12-31" in display
+    assert "{" not in display
+    for kind, bad in (("COMMENCEMENT_DATE", "2030-02-30"), ("END_DATE", "not-a-date")):
+        item = obs(kind, bad, family="CONTRACT_TERM", date=bad, precision="DATE")
+        bad_meta = metadata("a.pdf"); bad_meta["doc_texts"]["a.pdf"] += " " + bad
+        invalid = resolved([{"typed_observations": [item]}], bad_meta)
+        assert invalid["observations"][0]["normalization_state"] == "UNPARSED"
+        assert invalid["resolved"]["contract_term"]["status"] == "UNVERIFIED"
+
+
+def test_partial_precision_term_dates_remain_human_readable():
+    items = [obs("COMMENCEMENT_DATE", "2030-01", family="CONTRACT_TERM", date="2030-01", precision="MONTH"),
+             obs("END_DATE", "2031", family="CONTRACT_TERM", date="2031", precision="YEAR")]
+    meta = metadata("a.pdf"); meta["doc_texts"]["a.pdf"] += " 2030-01 2031"
+    display = apply_authoritative_values({"bid": {}, "brief": {}}, resolved([{"typed_observations": items}], meta))["brief"]["contract_term"]
+    assert "Commencement date: 2030-01" in display and "End date: 2031" in display and "{" not in display
+
+
+def test_mechanic_classification_support_is_decisive_and_scope_aware():
+    meta = metadata("a.pdf"); meta["doc_texts"]["a.pdf"] += " single multiple call off rate cap milestone payment"
+    single = resolved([{"typed_observations": [obs("SINGLE_SUPPLIER_AWARD", "single", family="PROCUREMENT_MECHANIC"),
+        obs("RATE_CAP", "rate cap", family="PROCUREMENT_MECHANIC"),
+        obs("MILESTONE_PAYMENT", "milestone payment", family="MONETARY", amount="1", currency="CAD")]}], meta)
+    model = single["resolved"]["procurement_model"]
+    assert model["value"] == "Single Contract" and len(model["observation_ids"]) == 1
+    decisive = next(o for o in single["observations"] if o["observation_id"] in model["observation_ids"])
+    assert decisive["family"] == "PROCUREMENT_MECHANIC" and decisive["semantic_kind"] == "SINGLE_SUPPLIER_AWARD"
+
+    multi = resolved([{"typed_observations": [obs("MULTIPLE_SUPPLIER_AWARD", "multiple", family="PROCUREMENT_MECHANIC"),
+        obs("CALL_OFF", "call off", family="PROCUREMENT_MECHANIC"), obs("RATE_CAP", "rate cap", family="PROCUREMENT_MECHANIC")]}], meta)
+    assert multi["resolved"]["procurement_model"]["value"] == "Multi-vendor Call-off"
+    support_kinds = {o["semantic_kind"] for o in multi["observations"] if o["observation_id"] in multi["resolved"]["procurement_model"]["observation_ids"]}
+    assert support_kinds == {"MULTIPLE_SUPPLIER_AWARD", "CALL_OFF"}
+
+    scoped_items = [obs("SINGLE_SUPPLIER_AWARD", "single", family="PROCUREMENT_MECHANIC", lot="1"),
+                    obs("MULTIPLE_SUPPLIER_AWARD", "multiple", family="PROCUREMENT_MECHANIC", lot="2")]
+    scoped = resolved([{"typed_observations": scoped_items}], meta)
+    assert scoped["resolved"]["procurement_model"]["status"] == "NOT_CLASSIFIED"
+
+
+def test_unscoped_single_and_multiple_awards_conflict_without_tier2_escape():
+    meta = metadata("a.pdf"); meta["doc_texts"]["a.pdf"] += " single multiple"
+    c = resolved([{"typed_observations": [obs("SINGLE_SUPPLIER_AWARD", "single", family="PROCUREMENT_MECHANIC"),
+        obs("MULTIPLE_SUPPLIER_AWARD", "multiple", family="PROCUREMENT_MECHANIC")]}], meta)
+    result = c["resolved"]["procurement_model"]
+    assert result["status"] == "CONFLICTED" and result["value"] is None
+    assert result["stage_d_tier2_permitted"] is False
+    assert any(x["affected_fields"] == ["/resolved/procurement_model"] for x in c["conflicts"])

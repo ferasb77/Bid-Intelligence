@@ -379,6 +379,10 @@ def build_stage_d_synthesis_projection(normalized_facts, conflicts):
                 if "text" in value:
                     projected[key]["text"] = value["text"]
                 refs.append(eid)
+            elif key == "scope":
+                if not isinstance(value, dict) or any(not isinstance(k, str) or isinstance(v, (dict, list)) for k, v in value.items()):
+                    _fail("INVALID_FIELD_TYPE", f"{pointer}/{key}")
+                projected[key] = copy.deepcopy(value)
             else:
                 # Scalar observations must not hide arbitrary new nested facts.
                 if isinstance(value, dict) or (isinstance(value, list) and any(isinstance(v, (dict, list)) for v in value)):
@@ -556,6 +560,10 @@ def stage_d_output_config(projection=None):
             bid["properties"]["clarification_deadline"] = null
         if states.get("contract_term", {}).get("status") in {"CONFLICTED", "AMBIGUOUS", "UNVERIFIED"}:
             brief["properties"]["contract_term"] = {"type": "string", "enum": ["Not stated"]}
+        if states.get("opportunity_type", {}).get("status") == "CONFLICTED":
+            brief["properties"]["opportunity_type"] = null
+        if states.get("procurement_model", {}).get("status") == "CONFLICTED":
+            brief["properties"]["procurement_model"] = null
     outline = obj({"sort_order": {"type": "integer"}, "section_num": string, "title": string,
                    "owner": null, "word_limit": {"type": ["integer", "null"]},
                    "status": {"type": "string", "enum": ["Not Started"]}, "notes": nullable})
@@ -770,6 +778,8 @@ def validate_stage_d_response(response, projection):
     for field in ("opportunity_type", "procurement_model"):
         value = brief[field]
         state = snapshot["normalized_facts"].get("_canonical_opportunity", {}).get("resolved", {}).get(field, {})
+        if value is not None and state.get("status") == "CONFLICTED":
+            _fail("UNRESOLVED_CONFLICT_SELECTION", field)
         if value is not None and state.get("stage_d_tier2_permitted"):
             refs = supported.get("/brief/" + field, [])
             if not any(r["entity_id"] in sidecar.get("canonical_observations", {}) and

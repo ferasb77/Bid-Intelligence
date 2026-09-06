@@ -96,7 +96,12 @@ def _row_interval(value):
 
 def _cell(value):
     match = re.fullmatch(r"\s*([A-Za-z]+)(\d+)\s*", str(value))
-    return (match.group(1).upper(), int(match.group(2))) if match else None
+    if not match:
+        return None
+    column = 0
+    for letter in match.group(1).upper():
+        column = column * 26 + (ord(letter) - ord("A") + 1)
+    return (column, int(match.group(2)))
 
 
 def _locator_matches(parsed, ref):
@@ -367,8 +372,10 @@ def _resolve_client(observations, conflicts):
 
 
 def _resolve_term(observations, conflicts):
-    terms = [o for o in observations if o["family"] == "CONTRACT_TERM" and o["supersession_state"] == "ACTIVE" and o["provenance_status"] == "VERIFIED"]
-    if not terms: return _empty("UNVERIFIED" if any(o["family"] == "CONTRACT_TERM" for o in observations) else "MISSING")
+    all_terms = [o for o in observations if o["family"] == "CONTRACT_TERM"]
+    terms = [o for o in all_terms if o["supersession_state"] == "ACTIVE" and o["provenance_status"] == "VERIFIED"
+             and o["normalization_state"] not in {"UNPARSED", "EMPTY"}]
+    if not terms: return _empty("UNVERIFIED" if all_terms else "MISSING")
     groups = {}
     for o in terms: groups.setdefault((o["semantic_kind"], canonical_json(o["normalized_value"]), canonical_json(o["scope"])), []).append(o)
     by_kind = {}
@@ -430,18 +437,44 @@ def _resolve_money(observations, conflicts):
             "conflict_ids": [], "resolution_basis": "EXACT_ESTIMATED_VALUE_AGREEMENT", "provenance_status": "VERIFIED"}
 
 
-def _resolve_classifications(observations):
-    mechanics = {o["semantic_kind"] for o in observations if o["family"] == "PROCUREMENT_MECHANIC" and o["provenance_status"] == "VERIFIED" and o["supersession_state"] == "ACTIVE"}
-    ids = sorted(o["observation_id"] for o in observations if o["semantic_kind"] in mechanics)
+def _resolve_classifications(observations, conflicts):
+    eligible = [o for o in observations if o["family"] == "PROCUREMENT_MECHANIC" and o["provenance_status"] == "VERIFIED"
+                and o["supersession_state"] == "ACTIVE" and not o.get("scope")]
+    mechanics = {o["semantic_kind"] for o in eligible}
+    by_kind = {kind: [o for o in eligible if o["semantic_kind"] == kind] for kind in mechanics}
+    award_conflict = {"SINGLE_SUPPLIER_AWARD", "MULTIPLE_SUPPLIER_AWARD"} <= mechanics
+    instrument_conflict = len({"RFP", "ITT", "RFQ"} & mechanics) > 1
+    def conflict_result(field, kinds):
+        affected = [o for kind in kinds for o in by_kind.get(kind, [])]
+        conflict = _conflict(field, affected, sorted(kinds))
+        conflict["semantic_kind"] = "PROCUREMENT_MECHANIC_CONTRADICTION"
+        conflicts.append(conflict)
+        return {"status": "CONFLICTED", "value": None, "observation_ids": [],
+                "conflict_ids": [conflict["conflict_id"]], "resolution_basis": None,
+                "provenance_status": "VERIFIED", "stage_d_tier2_permitted": False}
+    if instrument_conflict:
+        opportunity_result = conflict_result("opportunity_type", {"RFP", "ITT", "RFQ"} & mechanics)
+    else:
+        opportunity = "Panel Agreement" if "PANEL" in mechanics else "Standing Offer" if "STANDING_OFFER" in mechanics else None
+        decisive = ({"PANEL"} if opportunity == "Panel Agreement" else {"STANDING_OFFER"} if opportunity else set())
+        opportunity_result = {"status": "RESOLVED" if opportunity else "NOT_CLASSIFIED", "value": opportunity,
+            "observation_ids": sorted(o["observation_id"] for k in decisive for o in by_kind.get(k, [])), "conflict_ids": [],
+            "resolution_basis": "EXPLICIT_MECHANICS" if opportunity else None,
+            "provenance_status": "VERIFIED" if opportunity else "UNVERIFIED", "stage_d_tier2_permitted": not bool(opportunity)}
+    if award_conflict:
+        model_result = conflict_result("procurement_model", {"SINGLE_SUPPLIER_AWARD", "MULTIPLE_SUPPLIER_AWARD"})
+        return opportunity_result, model_result
     opportunity = "Panel Agreement" if "PANEL" in mechanics else "Standing Offer" if "STANDING_OFFER" in mechanics else None
     model = ("Standing Offer Panel" if "STANDING_OFFER" in mechanics and ({"MULTIPLE_SUPPLIER_AWARD", "PANEL"} & mechanics)
              else "Multi-vendor Call-off" if {"MULTIPLE_SUPPLIER_AWARD", "CALL_OFF"} <= mechanics
              else "Single Contract" if "SINGLE_SUPPLIER_AWARD" in mechanics else None)
-    def result(value):
-        return {"status": "RESOLVED" if value else "NOT_CLASSIFIED", "value": value, "observation_ids": ids if value else [],
+    decisive = ({"STANDING_OFFER"} | ({"MULTIPLE_SUPPLIER_AWARD"} if "MULTIPLE_SUPPLIER_AWARD" in mechanics else {"PANEL"})) if model == "Standing Offer Panel" else ({"MULTIPLE_SUPPLIER_AWARD", "CALL_OFF"} if model == "Multi-vendor Call-off" else {"SINGLE_SUPPLIER_AWARD"} if model else set())
+    def result(value, kinds):
+        return {"status": "RESOLVED" if value else "NOT_CLASSIFIED", "value": value,
+                "observation_ids": sorted(o["observation_id"] for k in kinds for o in by_kind.get(k, [])),
                 "conflict_ids": [], "resolution_basis": "EXPLICIT_MECHANICS" if value else None,
                 "provenance_status": "VERIFIED" if value else "UNVERIFIED", "stage_d_tier2_permitted": not bool(value)}
-    return result(opportunity), result(model)
+    return opportunity_result, result(model, decisive)
 
 
 def resolve_canonical_opportunity(canonical):
@@ -452,7 +485,7 @@ def resolve_canonical_opportunity(canonical):
         result["resolved"][field] = _resolve_client(observations, conflicts) if field == "client" else _resolve_simple(field, observations, conflicts)
     result["resolved"]["contract_term"] = _resolve_term(observations, conflicts)
     result["resolved"]["headline_value"] = _resolve_money(observations, conflicts)
-    opportunity, model = _resolve_classifications(observations)
+    opportunity, model = _resolve_classifications(observations, conflicts)
     result["resolved"]["opportunity_type"], result["resolved"]["procurement_model"] = opportunity, model
     for field, (family, kinds) in FIELD_KINDS.items():
         present = any(o["family"] == family and o["semantic_kind"] in kinds for o in observations)
@@ -531,6 +564,9 @@ def format_contract_term(resolved):
             label = (f"Up to {count} optional {duration_text(value)} extensions" if count else "Optional extension: " + duration_text(value))
             parts.append(label + ((" subject to " + _text(conditions)) if conditions else ""))
         elif item.get("kind") == "MAXIMUM_TERM": parts.append("Maximum potential term: " + duration_text(value))
+        elif item.get("kind") in {"COMMENCEMENT_DATE", "END_DATE"}:
+            label = "Commencement date" if item["kind"] == "COMMENCEMENT_DATE" else "End date"
+            parts.append(label + ": " + (_text(value.get("date")) if isinstance(value, dict) else _text(value)))
         else: parts.append(item.get("kind", "Term").replace("_", " ").title() + ": " + _text(value))
     return "; ".join(p for p in parts if p) or "Not stated"
 
