@@ -108,3 +108,44 @@ Requirements, evaluation hierarchy, submission projection, and the seven authori
 **NO MIGRATION 004.** Migrations 001–003 remain the live schema baseline. No database schema changed, and the canonical ledger is not persisted to database tables. Phase 2 can design lossless persistence for amount kind, currency, tax basis, guarantee status, scopes, resolved states, and observation/conflict provenance before any safe legacy-value population is considered.
 
 Legacy checkpoints cannot gain source observations that Stage A never extracted. Maximum-potential term is accepted only when explicitly observed in Phase 1; automatic arithmetic across multiple option observations remains conservative. Calendar consistency checks cover exact month/year durations with exact start/end dates and do not approximate days or infer time zones.
+
+## Final-review remediation
+
+Final review identified and closed the following gaps:
+
+- Source markers are now parsed into named components. Pages compare as exact integers; sheet and section use whitespace-normalized exact equality; row and cell coordinates use explicit interval containment. Digit or field-name substrings cannot validate a locator.
+- Stage A supersession now emits source-level family, semantic kind, old/new value, scope, and evidence. Stage B resolves that relationship to canonical IDs only when verified evidence and one normalized target identity establish the match. Missing or ambiguous targets remain unresolved, and cycle detection remains active.
+- Canonical coverage is explicit per executive field. When a field lacks typed coverage, deterministic legacy deadline/term conflicts suppress only the field identified by the legacy topic/type. Envelope, bilingual, and unlinked conflicts suppress no unrelated field.
+- Extension and renewal observations are repeatable. Different unsequenced options coexist; contradictory values for the same explicit option sequence or ID conflict. Display formatting renders duration, optionality, count, and conditions as text without Python object representations.
+- Verified canonical mechanic observations receive prompt-local `o*` aliases and ordinary evidence aliases. Only their visible fields are citable. The existing validator rejects unknown aliases, hidden fields, and evidence owned by another entity. Tier-2 classification requires canonical mechanic support when the canonical path permits Tier 2.
+- Family/kind combinations use controlled sets. Invalid combinations are retained as non-authoritative integrity diagnostics.
+- Date precision is controlled, `DAY` normalizes to `DATE`, ISO calendar dates and 24-hour times are validated, and timezone remains null unless supplied.
+- Extraction occurrences use stable content digests and counts rather than list positions. All same-document observation-order permutations produce identical canonical objects and authoritative input digests.
+- Verified `BUYER_NAME` observations own client resolution. `ISSUING_AUTHORITY` is a fallback only when no eligible buyer observation exists.
+- The remaining global-conflict sentence was removed from the Stage D prompt and replaced with field-linked conflict instructions.
+
+### Final live evidence
+
+The explicit amendment package produced two Stage A deadline observations. Haiku emitted a source-level relationship without canonical IDs; Stage B/C marked `2030-03-01` `SUPERSEDED`, kept `2030-03-05` `ACTIVE`, and resolved the submission deadline to `2030-03-05`. All Stage A smoke paths completed with zero recovery attempts.
+
+The adversarial money source emitted both `FRAMEWORK_CEILING` and `EVALUATION_SCENARIO_VALUE` as separate observations. No-guaranteed-volume and pricing mechanics remained separate observations.
+
+The final Stage D smoke was retried only from the immutable required-mode sidecar after a model citation-format failure; Stage A/B/C call counts were zero. Tier-2 `Advisory` passed with five canonical observation supports. Citation validation, authoritative reapplication, and final assembly passed, and an unrelated conflict left the independently resolved clarification deadline intact.
+
+### Final capacity measurements
+
+| Fixture | Before | After | Difference | Headroom |
+|---|---:|---:|---:|---:|
+| Bank of Canada retained facts | 120,494 | 122,215 | +1,721 | 457,785 |
+| British Council Attempt 2 retained facts | 49,163 | 50,875 | +1,712 | 529,125 |
+| Native synthetic canonical package | 10,213 | 12,167 | +1,954 | 567,833 |
+
+The full canonical ledger remains sidecar-only. The prompt contains only resolved/coverage summaries and the verified mechanic observations made visible for Tier-2 citations. The guard remains 580,000 characters.
+
+### Final validation totals
+
+- Focused canonical, Stage A, Stage D, and completeness suites: 191 passed, 5 subtests passed
+- Full repository suite: 550 passed, 1 skipped, 19 subtests passed, 0 failures
+- GitHub CI: not run or claimed
+
+The final remediation does not change migrations, database schema, model, Stage A chunking/retry/recovery, or the Stage D guard. Full British Council acceptance remains unclaimed.
