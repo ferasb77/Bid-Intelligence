@@ -183,3 +183,30 @@ def test_stage_a_prompt_removes_fresh_risk_schema_and_forbids_consequences():
     assert '"contract_risks"' not in schema_part
     assert "Do not emit contract_risks, severity" in prompt
     assert "supplier-produced outputs during contract execution" in prompt
+
+
+@pytest.mark.parametrize("clause_kind,observation_id", [
+    ("PRICING_ESCALATION", "obs_rate_cap"),
+    ("PRICING_ESCALATION", "obs_framework_ceiling"),
+    ("OTHER", "obs_no_guaranteed_volume"),
+    ("PRICING_ESCALATION", "obs_extension_pricing"),
+    ("PAYMENT_WITHHOLDING_SETOFF", "obs_payment_terms"),
+    ("INSURANCE", "obs_insurance_amount"),
+])
+def test_clause_links_do_not_overwrite_canonical_authority(clause_kind, observation_id):
+    item = clause(clause_kind, linked_observation_ids=[observation_id])
+    result = hygiene.build_contract_hygiene([], [item], [], verify, META)
+    canonical = {"resolved": {"estimated_value": {"status": "RESOLVED", "value": "5000000"},
+                              "procurement_model": {"status": "RESOLVED", "value": "Framework"}}}
+    before = copy.deepcopy(canonical)
+    normalized = {"doc_metadata": {}, "requirements": [], "dates": [], "evaluation_criteria": [],
+                  "submission_rules": [], "deliverables": [], "commercial_clauses": result["clauses"],
+                  "contract_risks": [], "_canonical_opportunity": canonical, "_contract_hygiene": result}
+    extractor.apply_stage_d_authoritative_sections({}, normalized)
+    assert normalized["_canonical_opportunity"] == before
+    assert result["clauses"][0]["linked_observation_ids"] == [observation_id]
+
+
+def test_absence_of_clause_does_not_create_risk():
+    result = hygiene.build_contract_hygiene([], [], [], verify, META)
+    assert hygiene.authoritative_sections(result)[2] == []
