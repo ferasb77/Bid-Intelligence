@@ -46,7 +46,7 @@ Clause facts link to canonical observations where applicable. Canonical opportun
 
 Verified logical clauses receive prompt-local `x…` aliases mapped to full stable clause IDs in the sidecar. The occurrence ledger is not duplicated in the prompt.
 
-The model may emit only `REVIEW` or `UNKNOWN`, with `AI_ASSISTED`, a null user decision, exactly one visible clause alias, and the matching controlled clause kind. `MATERIAL`, severity, unknown links, mismatched kinds, multiple-clause ambiguity, and invented user decisions are rejected. Source facts are absent from the model output contract, so Stage D cannot mutate them.
+The model may emit only `REVIEW` or `UNKNOWN`, with `AI_ASSISTED`, a null user decision, exactly one visible clause alias, the matching controlled clause kind, and a state-coupled interpretation code. `REVIEW` maps to `REVIEW_CLAUSE_TERMS`; `UNKNOWN` maps to `INSUFFICIENT_CONTEXT`. Free-form interpretation prose is absent from the model contract and is rendered locally from the validated code. `MATERIAL`, severity, unknown links, mismatched kinds, multiple-clause ambiguity, invented user decisions, free-form consequences, and unsupported codes are rejected. Source facts are also absent from model output, so Stage D cannot mutate them.
 
 Authoritative reapplication preserves deliverable and clause IDs, structured factual fields, source refs, evidence state, and retained occurrences. `brief.contract_risks` is assembled from verified clauses plus any validated assessment. Fresh objects contain no severity.
 
@@ -55,6 +55,12 @@ Authoritative reapplication preserves deliverable and clause IDs, structured fac
 Deliverable, commercial-clause, and risk cards show evidence state and compact existing locator details. Risk cards separate source facts from system interpretation. There is no severity fallback. The empty state says that no source-grounded clauses were identified and explicitly does not claim none exist. Legacy records are labeled `UNVERIFIED` / `LEGACY EXTRACTION`.
 
 The existing `bid_briefs` text columns round-trip nested lists and objects through `format_bid_brief_payload()` and `_ensure_list()` without a schema change. Extracted deliverables are not mapped into the proposal-production `deliverables` table.
+
+## Final review remediation
+
+Fresh logical clauses that fail evidence validation are retained in `_contract_hygiene` with their occurrence IDs, source refs, and `UNVERIFIED` state. They are excluded from the active `commercial_clauses` array, prompt-visible facts, alias table, and authoritative sections. Mixed verified/unverified inputs project only verified clauses while the complete diagnostic ledger remains in the sidecar. Legacy replay continues through the historical compatibility path.
+
+The public nested contract decision is **Option B: version the nested contract**. Every fresh deliverable, clause, and clause-backed risk object carries `contract_hygiene_version: "contract-hygiene/1"`. Legacy nested objects retain their previous shapes and do not masquerade as versioned fresh records. The existing top-level result shape and persistence columns are unchanged.
 
 ## Stage A measurement and live smoke
 
@@ -85,6 +91,8 @@ A D-only structured synthetic package contained one verified monthly deliverable
 
 Earlier development smoke failures exposed and led to correction of a missing `clause_id` alias mapping and then verified the mismatch validator. They are not presented as successful contract evidence.
 
+After final-review remediation, a D-only liability-cap smoke returned `REVIEW_CLAUSE_TERMS`; code rendered the approved neutral review text, preserved the exact source fact and version marker, and completed authoritative assembly. An initial smoke showed the model citing the assessment object through the ordinary citation ledger; the prompt contract was clarified so `clause_ids` is the exclusive assessment-support mechanism, and the repeated smoke passed.
+
 ## Retained replays
 
 - Bank retained normalized data replayed without a live extraction: 43 deliverables, 11 commercial clauses, and 30 risks remain visible through legacy/unverified compatibility.
@@ -93,8 +101,8 @@ Earlier development smoke failures exposed and led to correction of a missing `c
 
 ## Validation
 
-- Focused canonical/hygiene/Stage A/Stage B/Stage C/Stage D/persistence/XLS suite: 351 passed, 5 subtests passed, 0 failures
-- Full repository suite: 641 passed, 1 skipped, 19 subtests passed, 0 failures
+- Focused canonical/hygiene/Stage A/Stage B/Stage C/Stage D/persistence/XLS suite: 360 passed, 5 subtests passed, 0 failures
+- Full repository suite: 650 passed, 1 skipped, 19 subtests passed, 0 failures
 - Python compilation and `git diff --check`: passed
 - No GitHub CI result is claimed.
 
@@ -102,7 +110,7 @@ Earlier development smoke failures exposed and led to correction of a missing `c
 
 - Legacy records remain semantically coarse and unverified until separately re-extracted; compatibility does not upgrade them.
 - Phase 1 does not infer missing clauses, implement coverage diagnostics, perform fuzzy deduplication, or build a general legal contradiction engine.
-- Stage D interpretation validation enforces identity, kind, state, and authority boundaries. It cannot prove the legal quality of free-text explanation, which remains explicitly AI-assisted.
+- Stage D interpretation is intentionally narrow: it selects a validated review-state code and cannot provide free-form legal analysis. Richer interpretation would require a separate future evidence contract.
 - Amendment-aware structured deliverable replacement depends on explicit supersession data already available to the pipeline; Phase 1 does not add a second supersession framework.
 - Full British Council acceptance is not claimed. Frozen Bank acceptance was not rerun.
 
