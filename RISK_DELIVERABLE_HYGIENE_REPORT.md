@@ -60,6 +60,8 @@ The existing `bid_briefs` text columns round-trip nested lists and objects throu
 
 Fresh logical clauses that fail evidence validation are retained in `_contract_hygiene` with their occurrence IDs, source refs, and `UNVERIFIED` state. They are excluded from the active `commercial_clauses` array, prompt-visible facts, alias table, and authoritative sections. Mixed verified/unverified inputs project only verified clauses while the complete diagnostic ledger remains in the sidecar. Legacy replay continues through the historical compatibility path.
 
+Projection also enforces this boundary independently for saved Stage B inputs created before the normalization filter existed. A logical clause with a `clause_id` is prompt-visible only when the diagnostic ledger marks that exact ID `VERIFIED` and therefore supplies an alias. Unaliased logical clauses remain in the immutable `authoritative_inputs` snapshot and diagnostic ledger, but do not enter prompt facts or authoritative sections. D-only checkpoint replay tests cover two verified clauses plus one unverified clause, unverified-only input, and deterministic aliases under mixed ordering; replay bypasses Stages A, B, and C without a `KeyError`.
+
 The public nested contract decision is **Option B: version the nested contract**. Every fresh deliverable, clause, and clause-backed risk object carries `contract_hygiene_version: "contract-hygiene/1"`. Legacy nested objects retain their previous shapes and do not masquerade as versioned fresh records. The existing top-level result shape and persistence columns are unchanged.
 
 ## Stage A measurement and live smoke
@@ -101,8 +103,8 @@ After final-review remediation, a D-only liability-cap smoke returned `REVIEW_CL
 
 ## Validation
 
-- Focused canonical/hygiene/Stage A/Stage B/Stage C/Stage D/persistence/XLS suite: 360 passed, 5 subtests passed, 0 failures
-- Full repository suite: 650 passed, 1 skipped, 19 subtests passed, 0 failures
+- Focused contract-hygiene and Stage D projection/checkpoint suite: 166 passed, 0 failures
+- Full repository suite: 654 passed, 1 skipped, 19 subtests passed, 0 failures
 - Python compilation and `git diff --check`: passed
 - No GitHub CI result is claimed.
 
