@@ -26,18 +26,19 @@ def inputs():
 def test_sections_preserve_fact_observation_question_and_unknown_boundaries():
     facts, synthesis, analysis = inputs()
     brief = build_executive_opportunity_brief(facts, synthesis, analysis)
-    assert brief.executive_snapshot and brief.opportunity_structure
-    assert tuple(item.text for item in brief.key_observations) == tuple(item.statement.statement for item in analysis.inferences)
-    assert tuple(item.text for item in brief.management_questions) == tuple(item.question for item in analysis.unanswered_questions)
-    assert brief.known_unknowns.missing_evidence == ("r-case",)
-    assert brief.known_unknowns.unresolved_conflicts == ("conflict-1",)
+    assert brief.opportunity_at_a_glance and brief.engagement_workstreams
+    assert tuple(item.observation_id for item in brief.executive_attention_areas) == tuple(item.statement.statement_id for item in analysis.inferences)
+    assert tuple(item.related_analysis_ids for item in brief.kickoff_questions) == tuple(item.related_analysis_ids for item in analysis.unanswered_questions)
+    assert brief.known_unknowns.missing_evidence == ("Team evidence remains outstanding for 1 documented requirement across Bid Team.",)
+    assert brief.known_unknowns.unresolved_conflicts == ("Submission time: Two times are stated.",)
 
 
 def test_evidence_is_preserved_for_facts_observations_and_team_inputs():
     facts, synthesis, analysis = inputs()
     brief = build_executive_opportunity_brief(facts, synthesis, analysis)
-    assert all(item.evidence for item in (*brief.executive_snapshot, *brief.opportunity_structure, *brief.key_observations, *brief.information_required_from_team))
-    assert any("e-cv" in link.evidence_ids for item in brief.information_required_from_team for link in item.evidence)
+    preparations = tuple(item for group in brief.preparation_by_owner for item in group.items)
+    assert all(item.evidence for item in (*brief.opportunity_at_a_glance, *brief.engagement_workstreams, *brief.opportunity_characteristics, *brief.opportunity_timeline, *brief.executive_attention_areas, *preparations))
+    assert any("e-cv" in link.evidence_ids for item in preparations for link in item.evidence)
 
 
 def test_clarification_candidates_preserve_conflict_without_advice():
@@ -53,7 +54,7 @@ def test_separate_pipeline_conflicts_are_supported():
     brief = build_executive_opportunity_brief(
         facts, synthesis, analysis, conflicts=conflicts)
     assert brief.clarification_candidates[0].candidate_id == "conflict-1"
-    assert brief.known_unknowns.unresolved_conflicts == ("conflict-1",)
+    assert brief.known_unknowns.unresolved_conflicts == ("Submission time: Two times are stated.",)
 
 
 def test_output_is_stable_and_input_is_not_mutated():
@@ -72,10 +73,15 @@ def test_brief_contract_has_no_recommendation_score_or_decision_fields():
     assert not names & {"recommendations", "recommendation", "score", "ranking", "decision", "bid_no_bid", "win_probability"}
     rendered = render_executive_opportunity_brief(brief).casefold()
     assert "win probability" not in rendered and "bid / no bid" not in rendered
+    assert not any(token in rendered for token in ("pipeline", "engine", "internal identifier"))
+    assert "r-case" not in rendered and "r-cv" not in rendered
 
 
 def test_stable_ordering_follows_authoritative_and_analysis_order():
     facts, synthesis, analysis = inputs()
     brief = build_executive_opportunity_brief(facts, synthesis, analysis)
-    assert [item.value for item in brief.opportunity_structure] == ["Leadership Development", "Executive Coaching"]
-    assert [item.observation_id for item in brief.key_observations] == [item.statement.statement_id for item in analysis.inferences]
+    assert [item.value for item in brief.engagement_workstreams] == ["Leadership Development", "Executive Coaching"]
+    assert [item.observation_id for item in brief.executive_attention_areas] == [item.statement.statement_id for item in analysis.inferences]
+    rendered = render_executive_opportunity_brief(brief)
+    headings = ["## Opportunity at a Glance", "## Engagement Workstreams", "## Opportunity Characteristics", "## Opportunity Timeline", "## Executive Attention Areas", "## Preparation by Owner", "## Kickoff Questions", "## Clarification Candidates", "## Known Unknowns", "## Limitations"]
+    assert [rendered.index(value) for value in headings] == sorted(rendered.index(value) for value in headings)
