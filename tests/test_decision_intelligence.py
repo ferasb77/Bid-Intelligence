@@ -152,7 +152,11 @@ def test_framework_is_not_imported_by_existing_production_pipeline():
     import pathlib
 
     root = pathlib.Path(__file__).resolve().parents[1]
-    framework_modules = {"decision_intelligence.py", "decision_analyst.py"}
+    framework_modules = {
+        "decision_intelligence.py",
+        "decision_analyst.py",
+        "opportunity_intelligence.py",
+    }
     production = [path for path in root.glob("*.py") if path.name not in framework_modules]
     production += list((root / "pages").glob("*.py"))
     assert all("decision_intelligence" not in path.read_text(encoding="utf-8") for path in production)
