@@ -286,6 +286,11 @@ def build_stage_d_synthesis_projection(normalized_facts, conflicts):
     context = {"projection_version": PROJECTION_VERSION, "requirements": [],
                "facts": {"metadata": [], **{k: [] for k in FACT_SECTIONS}},
                "evidence_context": {}, "detected_conflicts": []}
+    hygiene = normalized_facts.get("_contract_hygiene") or {}
+    verified_clause_ids = {
+        item.get("clause_id") for item in hygiene.get("clauses", [])
+        if item.get("clause_id") and item.get("evidence_state") == "VERIFIED"
+    }
     canonical = normalized_facts.get("_canonical_opportunity")
     if canonical:
         from canonical_opportunity import compact_stage_d_summary
@@ -436,6 +441,14 @@ def build_stage_d_synthesis_projection(normalized_facts, conflicts):
         if not isinstance(records, list):
             _fail("INVALID_SECTION", section)
         for index, record in enumerate(records):
+            # Replayed Stage B checkpoints can predate the normalization filter.
+            # Keep their complete snapshot in authoritative_inputs, but never
+            # expose a logical clause unless projection can assign its verified
+            # prompt alias. Historical unstructured clauses have no clause_id
+            # and continue through the legacy compatibility path.
+            if (section == "commercial_clauses" and record.get("clause_id")
+                    and record["clause_id"] not in verified_clause_ids):
+                continue
             is_req = section == "requirements"
             add_record(record, section, f"/normalized_facts/{section}/{index}",
                        "R" if is_req else "F", "requirements" if is_req else "facts",
@@ -515,8 +528,7 @@ def build_stage_d_synthesis_projection(normalized_facts, conflicts):
         for index, full_id in enumerate(sorted(sidecar[collection]), 1):
             aliases[f"{prefix}{index}"] = full_id
     aliases.update(sidecar.get("canonical_observation_aliases", {}))
-    hygiene = normalized_facts.get("_contract_hygiene") or {}
-    clause_ids = sorted(item.get("clause_id") for item in hygiene.get("clauses", []) if item.get("clause_id") and item.get("evidence_state") == "VERIFIED")
+    clause_ids = sorted(verified_clause_ids)
     clause_aliases = {f"x{index}": clause_id for index, clause_id in enumerate(clause_ids, 1)}
     aliases.update(clause_aliases)
     sidecar["clause_aliases"] = clause_aliases

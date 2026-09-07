@@ -246,6 +246,55 @@ def test_mixed_clause_verification_projects_only_verified_and_keeps_both_diagnos
     assert len(projected["sidecar"]["authoritative_inputs"]["normalized_facts"]["_contract_hygiene"]["clauses"]) == 2
 
 
+def _replay_facts_with_clause_states(states):
+    raw_clauses = [
+        clause("OTHER", topic=f"Clause {index}", source_fact=f"Clause text {index}.",
+               source_refs=[ref(excerpt=f"Clause text {index}.")])
+        for index in range(len(states))
+    ]
+    ledger = hygiene.build_contract_hygiene([], raw_clauses, [], verify, META)
+    clauses = copy.deepcopy(ledger["clauses"])
+    for item, state in zip(clauses, states):
+        item["evidence_state"] = state
+    ledger["clauses"] = copy.deepcopy(clauses)
+    return {"doc_metadata": {}, "requirements": [], "dates": [], "evaluation_criteria": [],
+            "submission_rules": [], "deliverables": [], "commercial_clauses": clauses,
+            "contract_risks": [], "_canonical_opportunity": {}, "_contract_hygiene": ledger}
+
+
+def test_replayed_stage_b_mixed_clauses_excludes_unverified_without_keyerror():
+    normalized = _replay_facts_with_clause_states(["VERIFIED", "VERIFIED", "UNVERIFIED"])
+    projected = projection.build_stage_d_synthesis_projection(normalized, [])
+    prompt_clauses = projection.expand_prompt_context(projected["prompt_context"])["facts"]["commercial_clauses"]
+    assert len(prompt_clauses) == 2
+    assert {item["topic"] for item in prompt_clauses} == {"Clause 0", "Clause 1"}
+    retained = projected["sidecar"]["authoritative_inputs"]["normalized_facts"]["_contract_hygiene"]["clauses"]
+    assert len(retained) == 3 and retained[2]["evidence_state"] == "UNVERIFIED"
+
+
+def test_replayed_stage_b_only_unverified_clauses_is_projection_safe():
+    normalized = _replay_facts_with_clause_states(["UNVERIFIED", "UNVERIFIED"])
+    projected = projection.build_stage_d_synthesis_projection(normalized, [])
+    assert projection.expand_prompt_context(projected["prompt_context"])["facts"]["commercial_clauses"] == []
+    assert projected["sidecar"]["clause_aliases"] == {}
+    assert len(projected["sidecar"]["authoritative_inputs"]["normalized_facts"]["_contract_hygiene"]["clauses"]) == 2
+    final = extractor.apply_stage_d_authoritative_sections({}, normalized)
+    assert final["brief"]["commercial_structure"] == []
+    assert final["brief"]["contract_risks"] == []
+
+
+def test_replayed_stage_b_mixed_clause_aliases_are_deterministic():
+    normalized = _replay_facts_with_clause_states(["VERIFIED", "UNVERIFIED", "VERIFIED"])
+    first = projection.build_stage_d_synthesis_projection(normalized, [])["sidecar"]["clause_aliases"]
+    reordered = copy.deepcopy(normalized)
+    reordered["commercial_clauses"].reverse()
+    reordered["_contract_hygiene"]["clauses"].reverse()
+    second = projection.build_stage_d_synthesis_projection(reordered, [])["sidecar"]["clause_aliases"]
+    expected_ids = sorted(item["clause_id"] for item in normalized["_contract_hygiene"]["clauses"]
+                          if item["evidence_state"] == "VERIFIED")
+    assert first == second == {f"x{index}": clause_id for index, clause_id in enumerate(expected_ids, 1)}
+
+
 def test_legacy_replay_has_no_clause_alias_requirement():
     legacy = {"doc_metadata": {}, "requirements": [], "dates": [], "evaluation_criteria": [],
               "submission_rules": [], "deliverables": [{"title": "Old", "description": "Old output"}],
