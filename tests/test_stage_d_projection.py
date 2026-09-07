@@ -56,7 +56,8 @@ def empty_response():
                 "sensitivity": "Standard", "submission_deadline": None, "clarification_deadline": None,
                 "value_cad": None, "notes": None},
         "brief": {"executive_summary": None, "opportunity_type": None, "contract_term": "Not stated",
-                  "procurement_model": None, "scope_categories": []}, "outline": []}, "citations": []}
+                  "procurement_model": None, "scope_categories": []}, "outline": [],
+        "risk_assessments": []}, "citations": []}
 
 
 def supported_response(projection):
