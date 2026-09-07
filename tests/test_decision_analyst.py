@@ -225,6 +225,7 @@ def test_existing_production_modules_do_not_import_phase2():
                       "decision_analyst.py",
                       "decision_intelligence.py",
                       "opportunity_intelligence.py",
+                      "decision_workspace.py",
                   }]
     production += list((root / "pages").glob("*.py"))
     assert all("decision_analyst" not in path.read_text(encoding="utf-8") for path in production)

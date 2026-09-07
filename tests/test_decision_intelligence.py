@@ -156,6 +156,7 @@ def test_framework_is_not_imported_by_existing_production_pipeline():
         "decision_intelligence.py",
         "decision_analyst.py",
         "opportunity_intelligence.py",
+        "decision_workspace.py",
     }
     production = [path for path in root.glob("*.py") if path.name not in framework_modules]
     production += list((root / "pages").glob("*.py"))
