@@ -3152,7 +3152,12 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
     # Structured facts become the active normalized arrays. Historical records
     # remain alongside them with an explicit compatibility label.
     normalized["deliverables"] = hygiene["deliverables"] + hygiene["legacy_deliverables"]
-    normalized["commercial_clauses"] = hygiene["clauses"] + hygiene["legacy_clauses"]
+    # Fresh unverified logical clauses remain available only through the
+    # authoritative diagnostic ledger. Stage D sees verified fresh facts plus
+    # historical compatibility records, never an unaliased fresh clause ID.
+    normalized["commercial_clauses"] = [
+        clause for clause in hygiene["clauses"] if clause.get("evidence_state") == "VERIFIED"
+    ] + hygiene["legacy_clauses"]
     normalized["contract_risks"] = hygiene["legacy_risks"]
 
     return normalized

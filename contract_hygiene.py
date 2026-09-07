@@ -36,6 +36,11 @@ FREQUENCIES = frozenset({
     "PER_EVENT", "PER_CALL_OFF", "AS_REQUESTED", "OTHER", "NOT_STATED",
 })
 ASSESSMENT_STATES = frozenset({"REVIEW", "UNKNOWN"})
+INTERPRETATION_CODES = frozenset({"REVIEW_CLAUSE_TERMS", "INSUFFICIENT_CONTEXT"})
+INTERPRETATION_TEXT = {
+    "REVIEW_CLAUSE_TERMS": "Review this clause against the bidder's approved contracting policy.",
+    "INSUFFICIENT_CONTEXT": "The verified clause is retained, but the available context is insufficient for further interpretation.",
+}
 SCOPE_KEYS = ("lot", "phase", "component", "location")
 
 
@@ -89,10 +94,13 @@ def _physical_ref_key(ref: dict) -> tuple:
 def _verified_refs(refs, validate_refs, package_metadata) -> list[dict]:
     if not isinstance(refs, list) or not refs:
         return []
+    explicitly_unverified = {_physical_ref_key(ref) for ref in refs
+                             if isinstance(ref, dict) and ref.get("verified") is False}
     checked = validate_refs(copy.deepcopy(refs), package_metadata)
     unique = {}
     for ref in checked:
-        if isinstance(ref, dict) and ref.get("verified") is True and _text(ref.get("excerpt")):
+        if (isinstance(ref, dict) and ref.get("verified") is True and _text(ref.get("excerpt"))
+                and _physical_ref_key(ref) not in explicitly_unverified):
             unique[_physical_ref_key(ref)] = ref
     return [unique[key] for key in sorted(unique, key=lambda k: _json(k))]
 
@@ -221,19 +229,25 @@ def validate_assessments(assessments, verified_clauses):
     for raw in assessments or []:
         if not isinstance(raw, dict):
             raise ValueError("INVALID_RISK_ASSESSMENT")
+        allowed = {"clause_ids", "clause_kind", "assessment_state", "interpretation_code",
+                   "assessment_basis", "user_decision"}
+        if set(raw) - allowed:
+            raise ValueError("UNSUPPORTED_INTERPRETATION")
         state = raw.get("assessment_state")
         ids = raw.get("clause_ids")
         if state not in ASSESSMENT_STATES or not isinstance(ids, list) or not ids:
             raise ValueError("INVALID_RISK_ASSESSMENT")
         if any(cid not in clauses for cid in ids):
             raise ValueError("UNKNOWN_CLAUSE_ID")
-        if raw.get("user_decision") is not None or "severity" in raw:
+        if raw.get("user_decision") is not None or raw.get("assessment_basis") != "AI_ASSISTED" or "severity" in raw:
             raise ValueError("INVENTED_RISK_AUTHORITY")
-        why = _text(raw.get("why_it_matters"))
-        if not why:
+        code = raw.get("interpretation_code")
+        expected_code = "REVIEW_CLAUSE_TERMS" if state == "REVIEW" else "INSUFFICIENT_CONTEXT"
+        if code not in INTERPRETATION_CODES or code != expected_code:
             raise ValueError("INVALID_RISK_ASSESSMENT")
         factual = {"clause_ids": sorted(set(ids)), "assessment_state": state,
-                   "why_it_matters": why, "assessment_basis": "AI_ASSISTED", "user_decision": None}
+                   "interpretation_code": code, "why_it_matters": INTERPRETATION_TEXT[code],
+                   "assessment_basis": "AI_ASSISTED", "user_decision": None}
         output.append({"assessment_id": _id("ra_", factual), **factual})
     return output
 
