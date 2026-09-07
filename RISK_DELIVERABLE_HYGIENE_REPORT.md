@@ -93,8 +93,8 @@ Earlier development smoke failures exposed and led to correction of a missing `c
 
 ## Validation
 
-- Focused canonical/hygiene/Stage A/Stage B/Stage C/Stage D/persistence/XLS suite: 343 passed, 5 subtests passed, 0 failures
-- Full repository suite: 634 passed, 1 skipped, 19 subtests passed, 0 failures
+- Focused canonical/hygiene/Stage A/Stage B/Stage C/Stage D/persistence/XLS suite: 351 passed, 5 subtests passed, 0 failures
+- Full repository suite: 641 passed, 1 skipped, 19 subtests passed, 0 failures
 - Python compilation and `git diff --check`: passed
 - No GitHub CI result is claimed.
 
