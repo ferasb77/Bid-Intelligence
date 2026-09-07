@@ -162,13 +162,32 @@ Return ONLY valid JSON with this exact schema:
     }
   ],
   "deliverables": [
-    {"title": "Deliverable output", "description": "What must be produced", "category": "Core|Optional"}
+    {
+      "title": "Supplier-produced contract output only",
+      "description": "Concise factual normalization",
+      "obligation_state": "MANDATORY|OPTIONAL|CONDITIONAL|NOT_STATED",
+      "quantity": "Decimal string or null",
+      "unit": "Source-supported unit or null",
+      "frequency": "ONE_TIME|DAILY|WEEKLY|MONTHLY|QUARTERLY|ANNUAL|PER_EVENT|PER_CALL_OFF|AS_REQUESTED|OTHER|NOT_STATED",
+      "frequency_raw": "Exact frequency wording or null",
+      "scope": {"lot": null, "phase": null, "component": null, "location": null},
+      "due_milestone": "Source-supported milestone or null",
+      "acceptance_criteria": "Source-supported criteria or null",
+      "responsible_actor": "SUPPLIER|BUYER|SHARED|THIRD_PARTY|NOT_STATED",
+      "conditions": [],
+      "source_refs": []
+    }
   ],
   "commercial_clauses": [
-    {"topic": "Panel Maximums|Rate Caps|Extension Options|Liability", "details": "Commercial mechanism details"}
-  ],
-  "contract_risks": [
-    {"risk": "AI Restrictions|IP Ownership|Liability|Subcontractors", "severity": "High|Medium|Low", "details": "Contractual risk details"}
+    {
+      "clause_kind": "LIABILITY_INDEMNITY|INSURANCE|INTELLECTUAL_PROPERTY|AI_AUTOMATED_TOOLS|DATA_PROTECTION_PRIVACY|CYBERSECURITY_SECURITY|CONFIDENTIALITY|SUBCONTRACTING|PERSONNEL_KEY_STAFF|BACKGROUND_CHECK_CLEARANCE|TERMINATION|SUSPENSION|PAYMENT_WITHHOLDING_SETOFF|PRICING_ESCALATION|GUARANTEE_BOND|SERVICE_CREDIT_PENALTY_LD|WARRANTY|ACCEPTANCE|AUDIT_RECORDS|CHANGE_CONTROL|ASSIGNMENT|GOVERNING_LAW_DISPUTE|EXCLUSIVITY_NONCOMPETE|BUSINESS_CONTINUITY_DR|REGULATORY_COMPLIANCE|OTHER",
+      "topic": "Human-readable clause title",
+      "source_fact": "Concise factual normalization; no inferred consequence",
+      "conditions": [],
+      "scope": {"lot": null, "phase": null, "component": null, "location": null},
+      "linked_observation_ids": [],
+      "source_refs": []
+    }
   ],
   "typed_observations": [
     {
@@ -221,6 +240,19 @@ TYPED OBSERVATION RULES:
 - Use supersession only for an explicit old-to-new statement and quote that statement.
   Emit source-level family, kind, old/new values, exact scope, and source_refs. Never
   emit or invent canonical observation IDs; Stage B/C resolves targets after IDs exist.
+
+CONTRACT HYGIENE RULES (contract-hygiene/1):
+- deliverables contains ONLY supplier-produced outputs during contract execution. Exclude bid
+  response documents, resumes, pricing schedules, proposals, profiles, references, forms,
+  technical capabilities, scoring criteria, and procurement milestones.
+- Do not split compound wording unless source structure establishes separate outputs through
+  separate items, quantities, milestones, acceptance criteria, scope, actors, or labels.
+- Do not infer optionality, frequency, quantity, actor, scope, consequence, or missing clauses.
+- commercial_clauses contains objective source facts. Do not emit contract_risks, severity,
+  exposure, vendor lock-in, potential disputes, likely rejection, or other risk judgments.
+- Every deliverable and commercial clause requires source_refs with an exact excerpt and valid
+  input coordinates. Without that evidence, omit the record.
+- Exact source wording belongs only in source_refs[].excerpt; normalized factual fields must be concise.
 """
 
 LEGACY_STAGE_D_SYNTHESIS_PROMPT = """You are an executive bid director synthesizing a Bid Brief from normalized procurement facts.
@@ -1917,7 +1949,7 @@ def detect_document_conflicts(normalized_facts: dict, package_files: list[str]) 
                     conflict_idx += 1
 
     # ── 5. COMMERCIAL TERM CONFLICTS ──────────────────────────────────────────
-    comm_clauses = normalized_facts.get("commercial_clauses", [])
+    comm_clauses = [c for c in normalized_facts.get("commercial_clauses", []) if not c.get("clause_id")]
     if len(comm_clauses) >= 2:
         # Commercial Caps
         comm_by_topic = {}
@@ -2083,7 +2115,7 @@ def detect_document_conflicts(normalized_facts: dict, package_files: list[str]) 
                             conflict_idx += 1
 
     # ── 6. SCOPE CONFLICTS ────────────────────────────────────────────────────
-    deliverables = normalized_facts.get("deliverables", [])
+    deliverables = [d for d in normalized_facts.get("deliverables", []) if not d.get("deliverable_id")]
     if len(deliverables) >= 2:
         deliv_groups = {}
         for d in deliverables:
@@ -2626,7 +2658,9 @@ def aggregate_stage_a_facts(chunk_facts_list: list[dict], filename: str) -> dict
                 seen_sub[canon] = sr_copy
                 merged["submission_rules"].append(sr_copy)
 
-    # 6. Deliverables aggregation & deduplication
+    # 6. Deliverable source occurrences. Logical deduplication belongs to
+    # contract_hygiene after provenance validation. Only collapse the exact
+    # same physical occurrence returned from overlapping chunks.
     seen_deliv = set()
     for cf in chunk_facts_list:
         if not isinstance(cf, dict):
@@ -2635,16 +2669,17 @@ def aggregate_stage_a_facts(chunk_facts_list: list[dict], filename: str) -> dict
             if not isinstance(deliv, dict):
                 continue
             title = (deliv.get("title") or deliv.get("item") or "").strip()
-            desc = str(deliv.get("description") or "").strip()
-            canon = (title.lower(), desc.lower())
+            refs = [dict(ref) for ref in (deliv.get("source_refs") or []) if isinstance(ref, dict)]
+            canon = (title.lower(), tuple(sorted(_source_ref_key(ref) for ref in refs))) if refs else (title.lower(), str(deliv.get("description") or "").strip().lower())
             if not title or canon in seen_deliv:
                 continue
             seen_deliv.add(canon)
             deliv_copy = dict(deliv)
             deliv_copy.setdefault("source_doc", filename)
+            deliv_copy["source_refs"] = refs
             merged["deliverables"].append(deliv_copy)
 
-    # 7. Commercial Clauses aggregation & deduplication
+    # 7. Contract-clause source occurrences use the same physical rule.
     seen_comm = set()
     for cf in chunk_facts_list:
         if not isinstance(cf, dict):
@@ -2653,13 +2688,15 @@ def aggregate_stage_a_facts(chunk_facts_list: list[dict], filename: str) -> dict
             if not isinstance(cc, dict):
                 continue
             topic = (cc.get("topic") or "").strip()
-            details = str(cc.get("details") or "").strip()
-            canon = (topic.lower(), details.lower())
+            fact = str(cc.get("source_fact") or cc.get("details") or "").strip()
+            refs = [dict(ref) for ref in (cc.get("source_refs") or []) if isinstance(ref, dict)]
+            canon = (topic.lower(), fact.lower(), tuple(sorted(_source_ref_key(ref) for ref in refs)))
             if not topic or canon in seen_comm:
                 continue
             seen_comm.add(canon)
             cc_copy = dict(cc)
             cc_copy.setdefault("source_doc", filename)
+            cc_copy["source_refs"] = refs
             merged["commercial_clauses"].append(cc_copy)
 
     # 8. Contract Risks aggregation & deduplication
@@ -3106,6 +3143,23 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
     from canonical_opportunity import build_canonical_opportunity
     normalized["_canonical_opportunity"] = build_canonical_opportunity(doc_facts_list, package_metadata)
 
+    from contract_hygiene import build_contract_hygiene
+    hygiene = build_contract_hygiene(
+        normalized["deliverables"], normalized["commercial_clauses"],
+        normalized["contract_risks"], validate_source_refs, package_metadata,
+    )
+    normalized["_contract_hygiene"] = hygiene
+    # Structured facts become the active normalized arrays. Historical records
+    # remain alongside them with an explicit compatibility label.
+    normalized["deliverables"] = hygiene["deliverables"] + hygiene["legacy_deliverables"]
+    # Fresh unverified logical clauses remain available only through the
+    # authoritative diagnostic ledger. Stage D sees verified fresh facts plus
+    # historical compatibility records, never an unaliased fresh clause ID.
+    normalized["commercial_clauses"] = [
+        clause for clause in hygiene["clauses"] if clause.get("evidence_state") == "VERIFIED"
+    ] + hygiene["legacy_clauses"]
+    normalized["contract_risks"] = hygiene["legacy_risks"]
+
     return normalized
 
 
@@ -3116,6 +3170,11 @@ def reconcile_package_facts(normalized_facts: dict, package_files: list[str]) ->
     STAGE C: Compare normalized facts to detect cross-document conflicts & addenda overrides.
     """
     conflicts = detect_document_conflicts(normalized_facts, package_files)
+    from contract_hygiene import structured_deliverable_conflicts
+    conflicts.extend(structured_deliverable_conflicts(
+        (normalized_facts.get("_contract_hygiene") or {}).get("deliverables", []),
+        start_index=len(conflicts) + 1,
+    ))
     canonical = normalized_facts.get("_canonical_opportunity")
     if canonical:
         from canonical_opportunity import apply_legacy_conflict_fallback, resolve_canonical_opportunity
@@ -4093,7 +4152,17 @@ def apply_stage_d_authoritative_sections(synth_data: dict, normalized_facts: dic
         deliv_summary.append(entry)
     brief["deliverables_summary"] = deliv_summary
 
-    result = dict(synth_data)
+    hygiene = normalized_facts.get("_contract_hygiene")
+    if hygiene:
+        from contract_hygiene import authoritative_sections
+        deliv_summary, comm_struct, risk_list = authoritative_sections(
+            hygiene, synth_data.get("risk_assessments", []),
+        )
+        brief["deliverables_summary"] = deliv_summary
+        brief["commercial_structure"] = comm_struct
+        brief["contract_risks"] = risk_list
+
+    result = {key: value for key, value in synth_data.items() if key != "risk_assessments"}
     result["brief"] = brief
     return result
 
@@ -4176,7 +4245,16 @@ def _synthesize_projected_bid_brief(normalized_facts, conflicts, api_key, checkp
             from canonical_opportunity import apply_authoritative_values
             result = apply_authoritative_values(result, canonical)
         expected = apply_stage_d_authoritative_sections({}, copy.deepcopy(normalized_facts))
-        if any(result["brief"].get(k) != expected["brief"][k] for k in AUTHORITATIVE_SECTIONS):
+        compared_sections = tuple(k for k in AUTHORITATIVE_SECTIONS if k != "contract_risks")
+        risk_expected = expected["brief"]["contract_risks"]
+        if normalized_facts.get("_contract_hygiene"):
+            from contract_hygiene import authoritative_sections
+            _, _, risk_expected = authoritative_sections(
+                normalized_facts["_contract_hygiene"],
+                validated["synthesis"].get("risk_assessments", []),
+            )
+        if (any(result["brief"].get(k) != expected["brief"][k] for k in compared_sections)
+                or result["brief"].get("contract_risks") != risk_expected):
             checkpoint.write(prefix + "/assembly-validation.json", {"status": "FAILED", "code": "AUTHORITATIVE_INVARIANT"})
             raise ProjectionValidationError("AUTHORITATIVE_INVARIANT")
         if normalized_facts != projection["sidecar"]["authoritative_inputs"]["normalized_facts"] or conflicts != projection["sidecar"]["authoritative_inputs"]["conflicts"]:

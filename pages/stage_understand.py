@@ -43,6 +43,21 @@ def _ensure_list(val):
     return []
 
 
+def _evidence_label(item):
+    refs = item.get("source_refs") or [] if isinstance(item, dict) else []
+    parts = []
+    for ref in refs:
+        if not isinstance(ref, dict):
+            continue
+        location = ref.get("source_doc") or "Source"
+        for key in ("page", "sheet", "section", "rows", "cell_range"):
+            if ref.get(key) not in (None, ""):
+                location += f" · {key} {ref[key]}"
+        parts.append(location)
+    state = item.get("evidence_state", "UNVERIFIED") if isinstance(item, dict) else "UNVERIFIED"
+    return state, "; ".join(parts)
+
+
 def page_understand(bid_id: int):
     bid = get_bid(bid_id)
     if not bid:
@@ -162,11 +177,13 @@ def page_understand(bid_id: int):
         if deliverables:
             for d in deliverables:
                 cat_tag = f'<span style="font-size:.68rem;color:#C9A96E;margin-left:.4rem">[{d.get("category","Core")}]</span>' if d.get("category") else ""
+                evidence_state, evidence = _evidence_label(d)
                 st.markdown(
                     f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;'
                     f'padding:.6rem .9rem;margin:.3rem 0;font-size:.85rem">'
                     f'<strong>{d.get("title","Deliverable")}</strong>{cat_tag}'
                     f'{"<br><span style=font-size:.76rem;color:#A9A69D>" + d.get("description","") + "</span>" if d.get("description") else ""}'
+                    f'<div style="font-size:.7rem;color:#6E6C66;margin-top:.2rem">SOURCE / EVIDENCE: {evidence_state}{" · " + evidence if evidence else ""}</div>'
                     f'</div>',
                     unsafe_allow_html=True
                 )
@@ -323,11 +340,13 @@ def page_understand(bid_id: int):
         st.markdown("### 💼 Commercial & Contracting Structure")
         if commercial:
             for cm in commercial:
+                evidence_state, evidence = _evidence_label(cm)
                 st.markdown(
                     f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;'
                     f'padding:.6rem .9rem;margin:.3rem 0;font-size:.85rem">'
                     f'<strong style="color:#C9A96E">{cm.get("topic","Commercial Item")}</strong>'
-                    f'<div style="font-size:.78rem;color:#EDEAE3;margin-top:.2rem">{cm.get("details","")}</div>'
+                    f'<div style="font-size:.78rem;color:#EDEAE3;margin-top:.2rem">{cm.get("source_fact") or cm.get("details","")}</div>'
+                    f'<div style="font-size:.7rem;color:#6E6C66;margin-top:.2rem">SOURCE / EVIDENCE: {evidence_state}{" · " + evidence if evidence else ""}</div>'
                     f'</div>',
                     unsafe_allow_html=True
                 )
@@ -346,19 +365,25 @@ def page_understand(bid_id: int):
     )
     if contract_risks:
         for rk in contract_risks:
-            sev = rk.get("severity", "Medium")
-            sc_col = "#C0392B" if sev == "High" else "#E67E22" if sev == "Medium" else "#6E6C66"
+            evidence_state, evidence = _evidence_label(rk)
+            legacy = rk.get("assessment_basis") == "LEGACY_EXTRACTION"
+            sc_col = "#6E6C66" if legacy else "#E67E22"
+            source_fact = rk.get("source_fact") or rk.get("risk", "")
+            assessments = rk.get("assessment") or []
+            interpretation = "; ".join(a.get("why_it_matters", "") for a in assessments if isinstance(a, dict) and a.get("why_it_matters"))
             st.markdown(
                 f'<div style="background:#111118;border:1px solid #292832;border-left:3px solid {sc_col};'
                 f'border-radius:0 4px 4px 0;padding:.6rem 1rem;margin:.35rem 0;font-size:.85rem">'
-                f'<span style="color:{sc_col};font-weight:700;font-size:.75rem">RISK [{sev.upper()}]</span> '
-                f'<strong>{rk.get("risk","")}</strong>'
-                f'<div style="font-size:.78rem;color:#A9A69D;margin-top:.2rem">{rk.get("details","")}</div>'
+                f'<span style="color:{sc_col};font-weight:700;font-size:.75rem">{"LEGACY EXTRACTION" if legacy else "SOURCE FACT"}</span> '
+                f'<strong>{rk.get("topic") or source_fact}</strong>'
+                f'<div style="font-size:.78rem;color:#EDEAE3;margin-top:.2rem">{rk.get("details") or source_fact}</div>'
+                f'{"<div style=font-size:.78rem;color:#A9A69D;margin-top:.2rem><strong>SYSTEM INTERPRETATION:</strong> " + interpretation + "</div>" if interpretation else ""}'
+                f'<div style="font-size:.7rem;color:#6E6C66;margin-top:.2rem">SOURCE / EVIDENCE: {evidence_state}{" · " + evidence if evidence else ""}</div>'
                 f'</div>',
                 unsafe_allow_html=True
             )
     else:
-        st.markdown('<div class="success-box">No critical contract liability blockers extracted.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="info-box">No source-grounded contract-risk clauses were identified in the extracted evidence. This does not confirm that none exist.</div>', unsafe_allow_html=True)
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 

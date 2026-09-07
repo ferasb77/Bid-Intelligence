@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import contract_hygiene
 import extractor
 import stage_d_checkpoints as cp
 import stage_d_projection as proj
@@ -56,7 +57,8 @@ def empty_response():
                 "sensitivity": "Standard", "submission_deadline": None, "clarification_deadline": None,
                 "value_cad": None, "notes": None},
         "brief": {"executive_summary": None, "opportunity_type": None, "contract_term": "Not stated",
-                  "procurement_model": None, "scope_categories": []}, "outline": []}, "citations": []}
+                  "procurement_model": None, "scope_categories": []}, "outline": [],
+        "risk_assessments": []}, "citations": []}
 
 
 def supported_response(projection):
@@ -660,6 +662,45 @@ def test_d_only_replay_zero_stage_a_calls(tmp_path):
         stage_a.assert_not_called()
         stage_b.assert_not_called()
         stage_c.assert_not_called()
+
+
+def test_d_only_replay_filters_unverified_logical_clause_before_aliasing(tmp_path):
+    def verify(refs, _metadata):
+        return [{**ref, "verified": True} for ref in refs]
+
+    raw_clauses = [
+        {"clause_kind": "OTHER", "topic": f"Clause {index}",
+         "source_fact": f"Clause text {index}.", "conditions": [], "scope": {},
+         "linked_observation_ids": [], "source_refs": [
+             {"source_doc": "a.txt", "section": f"Clause {index}",
+              "excerpt": f"Clause text {index}."}]}
+        for index in range(3)
+    ]
+    hygiene = contract_hygiene.build_contract_hygiene(
+        [], raw_clauses, [], verify,
+        {"files": ["a.txt"], "doc_metadata": {}, "doc_texts": {}},
+    )
+    hygiene["clauses"][2]["evidence_state"] = "UNVERIFIED"
+    normalized = {"doc_metadata": {}, "requirements": [], "dates": [],
+                  "evaluation_criteria": [], "submission_rules": [], "deliverables": [],
+                  "commercial_clauses": copy.deepcopy(hygiene["clauses"]),
+                  "contract_risks": [], "_canonical_opportunity": {},
+                  "_contract_hygiene": hygiene}
+    sources = [("a.txt", b"source")]
+    store = cp.CheckpointStore(sources, mode="required", root=tmp_path)
+    store.write("stage-b/normalized-facts.json", normalized)
+    store.write("stage-c/conflicts.json", [])
+    with patch("extractor.extract_document_facts") as stage_a, \
+            patch("extractor.normalize_package_facts") as stage_b, \
+            patch("extractor.reconcile_package_facts") as stage_c, \
+            patch("extractor.get_anthropic_client", return_value=model_client()):
+        final, _ = cp.resume_procurement_checkpoint(
+            store.root, sources, "secret", checkpoint_root=tmp_path,
+        )
+    assert len(final["brief"]["commercial_structure"]) == 2
+    stage_a.assert_not_called()
+    stage_b.assert_not_called()
+    stage_c.assert_not_called()
 
 
 def test_partial_stage_a_resume_extracts_only_missing_document(tmp_path):
