@@ -1,0 +1,17 @@
+{
+  "authoritative_phase4_run_id": "phase4-boc-2026-026-staged-20260912T131303Z-2cc8af",
+  "checkpoint_root": "C:\\Users\\feras\\AppData\\Local\\Temp\\claude\\C--Users-feras-Documents-Projects-Bid-Intelligence\\51d7311b-766b-4ce6-af00-2c2abdf5f03e\\scratchpad\\stage_d_narrative_diagnostic\\phase4-narrative-diag-boc-2026-026-20260912T133437Z-2a74e2\\stage-d\\4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945\\7aab2352440c4861990728bf3a7fd0b8",
+  "diagnostic_run_id": "phase4-narrative-diag-boc-2026-026-20260912T133437Z-2a74e2",
+  "elapsed_seconds": 48.638,
+  "error": {
+    "code": "UNKNOWN_EVIDENCE_SELECTOR",
+    "message": "UNKNOWN_EVIDENCE_SELECTOR: ",
+    "type": "ProjectionValidationError"
+  },
+  "input_phase2_run_id": "phase2-boc-2026-026-stageb-20260912T125051Z-91a22b",
+  "input_phase3_run_id": "phase3-boc-2026-026-stagec-20260912T130007Z-dd391b",
+  "provenance_rejections_untouched": true,
+  "purpose": "narrative-completeness diagnosis only, single instrumented Stage D API call",
+  "status": "FAIL",
+  "timestamp_utc": "2026-09-12T13:35:28.014580+00:00"
+}

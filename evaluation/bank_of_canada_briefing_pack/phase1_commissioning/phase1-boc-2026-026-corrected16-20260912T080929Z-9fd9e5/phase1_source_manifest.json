@@ -1,0 +1,102 @@
+{
+  "corpus_id": "bank-of-canada-rfp-2026-026-corrected-16doc",
+  "files": [
+    {
+      "bytes": 119394,
+      "path": "abstract.pdf",
+      "role": "NOTICE_AND_DOCUMENT_INVENTORY",
+      "sha256": "4a83ab43744a41e46665e8df458719813476204a43b8a71951b92767f0fd5d25"
+    },
+    {
+      "bytes": 50745,
+      "path": "Amendment1/RFP 2026-026 - Appendix D2 - Rated Criteria Response REVISED.docx",
+      "role": "AMENDMENT",
+      "sha256": "1edfeceefbd76957744d5da4a02b879a06028b103fba5acef6e2010f84372f64"
+    },
+    {
+      "bytes": 28985,
+      "path": "OriginalRevision/DP 2026-026 - Annexe F - Questionnaire ESG.xlsx",
+      "role": "PROCUREMENT_ATTACHMENT",
+      "sha256": "8816b920bbc0dda66bc20e19dcebb8f25e413de7b3df1f90ab4f6ac222a1fd54"
+    },
+    {
+      "bytes": 48269,
+      "path": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx",
+      "role": "PROCUREMENT_ATTACHMENT",
+      "sha256": "4c03455236a93c7438e42267eedae6f18a95c34b79986d71f5049f4dfbd1c3e2"
+    },
+    {
+      "bytes": 14247,
+      "path": "OriginalRevision/RFP 2026-026 - Appendix B1 - Mandatory criteria.xlsx",
+      "role": "PROCUREMENT_ATTACHMENT",
+      "sha256": "3d04e1d8cb3a91ae7bac52f2b1495fdc32c01148a4e68a09e60fca0e64ebbab6"
+    },
+    {
+      "bytes": 13999,
+      "path": "OriginalRevision/RFP 2026-026 - Appendix B2 - Mandatory criteria.xlsx",
+      "role": "PROCUREMENT_ATTACHMENT",
+      "sha256": "11dd8111c3645e42288bf374a8c664205c5d7d6726fb7c1fe0abe5c4b473afbc"
+    },
+    {
+      "bytes": 14240,
+      "path": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx",
+      "role": "PROCUREMENT_ATTACHMENT",
+      "sha256": "87a263293fc149a9c439274e9cd42d8b2990caa94f064c7d1251c7fc52f514d0"
+    },
+    {
+      "bytes": 14007,
+      "path": "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx",
+      "role": "PROCUREMENT_ATTACHMENT",
+      "sha256": "cdef962a4510aa76b0f05b08d046e8a4be06c0a9fb2fef0fa667727a78eb9438"
+    },
+    {
+      "bytes": 14104,
+      "path": "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx",
+      "role": "PROCUREMENT_ATTACHMENT",
+      "sha256": "c223bf290702b0efb701eee5d4ca6ba7574b92030671018af311c36345bfec24"
+    },
+    {
+      "bytes": 13965,
+      "path": "OriginalRevision/RFP 2026-026 - Appendix C3 - Minimum qualification requirement.xlsx",
+      "role": "PROCUREMENT_ATTACHMENT",
+      "sha256": "d304c2ce0cb1a4a78af1785ffb08731294e9746fc29f7a2b84dc80ded7c06cca"
+    },
+    {
+      "bytes": 58679,
+      "path": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx",
+      "role": "PROCUREMENT_ATTACHMENT",
+      "sha256": "0f0a7443f4aa601dcbc710b64eb40b3773d3e013c4451f9605d151daf8659fc5"
+    },
+    {
+      "bytes": 55852,
+      "path": "OriginalRevision/RFP 2026-026 - Appendix D2 - Rated Criteria Response Form.docx",
+      "role": "PROCUREMENT_ATTACHMENT",
+      "sha256": "fe04b69ae9a5d73d250483ef85a403cfdd466cf502e265bb23e65b9384e517d9"
+    },
+    {
+      "bytes": 52110,
+      "path": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx",
+      "role": "PROCUREMENT_ATTACHMENT",
+      "sha256": "748973104e4233c6ae7ce63e9c8e8069e1453c1711557fc6803f992238723823"
+    },
+    {
+      "bytes": 44836,
+      "path": "OriginalRevision/RFP 2026-026 - Appendix E - Pricing Form.xlsx",
+      "role": "PROCUREMENT_ATTACHMENT",
+      "sha256": "97bfc8832613c5756da05542d5cdb612d948b6ff7b9ab788a2bd7058b00d6d46"
+    },
+    {
+      "bytes": 67727,
+      "path": "OriginalRevision/RFP 2026-06 - Appendix G - Form of Agreement.docx",
+      "role": "PROCUREMENT_ATTACHMENT",
+      "sha256": "3fedc955dd1e3473814a1d7dc9d577dc4b4a840961b7c2bfa8c9c4bfe0a28cbd"
+    },
+    {
+      "bytes": 376615,
+      "path": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+      "role": "MASTER_RFP",
+      "sha256": "78d96ef927e19fa431c187f9287777b755bd80603f42734c69e0c2603f035ee4"
+    }
+  ],
+  "language": "English"
+}

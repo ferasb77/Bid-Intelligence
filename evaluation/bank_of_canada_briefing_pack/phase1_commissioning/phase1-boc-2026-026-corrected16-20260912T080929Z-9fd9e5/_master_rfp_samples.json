@@ -1,0 +1,578 @@
+[
+  {
+    "category": "requirements",
+    "count": 107,
+    "samples": [
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Submission Compliance",
+        "description": "Proponents must clearly identify in their proposal the specific service category(ies) for which they are submitting.",
+        "evidence": "Proposal document identifying service category(ies)",
+        "req_id": "M1",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Section 1.1 Invitation",
+        "source_refs": [
+          {
+            "excerpt": "Proponents must clearly identify in their proposal the specific service category(ies) for which they are submitting.",
+            "page": 3,
+            "section": "1.1 Invitation",
+            "sheet": null,
+            "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Mandatory",
+        "description": "Proponents must submit proposals electronically through the MERX Canadian public tenders electronic bidding system. Submissions by other methods will not be accepted.",
+        "evidence": "Electronic submission via MERX portal",
+        "req_id": "M1",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Section 1.3 Submission instructions",
+        "source_refs": [
+          {
+            "excerpt": "Proponents must submit their proposals electronically through the MERX Canadian public tenders electronic bidding system accessible at https://www.merx.com/ (MERX). Submissions by other methods will not be accepted.",
+            "page": 4,
+            "section": "1.3 Submission instructions",
+            "sheet": null,
+            "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Submission Compliance",
+        "description": "Proponents must only include pricing information in Appendix E: Pricing form.",
+        "evidence": "Appendix E: Pricing form",
+        "req_id": "M1",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Section 1.3",
+        "source_refs": [
+          {
+            "excerpt": "Proponents must only include pricing information in Appendix E: Pricing form.",
+            "page": 5,
+            "section": null,
+            "sheet": null,
+            "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+          }
+        ],
+        "weight": null
+      }
+    ]
+  },
+  {
+    "category": "dates",
+    "count": 11,
+    "samples": [
+      {
+        "date": "2026-08-27",
+        "milestone": "Issue date",
+        "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+      }
+    ]
+  },
+  {
+    "category": "evaluation_criteria",
+    "count": 55,
+    "samples": [
+      {
+        "criterion_id": null,
+        "evaluation_role": "Qualification / Gate",
+        "hierarchy_level": 1,
+        "is_structural_container": false,
+        "notes": "Review to determine compliance with all mandatory submission requirements. Proponents may be issued a rectification notice to cure deficiencies within a rectification period. Failure to satisfy mandatory submission requirements within rectification period results in proposal rejection.",
+        "parent_criterion_id": null,
+        "parent_stage": null,
+        "parent_title": null,
+        "role_conflict": false,
+        "role_observations": [
+          "Qualification / Gate"
+        ],
+        "source_refs": [
+          {
+            "excerpt": "Stage 1 will consist of a review to determine which proposals comply with all the mandatory submission requirements. If a proposal fails to satisfy all the mandatory submission requirements, the Bank may issue the proponent a rectification notice identifying the deficiencies and providing the proponent an opportunity to rectify the deficiencies.",
+            "page": 9,
+            "section": "3.1 Evaluation of proposals, Stage 1",
+            "sheet": null,
+            "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+          }
+        ],
+        "stage": "Stage 1. Mandatory submission requirements",
+        "threshold": null,
+        "title": "Stage 1. Mandatory submission requirements",
+        "weight": null,
+        "weight_basis": "Unknown",
+        "weight_conflict": false,
+        "weight_observations": [],
+        "weight_unit": "None",
+        "weight_value": null
+      },
+      {
+        "criterion_id": null,
+        "evaluation_role": "Award Criterion",
+        "hierarchy_level": 1,
+        "is_structural_container": false,
+        "notes": "Scores from Stage 2, Stage 3, and Stage 4 are totalled. Highest-scoring proponents within each service category invited to negotiate. In case of tie, highest score on rated criteria determines selection. Awards made on category-by-category basis.",
+        "parent_criterion_id": null,
+        "parent_stage": null,
+        "parent_title": null,
+        "role_conflict": false,
+        "role_observations": [
+          "Award Criterion"
+        ],
+        "source_refs": [
+          {
+            "excerpt": "At Stage 5, the scores from Stage 2, Stage 3 and Stage 4 will be totalled and, subject to the terms of this RFP, the highest-scoring proponents within each service category will be invited to negotiate agreements based on the Form of Agreement in Appendix F, if reference checks are successful. In the event of a tie between proponents, the selected proponent will be decided by way of the highest score on the rated criteria.",
+            "page": 10,
+            "section": null,
+            "sheet": null,
+            "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+          }
+        ],
+        "stage": "Stage 5. Cumulative score",
+        "threshold": null,
+        "title": "Stage 5. Cumulative score",
+        "weight": null,
+        "weight_basis": "Overall",
+        "weight_conflict": false,
+        "weight_observations": [],
+        "weight_unit": "None",
+        "weight_value": null
+      },
+      {
+        "criterion_id": null,
+        "evaluation_role": "Process / Methodology",
+        "hierarchy_level": 1,
+        "is_structural_container": false,
+        "notes": "All RFx submissions will be evaluated by a Bank evaluation team in accordance with the evaluation criteria set out in each RFx. Evaluations will consider proposed methodology, experience and qualifications as well as price. The firm with the highest scoring proposal in an RFx process will be awarded the engagement/contract.",
+        "parent_criterion_id": null,
+        "parent_stage": null,
+        "parent_title": null,
+        "role_conflict": false,
+        "role_observations": [
+          "Process / Methodology"
+        ],
+        "source_refs": [
+          {
+            "excerpt": "All RFx submissions will be evaluated by a Bank evaluation team in accordance with the evaluation criteria set out in each RFx. As applicable, evaluations will consider proposed methodology, experience and qualifications as well as price. The firm with the highest scoring proposal in an RFx process will be awarded the engagement/contract.",
+            "page": 13,
+            "section": null,
+            "sheet": null,
+            "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+          }
+        ],
+        "stage": "Call-Off RFx Evaluation (≥ $250,000 threshold)",
+        "threshold": null,
+        "title": "Call-Off RFx Evaluation (≥ $250,000 threshold)",
+        "weight": null,
+        "weight_basis": "Unknown",
+        "weight_conflict": false,
+        "weight_observations": [],
+        "weight_unit": "None",
+        "weight_value": null
+      }
+    ]
+  },
+  {
+    "category": "submission_rules",
+    "count": 32,
+    "samples": [
+      {
+        "artifact_type": "Proposal / Response",
+        "artifact_type_conflict": false,
+        "artifact_type_observations": [
+          "Proposal / Response"
+        ],
+        "details": "Submit by 11:59:00pm EST via Merx.com official time clock on September 30, 2026. Proponents must clearly identify the specific service category(ies) for which they are submitting.",
+        "file_format": "Unspecified",
+        "file_format_conflict": false,
+        "file_format_observations": [
+          "Unspecified"
+        ],
+        "format": "Via Merx.com",
+        "item": "Proposal",
+        "mandatory": 1,
+        "mandatory_conflict": false,
+        "mandatory_observations": [
+          1
+        ],
+        "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Submission deadline September 30, 2026; by 11:59:00pm EST via Merx.com official time clock",
+            "page": 3,
+            "section": "1.1 Invitation; 1.2 RFP timetable",
+            "sheet": null,
+            "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+          }
+        ],
+        "submission_channel": "Portal",
+        "submission_channel_conflict": false,
+        "submission_channel_observations": [
+          "Portal"
+        ]
+      },
+      {
+        "artifact_type": "Form / Annex",
+        "artifact_type_conflict": false,
+        "artifact_type_observations": [
+          "Form / Annex"
+        ],
+        "details": "Required appendix; format as specified on MERX platform",
+        "file_format": "DOCX",
+        "file_format_conflict": false,
+        "file_format_observations": [
+          "Unspecified",
+          "DOCX"
+        ],
+        "format": "Electronic via MERX",
+        "item": "Appendix A – Submission form",
+        "mandatory": 1,
+        "mandatory_conflict": false,
+        "mandatory_observations": [
+          1
+        ],
+        "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Appendix A – Submission form",
+            "page": 4,
+            "section": "1.3 Submission instructions",
+            "sheet": null,
+            "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+          },
+          {
+            "excerpt": "Each proposal must include a Submission form (Appendix A) completed and signed by the proponent. This is a Word file that can be downloaded from MERX.",
+            "page": 14,
+            "section": "4.3(b)",
+            "sheet": null,
+            "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+          },
+          {
+            "excerpt": "APPENDIX A. SUBMISSION FORM",
+            "page": 18,
+            "section": "APPENDIX A. SUBMISSION FORM",
+            "sheet": null,
+            "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+          }
+        ],
+        "submission_channel": "Portal",
+        "submission_channel_conflict": false,
+        "submission_channel_observations": [
+          "Portal",
+          "Unspecified"
+        ]
+      },
+      {
+        "artifact_type": "Form / Annex",
+        "artifact_type_conflict": false,
+        "artifact_type_observations": [
+          "Form / Annex"
+        ],
+        "details": "Must be completed and signed; submission via MERX portal; acknowledgment of acceptance of RFP Terms of Reference required for eligibility",
+        "file_format": "Unspecified",
+        "file_format_conflict": false,
+        "file_format_observations": [
+          "Unspecified"
+        ],
+        "format": "Completed and signed form via MERX",
+        "item": "Submission Form",
+        "mandatory": 1,
+        "mandatory_conflict": false,
+        "mandatory_observations": [
+          1
+        ],
+        "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+        "source_refs": [
+          {
+            "excerpt": "In responding to this RFP, and to be eligible for consideration, each proponent must submit a completed and signed submission form that, among other things, acknowledges its acceptance of the RFP Terms of Reference as contained hereunder",
+            "page": 7,
+            "section": null,
+            "sheet": null,
+            "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+          }
+        ],
+        "submission_channel": "Portal",
+        "submission_channel_conflict": false,
+        "submission_channel_observations": [
+          "Portal"
+        ]
+      }
+    ]
+  },
+  {
+    "category": "deliverables",
+    "count": 6,
+    "samples": [
+      {
+        "acceptance_criteria": null,
+        "conditions": [
+          "Demand may increase and/or be adjusted from year to year based on evolving operational needs, project volumes, and resource capacity requirements"
+        ],
+        "description": "Up to 10 custom workshops for learning and development programs and assessments.",
+        "due_milestone": null,
+        "frequency": "AS_REQUESTED",
+        "frequency_raw": "up to 10 custom workshops over the term of the agreement",
+        "obligation_state": "CONDITIONAL",
+        "quantity": "10",
+        "responsible_actor": "SUPPLIER",
+        "scope": {
+          "component": null,
+          "location": null,
+          "lot": "Category 1: Learning & Development Programs and Assessments",
+          "phase": null
+        },
+        "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+        "source_refs": [
+          {
+            "excerpt": "The Bank anticipates a requirement for up to 10 custom workshops and one possible larger scale curriculum design and delivery over the term of the agreement.",
+            "page": 12,
+            "section": "4.1 Category 1: Learning & Development Programs and Assessments",
+            "sheet": null,
+            "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+          }
+        ],
+        "title": "Custom Workshops (Category 1)",
+        "unit": "workshops"
+      },
+      {
+        "acceptance_criteria": null,
+        "conditions": [
+          "Demand may increase and/or be adjusted from year to year based on evolving operational needs, project volumes, and resource capacity requirements"
+        ],
+        "description": "Services including learning strategy, needs assessment and evaluation consulting, succession planning design and facilitation, performance management framework design and development, leadership development and talent management strategy and design, future of work insights assessment and strategy, HIPO identification methodologies and accelerated development architecture, workforce skills planning and skills architecture development, and HR strategy consulting.",
+        "due_milestone": null,
+        "frequency": "ANNUAL",
+        "frequency_raw": "up to 15 engagements of variable size and scope annually across the term of the agreement",
+        "obligation_state": "CONDITIONAL",
+        "quantity": "15",
+        "responsible_actor": "SUPPLIER",
+        "scope": {
+          "component": "Learning & Development",
+          "location": null,
+          "lot": null,
+          "phase": null
+        },
+        "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+        "source_refs": [
+          {
+            "excerpt": "The Bank anticipates a requirement for up to 15 engagements of variable size and scope annually across the term of the agreement; however, demand may increase and/or be adjusted from year to year based on evolving operational needs, project volumes, and resource capacity requirements.",
+            "page": 13,
+            "section": "CATEGORY 2: LEARNING & DEVELOPMENT AND HR ADVISORY",
+            "sheet": null,
+            "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+          }
+        ],
+        "title": "Learning & Development Services",
+        "unit": "engagements"
+      }
+    ]
+  },
+  {
+    "category": "commercial_clauses",
+    "count": 20,
+    "samples": [
+      {
+        "clause_kind": "CONFIDENTIALITY",
+        "conditions": [
+          "Information must be treated as confidential",
+          "Use limited to replying to RFP and performance of subsequent contract",
+          "No disclosure without prior written authorization"
+        ],
+        "linked_observation_ids": [],
+        "scope": {
+          "component": null,
+          "location": null,
+          "lot": null,
+          "phase": null
+        },
+        "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+        "source_fact": "The RFP process is confidential in nature. All information provided by or obtained from the Bank of Canada in any form in connection with the RFP is the sole property of the Bank of Canada and must be treated as confidential. It may not be used for any purpose other than replying to the RFP and the performance of any subsequent contract and must not be disclosed without prior written authorization from the Bank of Canada.",
+        "source_refs": [
+          {
+            "excerpt": "the RFP process is confidential in nature. All information provided by or obtained from the Bank of Canada in any form in connection with the RFP is the sole property of the Bank of Canada and must be treated as confidential. It may not be used for any purpose other than replying to the RFP and the performance of any subsequent contract and must not be disclosed without prior written authorization from the Bank of Canada",
+            "page": 8,
+            "section": null,
+            "sheet": null,
+            "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+          }
+        ],
+        "topic": "RFP Process Confidentiality and Information Protection"
+      },
+      {
+        "clause_kind": "DATA_PROTECTION_PRIVACY",
+        "conditions": [
+          "Proponent consents to collection of information",
+          "Bank of Canada subject to Access to Information Act"
+        ],
+        "linked_observation_ids": [],
+        "scope": {
+          "component": null,
+          "location": null,
+          "lot": null,
+          "phase": null
+        },
+        "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+        "source_fact": "The proponent consents to the Bank of Canada's collection of the information as contemplated under this RFP for the uses contemplated under this RFP and acknowledges that the Bank of Canada is subject to the Access to Information Act (RSC, 1985, c. A-1).",
+        "source_refs": [
+          {
+            "excerpt": "the proponent consents to the Bank of Canada's collection of the information as contemplated under this RFP for the uses contemplated under this RFP and acknowledges that the Bank of Canada is subject to the Access to Information Act (RSC, 1985, c. A-1)",
+            "page": 7,
+            "section": null,
+            "sheet": null,
+            "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+          }
+        ],
+        "topic": "Collection of Information and Access to Information Act"
+      },
+      {
+        "clause_kind": "GUARANTEE_BOND",
+        "conditions": [
+          "Pricing is abnormally low",
+          "Proponent unable to satisfactorily account for the abnormally low pricing"
+        ],
+        "linked_observation_ids": [],
+        "scope": {
+          "component": null,
+          "location": null,
+          "lot": null,
+          "phase": null
+        },
+        "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+        "source_fact": "Bank has the right to require contract security in the form of a performance bond if proponent cannot satisfactorily account for abnormally low pricing.",
+        "source_refs": [
+          {
+            "excerpt": "the right to require contract security in the form of a performance bond. If the proponent is unable to satisfactorily account for the abnormally low pricing, the Bank may reject the proposal.",
+            "page": 10,
+            "section": null,
+            "sheet": null,
+            "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+          }
+        ],
+        "topic": "Performance bond requirement for abnormally low pricing"
+      }
+    ]
+  },
+  {
+    "category": "typed_observations",
+    "count": 57,
+    "samples": [
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "IDENTITY",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "2026-026",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "SOLICITATION_NUMBER",
+        "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Request for Proposals No.: 2026-026",
+            "page": 1,
+            "section": null,
+            "sheet": null,
+            "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "IDENTITY",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "RFP 2026-026 - Talent, Learning and Organizational Development Services",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "OPPORTUNITY_TITLE",
+        "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Bank of Canada RFP No. 2026-026",
+            "page": 3,
+            "section": null,
+            "sheet": null,
+            "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "IDENTITY",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "2026-026",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "SOLICITATION_NUMBER",
+        "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Bank of Canada RFP No. 2026-026",
+            "page": 4,
+            "section": null,
+            "sheet": null,
+            "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      }
+    ]
+  }
+]

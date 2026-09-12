@@ -1,0 +1,115 @@
+{
+  "_extraction_diagnostic": {
+    "recovery_attempts": 0,
+    "status": "VERIFIED_ADEQUATE"
+  },
+  "commercial_clauses": [],
+  "contract_risks": [],
+  "dates": [],
+  "deliverables": [],
+  "doc_metadata": {
+    "client": "Banque (Bank)",
+    "file_number": "DP 2026-026",
+    "notes": "ESG questionnaire annex for information collection purposes only; responses are not used for proposal evaluation or future participation decisions.",
+    "title": "Questionnaire ESG (Environmental, Social, and Governance)"
+  },
+  "evaluation_criteria": [],
+  "requirements": [
+    {
+      "_semantic_candidates": [
+        "Submission Compliance"
+      ],
+      "category": "Supporting",
+      "description": "Respond to ESG questionnaire section with yes/no answers to questions on Indigenous enterprise status, accessibility strategy, and environmental/sustainability practices.",
+      "evidence": "Completed ESG questionnaire responses (yes/no format)",
+      "req_id": "S1",
+      "requirement_type": "Submission Compliance",
+      "rfso_ref": "Annexe F, ESG Sheet, Rows 2-17",
+      "source_refs": [
+        {
+          "excerpt": "Les réponses à cette section sont fournies à des fins de collecte de renseignements seulement et ne seront pas utilisées pour évaluer la proposition ou la participation de votre organisation à des besoins futurs de la Banque.",
+          "page": null,
+          "section": null,
+          "sheet": "ESG",
+          "source_doc": "OriginalRevision/DP 2026-026 - Annexe F - Questionnaire ESG.xlsx"
+        }
+      ],
+      "weight": null
+    }
+  ],
+  "submission_rules": [
+    {
+      "artifact_type": "Form / Annex",
+      "artifact_type_conflict": false,
+      "artifact_type_observations": [
+        "Form / Annex"
+      ],
+      "details": "ESG questionnaire with yes/no response format across four thematic sections: Indigenous Enterprise, Accessibility, and Greening (Verdissement). Responses collected for information purposes only.",
+      "file_format": "XLSX",
+      "file_format_conflict": false,
+      "file_format_observations": [
+        "XLSX"
+      ],
+      "format": "XLSX spreadsheet",
+      "item": "Questionnaire ESG (Annex F)",
+      "mandatory": 0,
+      "mandatory_conflict": false,
+      "mandatory_observations": [
+        0
+      ],
+      "source_doc": "OriginalRevision/DP 2026-026 - Annexe F - Questionnaire ESG.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "Les réponses à cette section sont fournies à des fins de collecte de renseignements seulement et ne seront pas utilisées pour évaluer la proposition ou la participation de votre organisation à des besoins futurs de la Banque.",
+          "page": null,
+          "section": null,
+          "sheet": "ESG",
+          "source_doc": "OriginalRevision/DP 2026-026 - Annexe F - Questionnaire ESG.xlsx"
+        }
+      ],
+      "submission_channel": "Unspecified",
+      "submission_channel_conflict": false,
+      "submission_channel_observations": [
+        "Unspecified"
+      ]
+    }
+  ],
+  "typed_observations": [
+    {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": "INFORMATION_COLLECTION_QUESTIONNAIRE",
+      "document_role_basis": "Explicit statement that responses are for information collection only and will not be used for proposal evaluation or future participation decisions",
+      "duration": null,
+      "family": "DOCUMENT_ROLE",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "Questionnaire ESG - information collection only, not used for evaluation",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": null,
+        "lot": null
+      },
+      "semantic_kind": "DOCUMENT_ROLE",
+      "source_doc": "OriginalRevision/DP 2026-026 - Annexe F - Questionnaire ESG.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "Les réponses à cette section sont fournies à des fins de collecte de renseignements seulement et ne seront pas utilisées pour évaluer la proposition ou la participation de votre organisation à des besoins futurs de la Banque.",
+          "page": null,
+          "section": null,
+          "sheet": "ESG",
+          "source_doc": "OriginalRevision/DP 2026-026 - Annexe F - Questionnaire ESG.xlsx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    }
+  ]
+}

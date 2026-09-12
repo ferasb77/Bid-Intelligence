@@ -1,0 +1,2114 @@
+{
+  "facts": {
+    "_extraction_diagnostic": {
+      "has_recovered_truncation": true,
+      "note": "Document facts recovered from truncated JSON parser; bounded retries completed without complete parse",
+      "recovery_attempts": 0,
+      "status": "RECOVERED_TRUNCATED"
+    },
+    "commercial_clauses": [],
+    "contract_risks": [],
+    "dates": [
+      {
+        "date": "2026-08-27",
+        "milestone": "Publication",
+        "source_doc": "abstract.pdf"
+      },
+      {
+        "date": "2026-09-28",
+        "milestone": "Bid Intent Deadline",
+        "source_doc": "abstract.pdf"
+      },
+      {
+        "date": "2026-09-10",
+        "milestone": "Question Acceptance Deadline",
+        "source_doc": "abstract.pdf"
+      },
+      {
+        "date": "2026-09-30",
+        "milestone": "Closing Date",
+        "source_doc": "abstract.pdf"
+      },
+      {
+        "date": "2026-08-28",
+        "milestone": "Amendment No. 1",
+        "source_doc": "abstract.pdf"
+      },
+      {
+        "date": "2026-08-27",
+        "milestone": "Publication Date",
+        "source_doc": "abstract.pdf"
+      },
+      {
+        "date": "2026-09-30",
+        "milestone": "Submission Deadline",
+        "source_doc": "abstract.pdf"
+      },
+      {
+        "date": "2026-09-01",
+        "milestone": "Amendment No. 1 Published",
+        "source_doc": "abstract.pdf"
+      },
+      {
+        "date": "2026-09-01",
+        "milestone": "Amendment No. 1 Publication",
+        "source_doc": "abstract.pdf"
+      }
+    ],
+    "deliverables": [],
+    "doc_metadata": {
+      "clarification_deadline": "2026-09-10",
+      "client": "Bank of Canada",
+      "file_number": "RFP 2026-026",
+      "notes": "Formal Request for Proposal for talent, learning and organizational development services on an as-required basis, including facilitation, learning program delivery, and HR consulting. Contract duration 3 years with 2-year option. Electronic bid submission required in two envelopes (Identity & Proposal; Pricing).",
+      "submission_deadline": "2026-09-30",
+      "title": "RFP 2026-026 - Talent, Learning and Organizational Development Services"
+    },
+    "evaluation_criteria": [],
+    "requirements": [
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Mandatory",
+        "description": "Appendix A - Submission form must be completed and submitted",
+        "evidence": "Appendix A submission form",
+        "req_id": "M1",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Appendix A",
+        "source_refs": [
+          {
+            "excerpt": "Appendix A - Submission form - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Mandatory",
+        "description": "Appendix B1 - Mandatory criteria must be completed and submitted",
+        "evidence": "Appendix B1 mandatory criteria form",
+        "req_id": "M2",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Appendix B1",
+        "source_refs": [
+          {
+            "excerpt": "Appendix B1 - Mandatory criteria - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Mandatory",
+        "description": "Appendix B2 - Mandatory criteria must be completed and submitted",
+        "evidence": "Appendix B2 mandatory criteria form",
+        "req_id": "M3",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Appendix B2",
+        "source_refs": [
+          {
+            "excerpt": "Appendix B2 - Mandatory criteria - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Mandatory",
+        "description": "Appendix B3 - Mandatory criteria must be completed and submitted",
+        "evidence": "Appendix B3 mandatory criteria form",
+        "req_id": "M4",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Appendix B3",
+        "source_refs": [
+          {
+            "excerpt": "Appendix B3 - Mandatory criteria - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Supplier Qualification"
+        ],
+        "category": "Mandatory",
+        "description": "Appendix C1 - Minimum qualification requirements must be met and demonstrated",
+        "evidence": "Appendix C1 minimum qualification requirements form",
+        "req_id": "M5",
+        "requirement_type": "Supplier Qualification",
+        "rfso_ref": "Appendix C1",
+        "source_refs": [
+          {
+            "excerpt": "Appendix C1 - Minimum qualification requirements - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Supplier Qualification"
+        ],
+        "category": "Mandatory",
+        "description": "Appendix C2 - Minimum qualification requirements must be met and demonstrated",
+        "evidence": "Appendix C2 minimum qualification requirements form",
+        "req_id": "M6",
+        "requirement_type": "Supplier Qualification",
+        "rfso_ref": "Appendix C2",
+        "source_refs": [
+          {
+            "excerpt": "Appendix C2 - Minimum qualification requirements - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Supplier Qualification"
+        ],
+        "category": "Mandatory",
+        "description": "Appendix C3 - Minimum qualification requirements must be met and demonstrated",
+        "evidence": "Appendix C3 minimum qualification requirements form",
+        "req_id": "M7",
+        "requirement_type": "Supplier Qualification",
+        "rfso_ref": "Appendix C3",
+        "source_refs": [
+          {
+            "excerpt": "Appendix C3 - Minimum qualification requirements - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Rated",
+        "description": "Appendix D1 - Rated criteria response form must be completed and submitted",
+        "evidence": "Appendix D1 rated criteria response form",
+        "req_id": "R1",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Appendix D1",
+        "source_refs": [
+          {
+            "excerpt": "Appendix D1 - Rated criteria response form - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Rated",
+        "description": "Appendix D2 - Rated criteria response form must be completed and submitted",
+        "evidence": "Appendix D2 rated criteria response form",
+        "req_id": "R2",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Appendix D2",
+        "source_refs": [
+          {
+            "excerpt": "Appendix D2 - Rated criteria response form - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Mandatory",
+        "description": "Appendix F - ESG Questionnaire must be completed and submitted",
+        "evidence": "Appendix F ESG Questionnaire",
+        "req_id": "M8",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Appendix F",
+        "source_refs": [
+          {
+            "excerpt": "Appendix F - ESG Questionnaire - Mandatory",
+            "page": 2,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Commercial / Contractual"
+        ],
+        "category": "Mandatory",
+        "description": "Appendix G - Form of agreement must be reviewed, accepted, and submitted with bid",
+        "evidence": "Appendix G Form of agreement",
+        "req_id": "M9",
+        "requirement_type": "Commercial / Contractual",
+        "rfso_ref": "Appendix G",
+        "source_refs": [
+          {
+            "excerpt": "Appendix G - Form of agreement - Mandatory",
+            "page": 2,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Financial",
+        "description": "Appendix E - Pricing form must be completed and submitted in Envelope 2",
+        "evidence": "Appendix E Pricing form",
+        "req_id": "M10",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Appendix E",
+        "source_refs": [
+          {
+            "excerpt": "Appendix E - Pricing form - Mandatory",
+            "page": 2,
+            "section": "Envelope 2 - Pricing",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Mandatory",
+        "description": "Bid submission must be electronic via designated portal",
+        "evidence": "Electronic submission required",
+        "req_id": "M11",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Bid Submission Process",
+        "source_refs": [
+          {
+            "excerpt": "Bid Submission Type - Electronic Bid Submission",
+            "page": 1,
+            "section": "Bid Submission Process",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Mandatory",
+        "description": "Bid must be submitted in two separate envelopes: Envelope 1 (Identity & Proposal) and Envelope 2 (Pricing)",
+        "evidence": "Two-envelope submission structure",
+        "req_id": "M12",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Bid Submission Process",
+        "source_refs": [
+          {
+            "excerpt": "Envelope 1 - Identity & Proposal; Envelope 2 - Pricing",
+            "page": 1,
+            "section": "Bid Submission Process",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Mandatory",
+        "description": "Appendix B1 - Mandatory criteria response must be submitted",
+        "evidence": "Appendix B1 mandatory criteria document",
+        "req_id": "M2",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Appendix B1",
+        "source_refs": [
+          {
+            "excerpt": "Appendix B1 - Mandatory criteria - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Mandatory",
+        "description": "Appendix B2 - Mandatory criteria response must be submitted",
+        "evidence": "Appendix B2 mandatory criteria document",
+        "req_id": "M3",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Appendix B2",
+        "source_refs": [
+          {
+            "excerpt": "Appendix B2 - Mandatory criteria - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Mandatory",
+        "description": "Appendix B3 - Mandatory criteria response must be submitted",
+        "evidence": "Appendix B3 mandatory criteria document",
+        "req_id": "M4",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Appendix B3",
+        "source_refs": [
+          {
+            "excerpt": "Appendix B3 - Mandatory criteria - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Mandatory",
+        "description": "Appendix C1 - Minimum qualification requirements response must be submitted",
+        "evidence": "Appendix C1 minimum qualification requirements document",
+        "req_id": "M5",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Appendix C1",
+        "source_refs": [
+          {
+            "excerpt": "Appendix C1 - Minimum qualification requirements - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Mandatory",
+        "description": "Appendix C2 - Minimum qualification requirements response must be submitted",
+        "evidence": "Appendix C2 minimum qualification requirements document",
+        "req_id": "M6",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Appendix C2",
+        "source_refs": [
+          {
+            "excerpt": "Appendix C2 - Minimum qualification requirements - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Mandatory",
+        "description": "Appendix C3 - Minimum qualification requirements response must be submitted",
+        "evidence": "Appendix C3 minimum qualification requirements document",
+        "req_id": "M7",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Appendix C3",
+        "source_refs": [
+          {
+            "excerpt": "Appendix C3 - Minimum qualification requirements - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Rated",
+        "description": "Appendix D1 - Rated criteria response form must be submitted",
+        "evidence": "Appendix D1 rated criteria response form",
+        "req_id": "R1",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Appendix D1",
+        "source_refs": [
+          {
+            "excerpt": "Appendix D1 - Rated criteria response form - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Rated",
+        "description": "Appendix D2 - Rated criteria response form must be submitted",
+        "evidence": "Appendix D2 rated criteria response form",
+        "req_id": "R2",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Appendix D2",
+        "source_refs": [
+          {
+            "excerpt": "Appendix D2 - Rated criteria response form - Mandatory",
+            "page": 2,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Mandatory",
+        "description": "Appendix F - ESG Questionnaire must be submitted",
+        "evidence": "Appendix F ESG Questionnaire",
+        "req_id": "M8",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Appendix F",
+        "source_refs": [
+          {
+            "excerpt": "Appendix F - ESG Questionnaire - Mandatory",
+            "page": 2,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Mandatory",
+        "description": "Appendix G - Form of agreement must be submitted",
+        "evidence": "Appendix G form of agreement",
+        "req_id": "M9",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Appendix G",
+        "source_refs": [
+          {
+            "excerpt": "Appendix G - Form of agreement - Mandatory",
+            "page": 2,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Financial",
+        "description": "Appendix E - Pricing form must be submitted in Envelope 2",
+        "evidence": "Appendix E pricing form",
+        "req_id": "F1",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Appendix E",
+        "source_refs": [
+          {
+            "excerpt": "Appendix E - Pricing form - Mandatory",
+            "page": 2,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Mandatory",
+        "description": "Bids must be submitted electronically in two envelopes: Envelope 1 (Identity & Proposal) and Envelope 2 (Pricing)",
+        "evidence": "Electronic bid submission in two envelopes",
+        "req_id": "M10",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Bid Submission Process",
+        "source_refs": [
+          {
+            "excerpt": "Bid Submission Type - Electronic Bid Submission",
+            "page": 1,
+            "section": "Bid Submission Process",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "weight": null
+      }
+    ],
+    "submission_rules": [
+      {
+        "artifact_type": "Form / Annex",
+        "artifact_type_conflict": false,
+        "artifact_type_observations": [
+          "Form / Annex"
+        ],
+        "details": "Mandatory submission form for Envelope 1 (Identity & Proposal)",
+        "file_format": "DOCX",
+        "file_format_conflict": false,
+        "file_format_observations": [
+          "DOCX"
+        ],
+        "format": "Electronic submission via portal",
+        "item": "Appendix A - Submission form",
+        "mandatory": 1,
+        "mandatory_conflict": false,
+        "mandatory_observations": [
+          1
+        ],
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Appendix A - Submission form - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          },
+          {
+            "excerpt": "Appendix A - Submission form [docx]",
+            "page": 5,
+            "section": "Documents",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "submission_channel": "Unspecified",
+        "submission_channel_conflict": false,
+        "submission_channel_observations": [
+          "Unspecified"
+        ]
+      },
+      {
+        "artifact_type": "Form / Annex",
+        "artifact_type_conflict": false,
+        "artifact_type_observations": [
+          "Form / Annex"
+        ],
+        "details": "Mandatory criteria response for Envelope 1 (Identity & Proposal)",
+        "file_format": "XLSX",
+        "file_format_conflict": false,
+        "file_format_observations": [
+          "XLSX"
+        ],
+        "format": "Electronic submission via portal",
+        "item": "Appendix B1 - Mandatory criteria",
+        "mandatory": 1,
+        "mandatory_conflict": false,
+        "mandatory_observations": [
+          1
+        ],
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Appendix B1 - Mandatory criteria - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          },
+          {
+            "excerpt": "Appendix B1 - Mandatory criteria [xlsx]",
+            "page": 5,
+            "section": "Documents",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "submission_channel": "Unspecified",
+        "submission_channel_conflict": false,
+        "submission_channel_observations": [
+          "Unspecified"
+        ]
+      },
+      {
+        "artifact_type": "Form / Annex",
+        "artifact_type_conflict": false,
+        "artifact_type_observations": [
+          "Form / Annex"
+        ],
+        "details": "Mandatory criteria response for Envelope 1 (Identity & Proposal)",
+        "file_format": "XLSX",
+        "file_format_conflict": false,
+        "file_format_observations": [
+          "XLSX"
+        ],
+        "format": "Electronic submission via portal",
+        "item": "Appendix B2 - Mandatory criteria",
+        "mandatory": 1,
+        "mandatory_conflict": false,
+        "mandatory_observations": [
+          1
+        ],
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Appendix B2 - Mandatory criteria - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          },
+          {
+            "excerpt": "Appendix B2 - Mandatory criteria [xlsx]",
+            "page": 5,
+            "section": "Documents",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "submission_channel": "Unspecified",
+        "submission_channel_conflict": false,
+        "submission_channel_observations": [
+          "Unspecified"
+        ]
+      },
+      {
+        "artifact_type": "Form / Annex",
+        "artifact_type_conflict": false,
+        "artifact_type_observations": [
+          "Form / Annex"
+        ],
+        "details": "Mandatory criteria response for Envelope 1 (Identity & Proposal)",
+        "file_format": "XLSX",
+        "file_format_conflict": false,
+        "file_format_observations": [
+          "XLSX"
+        ],
+        "format": "Electronic submission via portal",
+        "item": "Appendix B3 - Mandatory criteria",
+        "mandatory": 1,
+        "mandatory_conflict": false,
+        "mandatory_observations": [
+          1
+        ],
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Appendix B3 - Mandatory criteria - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          },
+          {
+            "excerpt": "Appendix B3 - Mandatory criteria [xlsx]",
+            "page": 5,
+            "section": "Documents",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "submission_channel": "Unspecified",
+        "submission_channel_conflict": false,
+        "submission_channel_observations": [
+          "Unspecified"
+        ]
+      },
+      {
+        "artifact_type": "Form / Annex",
+        "artifact_type_conflict": false,
+        "artifact_type_observations": [
+          "Form / Annex"
+        ],
+        "details": "Minimum qualification requirements demonstration for Envelope 1 (Identity & Proposal)",
+        "file_format": "XLSX",
+        "file_format_conflict": false,
+        "file_format_observations": [
+          "XLSX"
+        ],
+        "format": "Electronic submission via portal",
+        "item": "Appendix C1 - Minimum qualification requirements",
+        "mandatory": 1,
+        "mandatory_conflict": false,
+        "mandatory_observations": [
+          1
+        ],
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Appendix C1 - Minimum qualification requirements - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          },
+          {
+            "excerpt": "Appendix C1 - Minimum qualification requirements [xlsx]",
+            "page": 5,
+            "section": "Documents",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "submission_channel": "Unspecified",
+        "submission_channel_conflict": false,
+        "submission_channel_observations": [
+          "Unspecified"
+        ]
+      },
+      {
+        "artifact_type": "Form / Annex",
+        "artifact_type_conflict": false,
+        "artifact_type_observations": [
+          "Form / Annex"
+        ],
+        "details": "Minimum qualification requirements demonstration for Envelope 1 (Identity & Proposal)",
+        "file_format": "XLSX",
+        "file_format_conflict": false,
+        "file_format_observations": [
+          "XLSX"
+        ],
+        "format": "Electronic submission via portal",
+        "item": "Appendix C2 - Minimum qualification requirements",
+        "mandatory": 1,
+        "mandatory_conflict": false,
+        "mandatory_observations": [
+          1
+        ],
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Appendix C2 - Minimum qualification requirements - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          },
+          {
+            "excerpt": "Appendix C2 - Minimum qualification requirements [xlsx]",
+            "page": 5,
+            "section": "Documents",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "submission_channel": "Unspecified",
+        "submission_channel_conflict": false,
+        "submission_channel_observations": [
+          "Unspecified"
+        ]
+      },
+      {
+        "artifact_type": "Form / Annex",
+        "artifact_type_conflict": false,
+        "artifact_type_observations": [
+          "Form / Annex"
+        ],
+        "details": "Minimum qualification requirements demonstration for Envelope 1 (Identity & Proposal)",
+        "file_format": "XLSX",
+        "file_format_conflict": false,
+        "file_format_observations": [
+          "XLSX"
+        ],
+        "format": "Electronic submission via portal",
+        "item": "Appendix C3 - Minimum qualification requirements",
+        "mandatory": 1,
+        "mandatory_conflict": false,
+        "mandatory_observations": [
+          1
+        ],
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Appendix C3 - Minimum qualification requirements - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          },
+          {
+            "excerpt": "Appendix C3 - Minimum qualification requirements [xlsx]",
+            "page": 5,
+            "section": "Documents",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "submission_channel": "Unspecified",
+        "submission_channel_conflict": false,
+        "submission_channel_observations": [
+          "Unspecified"
+        ]
+      },
+      {
+        "artifact_type": "Form / Annex",
+        "artifact_type_conflict": false,
+        "artifact_type_observations": [
+          "Form / Annex"
+        ],
+        "details": "Rated criteria response for Envelope 1 (Identity & Proposal)",
+        "file_format": "DOCX",
+        "file_format_conflict": false,
+        "file_format_observations": [
+          "DOCX"
+        ],
+        "format": "Electronic submission via portal",
+        "item": "Appendix D1 - Rated criteria response form",
+        "mandatory": 1,
+        "mandatory_conflict": false,
+        "mandatory_observations": [
+          1
+        ],
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Appendix D1 - Rated criteria response form - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          },
+          {
+            "excerpt": "Appendix D1 - Rated criteria response form [docx]",
+            "page": 5,
+            "section": "Documents",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "submission_channel": "Unspecified",
+        "submission_channel_conflict": false,
+        "submission_channel_observations": [
+          "Unspecified"
+        ]
+      },
+      {
+        "artifact_type": "Form / Annex",
+        "artifact_type_conflict": false,
+        "artifact_type_observations": [
+          "Form / Annex"
+        ],
+        "details": "Rated criteria response for Envelope 1 (Identity & Proposal). Revised version published 2026-08-28.",
+        "file_format": "DOCX",
+        "file_format_conflict": false,
+        "file_format_observations": [
+          "DOCX"
+        ],
+        "format": "Electronic submission via portal",
+        "item": "Appendix D2 - Rated criteria response form",
+        "mandatory": 1,
+        "mandatory_conflict": false,
+        "mandatory_observations": [
+          1
+        ],
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Appendix D2 - Rated criteria response form - Mandatory",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          },
+          {
+            "excerpt": "Appendix D2 - Rated criteria response form REVISED [docx]",
+            "page": 5,
+            "section": "Documents",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          },
+          {
+            "excerpt": "Appendix D2 - Rated criteria response form - Mandatory",
+            "page": 2,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "submission_channel": "Unspecified",
+        "submission_channel_conflict": false,
+        "submission_channel_observations": [
+          "Unspecified"
+        ]
+      },
+      {
+        "artifact_type": "Form / Annex",
+        "artifact_type_conflict": false,
+        "artifact_type_observations": [
+          "Form / Annex"
+        ],
+        "details": "Environmental, Social, and Governance questionnaire for Envelope 1 (Identity & Proposal)",
+        "file_format": "XLSX",
+        "file_format_conflict": false,
+        "file_format_observations": [
+          "XLSX"
+        ],
+        "format": "Electronic submission via portal",
+        "item": "Appendix F - ESG Questionnaire",
+        "mandatory": 1,
+        "mandatory_conflict": false,
+        "mandatory_observations": [
+          1
+        ],
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Appendix F - ESG Questionnaire - Mandatory",
+            "page": 2,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          },
+          {
+            "excerpt": "Appendix F - ESG Questionnaire [xlsx]",
+            "page": 5,
+            "section": "Documents",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "submission_channel": "Unspecified",
+        "submission_channel_conflict": false,
+        "submission_channel_observations": [
+          "Unspecified"
+        ]
+      },
+      {
+        "artifact_type": "Form / Annex",
+        "artifact_type_conflict": false,
+        "artifact_type_observations": [
+          "Form / Annex"
+        ],
+        "details": "Contract template for Envelope 1 (Identity & Proposal). Bidder must review and accept terms.",
+        "file_format": "DOCX",
+        "file_format_conflict": false,
+        "file_format_observations": [
+          "DOCX"
+        ],
+        "format": "Electronic submission via portal",
+        "item": "Appendix G - Form of agreement",
+        "mandatory": 1,
+        "mandatory_conflict": false,
+        "mandatory_observations": [
+          1
+        ],
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Appendix G - Form of agreement - Mandatory",
+            "page": 2,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          },
+          {
+            "excerpt": "Appendix G - Form of agreement [docx]",
+            "page": 5,
+            "section": "Documents",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "submission_channel": "Unspecified",
+        "submission_channel_conflict": false,
+        "submission_channel_observations": [
+          "Unspecified"
+        ]
+      },
+      {
+        "artifact_type": "Pricing / Financial",
+        "artifact_type_conflict": false,
+        "artifact_type_observations": [
+          "Pricing / Financial"
+        ],
+        "details": "Pricing form for Envelope 2 (Pricing). Separate envelope from proposal.",
+        "file_format": "XLSX",
+        "file_format_conflict": false,
+        "file_format_observations": [
+          "XLSX"
+        ],
+        "format": "Electronic submission via portal",
+        "item": "Appendix E - Pricing form",
+        "mandatory": 1,
+        "mandatory_conflict": false,
+        "mandatory_observations": [
+          1
+        ],
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Appendix E - Pricing form - Mandatory",
+            "page": 2,
+            "section": "Envelope 2 - Pricing",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          },
+          {
+            "excerpt": "Appendix E - Pricing form [xlsx]",
+            "page": 5,
+            "section": "Documents",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          },
+          {
+            "excerpt": "Appendix E - Pricing form - Mandatory",
+            "page": 2,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "submission_channel": "Unspecified",
+        "submission_channel_conflict": false,
+        "submission_channel_observations": [
+          "Unspecified"
+        ]
+      },
+      {
+        "artifact_type": "Proposal / Response",
+        "artifact_type_conflict": false,
+        "artifact_type_observations": [
+          "Proposal / Response"
+        ],
+        "details": "Main RFP document and proposal response for Envelope 1 (Identity & Proposal). Limited to 1 file.",
+        "file_format": "DOCX",
+        "file_format_conflict": false,
+        "file_format_observations": [
+          "DOCX"
+        ],
+        "format": "Electronic submission via portal",
+        "item": "RFP 2026-026 - Talent, Learning and Organizational Development Services",
+        "mandatory": 0,
+        "mandatory_conflict": false,
+        "mandatory_observations": [
+          0
+        ],
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "RFP 2026-026 - Talent, Learning and Organizational Development Services - No - No",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          },
+          {
+            "excerpt": "RFP 2026-026 - Talent, learning and organization development [docx]",
+            "page": 5,
+            "section": "Documents",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          },
+          {
+            "excerpt": "RFP 2026-026 - Talent, Learning and Organizational Development Services - Mandatory: No",
+            "page": 1,
+            "section": "Bid Documents List",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "submission_channel": "Unspecified",
+        "submission_channel_conflict": false,
+        "submission_channel_observations": [
+          "Unspecified"
+        ]
+      }
+    ],
+    "typed_observations": [
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "IDENTITY",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "RFP 2026-026 - Talent, Learning and Organizational Development Services",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "OPPORTUNITY_TITLE",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Title - RFP 2026-026 - Talent, Learning and Organizational Development Services",
+            "page": 1,
+            "section": "Notice",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "IDENTITY",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "RFP 2026-026",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "SOLICITATION_NUMBER",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Solicitation Number - RFP 2026-026",
+            "page": 1,
+            "section": "Notice",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "IDENTITY",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "Bank of Canada",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "BUYER_NAME",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Issuing Organization - Bank of Canada",
+            "page": 1,
+            "section": "Basic Information",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "IDENTITY",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "0000330855",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "DOCUMENT_REFERENCE_NUMBER",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Reference Number - 0000330855",
+            "page": 1,
+            "section": "Basic Information",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": "2026-08-27",
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "MILESTONE",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "2026/08/27 02:10:17 PM EDT",
+        "period_basis": null,
+        "precision": "second",
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "PUBLICATION_DATE",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Publication - 2026/08/27 02:10:17 PM EDT",
+            "page": 1,
+            "section": "Dates",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": "14:10:17",
+        "timezone": "EDT",
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": "2026-09-28",
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "MILESTONE",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "2026/09/28 11:59:00 PM EDT",
+        "period_basis": null,
+        "precision": "second",
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "INTENT_TO_BID_DEADLINE",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Bid Intent Deadline - 2026/09/28 11:59:00 PM EDT",
+            "page": 1,
+            "section": "Dates",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": "23:59:00",
+        "timezone": "EDT",
+        "unit": null
+      },
+      {
+        "date": "2026-09-10",
+        "family": "MILESTONE",
+        "original_value": "2026/09/10 11:59:00 PM EDT",
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "CLARIFICATION_DEADLINE",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Question Acceptance Deadline - 2026/09/10 11:59:00 PM EDT",
+            "page": 1,
+            "section": "Dates",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ]
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "IDENTITY",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "RFP 2026-026 - Talent, Learning and Organizational Development Services",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "OPPORTUNITY_TITLE",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Title - RFP 2026-026 - Talent, Learning and Organizational Development Services",
+            "page": 1,
+            "section": "Notice",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "IDENTITY",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "RFP 2026-026",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "SOLICITATION_NUMBER",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Solicitation Number - RFP 2026-026",
+            "page": 1,
+            "section": "Notice",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "IDENTITY",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "Bank of Canada",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "BUYER_NAME",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Issuing Organization - Bank of Canada",
+            "page": 1,
+            "section": "Basic Information",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "IDENTITY",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "0000330855",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "DOCUMENT_REFERENCE_NUMBER",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Reference Number - 0000330855",
+            "page": 1,
+            "section": "Basic Information",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": "2026-08-27",
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "MILESTONE",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "2026/08/27 02:10:17 PM EDT",
+        "period_basis": null,
+        "precision": "second",
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "PUBLICATION_DATE",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Publication - 2026/08/27 02:10:17 PM EDT",
+            "page": 1,
+            "section": "Dates",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": "14:10:17",
+        "timezone": "EDT",
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": "2026-09-10",
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "MILESTONE",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "2026/09/10 11:59:00 PM EDT",
+        "period_basis": null,
+        "precision": "second",
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "CLARIFICATION_DEADLINE",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Question Acceptance Deadline - 2026/09/10 11:59:00 PM EDT",
+            "page": 1,
+            "section": "Dates",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": "23:59:00",
+        "timezone": "EDT",
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": "2026-09-28",
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "MILESTONE",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "2026/09/28 11:59:00 PM EDT",
+        "period_basis": null,
+        "precision": "second",
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "INTENT_TO_BID_DEADLINE",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Bid Intent Deadline - 2026/09/28 11:59:00 PM EDT",
+            "page": 1,
+            "section": "Dates",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": "23:59:00",
+        "timezone": "EDT",
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": "2026-09-30",
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "MILESTONE",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "2026/09/30 11:59:00 PM EDT",
+        "period_basis": null,
+        "precision": "second",
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "SUBMISSION_DEADLINE",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Closing Date - 2026/09/30 11:59:00 PM EDT",
+            "page": 1,
+            "section": "Dates",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": "23:59:00",
+        "timezone": "EDT",
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": "2026-09-01",
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "MILESTONE",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "2026/09/01 08:22:16 AM EDT",
+        "period_basis": null,
+        "precision": "second",
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "AMENDMENT_DATE",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Amendment No. 1 - 2026/09/01 08:22:16 AM EDT",
+            "page": 3,
+            "section": "Amendments",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": "08:22:16",
+        "timezone": "EDT",
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": "3",
+        "family": "CONTRACT_TERM",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "3 years",
+        "period_basis": "YEARS",
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "INITIAL_DURATION",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Duration: 3 years",
+            "page": 1,
+            "section": "Details",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": "years"
+      },
+      {
+        "family": "CONTRACT_TERM",
+        "semantic_kind": "EXTENSION_OPTION"
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "IDENTITY",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "RFP 2026-026",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "SOLICITATION_NUMBER",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "RFP 2026-026 - RFP 2026-026 - Talent, Learning and Organizatio...",
+            "page": 4,
+            "section": null,
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": "2026-09-01",
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "MILESTONE",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "2026/09/01 08:22:16 AM EDT",
+        "period_basis": null,
+        "precision": "SECOND",
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "AMENDMENT_DATE",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Amendment No: 1 (Published) 2026/09/01 08:22:16 AM EDT",
+            "page": 4,
+            "section": null,
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": "08:22:16",
+        "timezone": "EDT",
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "PROCUREMENT_MECHANIC",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "RFP 2026-026",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "RFP",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "RFP 2026-026 - RFP 2026-026 - Talent, Learning and Organizatio...",
+            "page": 4,
+            "section": null,
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "IDENTITY",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "RFP 2026-026",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "SOLICITATION_NUMBER",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "RFP 2026-026 - Talent, learning and organization development",
+            "page": 5,
+            "section": null,
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "IDENTITY",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "Talent, Learning and Organization Development",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "OPPORTUNITY_TITLE",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "RFP 2026-026 - Talent, learning and organization development",
+            "page": 5,
+            "section": null,
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": "2026-08-27",
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "MILESTONE",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "2026/08/27 02:10:17 PM EDT",
+        "period_basis": null,
+        "precision": "SECOND",
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "PUBLICATION_DATE",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Publication 2026/08/27 02:10:17 PM EDT",
+            "page": 6,
+            "section": "Audit Status History",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": "14:10:17",
+        "timezone": "EDT",
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": "2026-08-28",
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "MILESTONE",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "2026/08/28 09:59:37 AM EDT",
+        "period_basis": null,
+        "precision": "SECOND",
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "AMENDMENT_DATE",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Amendment No. 1 2026/08/28 09:59:37 AM EDT",
+            "page": 6,
+            "section": "Audit Status History",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": "09:59:37",
+        "timezone": "EDT",
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": "2026-09-01",
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "MILESTONE",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "2026/09/01 08:22:16 AM EDT",
+        "period_basis": null,
+        "precision": "SECOND",
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "AMENDMENT_DATE",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "Amendment No: 1 (Published) 2026/09/01 08:22:16 AM EDT",
+            "page": 6,
+            "section": "Audit Status History",
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": "08:22:16",
+        "timezone": "EDT",
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "PROCUREMENT_MECHANIC",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "RFP 2026-026",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "RFP",
+        "source_doc": "abstract.pdf",
+        "source_refs": [
+          {
+            "excerpt": "RFP 2026-026 - Talent, learning and organization development [docx]",
+            "page": 5,
+            "section": null,
+            "sheet": null,
+            "source_doc": "abstract.pdf"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      }
+    ]
+  },
+  "file": "abstract.pdf"
+}

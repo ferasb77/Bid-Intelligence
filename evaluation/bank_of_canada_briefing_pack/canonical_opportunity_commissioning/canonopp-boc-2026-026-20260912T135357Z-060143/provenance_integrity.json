@@ -1,0 +1,12 @@
+{
+  "absent_field_count": 1,
+  "asserted_field_count": 2,
+  "asserted_fields": [
+    "submission_deadline",
+    "contract_term"
+  ],
+  "asserted_observation_rows_lacking_lineage": 0,
+  "asserted_observation_rows_with_valid_lineage": 2,
+  "bad_rows": [],
+  "unresolved_or_null_field_count": 6
+}

@@ -1,0 +1,27 @@
+{
+  "canonical_families": [
+    "CONTRACT_TERM",
+    "DOCUMENT_ROLE",
+    "IDENTITY",
+    "MILESTONE",
+    "MONETARY",
+    "PROCUREMENT_MECHANIC"
+  ],
+  "family_overlap": [],
+  "rejected_families": [
+    "commercial_clauses",
+    "deliverables"
+  ],
+  "rejected_record_re_entry_count": 0,
+  "rejected_records": [
+    {
+      "family": "deliverables",
+      "identity": "after-sales services  after-sales services including maintenance services, train"
+    },
+    {
+      "family": "commercial_clauses",
+      "identity": "data breach investigation and cooperation"
+    }
+  ],
+  "text_match_hits": []
+}

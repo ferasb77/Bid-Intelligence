@@ -1041,6 +1041,27 @@ def classify_submission_rule_dimension(item_str: str, format_str: str = "", deta
     return "OTHER_SUBMISSION_RULE"
 
 
+def _submission_rule_appendix_scope(source_doc) -> str | None:
+    """Derive an Appendix D1/D2/D3-style response-form scope from a source
+    filename, using the same signal (filename substring) the PAGE_LIMIT
+    conflict dimension already trusts for this exact purpose. A generically
+    named submission rule item (e.g. "Rated Criteria Response Form") that
+    genuinely originates from a per-service-category response form must not
+    merge across categories merely because the item text is worded the same
+    way in each form's own self-referential extraction -- doing so silently
+    discards the other categories' distinct values (e.g. a differing page
+    limit) rather than corroborating a shared fact.
+    """
+    doc = (source_doc or "").lower()
+    if "d1" in doc:
+        return "CATEGORY_1"
+    if "d2" in doc:
+        return "CATEGORY_2"
+    if "d3" in doc:
+        return "CATEGORY_3"
+    return None
+
+
 INSURANCE_CLASS_PATTERNS = [
     ("COMMERCIAL_GENERAL_LIABILITY", [
         r"commercial\s+general\s+liability", r"\bcgl\b", r"general\s+liability", r"public\s+liability",
@@ -1580,7 +1601,21 @@ def detect_document_conflicts(normalized_facts: dict, package_files: list[str]) 
     if len(eval_criteria) >= 2:
         eval_by_identity = {}
         for ec in eval_criteria:
-            s_doc = ec.get("source_doc", "Document")
+            # normalize_evaluation_criterion() (Stage B) never populates a
+            # top-level source_doc field -- only validated source_refs[].
+            # Reading ec.get("source_doc") here always missed and fell back
+            # to the literal string "Document" for every criterion, which
+            # collapsed distinct real documents into one synthetic bucket
+            # and made every cross-document evaluation weight conflict
+            # misreport as a same-"document" internal inconsistency.
+            # Requirements already derive s_doc from source_refs (see the
+            # MANDATORY REQUIREMENT CONFLICTS section below); mirror that
+            # here.
+            s_doc = "Document"
+            for sref in ec.get("source_refs", []) or []:
+                if isinstance(sref, dict) and sref.get("source_doc"):
+                    s_doc = sref.get("source_doc")
+                    break
             ident = _extract_eval_criterion_identity(ec)
             scope = _extract_evaluation_scope(ec, s_doc)
             if ident:
@@ -2749,7 +2784,8 @@ def inspect_stage_a_coverage(doc_text: str, facts: dict, min_signal_count: int =
     }
 
 
-def _extract_chunk_facts(chunk_text: str, filename: str, api_key: str, client=None) -> dict:
+def _extract_chunk_facts(chunk_text: str, filename: str, api_key: str, client=None, *,
+                         fail_on_first_error=False) -> dict:
     """Run Stage A fact extraction on a single chunk with temperature=0."""
     if client is None:
         client = get_anthropic_client(api_key=api_key)
@@ -2770,6 +2806,8 @@ def _extract_chunk_facts(chunk_text: str, filename: str, api_key: str, client=No
     )
 
     data, parse_status = _safe_parse_json_with_status(response.content[0].text)
+    if fail_on_first_error and (parse_status != "COMPLETE" or not isinstance(data, dict)):
+        raise ValueError(f"Stage A incomplete provider JSON: {parse_status}")
     if not isinstance(data, dict):
         data = {}
     data["_parse_status"] = parse_status
@@ -2794,7 +2832,8 @@ def _extract_chunk_facts(chunk_text: str, filename: str, api_key: str, client=No
 
 # ── STAGE A: DOCUMENT FACT EXTRACTION ─────────────────────────────────────────
 
-def extract_document_facts(doc_text: str, filename: str, api_key: str) -> dict:
+def extract_document_facts(doc_text: str, filename: str, api_key: str, *,
+                           fail_on_first_error=False) -> dict:
     """
     STAGE A: Process document to extract factual procurement data ONLY.
     Uses deterministic marker-aware chunking, conservative aggregation,
@@ -2808,7 +2847,8 @@ def extract_document_facts(doc_text: str, filename: str, api_key: str) -> dict:
     has_parse_failure = False
 
     for chunk in chunks:
-        res = _extract_chunk_facts(chunk, filename, api_key, client=client)
+        res = (_extract_chunk_facts(chunk, filename, api_key, client=client, fail_on_first_error=True)
+               if fail_on_first_error else _extract_chunk_facts(chunk, filename, api_key, client=client))
         pstatus = res.get("_parse_status")
         if pstatus == "RECOVERED_TRUNCATED":
             target_size = max(500, len(chunk) // 2) if len(chunk) > 1000 else len(chunk)
@@ -2862,6 +2902,8 @@ def extract_document_facts(doc_text: str, filename: str, api_key: str) -> dict:
 
     # Coverage Guard inspection
     coverage = inspect_stage_a_coverage(doc_text, aggregated, min_signal_count=5)
+    if fail_on_first_error and coverage["is_suspicious"]:
+        raise ValueError("Stage A suspicious under-coverage")
     recovery_attempts = 0
     max_recoveries = 2
 
@@ -2922,6 +2964,22 @@ def extract_document_facts(doc_text: str, filename: str, api_key: str) -> dict:
 
 
 # ── STAGE B: PACKAGE NORMALIZATION ───────────────────────────────────────────
+
+def _partition_zero_provenance(records: list[dict], family: str) -> tuple[list[dict], list[dict]]:
+    """Admit only records with >=1 verified source reference. A record whose
+    source_refs are empty or entirely unverified is quarantined rather than
+    silently admitted or silently dropped -- fail closed at the record level.
+    """
+    admitted, rejected = [], []
+    for record in records:
+        refs = record.get("source_refs") or []
+        if any(isinstance(ref, dict) and ref.get("verified") is True for ref in refs):
+            admitted.append(record)
+        else:
+            rejected.append({"family": family, "reason": "ZERO_VALID_PROVENANCE", "record": record,
+                              "source_refs": refs})
+    return admitted, rejected
+
 
 def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) -> dict:
     """
@@ -3003,18 +3061,42 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
                 normalized["requirements"].append(r_copy)
 
         # Merge other facts
-        normalized["dates"].extend(df.get("dates", []))
+        for d in df.get("dates", []):
+            if not isinstance(d, dict):
+                continue
+            d_copy = dict(d)
+            source_doc = d_copy.get("source_doc")
+            d_copy["source_refs"] = (validate_source_refs([{"source_doc": source_doc}], package_metadata)
+                                     if source_doc else [])
+            normalized["dates"].append(d_copy)
         raw_pkg_eval = normalized.setdefault("_raw_evaluation_criteria", [])
-        raw_pkg_eval.extend(df.get("evaluation_criteria", []))
+        for ec in df.get("evaluation_criteria", []):
+            if isinstance(ec, dict):
+                ec = dict(ec)
+                # Mirror evaluation_hierarchy.normalize_evaluation_criterion()'s own
+                # fallback (a bare source_doc synthesizes a one-element source_refs
+                # list) so that fallback-synthesized reference is validated here too,
+                # instead of silently reaching normalize_evaluation_criterion() as an
+                # always-unverified ref that could never be admitted.
+                raw_refs = ec.get("source_refs")
+                if not raw_refs and ec.get("source_doc"):
+                    raw_refs = [{"source_doc": ec.get("source_doc")}]
+                ec["source_refs"] = validate_source_refs(raw_refs or [], package_metadata)
+            raw_pkg_eval.append(ec)
         normalized["deliverables"].extend(df.get("deliverables", []))
         normalized["commercial_clauses"].extend(df.get("commercial_clauses", []))
         normalized["contract_risks"].extend(df.get("contract_risks", []))
 
-        # Deduplicate and merge submission_rules across package documents
-        sub_seen = {}  # canon -> rule dict in normalized["submission_rules"]
+        # Deduplicate and merge submission_rules across package documents.
+        # The merge key includes the appendix scope (D1/D2/D3, when the
+        # filename identifies one) alongside the canonical item text, so a
+        # generically-worded item from one per-service-category response
+        # form never silently merges with the same-worded item from a
+        # different category's form -- see _submission_rule_appendix_scope().
+        sub_seen = {}  # (scope, canon) -> rule dict in normalized["submission_rules"]
         for ex in normalized["submission_rules"]:
             c = _canonical_submission_item_identity(ex.get("item", "")) or ex.get("item", "").lower()
-            sub_seen[c] = ex
+            sub_seen[(_submission_rule_appendix_scope(ex.get("source_doc")), c)] = ex
 
         for sr in df.get("submission_rules", []):
             if not isinstance(sr, dict):
@@ -3024,7 +3106,8 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
             details = str(sr.get("details") or "").strip()
             if not item:
                 continue
-            canon = _canonical_submission_item_identity(item) or item.lower()
+            canon = (_submission_rule_appendix_scope(sr.get("source_doc")),
+                     _canonical_submission_item_identity(item) or item.lower())
             
             raw_srefs = sr.get("source_refs") or []
             validated_srefs = validate_source_refs(raw_srefs, package_metadata) if raw_srefs else []
@@ -3140,6 +3223,20 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
     raw_pkg_eval = normalized.pop("_raw_evaluation_criteria", [])
     normalized["evaluation_criteria"] = deduplicate_evaluation_criteria(raw_pkg_eval)
 
+    # dates and evaluation_criteria previously carried no physical-provenance
+    # validation at all (unlike requirements/submission_rules, which already
+    # validate every reference and preserve valid+invalid ones inline with a
+    # `verified` flag -- that existing behavior is intentionally left
+    # unchanged here). Now that dates/evaluation_criteria source_refs are
+    # validated above, a record left with zero verified references is not
+    # silently admitted into the trusted normalized array; it is quarantined
+    # into _provenance_rejections with the original record and refs
+    # preserved, so every non-surviving fact remains explainable.
+    provenance_rejections = []
+    for family in ("dates", "evaluation_criteria"):
+        normalized[family], rejected = _partition_zero_provenance(normalized[family], family)
+        provenance_rejections.extend(rejected)
+
     from canonical_opportunity import build_canonical_opportunity
     normalized["_canonical_opportunity"] = build_canonical_opportunity(doc_facts_list, package_metadata)
 
@@ -3149,16 +3246,32 @@ def normalize_package_facts(doc_facts_list: list[dict], package_metadata: dict) 
         normalized["contract_risks"], validate_source_refs, package_metadata,
     )
     normalized["_contract_hygiene"] = hygiene
-    # Structured facts become the active normalized arrays. Historical records
-    # remain alongside them with an explicit compatibility label.
-    normalized["deliverables"] = hygiene["deliverables"] + hygiene["legacy_deliverables"]
-    # Fresh unverified logical clauses remain available only through the
-    # authoritative diagnostic ledger. Stage D sees verified fresh facts plus
-    # historical compatibility records, never an unaliased fresh clause ID.
-    normalized["commercial_clauses"] = [
-        clause for clause in hygiene["clauses"] if clause.get("evidence_state") == "VERIFIED"
-    ] + hygiene["legacy_clauses"]
+    # hygiene["deliverables"]/["clauses"] remain the full diagnostic ledger
+    # (every shape-valid logical record, VERIFIED or UNVERIFIED alike) --
+    # unchanged, existing behavior other code and tests already depend on.
+    # The trusted normalized arrays admit only VERIFIED logical records plus
+    # legacy (shape-invalid) records, symmetrically for both families; a
+    # fresh logical record with zero valid physical provenance is excluded
+    # from both arrays and additionally quarantined into
+    # _provenance_rejections so its exclusion is accounted for at the same
+    # place as every other family's rejections, not just visible if one
+    # knows to look inside _contract_hygiene.
+    verified_deliverables = [item for item in hygiene["deliverables"] if item.get("evidence_state") == "VERIFIED"]
+    rejected_deliverables = [item for item in hygiene["deliverables"] if item.get("evidence_state") != "VERIFIED"]
+    normalized["deliverables"] = verified_deliverables + hygiene["legacy_deliverables"]
+    verified_clauses = [item for item in hygiene["clauses"] if item.get("evidence_state") == "VERIFIED"]
+    rejected_clauses = [item for item in hygiene["clauses"] if item.get("evidence_state") != "VERIFIED"]
+    normalized["commercial_clauses"] = verified_clauses + hygiene["legacy_clauses"]
     normalized["contract_risks"] = hygiene["legacy_risks"]
+    provenance_rejections.extend(
+        {"family": "deliverables", "reason": "ZERO_VALID_PROVENANCE", "record": item,
+         "source_refs": item.get("source_refs", [])}
+        for item in rejected_deliverables)
+    provenance_rejections.extend(
+        {"family": "commercial_clauses", "reason": "ZERO_VALID_PROVENANCE", "record": item,
+         "source_refs": item.get("source_refs", [])}
+        for item in rejected_clauses)
+    normalized["_provenance_rejections"] = provenance_rejections
 
     return normalized
 
@@ -3170,9 +3283,13 @@ def reconcile_package_facts(normalized_facts: dict, package_files: list[str]) ->
     STAGE C: Compare normalized facts to detect cross-document conflicts & addenda overrides.
     """
     conflicts = detect_document_conflicts(normalized_facts, package_files)
-    from contract_hygiene import structured_deliverable_conflicts
+    from contract_hygiene import structured_commercial_clause_conflicts, structured_deliverable_conflicts
     conflicts.extend(structured_deliverable_conflicts(
         (normalized_facts.get("_contract_hygiene") or {}).get("deliverables", []),
+        start_index=len(conflicts) + 1,
+    ))
+    conflicts.extend(structured_commercial_clause_conflicts(
+        (normalized_facts.get("_contract_hygiene") or {}).get("clauses", []),
         start_index=len(conflicts) + 1,
     ))
     canonical = normalized_facts.get("_canonical_opportunity")
@@ -4167,14 +4284,17 @@ def apply_stage_d_authoritative_sections(synth_data: dict, normalized_facts: dic
     return result
 
 
-def synthesize_bid_brief(normalized_facts: dict, conflicts: list[dict], api_key: str) -> dict:
+def synthesize_bid_brief(normalized_facts: dict, conflicts: list[dict], api_key: str, *,
+                         fail_on_first_error: bool = False) -> dict:
     """Stage D only: complete projection, bounded retry, strict authoritative output."""
     from stage_d_checkpoints import checkpoint_run
     with checkpoint_run() as checkpoint:
-        return _synthesize_projected_bid_brief(normalized_facts, conflicts, api_key, checkpoint)
+        return _synthesize_projected_bid_brief(normalized_facts, conflicts, api_key, checkpoint,
+                                               fail_on_first_error=fail_on_first_error)
 
 
-def _synthesize_projected_bid_brief(normalized_facts, conflicts, api_key, checkpoint):
+def _synthesize_projected_bid_brief(normalized_facts, conflicts, api_key, checkpoint, *,
+                                    fail_on_first_error=False):
     import copy
     from stage_d_projection import (
         build_stage_d_synthesis_projection, finalize_stage_d_request,
@@ -4218,7 +4338,12 @@ def _synthesize_projected_bid_brief(normalized_facts, conflicts, api_key, checkp
                 messages=[{"role": "user", "content": [{"type": "text", "text": finalized["request_text"]}]}],
             )
             text = "".join(block.text for block in response.content if block.type == "text")
-            checkpoint.write(prefix + "/response.json", {"text": text, "stop_reason": response.stop_reason})
+            usage = getattr(response, "usage", None)
+            checkpoint.write(prefix + "/response.json", {
+                "text": text, "stop_reason": response.stop_reason,
+                "input_tokens": getattr(usage, "input_tokens", None),
+                "output_tokens": getattr(usage, "output_tokens", None),
+            })
             if response.stop_reason != "end_turn":
                 raise ProjectionValidationError("INCOMPLETE_MODEL_RESPONSE")
             canonical = normalized_facts.get("_canonical_opportunity")
@@ -4226,14 +4351,14 @@ def _synthesize_projected_bid_brief(normalized_facts, conflicts, api_key, checkp
                 from canonical_opportunity import remove_authoritative_values_for_validation
                 from stage_d_projection import strict_json, canonical_json
                 text = canonical_json(remove_authoritative_values_for_validation(strict_json(text), canonical))
-            validated = validate_stage_d_response(text, projection)
+            validated = validate_stage_d_response(text, projection, provider_contract=True)
         except (ProjectionValidationError, anthropic.APIError) as exc:
             code = exc.code if isinstance(exc, ProjectionValidationError) else type(exc).__name__
             if isinstance(exc, anthropic.APIStatusError):
                 # Private checkpoint only: preserve provider contract diagnostics, never headers.
                 checkpoint.write(prefix + "/provider-error.json", {"status_code": exc.status_code, "body": exc.body})
             checkpoint.write(prefix + "/validation.json", {"status": "FAILED", "code": code})
-            if attempt == 2:
+            if fail_on_first_error or attempt == 2:
                 raise
             correction = "\nPrevious attempt rejected: " + code + ". Return complete valid JSON with valid field citations."
             continue

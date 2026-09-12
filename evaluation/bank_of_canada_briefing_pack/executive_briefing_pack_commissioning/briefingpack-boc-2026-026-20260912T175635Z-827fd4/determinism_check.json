@@ -1,0 +1,12 @@
+{
+  "identical": true,
+  "manifest_digest_1": "369c47f3dc8d863338434fe8aff76bd6164e65225b664ff1b96d70243e3a2808",
+  "manifest_digest_2": "369c47f3dc8d863338434fe8aff76bd6164e65225b664ff1b96d70243e3a2808",
+  "pack_digest_1": "pack-digest-b157885b9e15a0891b1949e7085ed06f2b74b4ca67947ecbce6353337466eb10",
+  "pack_digest_2": "pack-digest-b157885b9e15a0891b1949e7085ed06f2b74b4ca67947ecbce6353337466eb10",
+  "pack_id_1": "pack-b11fe92992b988d51edba6077dc7f1999d864838a7e01acd7e332b3b3faeb600",
+  "pack_id_2": "pack-b11fe92992b988d51edba6077dc7f1999d864838a7e01acd7e332b3b3faeb600",
+  "pack_revision_id_1": "pack-revision-cffaf0f02e33e6ffd932e551aa3100e64cfa280053ca2a81e37025f80b9786d3",
+  "pack_revision_id_2": "pack-revision-cffaf0f02e33e6ffd932e551aa3100e64cfa280053ca2a81e37025f80b9786d3",
+  "to_json_identical": true
+}

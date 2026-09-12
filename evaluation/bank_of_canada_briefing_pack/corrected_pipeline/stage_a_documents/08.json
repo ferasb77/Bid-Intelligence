@@ -1,0 +1,307 @@
+{
+  "facts": {
+    "_extraction_diagnostic": {
+      "recovery_attempts": 0,
+      "status": "VERIFIED_ADEQUATE"
+    },
+    "commercial_clauses": [],
+    "contract_risks": [],
+    "dates": [],
+    "deliverables": [],
+    "doc_metadata": {
+      "file_number": "RFP 2026-026",
+      "notes": "Appendix C1 specifies minimum qualification requirements for learning and development programs and assessments. Document establishes supplier eligibility gates for organizational experience and resource capacity.",
+      "title": "RFP 2026-026 - Talent, learning and organizational development services"
+    },
+    "evaluation_criteria": [
+      {
+        "criterion_id": null,
+        "evaluation_role": "Qualification / Gate",
+        "hierarchy_level": 1,
+        "is_structural_container": false,
+        "notes": "Two mandatory qualification gates must be satisfied for proponent eligibility. Both organizational experience and dedicated resource capacity are pass/fail conditions.",
+        "parent_criterion_id": null,
+        "parent_stage": null,
+        "parent_title": null,
+        "role_conflict": false,
+        "role_observations": [
+          "Qualification / Gate"
+        ],
+        "source_refs": [
+          {
+            "excerpt": "Appendix C1 - Learning and development programs and assessments # | Minimum qualification requirements | Proponent Response Yes / No",
+            "page": null,
+            "section": null,
+            "sheet": "Minimum qualification",
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx"
+          }
+        ],
+        "stage": "Minimum Qualification Gate",
+        "threshold": "Pass/Fail (Yes/No confirmation required for each criterion)",
+        "title": "Minimum Qualification Gate",
+        "weight": null,
+        "weight_basis": "Unknown",
+        "weight_conflict": false,
+        "weight_observations": [],
+        "weight_unit": "None",
+        "weight_value": null
+      },
+      {
+        "criterion_id": null,
+        "evaluation_role": "Qualification / Gate",
+        "hierarchy_level": 2,
+        "is_structural_container": false,
+        "notes": "Mandatory pass/fail qualification criterion. Proponent must confirm established firm status and prior delivery experience.",
+        "parent_criterion_id": null,
+        "parent_stage": "Minimum Qualification Gate",
+        "parent_title": "Minimum Qualification Gate",
+        "role_conflict": false,
+        "role_observations": [
+          "Qualification / Gate"
+        ],
+        "source_refs": [
+          {
+            "excerpt": "Organizational Experience (Minimum Five (5) Years) Proponent must confirm that it is an established firm and has delivered at least three (3) organization-wide learning and development engagements of similar scope and complexity within the last five (5) years for organizations with a minimum of 1,000 employees.",
+            "page": null,
+            "section": null,
+            "sheet": "Minimum qualification",
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx"
+          }
+        ],
+        "stage": "Organizational Experience (Minimum Five (5) Years)",
+        "threshold": "Minimum three (3) organization-wide engagements of similar scope and complexity within last five (5) years for organizations with minimum 1,000 employees",
+        "title": "Organizational Experience (Minimum Five (5) Years)",
+        "weight": null,
+        "weight_basis": "Unknown",
+        "weight_conflict": false,
+        "weight_observations": [],
+        "weight_unit": "None",
+        "weight_value": null
+      },
+      {
+        "criterion_id": null,
+        "evaluation_role": "Qualification / Gate",
+        "hierarchy_level": 2,
+        "is_structural_container": false,
+        "notes": "Mandatory pass/fail qualification criterion. Proponent must confirm availability of specified staffing resources.",
+        "parent_criterion_id": null,
+        "parent_stage": "Minimum Qualification Gate",
+        "parent_title": "Minimum Qualification Gate",
+        "role_conflict": false,
+        "role_observations": [
+          "Qualification / Gate"
+        ],
+        "source_refs": [
+          {
+            "excerpt": "Dedicated Resource Capacity Proponent must confirm they have a minimum of five (5) qualified learning and development professionals available to deliver services under the agreement, including at least one senior curriculum designer and one senior facilitator.",
+            "page": null,
+            "section": null,
+            "sheet": "Minimum qualification",
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx"
+          }
+        ],
+        "stage": "Dedicated Resource Capacity",
+        "threshold": "Minimum five (5) qualified learning and development professionals, including at least one senior curriculum designer and one senior facilitator",
+        "title": "Dedicated Resource Capacity",
+        "weight": null,
+        "weight_basis": "Unknown",
+        "weight_conflict": false,
+        "weight_observations": [],
+        "weight_unit": "None",
+        "weight_value": null
+      }
+    ],
+    "requirements": [
+      {
+        "_semantic_candidates": [
+          "Supplier Qualification"
+        ],
+        "category": "Mandatory",
+        "description": "Proponent must confirm that it is an established firm and has delivered at least three (3) organization-wide learning and development engagements of similar scope and complexity within the last five (5) years for organizations with a minimum of 1,000 employees.",
+        "evidence": "Proponent Response (Yes/No confirmation); supporting case studies or engagement records demonstrating three prior engagements with organizations of 1,000+ employees within five-year period",
+        "req_id": "M1",
+        "requirement_type": "Supplier Qualification",
+        "rfso_ref": "Appendix C1, Row 4",
+        "source_refs": [
+          {
+            "excerpt": "Organizational Experience (Minimum Five (5) Years) Proponent must confirm that it is an established firm and has delivered at least three (3) organization-wide learning and development engagements of similar scope and complexity within the last five (5) years for organizations with a minimum of 1,000 employees.",
+            "page": null,
+            "section": null,
+            "sheet": "Minimum qualification",
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Supplier Qualification"
+        ],
+        "category": "Mandatory",
+        "description": "Proponent must confirm they have a minimum of five (5) qualified learning and development professionals available to deliver services under the agreement, including at least one senior curriculum designer and one senior facilitator.",
+        "evidence": "Proponent Response (Yes/No confirmation); organizational chart, resumes, or staffing plan demonstrating availability of five qualified L&D professionals with specified senior roles",
+        "req_id": "M2",
+        "requirement_type": "Supplier Qualification",
+        "rfso_ref": "Appendix C1, Row 5",
+        "source_refs": [
+          {
+            "excerpt": "Dedicated Resource Capacity Proponent must confirm they have a minimum of five (5) qualified learning and development professionals available to deliver services under the agreement, including at least one senior curriculum designer and one senior facilitator.",
+            "page": null,
+            "section": null,
+            "sheet": "Minimum qualification",
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx"
+          }
+        ],
+        "weight": null
+      }
+    ],
+    "submission_rules": [
+      {
+        "artifact_type": "Form / Annex",
+        "artifact_type_conflict": false,
+        "artifact_type_observations": [
+          "Form / Annex"
+        ],
+        "details": "Proponent must respond Yes or No to each minimum qualification requirement (Rows 4-5). Supporting evidence of organizational experience and resource capacity should accompany responses.",
+        "file_format": "Unspecified",
+        "file_format_conflict": false,
+        "file_format_observations": [
+          "Unspecified"
+        ],
+        "format": "Yes/No confirmation format per Appendix C1 template",
+        "item": "Minimum Qualification Requirements Response (Appendix C1)",
+        "mandatory": 1,
+        "mandatory_conflict": false,
+        "mandatory_observations": [
+          1
+        ],
+        "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx",
+        "source_refs": [
+          {
+            "excerpt": "# | Minimum qualification requirements | Proponent Response Yes / No",
+            "page": null,
+            "section": null,
+            "sheet": "Minimum qualification",
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx"
+          }
+        ],
+        "submission_channel": "Unspecified",
+        "submission_channel_conflict": false,
+        "submission_channel_observations": [
+          "Unspecified"
+        ]
+      }
+    ],
+    "typed_observations": [
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "IDENTITY",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "RFP 2026-026 - Talent, learning and organizational development services",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "OPPORTUNITY_TITLE",
+        "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx",
+        "source_refs": [
+          {
+            "excerpt": "RFP 2026-026 - Talent, learning and organizational development services",
+            "page": null,
+            "section": null,
+            "sheet": "Minimum qualification",
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "IDENTITY",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "RFP 2026-026",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "SOLICITATION_NUMBER",
+        "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx",
+        "source_refs": [
+          {
+            "excerpt": "RFP 2026-026 - Talent, learning and organizational development services",
+            "page": null,
+            "section": null,
+            "sheet": "Minimum qualification",
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": "Minimum Qualification Requirements Specification",
+        "document_role_basis": "Appendix C1 establishes mandatory supplier eligibility gates for organizational experience and dedicated resource capacity",
+        "duration": null,
+        "family": "DOCUMENT_ROLE",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "Appendix C1 - Learning and development programs and assessments",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "DOCUMENT_ROLE",
+        "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx",
+        "source_refs": [
+          {
+            "excerpt": "Appendix C1 - Learning and development programs and assessments",
+            "page": null,
+            "section": null,
+            "sheet": "Minimum qualification",
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      }
+    ]
+  },
+  "file": "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx"
+}

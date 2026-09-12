@@ -99,7 +99,14 @@ def _verified_refs(refs, validate_refs, package_metadata) -> list[dict]:
     checked = validate_refs(copy.deepcopy(refs), package_metadata)
     unique = {}
     for ref in checked:
-        if (isinstance(ref, dict) and ref.get("verified") is True and _text(ref.get("excerpt"))
+        # A ref counts as a valid physical reference on the same terms
+        # validate_refs() itself uses (document + locator resolve) -- no
+        # additional excerpt requirement is imposed here. Requiring a
+        # non-empty excerpt on top of an already-verified ref discarded
+        # genuine document+section/sheet/page citations that validate_refs()
+        # itself considered valid (e.g. a DOCX Header-section citation with
+        # no quotable excerpt), which silently dropped real provenance.
+        if (isinstance(ref, dict) and ref.get("verified") is True
                 and _physical_ref_key(ref) not in explicitly_unverified):
             unique[_physical_ref_key(ref)] = ref
     return [unique[key] for key in sorted(unique, key=lambda k: _json(k))]
@@ -311,6 +318,87 @@ def structured_deliverable_conflicts(records, start_index=1):
             "source_a": source(a), "source_b": source(b),
             "assessment": "The source-grounded structured facts disagree.",
             "recommended_action": "Confirm the authoritative obligation with the contracting authority.",
+        })
+        index += 1
+    return conflicts
+
+
+_CLAUSE_VALUE_TOKEN_RE = re.compile(
+    r"\$\s*[\d,]+(?:\.\d+)?(?:\s*(?:million|m\b|thousand|k\b))?"
+    r"|\b\d+(?:\.\d+)?\s*%"
+    r"|\b\d+\s*(?:calendar\s+|business\s+)?days?\b"
+    r"|\b\d+\s*(?:weeks?|months?|years?)\b",
+    re.IGNORECASE,
+)
+
+
+def _clause_value_tokens(text) -> frozenset[str]:
+    """Extract a conservative, generic set of quantified value tokens
+    (dollar amounts, percentages, day/week/month/year counts) from a
+    clause's source_fact. Deliberately topic-agnostic (no clause_kind-
+    specific parsing, no unit conversion, no semantic interpretation) --
+    it only asks "does this clause state a number", not what the number
+    means. Two clauses with no extractable value are never compared by
+    number; two clauses whose extracted values agree are never flagged.
+    """
+    return frozenset(re.sub(r"\s+", " ", token.strip().lower())
+                     for token in _CLAUSE_VALUE_TOKEN_RE.findall(_text(text)))
+
+
+def structured_commercial_clause_conflicts(records, start_index=1):
+    """Compare only commensurable verified structured commercial clauses:
+    same controlled clause_kind, same normalized topic, and same explicit
+    scope -- the narrowest identity a human would need to agree on before
+    even asking whether two clauses disagree. Within that bucket, flag a
+    contradiction only when at least two clauses each state an extractable
+    quantified value (see _clause_value_tokens) and those value-sets
+    differ. Clauses with no extractable value, or whose values already
+    agree, are never flagged merely because their prose wording differs --
+    e.g. two per-service-category restatements of the same compliance
+    requirement, or two different sub-topics that happen to share a
+    clause_kind, are not compared at all (different topic or no number).
+    """
+    groups = {}
+    for item in records or []:
+        if not isinstance(item, dict) or not item.get("clause_id") or item.get("evidence_state") != "VERIFIED":
+            continue
+        key = (item.get("clause_kind"), _identity(item.get("topic")),
+               tuple(_scope(item.get("scope")).items()))
+        groups.setdefault(key, []).append(item)
+    conflicts = []
+    index = start_index
+    for key, items in sorted(groups.items(), key=lambda pair: _json(pair[0])):
+        if len(items) < 2:
+            continue
+        tagged = [(item, _clause_value_tokens(item.get("source_fact"))) for item in items]
+        tagged = [(item, values) for item, values in tagged if values]
+        distinct_value_sets = {values for _, values in tagged}
+        if len(distinct_value_sets) < 2:
+            continue
+        a, a_values = tagged[0]
+        b, b_values = next((pair for pair in tagged[1:] if pair[1] != a_values), (None, None))
+        if b is None:
+            continue
+
+        def source(item):
+            ref = (item.get("source_refs") or [{}])[0]
+            return {"doc": ref.get("source_doc", "Source"), "ref": ref.get("section", ""),
+                    "text": item.get("source_fact", "")}
+
+        conflicts.append({
+            "conflict_id": f"CONF-CLAUSE-{index}", "conflict_type": "COMMERCIAL_TERM_CONFLICT",
+            "classification": "TRUE_CONFLICT", "confidence": "HIGH",
+            "reason": f"Structured commercial clauses of the same kind and topic ({key[0]}: {a.get('topic')}) "
+                      f"state different quantified values in the same explicit scope.",
+            "source_validity": "PHYSICAL_BOTH", "topic": a.get("topic"),
+            "source_a": source(a), "source_b": source(b),
+            "assessment": f"Extracted values disagree: {sorted(a_values)} vs. {sorted(b_values)}.",
+            "recommended_action": "Confirm the authoritative term with the contracting authority.",
+            "candidates": [
+                {"clause_id": candidate.get("clause_id"), "topic": candidate.get("topic"),
+                 "extracted_values": sorted(values), "source_refs": candidate.get("source_refs", [])}
+                for candidate, values in tagged
+            ],
         })
         index += 1
     return conflicts

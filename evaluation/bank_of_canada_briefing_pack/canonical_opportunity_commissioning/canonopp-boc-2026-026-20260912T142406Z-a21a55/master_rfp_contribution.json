@@ -1,0 +1,73 @@
+{
+  "conflicts_involving_master_rfp": [
+    "conf_14f51c2bf4250805e28f1d8ebf74b1f8f637a1b3c0dd73d368a4743cc230dd8f",
+    "conf_90315cf488ecf37fadd71407565aebd1c23797995a46543126de87b994f5087a",
+    "conf_cc97deb3e8dea0821254c1a89fb35a3e7af96f97c30af4b945a7ee24c71815bc"
+  ],
+  "fields": {
+    "clarification_deadline": {
+      "master_observation_ids": [],
+      "master_rfp_contributes": false,
+      "sole_source": false
+    },
+    "client": {
+      "master_observation_ids": [],
+      "master_rfp_contributes": false,
+      "sole_source": false
+    },
+    "contract_term": {
+      "master_observation_ids": [],
+      "master_rfp_contributes": false,
+      "sole_source": false
+    },
+    "file_number": {
+      "master_observation_ids": [],
+      "master_rfp_contributes": false,
+      "sole_source": false
+    },
+    "headline_value": {
+      "master_observation_ids": [],
+      "master_rfp_contributes": false,
+      "sole_source": false
+    },
+    "opportunity_type": {
+      "master_observation_ids": [],
+      "master_rfp_contributes": false,
+      "sole_source": false
+    },
+    "procurement_model": {
+      "master_observation_ids": [],
+      "master_rfp_contributes": false,
+      "sole_source": false
+    },
+    "submission_deadline": {
+      "master_observation_ids": [
+        "obs_1e01dde39a3f08cf3897b3dc845939e774373218e59cb101797b659dd2fe9e01"
+      ],
+      "master_rfp_contributes": true,
+      "sole_source": true
+    },
+    "title": {
+      "master_observation_ids": [],
+      "master_rfp_contributes": false,
+      "sole_source": false
+    }
+  },
+  "master_rfp_pages_represented_in_canonical_observations": [
+    1,
+    3,
+    4,
+    5,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    18,
+    19
+  ],
+  "total_master_rfp_observations": 57,
+  "total_observations": 120
+}

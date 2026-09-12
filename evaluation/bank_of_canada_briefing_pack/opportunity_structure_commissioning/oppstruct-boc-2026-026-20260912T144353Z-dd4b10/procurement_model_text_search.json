@@ -1,0 +1,31 @@
+{
+  "family_present_in_schema": false,
+  "incidental_text_hits": [
+    {
+      "family": "COMMERCIAL_CLAUSE",
+      "needle": "call-off",
+      "record_id": "clause_64e78dc26373a88fb8e98ec0"
+    },
+    {
+      "family": "COMMERCIAL_CLAUSE",
+      "needle": "call-off",
+      "record_id": "clause_c4c3f84e3f1534ef2aa2491f"
+    },
+    {
+      "family": "COMMERCIAL_CLAUSE",
+      "needle": "call-off",
+      "record_id": "clause_e0ada23a9bf32e68eca583d6"
+    },
+    {
+      "family": "EVALUATION_CRITERION",
+      "needle": "call-off",
+      "record_id": "oi-evaluation_criteria-0b0b1cef1b7f88e526bd9f241c5928c9d406f3b2dfd8f03202a7b40390dc8fa9"
+    },
+    {
+      "family": "EVALUATION_CRITERION",
+      "needle": "call-off",
+      "record_id": "oi-evaluation_criteria-2363aac984d4646612a472668b052789a9f58c0142e385ac47249377b6acdf3d"
+    }
+  ],
+  "note": "opportunity_structure.py's FAMILIES set has no PROCUREMENT_MECHANIC-equivalent family; PROCUREMENT_MECHANIC typed_observations belong exclusively to canonical_opportunity.py."
+}

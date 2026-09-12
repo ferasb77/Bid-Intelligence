@@ -1,0 +1,23 @@
+{
+  "api_cost": 0,
+  "canonical_opportunity_run_id": "canonopp-boc-2026-026-20260912T142551Z-34a031",
+  "conflict_count": 4,
+  "elapsed_seconds": 2.122,
+  "families_present": [
+    "COMMERCIAL_CLAUSE",
+    "DELIVERABLE",
+    "EVALUATION_CRITERION",
+    "REQUIREMENT",
+    "SUBMISSION_RULE"
+  ],
+  "git_commit": "7e797830f42d06ff08745648585de0e26557addb",
+  "llm_calls": 0,
+  "phase1_run_id": "phase1-boc-2026-026-corrected16-20260912T080929Z-9fd9e5",
+  "phase2_run_id": "phase2-boc-2026-026-stageb-canonterm-fix-20260912T142551Z-34a031",
+  "phase3_refresh_run_id": "phase3-boc-2026-026-stagec-refresh-20260912T144353Z-3194c8",
+  "production_entry_point": "opportunity_structure.build_opportunity_structure(stage_facts, package_metadata)",
+  "record_count": 692,
+  "run_id": "oppstruct-boc-2026-026-20260912T144353Z-dd4b10",
+  "stage_a_rerun": false,
+  "timestamp_utc": "2026-09-12T14:43:58.193385+00:00"
+}

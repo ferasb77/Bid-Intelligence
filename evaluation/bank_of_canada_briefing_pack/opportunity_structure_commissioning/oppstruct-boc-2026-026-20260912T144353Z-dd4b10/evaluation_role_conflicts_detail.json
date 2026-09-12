@@ -1,0 +1,46 @@
+[
+  {
+    "parent_stage": null,
+    "record_id": "oi-evaluation_criteria-41b50cd287f44c3a8ec2d81ee852faad75b9cced1270514f8f55d66d1ada6b4c",
+    "role_observations": [
+      "Award Criterion",
+      "Structural Container",
+      "Unknown"
+    ],
+    "stage": "Relevant Experience and References",
+    "weight_conflict": false
+  },
+  {
+    "parent_stage": null,
+    "record_id": "oi-evaluation_criteria-ebd45ef906c81e188fcbe75af65e4bbee5c2433682792c6a95e9528afc2b9af6",
+    "role_observations": [
+      "Award Criterion",
+      "Structural Container",
+      "Unknown"
+    ],
+    "stage": "Measurement Approach",
+    "weight_conflict": false
+  },
+  {
+    "parent_stage": null,
+    "record_id": "oi-evaluation_criteria-f7360452fe1e10176e6dbfb9db7a0bc5ba7fbc803a4179381d5a8e4415d30a9a",
+    "role_observations": [
+      "Award Criterion",
+      "Structural Container",
+      "Unknown"
+    ],
+    "stage": "Value-add",
+    "weight_conflict": false
+  },
+  {
+    "parent_stage": null,
+    "record_id": "oi-evaluation_criteria-fd2e11cc02ff7487af778194ed198da43c2bc05eed1d539f81c3df140e6bb337",
+    "role_observations": [
+      "Award Criterion",
+      "Structural Container",
+      "Unknown"
+    ],
+    "stage": "Relationship Management",
+    "weight_conflict": false
+  }
+]

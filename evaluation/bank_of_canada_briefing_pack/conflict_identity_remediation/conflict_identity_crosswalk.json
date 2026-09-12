@@ -1,0 +1,219 @@
+{
+  "advisory_count": 4,
+  "governed_count": 4,
+  "opportunity_structure_own_conflicts_unrelated_to_conf_eval": [
+    {
+      "affected_record_ids": [
+        "oi-evaluation_criteria-f7360452fe1e10176e6dbfb9db7a0bc5ba7fbc803a4179381d5a8e4415d30a9a"
+      ],
+      "conflict_id": "struct_conf_0b994af4d098edaab8a5af3200bbe805a9cd08aec669befd65d0a1b03bf8377a",
+      "family": "EVALUATION_CRITERION",
+      "field": "role",
+      "incompatible_values": [
+        "Award Criterion",
+        "Structural Container",
+        "Unknown"
+      ]
+    },
+    {
+      "affected_record_ids": [
+        "oi-evaluation_criteria-fd2e11cc02ff7487af778194ed198da43c2bc05eed1d539f81c3df140e6bb337"
+      ],
+      "conflict_id": "struct_conf_4a3a7b5939175d6bdff2b6d0c4f6844ce9f17f8fe6bdaf472575a687d403b711",
+      "family": "EVALUATION_CRITERION",
+      "field": "role",
+      "incompatible_values": [
+        "Award Criterion",
+        "Structural Container",
+        "Unknown"
+      ]
+    },
+    {
+      "affected_record_ids": [
+        "oi-evaluation_criteria-41b50cd287f44c3a8ec2d81ee852faad75b9cced1270514f8f55d66d1ada6b4c"
+      ],
+      "conflict_id": "struct_conf_4d7ecabcc1663cbea34285b9c08481947b893f96c681b07101337c25d271b36c",
+      "family": "EVALUATION_CRITERION",
+      "field": "role",
+      "incompatible_values": [
+        "Award Criterion",
+        "Structural Container",
+        "Unknown"
+      ]
+    },
+    {
+      "affected_record_ids": [
+        "oi-evaluation_criteria-ebd45ef906c81e188fcbe75af65e4bbee5c2433682792c6a95e9528afc2b9af6"
+      ],
+      "conflict_id": "struct_conf_bd0d3d330cc23a85f1890c2940f9bf28f4f0bb92f328cc00e47e4de124a91a12",
+      "family": "EVALUATION_CRITERION",
+      "field": "role",
+      "incompatible_values": [
+        "Award Criterion",
+        "Structural Container",
+        "Unknown"
+      ]
+    }
+  ],
+  "rows": [
+    {
+      "affected_observation_ids": null,
+      "canonical_opportunity_publication_object_id": null,
+      "citable_as_future_entity_evidence_used": false,
+      "conflict_type_or_semantic_kind": "EVALUATION_CONFLICT",
+      "governed_conflict_id": null,
+      "legacy_display_only": true,
+      "opportunity_structure_representation_id": null,
+      "population": "ADVISORY",
+      "scope": null,
+      "stage_c_conflict_id": "CONF-EVAL-1",
+      "topic_or_reason": "Internal Discrepancy for Title Corporate Profile in RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+    },
+    {
+      "affected_observation_ids": null,
+      "canonical_opportunity_publication_object_id": null,
+      "citable_as_future_entity_evidence_used": false,
+      "conflict_type_or_semantic_kind": "EVALUATION_CONFLICT",
+      "governed_conflict_id": null,
+      "legacy_display_only": true,
+      "opportunity_structure_representation_id": null,
+      "population": "ADVISORY",
+      "scope": null,
+      "stage_c_conflict_id": "CONF-EVAL-2",
+      "topic_or_reason": "Internal Discrepancy for Team Experience in RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+    },
+    {
+      "affected_observation_ids": null,
+      "canonical_opportunity_publication_object_id": null,
+      "citable_as_future_entity_evidence_used": false,
+      "conflict_type_or_semantic_kind": "EVALUATION_CONFLICT",
+      "governed_conflict_id": null,
+      "legacy_display_only": true,
+      "opportunity_structure_representation_id": null,
+      "population": "ADVISORY",
+      "scope": null,
+      "stage_c_conflict_id": "CONF-EVAL-3",
+      "topic_or_reason": "Internal Discrepancy for Methodology in RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+    },
+    {
+      "affected_observation_ids": null,
+      "canonical_opportunity_publication_object_id": null,
+      "citable_as_future_entity_evidence_used": false,
+      "conflict_type_or_semantic_kind": "EVALUATION_CONFLICT",
+      "governed_conflict_id": null,
+      "legacy_display_only": true,
+      "opportunity_structure_representation_id": null,
+      "population": "ADVISORY",
+      "scope": null,
+      "stage_c_conflict_id": "CONF-EVAL-4",
+      "topic_or_reason": "Internal Discrepancy for Title Relevant Experience And References in RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+    },
+    {
+      "affected_observation_ids": [
+        "obs_95004a639671e7dd7f078b2854f039e60c6992c3293d4ee5fb66c8d63b3e34b4",
+        "obs_a769a7bae62b288527f93d9a5ccb9c7b5ab7aa1f7a767f01f4cfba0083e13622"
+      ],
+      "canonical_opportunity_publication_object_id": "conf_64da8f52969520f45b7d81d7b5e37a581ef4be1af78cc11e8ad469ed7f9571d9",
+      "citable_as_future_entity_evidence_used": true,
+      "conflict_type_or_semantic_kind": "INITIAL_DURATION",
+      "governed_conflict_id": "conf_64da8f52969520f45b7d81d7b5e37a581ef4be1af78cc11e8ad469ed7f9571d9",
+      "legacy_display_only": false,
+      "opportunity_structure_representation_id": null,
+      "population": "GOVERNED",
+      "scope": {},
+      "stage_c_conflict_id": "conf_64da8f52969520f45b7d81d7b5e37a581ef4be1af78cc11e8ad469ed7f9571d9",
+      "topic_or_reason": null
+    },
+    {
+      "affected_observation_ids": [
+        "obs_31463d092c3fb5abe5d26806255389e3a90831e71cbfa6ffd61564b284ff3e0c",
+        "obs_40d6b13e17021613e9d3ffd66d318f1eaffc1b35241badec8467514baa12c300",
+        "obs_510a386067677bd05eb31b347a0c93c078052870c77af7069f70813412a2c9c8",
+        "obs_67385ceb6adceb866cde98287e950975a7c49a90d38750f80e0f9a1c970ee7b4",
+        "obs_704b41e31f698e1f4cdab660a49167a006738359241f81fc39433f7c1a1caecd",
+        "obs_7af49bb84693b24d794e2fcf1949f299e9914250c8807a67edb1426dd79771a9",
+        "obs_9551dfcf39d74ff7964bbf5ba0b4b90982ce74287141a9e84a67c2fc753b3c6a",
+        "obs_9b894018b06a1cc55e397c31e4816ebadedca48e75d2c2b0be37a5fc41d4f8ed",
+        "obs_9f510f2024dcd0413a7492fba8b8c2490bd3e7d6c6ea28e68bc61ccff82a2187",
+        "obs_a7a5d54c5b14b81c571db69248656575e107c9d9f85b184202ae0b1675c4ddc1",
+        "obs_bdb9919d667453e80d0c500bdd6bec907b7477a718d32389e5c783fda6b56224",
+        "obs_c6a859e1b2e8ac27c30379fcd2ab8a7bd38b546c6d932d1e1b95ee3353404e35",
+        "obs_cf7f6f0b61df5bfb722c9159a30fb6dce42b0a972ebdcbcc1ad8cb91cfa11167",
+        "obs_dec10d0c96542eee52a9e074ab2af6e2f39da126d3a66b60744d7681c83db314",
+        "obs_f0199ad3bb900791918774388ee6c3ddaaf5314d6f1441edb487f87d59cb17db"
+      ],
+      "canonical_opportunity_publication_object_id": "conf_68a3a3a5af6b6cdef3cd93f24b7a850479109565a0e0709bd909d12091d1000c",
+      "citable_as_future_entity_evidence_used": true,
+      "conflict_type_or_semantic_kind": "BUYER_NAME",
+      "governed_conflict_id": "conf_68a3a3a5af6b6cdef3cd93f24b7a850479109565a0e0709bd909d12091d1000c",
+      "legacy_display_only": false,
+      "opportunity_structure_representation_id": null,
+      "population": "GOVERNED",
+      "scope": {},
+      "stage_c_conflict_id": "conf_68a3a3a5af6b6cdef3cd93f24b7a850479109565a0e0709bd909d12091d1000c",
+      "topic_or_reason": null
+    },
+    {
+      "affected_observation_ids": [
+        "obs_022023ce41f30c23d7f749bc9c04b6d6ce43b5c29dbb8d942f8c92b7f29e713f",
+        "obs_04d7aba306c459dc57f429da79ebefb1408d36b3d4065b462f0dcb647ef9c0a7",
+        "obs_118afa1ace3d7721ed98bfe3166831fc2d8f144b3fc0ddbfcd9ec9c3981961c1",
+        "obs_2e25023e844d280948a1d870440dd7d3910c39f54c61e7c22eca19e7ebbeaf9f",
+        "obs_45bef5c06e08aca421c74e2e12315b08451c7403f77f038f090372b9b25367a8",
+        "obs_46a7a82d07dfb6c5267da022299c948ea8d66ac6b4968cabebd924eef0cf2a3f",
+        "obs_50a40a0316c092337641b28f9a07f9b2a416d69e92f89688415b1a5bf6ac0a17",
+        "obs_60086ffaccaaa73026032647d2e5715f90d13012d36889d866430668182ad958",
+        "obs_68f72ec472ad494bb9ede7167e84b78593d202d869fcc6cc223405a8375cf74e",
+        "obs_6f1540b3943dd6afee73a6270c2c723643baf5d3b8ccce9f31f090ae3cba119b",
+        "obs_71b15e1cef841c638c661b96a43dfaaef62111d5fe7483a83faf2a9fa1298bea",
+        "obs_730700fc2a708c31f67d95ef4817b2298aff66b0556b09a0989a23daddee4ea0",
+        "obs_8d127acdfd18c227fd90a4e4cc3cf170e6bf01062694606ff449efaebac4db83",
+        "obs_9f18b1cc72406be05036a4d937db763552936785e3ca7fa61a977e4922b70962",
+        "obs_a3f013393ed5191eed3358098cc80cddb614a7c9db82d5941bbc6f14b1a0aad1",
+        "obs_aa0c7d04750970ccbab80365c09bc878a78724971dd5ba7336e483d699e8b0d7",
+        "obs_ae55be021ff6598826e78c250ec9ff33c77c2aef2f2ebfabba788e81d915b51f",
+        "obs_aea74bce350ef5aec44f8fb53f94352b8e119a0a80ecdb6d2014776d5369536b",
+        "obs_b487c6615119d627f733441f73670b5b0d5bb1eba2066bdbd3d5cb71a15bdbaf",
+        "obs_b4c907704b3ad255ac845638bd60227bf2c98fce8f51bb9a7f80e77a2793888b",
+        "obs_cb0b2271a98632976aef971dca4f4f986d4ceb486fddb1397bd15fa36d0dd1fa",
+        "obs_d7c10153e2641f10a3cdaf79c58251d990c503b58e236152ce8bc69502f05bdd"
+      ],
+      "canonical_opportunity_publication_object_id": "conf_8c65820fef5894d2a57b730a7de81ad37ca6956030ad0d726f4ff5fe5e836e29",
+      "citable_as_future_entity_evidence_used": true,
+      "conflict_type_or_semantic_kind": "SOLICITATION_NUMBER",
+      "governed_conflict_id": "conf_8c65820fef5894d2a57b730a7de81ad37ca6956030ad0d726f4ff5fe5e836e29",
+      "legacy_display_only": false,
+      "opportunity_structure_representation_id": null,
+      "population": "GOVERNED",
+      "scope": {},
+      "stage_c_conflict_id": "conf_8c65820fef5894d2a57b730a7de81ad37ca6956030ad0d726f4ff5fe5e836e29",
+      "topic_or_reason": null
+    },
+    {
+      "affected_observation_ids": [
+        "obs_238e499bf286ebbd9686a902b4f3e030f18477822565fbbd0cf8747420083ca2",
+        "obs_39a2f8d1e2cd647fa885c7ebf1db71ef62099d7ed7af499bcdb7f1c042e8742c",
+        "obs_4ee9959fef649bb3c14bd1fffe6c5605819553bec8a2b00dfd91492879c6cc5f",
+        "obs_5dc5243297845de757e5cb8a28c6eebc24ea15a8658ba81e93ad3bf897b49306",
+        "obs_691d382f119a63080520b1da0f3c251170962f01930fd7a20d45cd82029a7a9e",
+        "obs_903a91ca91849986c416daeb81202cabf9951b0ad4cb673c4f9a03ceb153b761",
+        "obs_c714f772e4e8ebff03e40aa86edf4d4c7f20ed111331a4abb08d1e4fbe83025f",
+        "obs_c992d10e6365b4831374e2613652869166ec5abb2151d75a45300a498a529162",
+        "obs_cc8b9dc546f85d8f666c428c8b1939992a74690a92e64cac1c6b2fd4ab07ecc3",
+        "obs_ee5ca6c3a7b1b5210bc6096201ba34c0241b202f292fa3e88aea84e97dcb6147",
+        "obs_f378f2180e40fbb36f5b2d37029c18c246b1ce5b6e9c5ed295058623dc2319f3"
+      ],
+      "canonical_opportunity_publication_object_id": "conf_a06e69576a53cda5f0f127e0a05ac775c4fb71cf3792d303e66f7eb528658f87",
+      "citable_as_future_entity_evidence_used": true,
+      "conflict_type_or_semantic_kind": "OPPORTUNITY_TITLE",
+      "governed_conflict_id": "conf_a06e69576a53cda5f0f127e0a05ac775c4fb71cf3792d303e66f7eb528658f87",
+      "legacy_display_only": false,
+      "opportunity_structure_representation_id": null,
+      "population": "GOVERNED",
+      "scope": {},
+      "stage_c_conflict_id": "conf_a06e69576a53cda5f0f127e0a05ac775c4fb71cf3792d303e66f7eb528658f87",
+      "topic_or_reason": null
+    }
+  ],
+  "total_conflicts": 8
+}

@@ -1,0 +1,6227 @@
+{
+  "analysis_id": "oi-analysis-7997c75c64956f75a1fbf5e721640cdbe28cfa904c3590e6be7c8c31b4a99589",
+  "analyst_id": "opportunity-intelligence",
+  "assumptions": [
+    {
+      "assumption_id": "oi-assumption-effort-indicators",
+      "description": "Structural volume is a relevant effort indicator"
+    }
+  ],
+  "computed_facts": [
+    {
+      "alternative_hypotheses": [],
+      "assumptions": [],
+      "confidence": null,
+      "evidence_ids": [],
+      "evidence_support": [
+        {
+          "entity_id": "bank-of-canada-rfp-2026-026-corrected",
+          "entity_type": "CANONICAL_FACT",
+          "evidence_ids": []
+        }
+      ],
+      "limitations": [],
+      "reasoning_gaps": {
+        "known_uncertainty": [],
+        "missing_documents": [],
+        "missing_evidence": [],
+        "missing_history": [],
+        "validation_limitations": []
+      },
+      "reasoning_status": "VALIDATED",
+      "recommendation_scope": null,
+      "source": {
+        "source_id": "opportunity-intelligence/1.0.0:clarification_to_submission_days",
+        "source_type": "DETERMINISTIC_COMPUTATION"
+      },
+      "statement": "clarification_to_submission_days=null",
+      "statement_id": "oi-computed-clarification_to_submission_days",
+      "statement_type": "COMPUTED_FACT",
+      "supporting_fact_ids": [
+        "bank-of-canada-rfp-2026-026-corrected"
+      ]
+    },
+    {
+      "alternative_hypotheses": [],
+      "assumptions": [],
+      "confidence": null,
+      "evidence_ids": [],
+      "evidence_support": [
+        {
+          "entity_id": "bank-of-canada-rfp-2026-026-corrected",
+          "entity_type": "CANONICAL_FACT",
+          "evidence_ids": []
+        }
+      ],
+      "limitations": [],
+      "reasoning_gaps": {
+        "known_uncertainty": [],
+        "missing_documents": [],
+        "missing_evidence": [],
+        "missing_history": [],
+        "validation_limitations": []
+      },
+      "reasoning_status": "VALIDATED",
+      "recommendation_scope": null,
+      "source": {
+        "source_id": "opportunity-intelligence/1.0.0:criteria_missing_weights",
+        "source_type": "DETERMINISTIC_COMPUTATION"
+      },
+      "statement": "criteria_missing_weights=75",
+      "statement_id": "oi-computed-criteria_missing_weights",
+      "statement_type": "COMPUTED_FACT",
+      "supporting_fact_ids": [
+        "bank-of-canada-rfp-2026-026-corrected"
+      ]
+    },
+    {
+      "alternative_hypotheses": [],
+      "assumptions": [],
+      "confidence": null,
+      "evidence_ids": [],
+      "evidence_support": [
+        {
+          "entity_id": "bank-of-canada-rfp-2026-026-corrected",
+          "entity_type": "CANONICAL_FACT",
+          "evidence_ids": []
+        }
+      ],
+      "limitations": [],
+      "reasoning_gaps": {
+        "known_uncertainty": [],
+        "missing_documents": [],
+        "missing_evidence": [],
+        "missing_history": [],
+        "validation_limitations": []
+      },
+      "reasoning_status": "VALIDATED",
+      "recommendation_scope": null,
+      "source": {
+        "source_id": "opportunity-intelligence/1.0.0:deliverable_count",
+        "source_type": "DETERMINISTIC_COMPUTATION"
+      },
+      "statement": "deliverable_count=30",
+      "statement_id": "oi-computed-deliverable_count",
+      "statement_type": "COMPUTED_FACT",
+      "supporting_fact_ids": [
+        "bank-of-canada-rfp-2026-026-corrected"
+      ]
+    },
+    {
+      "alternative_hypotheses": [],
+      "assumptions": [],
+      "confidence": null,
+      "evidence_ids": [],
+      "evidence_support": [
+        {
+          "entity_id": "bank-of-canada-rfp-2026-026-corrected",
+          "entity_type": "CANONICAL_FACT",
+          "evidence_ids": []
+        }
+      ],
+      "limitations": [],
+      "reasoning_gaps": {
+        "known_uncertainty": [],
+        "missing_documents": [],
+        "missing_evidence": [],
+        "missing_history": [],
+        "validation_limitations": []
+      },
+      "reasoning_status": "VALIDATED",
+      "recommendation_scope": null,
+      "source": {
+        "source_id": "opportunity-intelligence/1.0.0:evaluation_hierarchy_depth",
+        "source_type": "DETERMINISTIC_COMPUTATION"
+      },
+      "statement": "evaluation_hierarchy_depth=2",
+      "statement_id": "oi-computed-evaluation_hierarchy_depth",
+      "statement_type": "COMPUTED_FACT",
+      "supporting_fact_ids": [
+        "bank-of-canada-rfp-2026-026-corrected"
+      ]
+    },
+    {
+      "alternative_hypotheses": [],
+      "assumptions": [],
+      "confidence": null,
+      "evidence_ids": [],
+      "evidence_support": [
+        {
+          "entity_id": "bank-of-canada-rfp-2026-026-corrected",
+          "entity_type": "CANONICAL_FACT",
+          "evidence_ids": []
+        }
+      ],
+      "limitations": [],
+      "reasoning_gaps": {
+        "known_uncertainty": [],
+        "missing_documents": [],
+        "missing_evidence": [],
+        "missing_history": [],
+        "validation_limitations": []
+      },
+      "reasoning_status": "VALIDATED",
+      "recommendation_scope": null,
+      "source": {
+        "source_id": "opportunity-intelligence/1.0.0:mandatory_artifact_count",
+        "source_type": "DETERMINISTIC_COMPUTATION"
+      },
+      "statement": "mandatory_artifact_count=55",
+      "statement_id": "oi-computed-mandatory_artifact_count",
+      "statement_type": "COMPUTED_FACT",
+      "supporting_fact_ids": [
+        "bank-of-canada-rfp-2026-026-corrected"
+      ]
+    },
+    {
+      "alternative_hypotheses": [],
+      "assumptions": [],
+      "confidence": null,
+      "evidence_ids": [],
+      "evidence_support": [
+        {
+          "entity_id": "M1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M3",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M4",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M5",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M6",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M7",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M8",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M9",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M10",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M11",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M12",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "F1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R3",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R4",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R5",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R6",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R7",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R8",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R9",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R10",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "S1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "S2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M13",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M14",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M15",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M16",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M17",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M18",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R11",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R12",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R13",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R14",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R15",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R16",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R17",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R18",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R19",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R20",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R21",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M19",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M20",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M21",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M22",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M23",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M24",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M25",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        }
+      ],
+      "limitations": [],
+      "reasoning_gaps": {
+        "known_uncertainty": [],
+        "missing_documents": [],
+        "missing_evidence": [],
+        "missing_history": [],
+        "validation_limitations": []
+      },
+      "reasoning_status": "VALIDATED",
+      "recommendation_scope": null,
+      "source": {
+        "source_id": "opportunity-intelligence/1.0.0:mandatory_requirements",
+        "source_type": "DETERMINISTIC_COMPUTATION"
+      },
+      "statement": "mandatory_requirements=310",
+      "statement_id": "oi-computed-mandatory_requirements",
+      "statement_type": "COMPUTED_FACT",
+      "supporting_fact_ids": [
+        "M1",
+        "M2",
+        "M3",
+        "M4",
+        "M5",
+        "M6",
+        "M7",
+        "R1",
+        "R2",
+        "M8",
+        "M9",
+        "M10",
+        "M11",
+        "M12",
+        "F1",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R9",
+        "R10",
+        "S1",
+        "S2",
+        "M13",
+        "M14",
+        "M15",
+        "M16",
+        "M17",
+        "M18",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R15",
+        "R16",
+        "R17",
+        "R18",
+        "R19",
+        "R20",
+        "R21",
+        "M19",
+        "M20",
+        "M21",
+        "M22",
+        "M23",
+        "M24",
+        "M25"
+      ]
+    },
+    {
+      "alternative_hypotheses": [],
+      "assumptions": [],
+      "confidence": null,
+      "evidence_ids": [],
+      "evidence_support": [
+        {
+          "entity_id": "bank-of-canada-rfp-2026-026-corrected",
+          "entity_type": "CANONICAL_FACT",
+          "evidence_ids": []
+        }
+      ],
+      "limitations": [],
+      "reasoning_gaps": {
+        "known_uncertainty": [],
+        "missing_documents": [],
+        "missing_evidence": [],
+        "missing_history": [],
+        "validation_limitations": []
+      },
+      "reasoning_status": "VALIDATED",
+      "recommendation_scope": null,
+      "source": {
+        "source_id": "opportunity-intelligence/1.0.0:milestone_completeness",
+        "source_type": "DETERMINISTIC_COMPUTATION"
+      },
+      "statement": "milestone_completeness={\"dated\":23,\"observed\":40}",
+      "statement_id": "oi-computed-milestone_completeness",
+      "statement_type": "COMPUTED_FACT",
+      "supporting_fact_ids": [
+        "bank-of-canada-rfp-2026-026-corrected"
+      ]
+    },
+    {
+      "alternative_hypotheses": [],
+      "assumptions": [],
+      "confidence": null,
+      "evidence_ids": [],
+      "evidence_support": [
+        {
+          "entity_id": "bank-of-canada-rfp-2026-026-corrected",
+          "entity_type": "CANONICAL_FACT",
+          "evidence_ids": []
+        }
+      ],
+      "limitations": [],
+      "reasoning_gaps": {
+        "known_uncertainty": [],
+        "missing_documents": [],
+        "missing_evidence": [],
+        "missing_history": [],
+        "validation_limitations": []
+      },
+      "reasoning_status": "VALIDATED",
+      "recommendation_scope": null,
+      "source": {
+        "source_id": "opportunity-intelligence/1.0.0:milestone_intervals_days",
+        "source_type": "DETERMINISTIC_COMPUTATION"
+      },
+      "statement": "milestone_intervals_days=[[\"Issue Date of RFP\",\"Issue date\",0],[\"Issue date\",\"PUBLICATION_DATE\",0],[\"PUBLICATION_DATE\",\"Publication\",0],[\"Publication\",\"Publication Date\",0],[\"Publication Date\",\"AMENDMENT_DATE\",1],[\"AMENDMENT_DATE\",\"Amendment No. 1\",0],[\"Amendment No. 1\",\"AMENDMENT_DATE\",4],[\"AMENDMENT_DATE\",\"Amendment No. 1 Publication\",0],[\"Amendment No. 1 Publication\",\"Amendment No. 1 Published\",0],[\"Amendment No. 1 Published\",\"CLARIFICATION_DEADLINE\",9],[\"CLARIFICATION_DEADLINE\",\"Deadline for questions\",0],[\"Deadline for questions\",\"Question Acceptance Deadline\",0],[\"Question Acceptance Deadline\",\"AMENDMENT_DATE\",11],[\"AMENDMENT_DATE\",\"Final date for issuing addenda\",0],[\"Final date for issuing addenda\",\"Bid Intent Deadline\",7],[\"Bid Intent Deadline\",\"INTENT_TO_BID_DEADLINE\",0],[\"INTENT_TO_BID_DEADLINE\",\"Closing Date\",2],[\"Closing Date\",\"SUBMISSION_DEADLINE\",0],[\"SUBMISSION_DEADLINE\",\"Submission Deadline\",0],[\"Submission Deadline\",\"Submission deadline\",0],[\"Submission deadline\",\"Presentations - Service Category 1\",26],[\"Presentations - Service Category 1\",\"Presentations - Service Category 3\",7]]",
+      "statement_id": "oi-computed-milestone_intervals_days",
+      "statement_type": "COMPUTED_FACT",
+      "supporting_fact_ids": [
+        "bank-of-canada-rfp-2026-026-corrected"
+      ]
+    },
+    {
+      "alternative_hypotheses": [],
+      "assumptions": [],
+      "confidence": null,
+      "evidence_ids": [],
+      "evidence_support": [
+        {
+          "entity_id": "bank-of-canada-rfp-2026-026-corrected",
+          "entity_type": "CANONICAL_FACT",
+          "evidence_ids": []
+        }
+      ],
+      "limitations": [],
+      "reasoning_gaps": {
+        "known_uncertainty": [],
+        "missing_documents": [],
+        "missing_evidence": [],
+        "missing_history": [],
+        "validation_limitations": []
+      },
+      "reasoning_status": "VALIDATED",
+      "recommendation_scope": null,
+      "source": {
+        "source_id": "opportunity-intelligence/1.0.0:monetary_observation_count",
+        "source_type": "DETERMINISTIC_COMPUTATION"
+      },
+      "statement": "monetary_observation_count=0",
+      "statement_id": "oi-computed-monetary_observation_count",
+      "statement_type": "COMPUTED_FACT",
+      "supporting_fact_ids": [
+        "bank-of-canada-rfp-2026-026-corrected"
+      ]
+    },
+    {
+      "alternative_hypotheses": [],
+      "assumptions": [],
+      "confidence": null,
+      "evidence_ids": [],
+      "evidence_support": [
+        {
+          "entity_id": "M1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M3",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M4",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M5",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M6",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M7",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M8",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M9",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M10",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M11",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M12",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "F1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R3",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R4",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R5",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R6",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R7",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R8",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R9",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R10",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "S1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "S2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M13",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M14",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M15",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M16",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M17",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M18",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R11",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R12",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R13",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R14",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R15",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R16",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R17",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R18",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R19",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R20",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R21",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M19",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M20",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M21",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M22",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M23",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M24",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M25",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        }
+      ],
+      "limitations": [],
+      "reasoning_gaps": {
+        "known_uncertainty": [],
+        "missing_documents": [],
+        "missing_evidence": [],
+        "missing_history": [],
+        "validation_limitations": []
+      },
+      "reasoning_status": "VALIDATED",
+      "recommendation_scope": null,
+      "source": {
+        "source_id": "opportunity-intelligence/1.0.0:optional_requirements",
+        "source_type": "DETERMINISTIC_COMPUTATION"
+      },
+      "statement": "optional_requirements=0",
+      "statement_id": "oi-computed-optional_requirements",
+      "statement_type": "COMPUTED_FACT",
+      "supporting_fact_ids": [
+        "M1",
+        "M2",
+        "M3",
+        "M4",
+        "M5",
+        "M6",
+        "M7",
+        "R1",
+        "R2",
+        "M8",
+        "M9",
+        "M10",
+        "M11",
+        "M12",
+        "F1",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R9",
+        "R10",
+        "S1",
+        "S2",
+        "M13",
+        "M14",
+        "M15",
+        "M16",
+        "M17",
+        "M18",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R15",
+        "R16",
+        "R17",
+        "R18",
+        "R19",
+        "R20",
+        "R21",
+        "M19",
+        "M20",
+        "M21",
+        "M22",
+        "M23",
+        "M24",
+        "M25"
+      ]
+    },
+    {
+      "alternative_hypotheses": [],
+      "assumptions": [],
+      "confidence": null,
+      "evidence_ids": [],
+      "evidence_support": [
+        {
+          "entity_id": "bank-of-canada-rfp-2026-026-corrected",
+          "entity_type": "CANONICAL_FACT",
+          "evidence_ids": []
+        }
+      ],
+      "limitations": [],
+      "reasoning_gaps": {
+        "known_uncertainty": [],
+        "missing_documents": [],
+        "missing_evidence": [],
+        "missing_history": [],
+        "validation_limitations": []
+      },
+      "reasoning_status": "VALIDATED",
+      "recommendation_scope": null,
+      "source": {
+        "source_id": "opportunity-intelligence/1.0.0:partial_date_count",
+        "source_type": "DETERMINISTIC_COMPUTATION"
+      },
+      "statement": "partial_date_count=0",
+      "statement_id": "oi-computed-partial_date_count",
+      "statement_type": "COMPUTED_FACT",
+      "supporting_fact_ids": [
+        "bank-of-canada-rfp-2026-026-corrected"
+      ]
+    },
+    {
+      "alternative_hypotheses": [],
+      "assumptions": [],
+      "confidence": null,
+      "evidence_ids": [],
+      "evidence_support": [
+        {
+          "entity_id": "M1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M3",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M4",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M5",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M6",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M7",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M8",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M9",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M10",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M11",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M12",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "F1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R3",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R4",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R5",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R6",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R7",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R8",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R9",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R10",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "S1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "S2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M13",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M14",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M15",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M16",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M17",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M18",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R11",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R12",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R13",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R14",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R15",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R16",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R17",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R18",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R19",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R20",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R21",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M19",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M20",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M21",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M22",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M23",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M24",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M25",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        }
+      ],
+      "limitations": [],
+      "reasoning_gaps": {
+        "known_uncertainty": [],
+        "missing_documents": [],
+        "missing_evidence": [],
+        "missing_history": [],
+        "validation_limitations": []
+      },
+      "reasoning_status": "VALIDATED",
+      "recommendation_scope": null,
+      "source": {
+        "source_id": "opportunity-intelligence/1.0.0:requirement_category_counts",
+        "source_type": "DETERMINISTIC_COMPUTATION"
+      },
+      "statement": "requirement_category_counts={\"FINANCIAL\":7,\"MANDATORY\":310,\"RATED\":80,\"SUBMISSION COMPLIANCE\":7,\"SUPPORTING\":9}",
+      "statement_id": "oi-computed-requirement_category_counts",
+      "statement_type": "COMPUTED_FACT",
+      "supporting_fact_ids": [
+        "M1",
+        "M2",
+        "M3",
+        "M4",
+        "M5",
+        "M6",
+        "M7",
+        "R1",
+        "R2",
+        "M8",
+        "M9",
+        "M10",
+        "M11",
+        "M12",
+        "F1",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R9",
+        "R10",
+        "S1",
+        "S2",
+        "M13",
+        "M14",
+        "M15",
+        "M16",
+        "M17",
+        "M18",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R15",
+        "R16",
+        "R17",
+        "R18",
+        "R19",
+        "R20",
+        "R21",
+        "M19",
+        "M20",
+        "M21",
+        "M22",
+        "M23",
+        "M24",
+        "M25"
+      ]
+    },
+    {
+      "alternative_hypotheses": [],
+      "assumptions": [],
+      "confidence": null,
+      "evidence_ids": [],
+      "evidence_support": [
+        {
+          "entity_id": "M1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M3",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M4",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M5",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M6",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M7",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M8",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M9",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M10",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M11",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M12",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "F1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R3",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R4",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R5",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R6",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R7",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R8",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R9",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R10",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "S1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "S2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M13",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M14",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M15",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M16",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M17",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M18",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R11",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R12",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R13",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R14",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R15",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R16",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R17",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R18",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R19",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R20",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R21",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M19",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M20",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M21",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M22",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M23",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M24",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M25",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        }
+      ],
+      "limitations": [],
+      "reasoning_gaps": {
+        "known_uncertainty": [],
+        "missing_documents": [],
+        "missing_evidence": [],
+        "missing_history": [],
+        "validation_limitations": []
+      },
+      "reasoning_status": "VALIDATED",
+      "recommendation_scope": null,
+      "source": {
+        "source_id": "opportunity-intelligence/1.0.0:requirement_evidence_coverage",
+        "source_type": "DETERMINISTIC_COMPUTATION"
+      },
+      "statement": "requirement_evidence_coverage={\"ready\":0,\"total\":413}",
+      "statement_id": "oi-computed-requirement_evidence_coverage",
+      "statement_type": "COMPUTED_FACT",
+      "supporting_fact_ids": [
+        "M1",
+        "M2",
+        "M3",
+        "M4",
+        "M5",
+        "M6",
+        "M7",
+        "R1",
+        "R2",
+        "M8",
+        "M9",
+        "M10",
+        "M11",
+        "M12",
+        "F1",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R9",
+        "R10",
+        "S1",
+        "S2",
+        "M13",
+        "M14",
+        "M15",
+        "M16",
+        "M17",
+        "M18",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R15",
+        "R16",
+        "R17",
+        "R18",
+        "R19",
+        "R20",
+        "R21",
+        "M19",
+        "M20",
+        "M21",
+        "M22",
+        "M23",
+        "M24",
+        "M25"
+      ]
+    },
+    {
+      "alternative_hypotheses": [],
+      "assumptions": [],
+      "confidence": null,
+      "evidence_ids": [],
+      "evidence_support": [
+        {
+          "entity_id": "bank-of-canada-rfp-2026-026-corrected",
+          "entity_type": "CANONICAL_FACT",
+          "evidence_ids": []
+        }
+      ],
+      "limitations": [],
+      "reasoning_gaps": {
+        "known_uncertainty": [],
+        "missing_documents": [],
+        "missing_evidence": [],
+        "missing_history": [],
+        "validation_limitations": []
+      },
+      "reasoning_status": "VALIDATED",
+      "recommendation_scope": null,
+      "source": {
+        "source_id": "opportunity-intelligence/1.0.0:submission_artifact_count",
+        "source_type": "DETERMINISTIC_COMPUTATION"
+      },
+      "statement": "submission_artifact_count=66",
+      "statement_id": "oi-computed-submission_artifact_count",
+      "statement_type": "COMPUTED_FACT",
+      "supporting_fact_ids": [
+        "bank-of-canada-rfp-2026-026-corrected"
+      ]
+    },
+    {
+      "alternative_hypotheses": [],
+      "assumptions": [],
+      "confidence": null,
+      "evidence_ids": [],
+      "evidence_support": [
+        {
+          "entity_id": "bank-of-canada-rfp-2026-026-corrected",
+          "entity_type": "CANONICAL_FACT",
+          "evidence_ids": []
+        }
+      ],
+      "limitations": [],
+      "reasoning_gaps": {
+        "known_uncertainty": [],
+        "missing_documents": [],
+        "missing_evidence": [],
+        "missing_history": [],
+        "validation_limitations": []
+      },
+      "reasoning_status": "VALIDATED",
+      "recommendation_scope": null,
+      "source": {
+        "source_id": "opportunity-intelligence/1.0.0:submission_pathway_count",
+        "source_type": "DETERMINISTIC_COMPUTATION"
+      },
+      "statement": "submission_pathway_count=4",
+      "statement_id": "oi-computed-submission_pathway_count",
+      "statement_type": "COMPUTED_FACT",
+      "supporting_fact_ids": [
+        "bank-of-canada-rfp-2026-026-corrected"
+      ]
+    },
+    {
+      "alternative_hypotheses": [],
+      "assumptions": [],
+      "confidence": null,
+      "evidence_ids": [],
+      "evidence_support": [
+        {
+          "entity_id": "bank-of-canada-rfp-2026-026-corrected",
+          "entity_type": "CANONICAL_FACT",
+          "evidence_ids": []
+        }
+      ],
+      "limitations": [],
+      "reasoning_gaps": {
+        "known_uncertainty": [],
+        "missing_documents": [],
+        "missing_evidence": [],
+        "missing_history": [],
+        "validation_limitations": []
+      },
+      "reasoning_status": "VALIDATED",
+      "recommendation_scope": null,
+      "source": {
+        "source_id": "opportunity-intelligence/1.0.0:threshold_count",
+        "source_type": "DETERMINISTIC_COMPUTATION"
+      },
+      "statement": "threshold_count=15",
+      "statement_id": "oi-computed-threshold_count",
+      "statement_type": "COMPUTED_FACT",
+      "supporting_fact_ids": [
+        "bank-of-canada-rfp-2026-026-corrected"
+      ]
+    },
+    {
+      "alternative_hypotheses": [],
+      "assumptions": [],
+      "confidence": null,
+      "evidence_ids": [],
+      "evidence_support": [
+        {
+          "entity_id": "bank-of-canada-rfp-2026-026-corrected",
+          "entity_type": "CANONICAL_FACT",
+          "evidence_ids": []
+        }
+      ],
+      "limitations": [],
+      "reasoning_gaps": {
+        "known_uncertainty": [],
+        "missing_documents": [],
+        "missing_evidence": [],
+        "missing_history": [],
+        "validation_limitations": []
+      },
+      "reasoning_status": "VALIDATED",
+      "recommendation_scope": null,
+      "source": {
+        "source_id": "opportunity-intelligence/1.0.0:total_conflicts",
+        "source_type": "DETERMINISTIC_COMPUTATION"
+      },
+      "statement": "total_conflicts=9",
+      "statement_id": "oi-computed-total_conflicts",
+      "statement_type": "COMPUTED_FACT",
+      "supporting_fact_ids": [
+        "bank-of-canada-rfp-2026-026-corrected"
+      ]
+    },
+    {
+      "alternative_hypotheses": [],
+      "assumptions": [],
+      "confidence": null,
+      "evidence_ids": [],
+      "evidence_support": [
+        {
+          "entity_id": "M1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M3",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M4",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M5",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M6",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M7",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M8",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M9",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M10",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M11",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M12",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "F1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R3",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R4",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R5",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R6",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R7",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R8",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R9",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R10",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "S1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "S2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M13",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M14",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M15",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M16",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M17",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M18",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R11",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R12",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R13",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R14",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R15",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R16",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R17",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R18",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R19",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R20",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R21",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M19",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M20",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M21",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M22",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M23",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M24",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M25",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        }
+      ],
+      "limitations": [],
+      "reasoning_gaps": {
+        "known_uncertainty": [],
+        "missing_documents": [],
+        "missing_evidence": [],
+        "missing_history": [],
+        "validation_limitations": []
+      },
+      "reasoning_status": "VALIDATED",
+      "recommendation_scope": null,
+      "source": {
+        "source_id": "opportunity-intelligence/1.0.0:total_requirements",
+        "source_type": "DETERMINISTIC_COMPUTATION"
+      },
+      "statement": "total_requirements=413",
+      "statement_id": "oi-computed-total_requirements",
+      "statement_type": "COMPUTED_FACT",
+      "supporting_fact_ids": [
+        "M1",
+        "M2",
+        "M3",
+        "M4",
+        "M5",
+        "M6",
+        "M7",
+        "R1",
+        "R2",
+        "M8",
+        "M9",
+        "M10",
+        "M11",
+        "M12",
+        "F1",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R9",
+        "R10",
+        "S1",
+        "S2",
+        "M13",
+        "M14",
+        "M15",
+        "M16",
+        "M17",
+        "M18",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R15",
+        "R16",
+        "R17",
+        "R18",
+        "R19",
+        "R20",
+        "R21",
+        "M19",
+        "M20",
+        "M21",
+        "M22",
+        "M23",
+        "M24",
+        "M25"
+      ]
+    },
+    {
+      "alternative_hypotheses": [],
+      "assumptions": [],
+      "confidence": null,
+      "evidence_ids": [],
+      "evidence_support": [
+        {
+          "entity_id": "bank-of-canada-rfp-2026-026-corrected",
+          "entity_type": "CANONICAL_FACT",
+          "evidence_ids": []
+        }
+      ],
+      "limitations": [],
+      "reasoning_gaps": {
+        "known_uncertainty": [],
+        "missing_documents": [],
+        "missing_evidence": [],
+        "missing_history": [],
+        "validation_limitations": []
+      },
+      "reasoning_status": "VALIDATED",
+      "recommendation_scope": null,
+      "source": {
+        "source_id": "opportunity-intelligence/1.0.0:unresolved_milestone_conflicts",
+        "source_type": "DETERMINISTIC_COMPUTATION"
+      },
+      "statement": "unresolved_milestone_conflicts=1",
+      "statement_id": "oi-computed-unresolved_milestone_conflicts",
+      "statement_type": "COMPUTED_FACT",
+      "supporting_fact_ids": [
+        "bank-of-canada-rfp-2026-026-corrected"
+      ]
+    },
+    {
+      "alternative_hypotheses": [],
+      "assumptions": [],
+      "confidence": null,
+      "evidence_ids": [],
+      "evidence_support": [
+        {
+          "entity_id": "bank-of-canada-rfp-2026-026-corrected",
+          "entity_type": "CANONICAL_FACT",
+          "evidence_ids": []
+        }
+      ],
+      "limitations": [],
+      "reasoning_gaps": {
+        "known_uncertainty": [],
+        "missing_documents": [],
+        "missing_evidence": [],
+        "missing_history": [],
+        "validation_limitations": []
+      },
+      "reasoning_status": "VALIDATED",
+      "recommendation_scope": null,
+      "source": {
+        "source_id": "opportunity-intelligence/1.0.0:unresolved_submission_ambiguity",
+        "source_type": "DETERMINISTIC_COMPUTATION"
+      },
+      "statement": "unresolved_submission_ambiguity=3",
+      "statement_id": "oi-computed-unresolved_submission_ambiguity",
+      "statement_type": "COMPUTED_FACT",
+      "supporting_fact_ids": [
+        "bank-of-canada-rfp-2026-026-corrected"
+      ]
+    },
+    {
+      "alternative_hypotheses": [],
+      "assumptions": [],
+      "confidence": null,
+      "evidence_ids": [],
+      "evidence_support": [
+        {
+          "entity_id": "bank-of-canada-rfp-2026-026-corrected",
+          "entity_type": "CANONICAL_FACT",
+          "evidence_ids": []
+        }
+      ],
+      "limitations": [],
+      "reasoning_gaps": {
+        "known_uncertainty": [],
+        "missing_documents": [],
+        "missing_evidence": [],
+        "missing_history": [],
+        "validation_limitations": []
+      },
+      "reasoning_status": "VALIDATED",
+      "recommendation_scope": null,
+      "source": {
+        "source_id": "opportunity-intelligence/1.0.0:verified_clause_counts",
+        "source_type": "DETERMINISTIC_COMPUTATION"
+      },
+      "statement": "verified_clause_counts={\"AI_AUTOMATED_TOOLS\":2,\"AUDIT_RECORDS\":1,\"BACKGROUND_CHECK_CLEARANCE\":4,\"BUSINESS_CONTINUITY_DR\":1,\"CHANGE_CONTROL\":1,\"CONFIDENTIALITY\":10,\"CYBERSECURITY_SECURITY\":2,\"DATA_PROTECTION_PRIVACY\":7,\"EXCLUSIVITY_NONCOMPETE\":2,\"GOVERNING_LAW_DISPUTE\":4,\"GUARANTEE_BOND\":1,\"INSURANCE\":4,\"INTELLECTUAL_PROPERTY\":2,\"LIABILITY_INDEMNITY\":3,\"OTHER\":7,\"PAYMENT_WITHHOLDING_SETOFF\":2,\"PERSONNEL_KEY_STAFF\":2,\"REGULATORY_COMPLIANCE\":8,\"SUBCONTRACTING\":5,\"TERMINATION\":23}",
+      "statement_id": "oi-computed-verified_clause_counts",
+      "statement_type": "COMPUTED_FACT",
+      "supporting_fact_ids": [
+        "bank-of-canada-rfp-2026-026-corrected"
+      ]
+    },
+    {
+      "alternative_hypotheses": [],
+      "assumptions": [],
+      "confidence": null,
+      "evidence_ids": [],
+      "evidence_support": [
+        {
+          "entity_id": "bank-of-canada-rfp-2026-026-corrected",
+          "entity_type": "CANONICAL_FACT",
+          "evidence_ids": []
+        }
+      ],
+      "limitations": [],
+      "reasoning_gaps": {
+        "known_uncertainty": [],
+        "missing_documents": [],
+        "missing_evidence": [],
+        "missing_history": [],
+        "validation_limitations": []
+      },
+      "reasoning_status": "VALIDATED",
+      "recommendation_scope": null,
+      "source": {
+        "source_id": "opportunity-intelligence/1.0.0:weighted_criteria",
+        "source_type": "DETERMINISTIC_COMPUTATION"
+      },
+      "statement": "weighted_criteria=38",
+      "statement_id": "oi-computed-weighted_criteria",
+      "statement_type": "COMPUTED_FACT",
+      "supporting_fact_ids": [
+        "bank-of-canada-rfp-2026-026-corrected"
+      ]
+    }
+  ],
+  "evidence_used": [
+    {
+      "entity_id": "bank-of-canada-rfp-2026-026-corrected",
+      "entity_type": "CANONICAL_FACT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_030bc68897f52dfcd457b8af",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_03b42f62749d7dab930af6b0",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_06f68ee719746fae7c9f95c5",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_08413f357a351d75e9cff1eb",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_0ebaa83d45ab4e9773045d65",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_127c6958e46032c2c6882fe4",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_12c11bca02cf8f7ffd2fc057",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_12d7d2761fbdbbafed91a06d",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_12e490d967d8fa1083dc7183",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_1346bb8156d21514872020f5",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_13d159c144ea631b8b68c6a5",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_176be6d21a94c41f22d8de81",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_1ba08d489b7c15663da99547",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_1d47a08a346beaca938e6709",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_1db11d66af9c58411b266e69",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_1df175a89105c33510c06ec6",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_22eb5de52bbca0ed2ff9f967",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_243fae339548c9add9cae1bc",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_296d481686bb95c4987dac9b",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_2f7d537c99a940981065a3a1",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_2fac2aad5bf3ebd3de38b9c5",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_312a2427855754faa722b282",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_34b59c9e3f305e1697cedd25",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_35578fbd95180c939a276908",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_42ed6a5f0ec38555008301e0",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_4387b9e489df9633c6f7bb7c",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_4bd1f10988f6c388059e6971",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_4c6807134077315c111d158c",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_4f4c824838304696a8d02dbf",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_4f6d55d9ee1e6cbc2b1f464e",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_53e663791d285719b56f9b19",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_5704ff5f0f9d50385c73d1c7",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_57681ed3bfd4245db589f784",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_5cd06fcf268a26a11f103eb1",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_5daa475551e444f1f0a235c0",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_5e796b39a0b8ba57adc9b8a7",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_6545513f101ac536ef6773b9",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_66b687cd7ce3cccb534bf810",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_66fb5a104c12d870dd96b423",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_6721b82ff665332a6a3382c3",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_6f367495d5f4a188dc7ae87a",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_737652dc5019f4f6511dfbdb",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_795cacabf0d27e698fa78db8",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_7b49425e0f35a61a46ef7d72",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_7c2edab10c9829dd11fa2aad",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_7d4e651410df0e8e60b9c9d7",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_80b1ec39dbc3b815ab31d7b2",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_81694eb43da7ef5b85bc3c47",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_87d77f767d27ab01b34ac564",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_8901f7e23200aa22b164bcde",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_89192730d3c8f00f3a4b5a95",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_952bd7b4cf5dfa40382ba621",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_96006d770d5a65fc50c9a214",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_995e948dda5c65df9bb9701d",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_9a89ff646410c980721ee21a",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_9b587b89765ea5843810b05e",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_a6475fd778f23950c1a3b093",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_aa4d5a5c3043a18d0ec40255",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_abc57055a1865fcc9a2b99da",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_ad3eecc0bfa87be1f7475a78",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_afa1e5433b16f751b2567e05",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_b14fe072795a365a05945bea",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_b24725767a1c8bb848d6b5eb",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_b48d017638282fd2f85156fd",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_b4ea9451b69d1f95b4cd7497",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_b6f4aec64354817f78888ffd",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_b8f57a0b05812781a227bd9c",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_c0e75d6522acaa4bf13ffd9c",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_c42f72830f0c4648c819e3aa",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_c4e3cd69389b7c2bd9adc3be",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_c790df3ae2e58f86d8aa95c2",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_c9de1bc97f0c335cf6eb575f",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_cb1edac748d15c497579e068",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_cbf9a6cc0d803acba1fa5f36",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_d12c01e524c13cbaf2883277",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_d3ea316fe14ddf8c0168a18a",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_d58e909a4812ea8d18f8aa61",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_da6354712b9fe013a4c55844",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_db968ff142d18195d90df880",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_dd4030d9a2ad5742242aac48",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_de9946f0ad4fdf387a923e34",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_def26cf4a84f9d6163d84018",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_e1a430c450a8671c97bde11a",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_e2e4ce47da7e771733f63518",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_e6dbdb9453ace259877b1fc8",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_e863b8f6adb3deae8ffc3c75",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_e904d1420b68da2d799d000d",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_eeff7827c7119bbe759386dc",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_f0e484f7c10acbf025235e74",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_f18cb80f8d2aae36c7f05995",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "clause_fc95e919356e7f37becd3a46",
+      "entity_type": "COMMERCIAL_CLAUSE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_02cc7e754c6035b116e67d6b",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_0960f3cb5b40bbd4403f3ecd",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_12d8adc0d396b94b37a55ff1",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_1859b686379aee0d7a6ec7a9",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_19faa785e4ead602ef6efaa2",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_2c37dddb9d2c17bebcf78689",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_340701d8c41e7bd25f2a58b1",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_387682b96fbfc5fbddab794c",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_38f359549ac3e1e4952b3c83",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_48b14c4dcf2d74b99299b9f3",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_517ab7034f0b2037f6271994",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_57b0d64ebd7dbafeca75a460",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_59628e48482e2763accb9906",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_60cbccd3abe8ef3b8966f9b8",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_6bf66bc9a237be944e81ecd3",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_6dd0989f44600210302adc1c",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_7f2a849f17b0e470f1bcd2c8",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_89d64ebe9abf04e079dec95c",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_9129e0dd440a1381dc4d8f49",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_a64cbae2a1bb8c3154f864f9",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_aa85ed0a1890b2429af25181",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_bd2d6b5e1212a0f2d100b7be",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_cdc3910142ae22e96f05f4ce",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_dc21946246ceea3489190455",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_e5b450cd8354cdcf6aebaf87",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_f2936b992351ee02c4796294",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_f346d76cdade81229daf5917",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "dlv_f5677c431c64bd66f0e2b661",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-deliverables-a57ada4a05ba897cb1db09c72117ddb4e46c3521ccfbacd23ca67cb7f7de4f6b",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-deliverables-f88f61cb091210b6503d0441740dd477ced1f72ea64139dc37c44cd550b43317",
+      "entity_type": "DELIVERABLE",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "CONF-DATE-1",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "CONF-EVAL-2",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "CONF-EVAL-3",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "CONF-EVAL-4",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "CONF-EVAL-5",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "CONF-EVAL-6",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "conf_19721e2934e8adf885dc3df25711df472a5dd404f2452c07c94dee54559d5795",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "conf_ef9f91a671fd94e22a60358721d631b962dddd21b010f367f611daeefe91daa4",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "conf_ff6d6fe38553c1ec83352e959de8f9d83df2e923b6c4d4164e2f50f925567415",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-dates-0534a8c06bbdb6948c1535f80f71b3efa79f9350418c501c425db7664918c650",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-dates-0af02a03eb4117929122f18773377d86d8359d1724ffd34f7a3a1b8f9dc8644b",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-dates-0ba8c55715ed1abb15b8fad4f9ca5bd0b0c329371e88fedb52f01bdf9def9e74",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-dates-0f2867694cb485be148a3b97a346766438bfb7deb1b9cd6af03ea72a849863f9",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-dates-12fa2d061a3ef99e9f67b82f22fa3b007cc5f5e8f1a68b2ca8f3677bbd196b37",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-dates-16bb8bc4990aec8b451fc05af7a1bc6bc16400abb4d69e17ce6a8ced616cbbcd",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-dates-50e48149fd9850485fcdf286beedebfc2149198a7dc874e942dda81e7e12cf84",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-dates-5cc1b8eed96fad4fa83d18d452e7b338900e9bdb4f60f66ada6be339cb848a25",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-dates-6162b8b5a4c9ec001e559c9ecfb68b17e098e99b45126f6e37061dc5affe3cd9",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-dates-65384b64b937c29fe765eb2acd0ddcef7f6b5d804f24b71228cc6798d0b3fc7e",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-dates-70d2c08d45312d116e9cc15de94060ac2f0a59e40890e37d9ab43da25ffdf56a",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-dates-788bb10802cdf5fc0395fee6f5ef594ee5efab7ad8da97e5f4c94a4a44e249e1",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-dates-825f30665d6b79d782a1f97ec0ebfd26c81477abee4213b30b218784024d6be4",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-dates-83ce2b31accf04d3a1d28bb08376713ddb3f1e7c1e57c1e931960c49e86d6bf6",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-dates-84168b9336b170619e32bf694cdf0a8a38e5a5d1e4c81f988eb63a27a049bd27",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-dates-8ca5602e7a56b2f90751c5450035db82e33ef00ab0d03d14342a2f6c6f428b25",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-dates-98fc32beb4fb177f700dfe5ed9d3dd63187b0aef035a8799225501994fa373d1",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-dates-b21f98ca6085a48ef6c121e517bbcbf2b5dd0a66cb432ee3b8cee982bd28c4e5",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-dates-bd00821bc64cfa8217d8f028b4162e567dc8db76317390739dd76abcb400685c",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-dates-e23f140413788be42f41b936825f4f7c8f2917aab65c84a6f20f6e2279ade631",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-dates-f46a58584986a8512817609a7b6980f9df5a417c6d9f7e2ec461b95488d593a4",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-dates-ff99d7d52dec6ad0a5ce464d900ce72428408281fd8f367aae7f943ef0018e90",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-dates-ffb05f2294102a392e0597c9b86d633140c544584a56d5065ba7f02a2cd0448a",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-01d81e0a51702076fdb06dfc0c5083a5c17e9c44b753918607b2a2a990307139",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-0821675948f0a00eb0a0c877c3c6b384ad75ba7d6db53c6160df2b7a7b917fe6",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-087677ce6752aec5517e8a925176d3c3e3e024f0a5ba2e029aa75a256abbe086",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-0a081979a2e508333606d4a12a0e53942bfa5e9681f49205cee01dae189e264a",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-0f8b4de38dcfbf97dc267552d75d787f4d3055c5dae1337d43b94dc18b12d52c",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-114d8d2edbeba5ca649dc1e25d1cdd79e5cae28dfbf9bcbbbb13d18f600d24d0",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-1410d331dea37e2a4fc574bc76f4a794190ea9adf96f89c9c8a1cbc85a54184f",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-1515a4c355d35cf313d71ddf8d38c80fbff13f2c331f23bde6041053b56b8b84",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-187f60763e43185c0dd4cb7992bdfe4e79ce95ce2c1cd0017fc4770f9a71481f",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-1c9e2121be328251af7aa3b12f01e8e66c11791fe8ed90fd4f2de02d500b2ceb",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-1f0befc3f003b3c2dfae06847b4e1d43a69f7bc18aa0f02f4b00ca6ff4e8cf70",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-226530b12e0641f0e3e44885a72d04b38b1711f52af09e4b65f1ffbfea71835e",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-236ccc0de787f4cedad0a5c31d314fc6335a242f7b2c9c457e824e844d680803",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-240080df8f5baae2cd3371a3ca63b4c008a81e9271e329b3ed1fd421b8e2c02b",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-240aabf57e085f93657b69152dc5fbcd9ed054d96247f812f77f1a3fdc2eef00",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-295021616a674fbb0d826c2328d0af7947d7962859d88844588a74d37f82d15f",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-2983401b5c100b5339af765be6ba7f19e7450d57f7b65d5b6e8aafbbce415dff",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-2a9023e789195a0c55d3cb0d8a68dad1c754700ba0820185c35b2230fbf90ac9",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-2af95169d7ab4a5dcdb1a69005538a70c1fca22de889692611113a94db995f79",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-2affd13638e3279c96578ebc12a851e8d8dd277e8f940305f372b27af2403efb",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-2b364e3e521a3d448af590158ba0f7911e7276ec79fd361f68cb3b1491243b58",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-35ee9bb334d4ec8f3cdd8df0d44bfa022437da50207212e2a7232d32ba4926be",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-35f91e81613b8557111f6fde46990dcff7cdbb76439edfaa56dee9c4409f587d",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-368c76ef19b3380d5d2629823a9136d4b3248df2d18f5669c85ad5d4064698c7",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-36c26c31152f7c9930d579d9e89f6701cdbadf544d1ff877eebceb0b6a2a709c",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-37f2d1bb45e9b29a992577aa1b7ebaa5a13594c2f99ca04a7c07b2b78a843752",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-3f678af44e152fb825e82cbf482d8a9f3f808d26a847e6bbb2c20562600e3255",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-41c43c857392db383432cbfe6a643b8293467cd2e5174f44b64c7423afecca1c",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-46886ed2a10a85c5eb22fd46d6f98d1b7674b4b9b73d57bd7c33219d42923a63",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-47c5cb061bba3a9dcaaf6d4f130cab0c49c9946f596a1b84e8dc0264d772969b",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-4afd79df8f36b03db831179f262a07fbaa71ffc57cb575bc75d7a9154ad3c506",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-4bebc60bda6b2693913bfc8eadf05c7946c9f1840fa6d116ec37d3cb5bcc7f67",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-4cd3c934e86213a3a1979313adc07b647723e4332f1130bda5f4fcd5919df3aa",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-4cdb05a8bdc0dc74c6d35f599c9ce533a9efbca50924738c558b35e1fc5f5fb8",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-5160ab8648cd1bbd18109dfe816cdc84f15da920baf871d065b8c47df823cfae",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-5282efa9376a23fad8a53e7251797ead1037ecfa5288b845d2d4860030c1baec",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-53d8fab8c86924a8bf215a90c5f0c8241b84c024b8a7f7bbebfd71b5b43613c7",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-5682eb20265d6eae61b5087c7ad06629c2462476faedeb93165c1665bb6bf0f8",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-58afceae6bc512430aa578f0ae1a96566420145cc3311f3a7dff53af4a641c22",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-58d4ec44d49136c74f497c0c7a7e0f757910c54aec20c84da5e3b268f5101aec",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-5911cfa0db48a833410a9e517e1bb2fc1e2745e3d79c0883b8e21ce24a659546",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-59ca5225afa9f7c5b7f1b157b36a5d2ea38ed6ab35614424f7a2258ad6b19b66",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-5c1337a0be79f2bd1add736eaa442357efd2f8c4b3cfa381dd85a686e3179983",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-5dc1bc7d4b33a61451c0064c5d41b6ed4a7a9538b48114ab1a510caa8a5e70d6",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-5e09bb37602970f1a644473ad69ee6bbdd23c3ef2985807ecf076a331e0a79e3",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-602c718edb8cca522d06a68d25daa365e94060c0546acf8d1f52866ee0dfa9fa",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-636ad794a1f51c89c0874d781015f72df9a0c667cfc75490a8fff2d2fd37195f",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-645860e1e37f938fea7964e81f3f93ae8c83f6880919190ad66de1a39b5a975f",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-64a705de3e4868175f696ac2edabeb493f126314b6d8d18366765df49355f62b",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-65d48d2c5ea2b84cf4f55f8f9c37c8d33fe0de3d29429fe29dd3a385a6664c4d",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-6a0c472a8d7ff7f641d6ac145945ecc8d1b5aad7061365a2738213dda88e4a74",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-6b10194c10cc836dce6c67975e83cca62255a586a9c78a504107f1e9ed341f7e",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-6bb42597d05c722b8c452a0f3df1f2b416f3919c3cdd86c0714f78566c41d808",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-6bd51bc64ad536941e40fe549505812718375f790c2014cb65eec783cf108784",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-7196416bbaa98d5dbe56fb494a93cdbe7e317349f5d1e226b661c347dcd610e6",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-71cd9fa605f0d75f2cb1ad3d1fdd0395e825b19fec723c6ef8a85fec15468217",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-7ce6f66c2a24b1da9420d32744ae4538924360fbcd1f327053e7225f3bc06d40",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-7e48a98cdd752d984e29bc205d6d19a8f08c39c646a456c2e476587e7a3ddf8e",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-7f1f7812b42ac5a6830f439f56dd1abc9e53aa679e5c17e212be4cf7fa200713",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-826b737f9ca6bb0ca0c187e75a8a96d081c91845c20efe6662baa990959a3ee3",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-87a67525c5b56500359606bc28cea9ac6e8f09acca990f28d9dfd9dd43616bdd",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-8e740358085e492ef3f875e6551a83d8c49628b1f607f37ee9d9614fdbdd3ff5",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-8f845be942fea43be3781747e70f9f4b3aec0322e06026c6e5ad5a27566e9cf9",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-8f90c10d03561f9464366f0675257a3daf444f2ffeb6aa27bfd2584729e4c8dd",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-9046b14a4401f7ca5cec82b126fa3ac49638ca743ee5fd4ec440d7a68a49a193",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-90c5196ad300b762ae5b89261eb34f42c1292b229fbf9f0f78394d44a5c77d76",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-971a6ccb4d988f1635b774b233b63cf98c9aa3586cde829f7b1c97db9fad16c4",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-9760ff1d1f3c1f9e55186db721495f378adcbfc8772f657ea89d10eafe1bbfe0",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-97622a21ed38f0ad1087b0ef29e3cb7b6a57bdb19fd0be6885afe917dc879b0d",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-994b170b17b7907bd9b4344da002ff897ce65a8312fe7bab8805d76bc205c0e9",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-99602a71c7626ba22a8961c3b004ea8cc7aa34f48ad48de4c96cc886dc0f2253",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-9c1a5b37d0fbc175a68e8f4bf1779cf174111383e063800e2da3d6536b7069fa",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-a203914e89610b859b1c0bb7d662628c85cd5492fff2ec48b9af5044cca423ad",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-a388138c700af38ddaa4170477142efea0b43fe37b142f6ed9683b16fb7ff967",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-a5300f1c008f0543a471bc56cc008f1ef1c68dd8a15f17e915d037fcfcdd474d",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-a8c5077e3e66cea07180929034bafec2a1807805f6bfceb4dd28e166c0556dd6",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-aba03f35a4e7f0a4f5ba68e660a8baaf46f2b0852d9036b107e2f5431c0f9a1a",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-af78e7151145ac436f96a14e3e442b118705e3d4d8e6de722b9fcbcad5bcfc60",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-af795774f19699ea79e05d21b55a577ba5abbbd598d4d6d64297ebfb2c3803d1",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-b1d099ce45c9d432a7bc1aa2adbcae2fcf7ce8bd4012a1428a633c05b37128c4",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-b366c57010b694dc4aa8d8fe21cf9034464f7efdd04fd1a60bb27181aa54e737",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-b377174c6ed3c79b36001fb6435408e55559e2896a98061fd3e1759f78f33d49",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-bc1cb31d52cdecc0444071b090623de921507ec62f02bf859494d51005922d31",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-c03a8d97f0cdcc9affcf9231e7875f84e0246dabea0bc23960381817bee5805e",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-c0ca9f210bdf218acbdf03866be469cadaa6a21da0717852a91c9f7c828553fa",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-c3a3ca369100b1e616cbddcb05b5a71fb3c18776e8ecc45e7b8115b8a26b3819",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-c6a28a9a48d4e7a22fd7d12c6a76f67ec271c360ecb69160bdb6e8dcf31a63e8",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-c914aaf4191a44765d5d2916b5cd7b4556a5718dc795bf14b1736f16c3a4c3f2",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-cf1c2e76d5610cbcdc2ae10e8da6ea60765211662f6810dafe573664dfcbf26c",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-cf49d215453120d476b075a2a804bd881ef3c6209468fae9972d1ac22b0c1e08",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-d078c770722f67e2bf0f4a10b389e47b112427b30f490d7162d338f7e618f36e",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-d2ca39d3d621713ffa38f8f8cf6e5b6d67d6d945ade902a552f89c5c3e368271",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-d3129f177638db0ce585e2297e11f6c90f835276571742328abe58fff4951f5e",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-d37948ec7f750b8736c6582e791f3e60252997b504a033225417e4d8c09e92d0",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-d652fd9cf64cca09c57d8021c983b5aba16dae188fd954be537b51a6985fa143",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-d7b840192b55ab8dc1cb0b783f6413fa433b59e5aa26b47ddbfe480ffa81eb1b",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-d9f69bc3296b3ec1c3d59ba48a31e21d794c84bbedd7bc0349b7cf04267a3678",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-da5a291eb431c911a6cb013e685a0961f7a85bbd4bd862b4a414a9d6e52d7ea6",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-df86ae4e16ad72863bf189acad12c88480b845a69c147f6e17a71d47f4546d2d",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-e63212de463a5ca0f171bf3bfb3fd790d083c1f6d69398317e9ebdcff407261b",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-e65c2d7bcf517579246790b3ccd323032f23f0fc03ad95f408833b4532afd4b0",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-ed472ef0b866fe8a22e0cb9c6ff471143d597ea1986296dc2e20b6320191f83b",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-f05f38ed2f285620fc8c898e8cd4f2203510c424fead9647146a6d439ede7222",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-f0d9fd47cd1aaa7f7b3071fb7058517df8b16fb019f5274a9728f1b18c5cb45a",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-f21d86f5079104c60a548c140cc7944c95dca72b75f67e7657c45f0284e867d0",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-f300f4e5db4ed93577243b9f171fd1d296132524aef20fea1b9453063cd36e9c",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-f4e82e0b9ef87f92002e0ba8a25669f59c498584fe6d1988c3dd2bd6566f3bfc",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-f5373340b6b717fb70c4b740d3b2d166ba673be6f462d16c4adbb354ddd5ff16",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-fcb4dc147734cab5c2a688057542eddab8740fd41c7f17b2122ad65ca6266748",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-fdc5f243ed8025eb8eaf7c23261287749ae7a8fa9a91d176266913ea2c00226d",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-fe235d409b2a09b542713b70e110824b391ae697b134231ebce8fb1ccd59db5e",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-fec9f2690053718684e5e352d9cf2852335a61073fe295489da939b3623c5cad",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-evaluation_criteria-ffe8c1ca8aa1583d3868dbbc1a6d391ed9461c3d4252c0f156f2df8917028297",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-04d0159a0a9b0ab90422da78e72949e98dbfee77735027035d584f696d987868",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-06bd65330d0d5b816c960a6e7f9badcd4fb55e70e7b1bcb67d99eb3ff27ba3e3",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-0aa137810f7f13be0f1ee85a77f681e9eaf6059726ef609d73528f978e32c99b",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-0bdd1b2d0c8841cab032c3f56f7c17e291a5407663dd8b1e827fbe78d980a733",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-1ae00773259f727e683aefb0513ba99afc1e18ace905bc5be215634bc2ae13c0",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-21021b215bc5bfb1a5a34c9e9ba353699a4ab2e49fcf72de85ffb2de325564a9",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-267a9befd67ccb4cd0cec776b336024e3b37bba7f7db6b4d99c675b5d8c91209",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-27e619314d8b2d0033a73afacb69b48842609c89c77044789b4be493f767109c",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-2ab881507ef494b5a34522606d245f0c1f1957b6baf3bdd69147ab0785083b2e",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-2e31ae8383818a311f53593c923413094e81c35fb4644a441dcf2b96e592c003",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-33d3259bd1ac06c794eaf68cfc3cd86f8f2415ea1488146c49f84d150b0ded50",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-371b8218e3e0ed97613080bde867e023ea3db67a76e14969d56e50a84f0d5327",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-38559ae778f2e8d95eee804589c2d793667a126201a5db5429fc51731b41c856",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-3921707e1eb142fa3638e13fd7015faea5d5fde00fc10d1c74166c0bfe29efec",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-3e0acee7d598ab166fb5eca008642604d8a7258e074087b57e5c0c5c9dc9ddd4",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-3e68edad0a95b3f2872c317842420c18572130ea5bf42c2fab0fe669a9c56bf9",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-41f06794029fe3b85bca43d7f3c8825ba95d1bacfd26735e46e069927199e07e",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-429618d1d11ffb2cf3987d250c3708eb62a9983404e9487937a048d19f167117",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-5654ea2958aef7c7eca0c2ff4eca87d40188a77a983e9fbbac0b11b12f9f14a3",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-56e9a2d99f23dc1fbd9e65140fdb29fb0192f0584a610b7a658ab305a28e8a5a",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-5bee8f73dd2157e7999fe3d4a83b977083244073be4ef396d61330ac7aa8fd6c",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-5cc3be82161181b9e5a842cb10b31f51a8520c1f79a83788447a7ce0852aba9a",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-5ea6ff3d06855e004aed4a7d5d3fd7a3c0a46f860af88105e2e7abc7a8d635c7",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-5fe66c326dd852c70504e57affeaad52f105c3418be5275a64737a3fcd538197",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-6556928a8a637775fee93b0265550f3db370a75bfc6c9d85d588b9ca291397f2",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-66356e6f1f47219c4d089705244bb8dd1a8d316cf0faa39150e85796b3df1fea",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-6711141952476a7f15985a5ef7be4a4d80480c4025247ecc157516113051fe8c",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-7023ad43dc5173d26bfc3a6f7993fc96cee15ca954de66c286810f8e6fd6e89d",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-70ac10e4f4ead588b68f0787a74bd8fc384211422ff68d9745eefbf48c481e1c",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-73f8f608707e1d63774d903237d9e4888c31a062519e3f2fa3f3020445587bb5",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-77a23f18694dc09ba63329be6e8b231b7a236fd50796e12468e426841f7becae",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-7b943a53ee668909208eef6ce2365d70f3a49b7aceac74cdff1d2124be4b5fd0",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-7bbc8594a4792f33e25de7d0337dc99e7e334d1d2c12bab8cc983f9fcce93a36",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-88907002a14a872591b052f355e6992ef303e08234da817976e1e0f1ed3681b8",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-9140f366393c55e567d14c7d72f8521164c36607a534ef88dba14f74536e5eae",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-92f0c449d4c43f19bdac66562e60d93f97b4674596157d153194ec5eebf956c6",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-95c3739b6c86d05343ff8643a83ba4d5ae15e64b167f918cc796813ea7bcf1f4",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-972bc464ac78eb4f99c40655c3ca3f37eff4e99008180c15c910ac50eb39cf7b",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-97c62ac40b1b1a262e03b0a62ecf3daf9dabfde740f1cb8724e59a101b30dd05",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-9bf6e3e929272e2294f017dee3615e514e24a6f28b3ad6146288dce7737331f0",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-a1117e0faeb891d7bc32ec02f7cb31f6751fd7d96903df1b9a7f4c49b0afae0b",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-a6efcd4a2d0244a80b89fff7c2ff46c5094d918dc01a37513e43a7f278411e37",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-a71e1e7e126a1856eb226b13ef3bb54b8a326c1193bb673ba264d4fe7d87bda8",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-ab40f486acefe408be9ec3cfe6d8b3ab681e7147b1043e145e1d1aa9ea43fce0",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-af8347ef49dca7b55258c3dda852fab50c95d692d81936d2af1ab6d70155d740",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-b14325ef9f482983d750005a94b4bb8ec311be7b2b01c3d3e0d4fdc56e4849bc",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-bc9961b553efbfe9a195dcbf915d048a18c6876b97a0716eb4d1ee1aa5a06089",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-c91257240520aee265e406f9586018438e2e206937bd38e1cc0bf5b8b40a0d7b",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-c9cbc7b2558a7c7bace78a210599b6926c11cd5b1691f4ddb0c78e8bfc64936a",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-ca6ea280fec6eaa25f5780023784f099896966ecd9bbbb859cf585246a13f192",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-cbedce5264abf88c085af78d9d97256d6d9ad774b05f2565a921721a62f8b56f",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-d1a1a5bcc9e6f48fd2fa7c777a5ccf22aa69bec0ffa92869b29b15e41edeb375",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-d2155e3337f09893b708c0e7496d24740d0d1d3e093df0e9d9fbfdccaf8477c9",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-d5939982cc139d6821b3bf2bc16741d96b3d8f49b8a7b96d06e6c133895e350b",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-d8f0a1e2b48306088ae566251654318d45eab0d6ef2bc9f28061021bdd26aa5a",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-e0b26a4cdce702eb39536f6e5c90203398277d7de57cb6d6a94db736d2ec7e28",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-e3cf636a3f5b95d4182647c9b326f6947270d9a6c51ddccc35044a68d73125b7",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-e495bde10d35385e4006048cb737a641745d39a3b23a83a82dbfa0245c4d6872",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-e76f20daad3de0157c3995f8d7c4aa74c7873b4d1673af3ff219356aca48b406",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-e8a6436f2ddca8999994eed4fa64d2eb27015a193f266736f742d0fbd407929f",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-e8c70b7eb11094e4f1aaa93e0023cfaec2ac5a0e17441548062de7e8473871b4",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-ef0dae52e0b7a3e0e70362d3ca1008f740a405a9bb2026fc1174d3fcaf3b042f",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-f0ebe24fc63ac91f1e6564f096eaa9552ce7189bb93a53c1f08c7e7f275aaca5",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-f155d58d617a8110fc2a11c4b61864b1f80e0b4d5e51e14d8dd49fe1da077d93",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-f4acc71f6657f0d0889a00c40b4751abef64130db0d75ab4cb6d95b6e28e9ae7",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "oi-submission_rules-fbe77b2221bc799eb18ad2013eed27595b8d675588907cc2e4199b80adc13230",
+      "entity_type": "FUTURE_ENTITY",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_022023ce41f30c23d7f749bc9c04b6d6ce43b5c29dbb8d942f8c92b7f29e713f",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_0342092e83927e2a615f122ae2aeee4971269b53d0998f869fe12753840383b0",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_04d7aba306c459dc57f429da79ebefb1408d36b3d4065b462f0dcb647ef9c0a7",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_06889c52860f65cc6d574b5e637f6e454739c2993012d9204d855e58c1a7dfd2",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_0979ef8043c7a164aa231eec3175b1d050338b4b7efdc31d69f3fe92c7d6cfe3",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_0de8931f72a80c846ebddfe7c2fa7d679467c1ed86898e6f864fd241517b49dc",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_118afa1ace3d7721ed98bfe3166831fc2d8f144b3fc0ddbfcd9ec9c3981961c1",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_13ac565e8e5acedd4ff2395b94f690c9cd5c66aeb3e3d11738356fe88e83393e",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_141497cd73b6e8a2714a59e725d5711400381022ef2b1fc45d080aa350e22929",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_14170c0bd752e80521777fb0f9a55fc4f86dd68d076d1bde92fc66e4afaa8554",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_14cb01cd4ef918411a5ee15d3654604a37698d11c96765ee992d19a93eb4c24a",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_1e01dde39a3f08cf3897b3dc845939e774373218e59cb101797b659dd2fe9e01",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_1f7a7d360d6ab499fae12dd23133133ef5c5dcf8c3a162f3c2b10c3486856a53",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_1fb66039ad530a012f7c1524ce4436309247a2c6419a1ece22bdd23ce46d8dd4",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_2032ebeaafb920cc439c776801d7b849044d3a2130e335a8c8805374f552c97f",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_238e499bf286ebbd9686a902b4f3e030f18477822565fbbd0cf8747420083ca2",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_23be1d524c4a0ba56e642323826c3c32362a6674ee174e476744b3d27c30a4ba",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_26df78a63dd024f251f007a2436698d0a366cbe8c07ccbf7a229e440423fa602",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_2c141d96427a7cb50c4a0b77ca88780463e6d269408af9a114f70e70670bacf1",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_2e25023e844d280948a1d870440dd7d3910c39f54c61e7c22eca19e7ebbeaf9f",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_31463d092c3fb5abe5d26806255389e3a90831e71cbfa6ffd61564b284ff3e0c",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_33ae76c3bd78f458a39a56dfad66960e4638676671ea1248616dbb386cdb4475",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_33b818f7480ad253857352a931ec0e5d19283eb725c106a3cc2bed62a6467b5a",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_34c7975ad51dd55ec81134f780d3706f4f9c0949c6ecc3b285843b1dfbabb5cc",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_3690c149eb38bfe0de2e224db392be3b5f0c36b85d6e73e2ee2eea41686b8a3b",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_3a6dcfa9725792b6cc9791c8b2a883ac512dca662940acc5d09a9c6168d42131",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_3bdc5aa3c699e0193af54dcd138ecc859352965d640b824ee9028b734a534de6",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_40d6b13e17021613e9d3ffd66d318f1eaffc1b35241badec8467514baa12c300",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_41fd439a343388f708a645540146ebabe0de0a80b2a7e3fee499e7d0f2644e17",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_45bef5c06e08aca421c74e2e12315b08451c7403f77f038f090372b9b25367a8",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_46a7a82d07dfb6c5267da022299c948ea8d66ac6b4968cabebd924eef0cf2a3f",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_4aa6d9a228c77facd5bd2661926ce20fafd2934e27e70fbe4584d906dc909b11",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_4b78dab6a2d5f589035e0ef66d7f3ed0981ac01c9eab5b03413f5c04604f684d",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_4cd452e1912814c64c6392dab7d8f565e6ab9897a04548ae371f4ef60446b882",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_4e0005dd013fbd0d7371920908fdf1899dbc956b746a76d8de14febe9451d51f",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_4ee9959fef649bb3c14bd1fffe6c5605819553bec8a2b00dfd91492879c6cc5f",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_50a40a0316c092337641b28f9a07f9b2a416d69e92f89688415b1a5bf6ac0a17",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_510a386067677bd05eb31b347a0c93c078052870c77af7069f70813412a2c9c8",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_5308481384b014df479bed88fd2f3a5201aa0a84e8e8f426c0ddba1ea22c15fc",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_56d808c29058b4115b1ce06b6fad402b8fec79ade59cc7a5af996f8299014778",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_5888a49998b0cea5c90b585dfe0773b7fe8e8324ef4574db61836a46665b02d7",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_58c31853d2fb7b3282c1b078e0542414af465b238799389f6c0147cf2c8b29ae",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_5b1658f869ebd571abfe5ab92c114ed0757b648fe92fec9acd148ecc64ef20a7",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_5dcb289d616cc4414a4a1885b31a224df31e0794daa7cf9f971f39b7f15f9335",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_5dea2071b194e4c0b73458c93ee2de4bbe232d328a613523dffa251f672cb61d",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_60086ffaccaaa73026032647d2e5715f90d13012d36889d866430668182ad958",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_614d57d16050e24a688a46c06b890d58007deea4b5b02e20b6e3530e5189909a",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_61c6674833219ded7922e676647a35272ab0bad5fcec12c784599264229064ec",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_6209404752a8161986da4eac810d771738f3ad4cf5395fc0c84c2961c5dbda05",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_626e50f69c1b54d8e9b38f8f74bfcd5029ee646206e3398981f53c48b332af4d",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_6352950f602f61ca9336feae2e1ae2b864ed89b2b95d894bacb6c255fa3a676f",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_659e87c511eeeb93a4aaf98ab4d91bf0074837f5fb96bd379637d2d23ee35a87",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_66ad7c54c96e27af4e803b7ffe06dd5a762b718da09fda10c753a4e3865dfb7f",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_670391880241fb6c8f7694c60e127a4567f420a3cb5146cd2d69e1d7a6894051",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_67385ceb6adceb866cde98287e950975a7c49a90d38750f80e0f9a1c970ee7b4",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_67baa582f00aa9a2f527c9f30db38378844644bb3f1ed8b42005c8c8e03fa7a4",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_680a63d9a9f0e543aa3f6765180a70f4a228ca4e48912805d664391d04f6e686",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_68f72ec472ad494bb9ede7167e84b78593d202d869fcc6cc223405a8375cf74e",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_691d382f119a63080520b1da0f3c251170962f01930fd7a20d45cd82029a7a9e",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_6a5fb6b45aacec5c30418a9fd60703f42183607174169ec8d25c5a82144ea81c",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_6abf6f79956e1c5211cbe6b577471adf4fdd9803b3421274f062fe10d3fe96d3",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_6d8d5c3fa623c69ea5a014f33c448e002464f4e3eb0ac52d51948189361d4e7b",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_6f1540b3943dd6afee73a6270c2c723643baf5d3b8ccce9f31f090ae3cba119b",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_704b41e31f698e1f4cdab660a49167a006738359241f81fc39433f7c1a1caecd",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_71a3d8d68af1bbe33f680b23eed0cc1f0ef558f101c1f5fb96e1d5b53ce01cc4",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_730700fc2a708c31f67d95ef4817b2298aff66b0556b09a0989a23daddee4ea0",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_78cb404bf0a3d80733c72d32ab282ef1a139508b938957f7d6a1a67b65524200",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_7af49bb84693b24d794e2fcf1949f299e9914250c8807a67edb1426dd79771a9",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_81ae3f66a5622940994c7352e91dbc115f01b3c86786c29c434b90a5fbfc4520",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_827ff3b9bf250741cbe859daaa5f5c284ee6695c1f7446e4fd3aee801efae2df",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_8742fa552746272aa3de4e5b51384b0c78f4c7ee679f73b63b0ed788f5037ba1",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_8d127acdfd18c227fd90a4e4cc3cf170e6bf01062694606ff449efaebac4db83",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_903a91ca91849986c416daeb81202cabf9951b0ad4cb673c4f9a03ceb153b761",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_92a8c8e73c157973bb8974739fbbcafdba1e4c88bc08fcc8a0b431d66d70b02c",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_9551dfcf39d74ff7964bbf5ba0b4b90982ce74287141a9e84a67c2fc753b3c6a",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_9820c30d201e446fda4802a183475f9c54f521886792d69406a088747b3c5f7e",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_9a4d5eb41d0af06eafb54841345ef401327b1d93e0f54245f0a9fa0733df9aad",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_9b894018b06a1cc55e397c31e4816ebadedca48e75d2c2b0be37a5fc41d4f8ed",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_9d1a778c9250e7851d0d772b45c62e0c92795f2117d7acea3353a2308c930435",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_9de0209ec762da027aa9e0c912bdae7f4bd4e9b0c741c7f5eeecbd214498f515",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_9f18b1cc72406be05036a4d937db763552936785e3ca7fa61a977e4922b70962",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_9f43468d76d14a2f53226a4221be854e8a85e3dbdc7289d387ee786ef612a67c",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_9f510f2024dcd0413a7492fba8b8c2490bd3e7d6c6ea28e68bc61ccff82a2187",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_a3f013393ed5191eed3358098cc80cddb614a7c9db82d5941bbc6f14b1a0aad1",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_a5424ad54da4c5c11970be74312486a104b2b8a1f4af06aff0fa9dbba5acfe0b",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_a65c0ed7bdfbf527ffd05431a20fd612a7554b53df28f6396fdbb62b0b6cf37c",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_a67ac1332085fecd42aff9f5816e7fd933814e367f79304da6f23635b9ff8b14",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_a7a5d54c5b14b81c571db69248656575e107c9d9f85b184202ae0b1675c4ddc1",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_a7b57b6c3ea5a4b474799ba04088d8b83a8a065e522ac778b4b4bae2a9d82c5e",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_a817696c8933b9c8ab57b715132f061e968afe6e870492ffe8ea78dbe347d070",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_aa0c7d04750970ccbab80365c09bc878a78724971dd5ba7336e483d699e8b0d7",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_ac559812e16cbb7f44a557e97ead69ace2851c650460bb5a1a519238ebd2b652",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_ade9b17c2adca06d969441ca39bd46d606106ad259b3aef7bf908293d6a1d259",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_ae55be021ff6598826e78c250ec9ff33c77c2aef2f2ebfabba788e81d915b51f",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_aea74bce350ef5aec44f8fb53f94352b8e119a0a80ecdb6d2014776d5369536b",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_b147408cae76d256ea40d03dcc6c277d3fe4335d756c814f6129fe01a804eb45",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_b155f429f985f3c4903807e95170f777e6be3075b52d054874a9a7e578f184cb",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_b2b4a29c6b285c3c6695eff5890dd35bdc25bbad94284c59dcc553fadd5d594c",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_b487c6615119d627f733441f73670b5b0d5bb1eba2066bdbd3d5cb71a15bdbaf",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_b4c907704b3ad255ac845638bd60227bf2c98fce8f51bb9a7f80e77a2793888b",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_b94444591e857fe8307887202b6f86c59dedf35e8a0c4871de65578115d27689",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_ba721d6c4c4ca5c4605485a10ab0af2c4187a52172f8768a3117872521f069a4",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_bba03bfb92c72b255453ca17178557368519971a01e21f7bfad195074d07721f",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_bdada3760222f0c51deb5ad2f958f78924c0b555a75da5dbed2a9f7de0bbb683",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_bdae49ef2157724eca0d539fcd263b80ce15f6b8be9c9e697d6a000a2a1f38ea",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_bdb9919d667453e80d0c500bdd6bec907b7477a718d32389e5c783fda6b56224",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_c090ce64d9d11c7336e6a68b122d50dd41909d2944e3d80c847383df1257de53",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_c6812e01416f2f78a792279d1b5b7f8ce860aec83f73ad03b5a1b779dc61d6eb",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_c6a859e1b2e8ac27c30379fcd2ab8a7bd38b546c6d932d1e1b95ee3353404e35",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_cb0b2271a98632976aef971dca4f4f986d4ceb486fddb1397bd15fa36d0dd1fa",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_cc8b9dc546f85d8f666c428c8b1939992a74690a92e64cac1c6b2fd4ab07ecc3",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_ce3cea3c749617cfad332306da52714f8710b8bd79781bf2a7c9c6f580536a8d",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_cf7f6f0b61df5bfb722c9159a30fb6dce42b0a972ebdcbcc1ad8cb91cfa11167",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_d37215794853f7a9eac0216b620f2a272947fbadc4c4f5f6ea74e54622a1b5d5",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_d47a83ad32e00bf3d4d6e8e9e8192224f96e816280406a7ea58135bf6109d8a2",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_dadb4b992436d4e763e83cd88d21626ec5e97bfebad82e26b9b1c5120c8df06b",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_dec10d0c96542eee52a9e074ab2af6e2f39da126d3a66b60744d7681c83db314",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_e0f3f8e013b2265ff2fc81ef829d34f8b27601c1451d888d11b6411d279a6bad",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_e294787d855357b376b7e03e2afc4fca77066157b58a6c1a4fd9a36db5559e72",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_ebb4b73e9059501e3dfb3b2f876624d64eea1cfec25705893adc7897dd714032",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_ec14905eb1370fe82cf95be40aaefcc6b927828190f38e8ef093d5dc61bdbfd5",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_ecb501022bb7cf7db885e2399ee6f07d8e722d030508dbdfa8a2b4e6adfc1115",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_ee5ca6c3a7b1b5210bc6096201ba34c0241b202f292fa3e88aea84e97dcb6147",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_f0199ad3bb900791918774388ee6c3ddaaf5314d6f1441edb487f87d59cb17db",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_f12dac6af24412fc01cf004d940acdf6000e098aeb2680ffd98e7be88f7d41de",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_f2b71748474fb59531c3aeb2bcbae4e99a726644f3209c9c3dd0d56d2ec246c8",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_f378f2180e40fbb36f5b2d37029c18c246b1ce5b6e9c5ed295058623dc2319f3",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_f8bd84395c6e98b3702568db5bcde9a7df456737cc5261e4f86cd7ff5f134a0b",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_fa384bf6b43a86a9ac47c3c1ed366b4219f7e0868aa324ec4976d6b2fe0f0c48",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_faefae027b1fa25864a48f92400f94c0b10765d390b584ab6d4e1d8afd08a103",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_fc860683abab7b0bc3955741940de388cff3b9e520118b4e6571e894b698da26",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "obs_fd0bd185c23366e687d4a9ad4b8ca21a5591516bda33bf60a3c6451bd41f3f65",
+      "entity_type": "OBSERVATION",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "F1",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M1",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M10",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M11",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M12",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M13",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M14",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M15",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M16",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M17",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M18",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M19",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M2",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M20",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M21",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M22",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M23",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M24",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M25",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M3",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M4",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M5",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M6",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M7",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M8",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "M9",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "R1",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "R10",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "R11",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "R12",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "R13",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "R14",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "R15",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "R16",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "R17",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "R18",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "R19",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "R2",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "R20",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "R21",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "R3",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "R4",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "R5",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "R6",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "R7",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "R8",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "R9",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "S1",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    },
+    {
+      "entity_id": "S2",
+      "entity_type": "REQUIREMENT",
+      "evidence_ids": []
+    }
+  ],
+  "execution_timestamp": "2026-09-08T20:17:16.845167+03:00",
+  "hypotheses": [
+    {
+      "confidence": "MODERATE",
+      "contradicting_evidence": [],
+      "description": "The apparent proposal effort may be explained by requirement volume.",
+      "hypothesis_id": "oi-hypothesis-effort-1",
+      "limitations": [
+        "The explanation is not ranked against other drivers"
+      ],
+      "support_status": "PARTIALLY_SUPPORTED",
+      "supporting_evidence": [
+        {
+          "entity_id": "M1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M3",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M4",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M5",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M6",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M7",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M8",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M9",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M10",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M11",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M12",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "F1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R3",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R4",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R5",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R6",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R7",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R8",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R9",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R10",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "S1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "S2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M13",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M14",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M15",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M16",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M17",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M18",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R11",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R12",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R13",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R14",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R15",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R16",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R17",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R18",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R19",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R20",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R21",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M19",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M20",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M21",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M22",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M23",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M24",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M25",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "bank-of-canada-rfp-2026-026-corrected",
+          "entity_type": "CANONICAL_FACT",
+          "evidence_ids": []
+        }
+      ]
+    },
+    {
+      "confidence": "MODERATE",
+      "contradicting_evidence": [],
+      "description": "The apparent proposal effort may be explained by submission artifact volume.",
+      "hypothesis_id": "oi-hypothesis-effort-2",
+      "limitations": [
+        "The explanation is not ranked against other drivers"
+      ],
+      "support_status": "PARTIALLY_SUPPORTED",
+      "supporting_evidence": [
+        {
+          "entity_id": "M1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M3",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M4",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M5",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M6",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M7",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M8",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M9",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M10",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M11",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M12",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "F1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R3",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R4",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R5",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R6",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R7",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R8",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R9",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R10",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "S1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "S2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M13",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M14",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M15",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M16",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M17",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M18",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R11",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R12",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R13",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R14",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R15",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R16",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R17",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R18",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R19",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R20",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R21",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M19",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M20",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M21",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M22",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M23",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M24",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M25",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "bank-of-canada-rfp-2026-026-corrected",
+          "entity_type": "CANONICAL_FACT",
+          "evidence_ids": []
+        }
+      ]
+    },
+    {
+      "confidence": "MODERATE",
+      "contradicting_evidence": [],
+      "description": "The apparent proposal effort may be explained by multiple submission pathways.",
+      "hypothesis_id": "oi-hypothesis-effort-3",
+      "limitations": [
+        "The explanation is not ranked against other drivers"
+      ],
+      "support_status": "PARTIALLY_SUPPORTED",
+      "supporting_evidence": [
+        {
+          "entity_id": "M1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M3",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M4",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M5",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M6",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M7",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M8",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M9",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M10",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M11",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M12",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "F1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R3",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R4",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R5",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R6",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R7",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R8",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R9",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R10",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "S1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "S2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M13",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M14",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M15",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M16",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M17",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M18",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R11",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R12",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R13",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R14",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R15",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R16",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R17",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R18",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R19",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R20",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R21",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M19",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M20",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M21",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M22",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M23",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M24",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M25",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "bank-of-canada-rfp-2026-026-corrected",
+          "entity_type": "CANONICAL_FACT",
+          "evidence_ids": []
+        }
+      ]
+    },
+    {
+      "confidence": "MODERATE",
+      "contradicting_evidence": [],
+      "description": "The apparent proposal effort may be explained by evaluation hierarchy depth.",
+      "hypothesis_id": "oi-hypothesis-effort-4",
+      "limitations": [
+        "The explanation is not ranked against other drivers"
+      ],
+      "support_status": "PARTIALLY_SUPPORTED",
+      "supporting_evidence": [
+        {
+          "entity_id": "M1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M3",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M4",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M5",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M6",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M7",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M8",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M9",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M10",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M11",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M12",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "F1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R3",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R4",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R5",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R6",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R7",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R8",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R9",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R10",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "S1",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "S2",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M13",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M14",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M15",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M16",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M17",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M18",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R11",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R12",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R13",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R14",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R15",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R16",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R17",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R18",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R19",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R20",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "R21",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M19",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M20",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M21",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M22",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M23",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M24",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "M25",
+          "entity_type": "REQUIREMENT",
+          "evidence_ids": []
+        },
+        {
+          "entity_id": "bank-of-canada-rfp-2026-026-corrected",
+          "entity_type": "CANONICAL_FACT",
+          "evidence_ids": []
+        }
+      ]
+    }
+  ],
+  "inferences": [
+    {
+      "statement": {
+        "alternative_hypotheses": [],
+        "assumptions": [
+          "Structural volume is a relevant effort indicator"
+        ],
+        "confidence": "MODERATE",
+        "evidence_ids": [],
+        "evidence_support": [
+          {
+            "entity_id": "M1",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M2",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M3",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M4",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M5",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M6",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M7",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "R1",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "R2",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M8",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M9",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M10",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M11",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M12",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "F1",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "R3",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "R4",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "R5",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "R6",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "R7",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "R8",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "R9",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "R10",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "S1",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "S2",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M13",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M14",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M15",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M16",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M17",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M18",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "R11",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "R12",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "R13",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "R14",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "R15",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "R16",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "R17",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "R18",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "R19",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "R20",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "R21",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M19",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M20",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M21",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M22",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M23",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M24",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "M25",
+            "entity_type": "REQUIREMENT",
+            "evidence_ids": []
+          },
+          {
+            "entity_id": "bank-of-canada-rfp-2026-026-corrected",
+            "entity_type": "CANONICAL_FACT",
+            "evidence_ids": []
+          }
+        ],
+        "limitations": [
+          "No staffing or effort-rate model is available"
+        ],
+        "reasoning_gaps": {
+          "known_uncertainty": [],
+          "missing_documents": [],
+          "missing_evidence": [],
+          "missing_history": [],
+          "validation_limitations": []
+        },
+        "reasoning_status": "PROPOSED",
+        "recommendation_scope": null,
+        "source": {
+          "source_id": "opportunity-intelligence",
+          "source_type": "SPECIALIST_ANALYST"
+        },
+        "statement": "The documented structure contains potential proposal-effort drivers: requirement volume, submission artifact volume, multiple submission pathways, evaluation hierarchy depth.",
+        "statement_id": "oi-inference-proposal-effort",
+        "statement_type": "AI_INFERENCE",
+        "supporting_fact_ids": [
+          "oi-computed-evaluation_hierarchy_depth",
+          "oi-computed-submission_artifact_count",
+          "oi-computed-submission_pathway_count",
+          "oi-computed-total_requirements"
+        ]
+      },
+      "support_status": "PARTIALLY_SUPPORTED"
+    }
+  ],
+  "limitations": [
+    "Analysis uses only the supplied authoritative opportunity context.",
+    "No buyer, competitor, market, pricing, CRM, or organizational capability data is available.",
+    "No composite complexity or pursuit score is produced."
+  ],
+  "overall_confidence": "MODERATE",
+  "recommendations": [],
+  "unanswered_questions": [
+    {
+      "question": "Which documented uncertainties require management escalation before allocating internal effort?",
+      "question_id": "oi-question-uncertainty-priority",
+      "related_analysis_ids": [
+        "oi-inference-proposal-effort"
+      ]
+    }
+  ],
+  "unknowns": {
+    "ambiguous_observation_ids": [
+      "obs_0342092e83927e2a615f122ae2aeee4971269b53d0998f869fe12753840383b0",
+      "obs_0979ef8043c7a164aa231eec3175b1d050338b4b7efdc31d69f3fe92c7d6cfe3",
+      "obs_13ac565e8e5acedd4ff2395b94f690c9cd5c66aeb3e3d11738356fe88e83393e",
+      "obs_14cb01cd4ef918411a5ee15d3654604a37698d11c96765ee992d19a93eb4c24a",
+      "obs_1f7a7d360d6ab499fae12dd23133133ef5c5dcf8c3a162f3c2b10c3486856a53",
+      "obs_23be1d524c4a0ba56e642323826c3c32362a6674ee174e476744b3d27c30a4ba",
+      "obs_26df78a63dd024f251f007a2436698d0a366cbe8c07ccbf7a229e440423fa602",
+      "obs_33b818f7480ad253857352a931ec0e5d19283eb725c106a3cc2bed62a6467b5a",
+      "obs_40d6b13e17021613e9d3ffd66d318f1eaffc1b35241badec8467514baa12c300",
+      "obs_41fd439a343388f708a645540146ebabe0de0a80b2a7e3fee499e7d0f2644e17",
+      "obs_46a7a82d07dfb6c5267da022299c948ea8d66ac6b4968cabebd924eef0cf2a3f",
+      "obs_4b78dab6a2d5f589035e0ef66d7f3ed0981ac01c9eab5b03413f5c04604f684d",
+      "obs_4e0005dd013fbd0d7371920908fdf1899dbc956b746a76d8de14febe9451d51f",
+      "obs_5308481384b014df479bed88fd2f3a5201aa0a84e8e8f426c0ddba1ea22c15fc",
+      "obs_5888a49998b0cea5c90b585dfe0773b7fe8e8324ef4574db61836a46665b02d7",
+      "obs_58c31853d2fb7b3282c1b078e0542414af465b238799389f6c0147cf2c8b29ae",
+      "obs_5b1658f869ebd571abfe5ab92c114ed0757b648fe92fec9acd148ecc64ef20a7",
+      "obs_5dea2071b194e4c0b73458c93ee2de4bbe232d328a613523dffa251f672cb61d",
+      "obs_61c6674833219ded7922e676647a35272ab0bad5fcec12c784599264229064ec",
+      "obs_626e50f69c1b54d8e9b38f8f74bfcd5029ee646206e3398981f53c48b332af4d",
+      "obs_66ad7c54c96e27af4e803b7ffe06dd5a762b718da09fda10c753a4e3865dfb7f",
+      "obs_67baa582f00aa9a2f527c9f30db38378844644bb3f1ed8b42005c8c8e03fa7a4",
+      "obs_680a63d9a9f0e543aa3f6765180a70f4a228ca4e48912805d664391d04f6e686",
+      "obs_6d8d5c3fa623c69ea5a014f33c448e002464f4e3eb0ac52d51948189361d4e7b",
+      "obs_71a3d8d68af1bbe33f680b23eed0cc1f0ef558f101c1f5fb96e1d5b53ce01cc4",
+      "obs_81ae3f66a5622940994c7352e91dbc115f01b3c86786c29c434b90a5fbfc4520",
+      "obs_8742fa552746272aa3de4e5b51384b0c78f4c7ee679f73b63b0ed788f5037ba1",
+      "obs_9820c30d201e446fda4802a183475f9c54f521886792d69406a088747b3c5f7e",
+      "obs_9a4d5eb41d0af06eafb54841345ef401327b1d93e0f54245f0a9fa0733df9aad",
+      "obs_9de0209ec762da027aa9e0c912bdae7f4bd4e9b0c741c7f5eeecbd214498f515",
+      "obs_9f43468d76d14a2f53226a4221be854e8a85e3dbdc7289d387ee786ef612a67c",
+      "obs_a5424ad54da4c5c11970be74312486a104b2b8a1f4af06aff0fa9dbba5acfe0b",
+      "obs_a65c0ed7bdfbf527ffd05431a20fd612a7554b53df28f6396fdbb62b0b6cf37c",
+      "obs_a7a5d54c5b14b81c571db69248656575e107c9d9f85b184202ae0b1675c4ddc1",
+      "obs_ac559812e16cbb7f44a557e97ead69ace2851c650460bb5a1a519238ebd2b652",
+      "obs_b147408cae76d256ea40d03dcc6c277d3fe4335d756c814f6129fe01a804eb45",
+      "obs_b155f429f985f3c4903807e95170f777e6be3075b52d054874a9a7e578f184cb",
+      "obs_b2b4a29c6b285c3c6695eff5890dd35bdc25bbad94284c59dcc553fadd5d594c",
+      "obs_ba721d6c4c4ca5c4605485a10ab0af2c4187a52172f8768a3117872521f069a4",
+      "obs_bdada3760222f0c51deb5ad2f958f78924c0b555a75da5dbed2a9f7de0bbb683",
+      "obs_bdae49ef2157724eca0d539fcd263b80ce15f6b8be9c9e697d6a000a2a1f38ea",
+      "obs_c090ce64d9d11c7336e6a68b122d50dd41909d2944e3d80c847383df1257de53",
+      "obs_d37215794853f7a9eac0216b620f2a272947fbadc4c4f5f6ea74e54622a1b5d5",
+      "obs_d47a83ad32e00bf3d4d6e8e9e8192224f96e816280406a7ea58135bf6109d8a2",
+      "obs_dadb4b992436d4e763e83cd88d21626ec5e97bfebad82e26b9b1c5120c8df06b",
+      "obs_e0f3f8e013b2265ff2fc81ef829d34f8b27601c1451d888d11b6411d279a6bad",
+      "obs_e294787d855357b376b7e03e2afc4fca77066157b58a6c1a4fd9a36db5559e72",
+      "obs_ebb4b73e9059501e3dfb3b2f876624d64eea1cfec25705893adc7897dd714032",
+      "obs_ec14905eb1370fe82cf95be40aaefcc6b927828190f38e8ef093d5dc61bdbfd5",
+      "obs_ecb501022bb7cf7db885e2399ee6f07d8e722d030508dbdfa8a2b4e6adfc1115",
+      "obs_f2b71748474fb59531c3aeb2bcbae4e99a726644f3209c9c3dd0d56d2ec246c8",
+      "obs_fa384bf6b43a86a9ac47c3c1ed366b4219f7e0868aa324ec4976d6b2fe0f0c48"
+    ],
+    "missing_evidence": [
+      "F1",
+      "M1",
+      "M10",
+      "M11",
+      "M12",
+      "M13",
+      "M14",
+      "M15",
+      "M16",
+      "M17",
+      "M18",
+      "M19",
+      "M2",
+      "M20",
+      "M21",
+      "M22",
+      "M23",
+      "M24",
+      "M25",
+      "M3",
+      "M4",
+      "M5",
+      "M6",
+      "M7",
+      "M8",
+      "M9",
+      "R1",
+      "R10",
+      "R11",
+      "R12",
+      "R13",
+      "R14",
+      "R15",
+      "R16",
+      "R17",
+      "R18",
+      "R19",
+      "R2",
+      "R20",
+      "R21",
+      "R3",
+      "R4",
+      "R5",
+      "R6",
+      "R7",
+      "R8",
+      "R9",
+      "S1",
+      "S2"
+    ],
+    "unavailable_datasets": [],
+    "unavailable_history": [],
+    "unresolved_conflict_ids": [
+      "CONF-DATE-1",
+      "CONF-EVAL-2",
+      "CONF-EVAL-3",
+      "CONF-EVAL-4",
+      "CONF-EVAL-5",
+      "CONF-EVAL-6",
+      "conf_19721e2934e8adf885dc3df25711df472a5dd404f2452c07c94dee54559d5795",
+      "conf_ef9f91a671fd94e22a60358721d631b962dddd21b010f367f611daeefe91daa4",
+      "conf_ff6d6fe38553c1ec83352e959de8f9d83df2e923b6c4d4164e2f50f925567415"
+    ]
+  }
+}

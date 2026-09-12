@@ -1,262 +1,288 @@
-"""A deterministic, evidence-linked briefing for proposal-team kickoff."""
+"""Deterministic presentation adapter over Executive Opportunity Understanding."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, fields, is_dataclass
+from enum import Enum
 from hashlib import sha256
 import json
-from typing import Mapping
 
-from decision_analyst import DecisionAnalysis
-from decision_intelligence import ContractValidationError, EvidenceSupport, SupportedEntityType
-from decision_workspace import build_decision_workspace
+from decision_intelligence import ContractValidationError
+from executive_opportunity_understanding import (
+    CONTRACT_VERSION as UNDERSTANDING_CONTRACT_VERSION,
+    CoverageDisposition, CoverageRecord, ExecutiveOpportunityUnderstanding,
+    ExecutiveSection, GovernedObjectReference, SECTION_ORDER,
+    validate_executive_opportunity_understanding,
+)
+from governed_reference_resolution import (
+    GovernedResolutionError, ResolutionRequest, ResolutionResult, SemanticValue,
+    SemanticValueKind, resolve_governed_reference,
+)
 
-BRIEF_VERSION = "executive-opportunity-brief/2"
+BRIEF_VERSION = "executive-opportunity-brief/2.0.0"
+PRESENTATION_FORMAT_VERSION = "markdown/1.0.0"
+
+_SECTION_HEADINGS = {
+    ExecutiveSection.OPPORTUNITY_IDENTITY: "Opportunity Identity",
+    ExecutiveSection.REQUESTED_WORK: "Requested Work",
+    ExecutiveSection.EVALUATION_AND_SUCCESS_STRUCTURE: "Evaluation and Success Structure",
+    ExecutiveSection.RESPONSE_AND_SUBMISSION_STRUCTURE: "Response and Submission Structure",
+    ExecutiveSection.TIMELINE: "Timeline",
+    ExecutiveSection.DELIVERY_STRUCTURE: "Delivery Structure",
+    ExecutiveSection.COMMERCIAL_AND_CONTRACT_STRUCTURE: "Commercial and Contract Structure",
+    ExecutiveSection.MEASURED_CHARACTERISTICS: "Measured Characteristics",
+    ExecutiveSection.ANALYST_FINDINGS: "Analyst Findings",
+    ExecutiveSection.ASSUMPTIONS_AND_ALTERNATIVES: "Assumptions and Alternatives",
+    ExecutiveSection.CONFLICTS_UNKNOWNS_AND_EVIDENCE_GAPS: "Conflicts, Unknowns, and Evidence Gaps",
+    ExecutiveSection.MANAGEMENT_DELIBERATION: "Management Deliberation",
+    ExecutiveSection.LIMITATIONS_AND_COVERAGE: "Limitations and Coverage",
+}
+
+
+def _canonical(value):
+    if isinstance(value, Enum):
+        return value.value
+    if is_dataclass(value):
+        return {item.name: _canonical(getattr(value, item.name)) for item in fields(value)
+                if item.metadata.get("semantic", True)}
+    if isinstance(value, tuple):
+        return [_canonical(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _canonical(value[key]) for key in sorted(value)}
+    return value
+
+
+def _json(value) -> str:
+    return json.dumps(_canonical(value), ensure_ascii=False, sort_keys=True,
+                      separators=(",", ":"), allow_nan=False)
 
 
 @dataclass(frozen=True, slots=True)
-class BriefFact:
-    label: str
-    value: str
-    evidence: tuple[EvidenceSupport, ...]
+class BriefSection:
+    section: ExecutiveSection
+    heading: str
+    object_ids: tuple[str, ...]
 
-
-@dataclass(frozen=True, slots=True)
-class BriefObservation:
-    observation_id: str
-    text: str
-    evidence: tuple[EvidenceSupport, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class BriefQuestion:
-    question_id: str
-    text: str
-    related_analysis_ids: tuple[str, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class ClarificationCandidate:
-    candidate_id: str
-    subject: str
-    reason: str
-    evidence: tuple[EvidenceSupport, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class FunctionalPreparation:
-    owner: str
-    items: tuple[BriefObservation, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class KnownUnknowns:
-    missing_evidence: tuple[str, ...]
-    unresolved_conflicts: tuple[str, ...]
-    unavailable_information: tuple[str, ...]
-    ambiguity: tuple[str, ...]
+    def __post_init__(self) -> None:
+        if not isinstance(self.section, ExecutiveSection):
+            raise ContractValidationError("brief section is invalid")
+        if self.heading != _SECTION_HEADINGS[self.section]:
+            raise ContractValidationError("brief section heading is not the fixed presentation label")
+        if (not isinstance(self.object_ids, tuple)
+                or any(not isinstance(value, str) or not value for value in self.object_ids)
+                or len(self.object_ids) != len(set(self.object_ids))):
+            raise ContractValidationError("brief section object IDs are invalid")
 
 
 @dataclass(frozen=True, slots=True)
 class ExecutiveOpportunityBrief:
+    """Immutable presentation plan; semantic values remain in their owner domains."""
     brief_id: str
     brief_version: str
-    analysis_id: str
-    opportunity_at_a_glance: tuple[BriefFact, ...]
-    engagement_workstreams: tuple[BriefFact, ...]
-    opportunity_characteristics: tuple[BriefFact, ...]
-    opportunity_timeline: tuple[BriefFact, ...]
-    executive_attention_areas: tuple[BriefObservation, ...]
-    preparation_by_owner: tuple[FunctionalPreparation, ...]
-    kickoff_questions: tuple[BriefQuestion, ...]
-    clarification_candidates: tuple[ClarificationCandidate, ...]
-    known_unknowns: KnownUnknowns
-    limitations: tuple[str, ...]
+    presentation_format_version: str
+    understanding_id: str
+    understanding_digest: str
+    publication_id: str
+    publication_snapshot_id: str
+    publication_snapshot_digest: str
+    sections: tuple[BriefSection, ...]
+    detail_register: tuple[GovernedObjectReference, ...]
+    coverage_ledger: tuple[CoverageRecord, ...]
+    understanding: ExecutiveOpportunityUnderstanding = field(
+        compare=False, repr=False, metadata={"semantic": False})
 
-    def __post_init__(self):
-        if self.brief_version != BRIEF_VERSION:
-            raise ContractValidationError("unsupported Executive Opportunity Brief version")
-        observations = (*self.executive_attention_areas,
-                        *(item for group in self.preparation_by_owner for item in group.items))
-        ids = [item.observation_id for item in observations]
-        ids += [item.question_id for item in self.kickoff_questions]
-        ids += [item.candidate_id for item in self.clarification_candidates]
-        if len(ids) != len(set(ids)):
-            raise ContractValidationError("brief item IDs must be unique")
-        facts = (*self.opportunity_at_a_glance, *self.engagement_workstreams,
-                 *self.opportunity_characteristics, *self.opportunity_timeline)
-        if any(not item.evidence for item in (*facts, *observations)):
-            raise ContractValidationError("brief facts and observations require evidence")
+    def __post_init__(self) -> None:
+        validate_executive_opportunity_brief(self)
+
+    def to_dict(self) -> dict:
+        return _canonical(self)
+
+    def to_json(self) -> str:
+        return _json(self)
 
 
-def _text(value):
-    value = None if value is None else str(value).strip()
-    return value or None
+def _presentation_identity(understanding: ExecutiveOpportunityUnderstanding) -> str:
+    payload = {
+        "brief_version": BRIEF_VERSION,
+        "presentation_format_version": PRESENTATION_FORMAT_VERSION,
+        "understanding_id": understanding.understanding_id,
+        "understanding_digest": understanding.digest,
+    }
+    return "executive-brief-" + sha256(_json(payload).encode("utf-8")).hexdigest()
 
 
-def _record_id(section, item, index):
-    keys = {"requirements": ("requirement_id", "req_id"), "conflicts": ("conflict_id",)}.get(section, ())
-    for key in keys:
-        if _text(item.get(key)):
-            return str(item[key])
-    raw = json.dumps(item, sort_keys=True, separators=(",", ":"), default=str)
-    return f"brief-{section}-" + sha256(f"{index}:{raw}".encode()).hexdigest()
-
-
-def _evidence_ids(item):
-    ids = {str(item["evidence_id"])} if _text(item.get("evidence_id")) else set()
-    ids.update(str(ref["evidence_id"]) for ref in item.get("source_refs", []) or []
-               if isinstance(ref, Mapping) and _text(ref.get("evidence_id")))
-    return tuple(sorted(ids))
-
-
-def _metric_map(analysis):
-    result = {}
-    for fact in analysis.computed_facts:
-        if fact.statement_id.startswith("oi-computed-") and "=" in fact.statement:
-            result[fact.statement_id.removeprefix("oi-computed-")] = (fact.statement.split("=", 1)[1], fact.evidence_support)
+def _resolve(reference: GovernedObjectReference,
+             understanding: ExecutiveOpportunityUnderstanding) -> ResolutionResult:
+    request = ResolutionRequest(
+        reference.source_reference, understanding.context_id,
+        understanding.context_digest, reference.authority_class, (),
+        tuple(sorted({relationship.kind for relationship in reference.relationships},
+                     key=lambda value: value.value)),
+    )
+    try:
+        result = resolve_governed_reference(request, understanding.resolution_context)
+    except GovernedResolutionError as exc:
+        raise ContractValidationError(
+            f"brief reference {reference.object_id} failed governed resolution: "
+            f"{exc.code.value}") from exc
+    if result.root.relationships != reference.relationships:
+        raise ContractValidationError("brief reference relationship identity changed")
     return result
 
 
-def build_executive_opportunity_brief(normalized_facts: Mapping, synthesized_brief: Mapping,
-                                      analysis: DecisionAnalysis, *, conflicts=None):
-    if not isinstance(normalized_facts, Mapping) or not isinstance(synthesized_brief, Mapping):
-        raise ContractValidationError("normalized facts and synthesized brief must be mappings")
-    build_decision_workspace((analysis,))
-    bid, source = synthesized_brief.get("bid") or {}, synthesized_brief.get("brief") or {}
-    if not isinstance(bid, Mapping) or not isinstance(source, Mapping):
-        raise ContractValidationError("synthesized bid and brief must be mappings")
-    canonical = tuple(x for x in analysis.evidence_used if x.entity_type == SupportedEntityType.CANONICAL_FACT)
-    if not canonical:
-        raise ContractValidationError("analysis must declare canonical evidence")
-
-    glance_values = (("Opportunity", bid.get("title")), ("Buyer", bid.get("client")),
-                     ("Reference", bid.get("file_number")), ("Purpose", source.get("executive_summary")),
-                     ("Contract term", source.get("contract_term")), ("Procurement model", source.get("procurement_model")))
-    glance = tuple(BriefFact(k, str(v), canonical) for k, v in glance_values if _text(v))
-    workstreams = tuple(BriefFact("Workstream", str(v), canonical)
-                        for v in source.get("scope_categories", []) or [] if _text(v))
-    timeline_values = (("Clarification deadline", bid.get("clarification_deadline")),
-                       ("Submission deadline", bid.get("submission_deadline")))
-    timeline = tuple(BriefFact(k, str(v), canonical) for k, v in timeline_values if _text(v))
-
-    metrics = _metric_map(analysis)
-    characteristic_labels = (
-        ("total_requirements", "Documented requirements"),
-        ("weighted_criteria", "Weighted evaluation criteria"),
-        ("threshold_count", "Evaluation thresholds"),
-        ("submission_artifact_count", "Submission artifacts"),
-        ("submission_pathway_count", "Submission pathways"),
-        ("deliverable_count", "Documented deliverables"),
-    )
-    characteristics = tuple(BriefFact(label, metrics[key][0], metrics[key][1])
-                            for key, label in characteristic_labels if key in metrics)
-    attention = []
-    for finding in analysis.inferences:
-        wording = finding.statement.statement
-        if finding.statement.statement_id == "oi-inference-proposal-effort":
-            requirement_count = metrics.get("total_requirements", ("an extensive set of", ()))[0]
-            artifact_count = metrics.get("submission_artifact_count", ("multiple", ()))[0]
-            wording = (f"The response will require coordinated preparation across {requirement_count} "
-                       f"documented requirements and {artifact_count} submission artifacts.")
-        attention.append(BriefObservation(finding.statement.statement_id, wording,
-                                          finding.statement.evidence_support))
-    attention = tuple(attention)
-
-    requirements = normalized_facts.get("requirements", []) or []
-    if not isinstance(requirements, list) or any(not isinstance(x, Mapping) for x in requirements):
-        raise ContractValidationError("requirements must contain mappings")
-    ownership = (
-        ("Bid Team", ("case stud", "reference", "submission", "form")),
-        ("Commercial", ("price", "pricing", "rate", "fee", "commercial")),
-        ("Subject Matter Experts", ("method", "approach", "delivery model", "work plan")),
-        ("People / HR", ("cv", "résumé", "resume", "personnel", "credential", "availability")),
-        ("Legal", ("contract", "agreement", "liability", "insurance", "intellectual property")),
-        ("Operations", ("resource", "schedule", "location", "technology", "security")),
-    )
-    owner_language = {
-        "Bid Team": "Assemble and validate the required forms, case studies, project references, and submission material.",
-        "Commercial": "Prepare category pricing, rate information, commercial assumptions, exclusions, and cost dependencies.",
-        "Subject Matter Experts": "Provide the delivery approach, methodology, relevant experience, and supporting examples.",
-        "People / HR": "Confirm proposed personnel, credentials, roles, and availability.",
-        "Legal": "Review agreement terms, declarations, liability, insurance, and intellectual-property obligations.",
-        "Operations": "Confirm delivery resources, scheduling, locations, security, and operational dependencies.",
-    }
-    groups = []
-    used = set()
-    for owner, terms in ownership:
-        items = []
-        for index, req in enumerate(requirements):
-            rid = _record_id("requirements", req, index)
-            content = str(req.get("description") or req.get("requirement") or "")
-            if rid not in used and any(term in content.casefold() for term in terms):
-                link = EvidenceSupport(SupportedEntityType.REQUIREMENT, rid, _evidence_ids(req))
-                items.append((rid, link))
-                used.add(rid)
-        if items:
-            groups.append(FunctionalPreparation(owner, (BriefObservation(
-                "brief-preparation-" + sha256(owner.encode()).hexdigest(), owner_language[owner],
-                tuple(link for _, link in items)),)))
-
-    conflict_values = normalized_facts.get("conflicts", []) if conflicts is None else conflicts
-    conflict_values = list(conflict_values or [])
-    if any(not isinstance(x, Mapping) for x in conflict_values):
-        raise ContractValidationError("conflicts must contain mappings")
-    candidates = tuple(ClarificationCandidate(
-        _record_id("conflicts", item, i),
-        _text(item.get("topic")) or _text(item.get("conflict_type")) or "Unresolved source wording",
-        _text(item.get("reason")) or "The source record remains ambiguous or internally inconsistent.",
-        (EvidenceSupport(SupportedEntityType.FUTURE_ENTITY, _record_id("conflicts", item, i), _evidence_ids(item)),))
-        for i, item in enumerate(conflict_values))
-
-    by_id = {_record_id("requirements", item, i): item for i, item in enumerate(requirements)}
-    missing_records = [by_id[x] for x in analysis.unknowns.missing_evidence if x in by_id]
-    missing_themes = []
-    for owner, terms in ownership:
-        if any(any(term in str(item.get("description") or item.get("requirement") or "").casefold()
-                   for term in terms) for item in missing_records):
-            missing_themes.append(owner)
-    missing = (() if not missing_records else
-               (f"Team evidence remains outstanding for {len(missing_records)} documented "
-                f"{'requirement' if len(missing_records) == 1 else 'requirements'}"
-                + (f" across {', '.join(missing_themes)}." if missing_themes else "."),))
-    unresolved = tuple(f"{x.subject}: {x.reason}" for x in candidates)
-    unknowns = KnownUnknowns(missing, unresolved,
-        tuple(sorted((*analysis.unknowns.unavailable_datasets, *analysis.unknowns.unavailable_history))),
-        tuple(sorted("An authoritative observation remains ambiguous."
-                     for _ in analysis.unknowns.ambiguous_observation_ids)))
-    questions = tuple(BriefQuestion(
-        x.question_id,
-        "Which unresolved requirements, source conflicts, or missing inputs need an owner before proposal planning begins?",
-        x.related_analysis_ids) for x in analysis.unanswered_questions)
-    identity = json.dumps({"version": BRIEF_VERSION, "analysis": analysis.analysis_id, "glance": glance_values,
-                           "workstreams": source.get("scope_categories", []), "conflicts": conflict_values},
-                          sort_keys=True, separators=(",", ":"), default=str)
-    return ExecutiveOpportunityBrief("executive-brief-" + sha256(identity.encode()).hexdigest(),
-        BRIEF_VERSION, analysis.analysis_id, glance, workstreams, characteristics, timeline,
-        attention, tuple(groups), questions, candidates, unknowns, tuple(analysis.limitations))
-
-
-def render_executive_opportunity_brief(brief):
+def validate_executive_opportunity_brief(
+        brief: ExecutiveOpportunityBrief) -> ExecutiveOpportunityBrief:
     if not isinstance(brief, ExecutiveOpportunityBrief):
-        raise ContractValidationError("brief must be an ExecutiveOpportunityBrief")
-    lines = ["# Executive Opportunity Brief"]
-    fact_sections = (("Opportunity at a Glance", brief.opportunity_at_a_glance),
-                     ("Engagement Workstreams", brief.engagement_workstreams),
-                     ("Opportunity Characteristics", brief.opportunity_characteristics),
-                     ("Opportunity Timeline", brief.opportunity_timeline))
-    for title, items in fact_sections:
-        lines += ["", f"## {title}"] + ([f"- **{x.label}:** {x.value}" for x in items] or ["- None stated in the available evidence."])
-    lines += ["", "## Executive Attention Areas"] + ([f"- {x.text}" for x in brief.executive_attention_areas] or ["- None identified by the available analysis."])
-    lines += ["", "## Preparation by Owner"]
-    for group in brief.preparation_by_owner:
-        lines += ["", f"### {group.owner}"] + [f"- {x.text}" for x in group.items]
-    lines += ["", "## Kickoff Questions"] + ([f"- {x.text}" for x in brief.kickoff_questions] or ["- No management questions identified."])
-    lines += ["", "## Clarification Candidates"] + ([f"- **{x.subject}:** {x.reason}" for x in brief.clarification_candidates] or ["- None identified."])
-    lines += ["", "## Known Unknowns"]
-    for label, values in (("Missing information or evidence", brief.known_unknowns.missing_evidence),
-                          ("Unresolved source issues", brief.known_unknowns.unresolved_conflicts),
-                          ("Unavailable information", brief.known_unknowns.unavailable_information),
-                          ("Ambiguity", brief.known_unknowns.ambiguity)):
-        lines.append(f"- **{label}:** " + ("; ".join(values) if values else "None identified."))
-    lines += ["", "## Limitations"] + [f"- {x}" for x in brief.limitations]
+        raise ContractValidationError("ExecutiveOpportunityBrief is required")
+    if brief.brief_version != BRIEF_VERSION:
+        raise ContractValidationError("unsupported Executive Opportunity Brief version")
+    if brief.presentation_format_version != PRESENTATION_FORMAT_VERSION:
+        raise ContractValidationError("unsupported Executive Opportunity Brief format")
+    if not isinstance(brief.understanding, ExecutiveOpportunityUnderstanding):
+        raise ContractValidationError("brief requires ExecutiveOpportunityUnderstanding")
+    understanding = validate_executive_opportunity_understanding(brief.understanding)
+    if understanding.contract_version != UNDERSTANDING_CONTRACT_VERSION:
+        raise ContractValidationError("unsupported Executive Opportunity Understanding version")
+    if (brief.understanding_id, brief.understanding_digest) != (
+            understanding.understanding_id, understanding.digest):
+        raise ContractValidationError("brief understanding binding is inconsistent")
+    if (brief.publication_id, brief.publication_snapshot_id,
+            brief.publication_snapshot_digest) != (
+            understanding.publication_id, understanding.publication_snapshot_id,
+            understanding.publication_snapshot_digest):
+        raise ContractValidationError("brief publication binding is inconsistent")
+    expected_sections = tuple(BriefSection(item.section, _SECTION_HEADINGS[item.section],
+                                           item.object_ids)
+                              for item in understanding.executive_index)
+    if brief.sections != expected_sections or tuple(
+            item.section for item in brief.sections) != SECTION_ORDER:
+        raise ContractValidationError("brief section order differs from the executive index")
+    if brief.detail_register != understanding.detail_register.references():
+        raise ContractValidationError("brief detail order differs from the understanding")
+    if brief.coverage_ledger != understanding.coverage_ledger:
+        raise ContractValidationError("brief coverage differs from the understanding")
+    if brief.brief_id != _presentation_identity(understanding):
+        raise ContractValidationError("brief presentation identity is invalid")
+    for reference in brief.detail_register:
+        _resolve(reference, understanding)
+    return brief
+
+
+def build_executive_opportunity_brief(
+        understanding: ExecutiveOpportunityUnderstanding) -> ExecutiveOpportunityBrief:
+    """Create a presentation plan from one validated governed understanding."""
+    if not isinstance(understanding, ExecutiveOpportunityUnderstanding):
+        raise ContractValidationError(
+            "source must be a validated ExecutiveOpportunityUnderstanding")
+    validate_executive_opportunity_understanding(understanding)
+    sections = tuple(BriefSection(item.section, _SECTION_HEADINGS[item.section],
+                                  item.object_ids)
+                     for item in understanding.executive_index)
+    return ExecutiveOpportunityBrief(
+        _presentation_identity(understanding), BRIEF_VERSION,
+        PRESENTATION_FORMAT_VERSION, understanding.understanding_id,
+        understanding.digest, understanding.publication_id,
+        understanding.publication_snapshot_id,
+        understanding.publication_snapshot_digest, sections,
+        understanding.detail_register.references(), understanding.coverage_ledger,
+        understanding,
+    )
+
+
+def _semantic_text(value: SemanticValue) -> str:
+    if value.kind == SemanticValueKind.NULL:
+        return "null"
+    if value.kind == SemanticValueKind.BOOLEAN:
+        return "true" if value.scalar else "false"
+    if value.kind in {
+            SemanticValueKind.STRING, SemanticValueKind.INTEGER,
+            SemanticValueKind.DECIMAL, SemanticValueKind.DATE,
+            SemanticValueKind.DATETIME, SemanticValueKind.IDENTIFIER,
+            SemanticValueKind.ENUM}:
+        return str(value.scalar)
+    if value.kind == SemanticValueKind.ARRAY:
+        return "[" + "; ".join(_semantic_text(item) for item in value.items) + "]"
+    return "{" + "; ".join(
+        f"{item.name}: {_semantic_text(item.value)}" for item in value.fields) + "}"
+
+
+def _render_reference(reference: GovernedObjectReference,
+                      resolved: ResolutionResult) -> list[str]:
+    root = resolved.root
+    lines = [
+        f"- **{root.object_class} · {root.object_id}**",
+        f"  - Owner: `{root.owner_domain}/{root.owner_contract}`",
+        f"  - Contract version: `{root.contract_version}`",
+        f"  - Snapshot: `{reference.source_reference.snapshot_id}`",
+        f"  - Snapshot digest: `{reference.source_reference.snapshot_digest}`",
+        f"  - Object digest: `{root.object_digest}`",
+        f"  - Authority: `{root.authority.value}`",
+        f"  - Detail: `{reference.detail_pointer}`",
+    ]
+    lines.extend(f"  - {item.name}: {_semantic_text(item.value)}"
+                 for item in root.semantic_fields)
+    lines.append("  - Relationships:")
+    if not resolved.relationships:
+        lines.append("    - None declared.")
+    else:
+        for item in resolved.relationships:
+            target = item.target
+            lines.append(
+                f"    - `{item.kind.value}` / `{item.role}` / {item.ordinal}: "
+                f"`{target.owner_domain}/{target.owner_contract}/"
+                f"{target.contract_version}/{target.object_class}/{target.object_id}` "
+                f"(snapshot `{target.snapshot_id}`, snapshot digest "
+                f"`{target.snapshot_digest}`, object digest `{target.object_digest}`)")
+    return lines
+
+
+def render_executive_opportunity_brief(brief: ExecutiveOpportunityBrief) -> str:
+    """Resolve owner-declared values and render the immutable presentation plan."""
+    validate_executive_opportunity_brief(brief)
+    understanding = brief.understanding
+    reference_by_id = {item.object_id: item for item in brief.detail_register}
+    resolved = {item.object_id: _resolve(item, understanding)
+                for item in brief.detail_register}
+    rendered_ids: set[str] = set()
+    lines = ["# Executive Opportunity Brief", "",
+             f"Understanding: `{brief.understanding_id}`",
+             f"Publication: `{brief.publication_id}`",
+             f"Publication snapshot: `{brief.publication_snapshot_id}`"]
+    for section in brief.sections:
+        lines.extend(("", f"## {section.heading}"))
+        if not section.object_ids:
+            lines.append("- No indexed objects.")
+            continue
+        for object_id in section.object_ids:
+            reference = reference_by_id[object_id]
+            if object_id in rendered_ids:
+                lines.append(f"- `{object_id}` — see `{reference.detail_pointer}`.")
+                continue
+            lines.extend(_render_reference(reference, resolved[object_id]))
+            rendered_ids.add(object_id)
+
+    detail_only = tuple(item for item in brief.detail_register
+                        if item.object_id not in rendered_ids)
+    lines.extend(("", "## Complete Detail Register"))
+    for reference in detail_only:
+        lines.extend(_render_reference(reference, resolved[reference.object_id]))
+        rendered_ids.add(reference.object_id)
+    if not detail_only:
+        lines.append("- All detail objects are displayed in the executive index.")
+
+    lines.extend(("", "## Coverage Ledger"))
+    for item in brief.coverage_ledger:
+        sections = ", ".join(section.value for section in item.section_keys) or "DETAIL_ONLY"
+        suffix = (f"; reason: {item.ineligibility_reason}"
+                  if item.disposition == CoverageDisposition.INELIGIBLE else "")
+        lines.append(
+            f"- `{item.object_class}/{item.object_id}`: `{item.disposition.value}`; "
+            f"rule `{item.rule_id}`; sections `{sections}`; detail "
+            f"`{item.detail_pointer}`{suffix}")
     return "\n".join(lines) + "\n"
+
+
+__all__ = [
+    "BRIEF_VERSION", "PRESENTATION_FORMAT_VERSION", "BriefSection",
+    "ExecutiveOpportunityBrief", "build_executive_opportunity_brief",
+    "render_executive_opportunity_brief", "validate_executive_opportunity_brief",
+]

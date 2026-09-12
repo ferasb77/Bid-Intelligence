@@ -1,0 +1,27 @@
+{
+  "all_other_families_unchanged": true,
+  "keys_checked": [
+    "_contract_hygiene",
+    "_provenance_rejections",
+    "commercial_clauses",
+    "contract_risks",
+    "dates",
+    "deliverables",
+    "doc_metadata",
+    "evaluation_criteria",
+    "requirements",
+    "submission_rules"
+  ],
+  "per_key": {
+    "_contract_hygiene": true,
+    "_provenance_rejections": true,
+    "commercial_clauses": true,
+    "contract_risks": true,
+    "dates": true,
+    "deliverables": true,
+    "doc_metadata": true,
+    "evaluation_criteria": true,
+    "requirements": true,
+    "submission_rules": true
+  }
+}

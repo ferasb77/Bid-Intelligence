@@ -1,0 +1,33 @@
+{
+  "canonical_resolved_status": {
+    "clarification_deadline": "UNVERIFIED",
+    "client": "CONFLICTED",
+    "contract_term": "RESOLVED",
+    "file_number": "CONFLICTED",
+    "headline_value": "MISSING",
+    "opportunity_type": "NOT_CLASSIFIED",
+    "procurement_model": "NOT_CLASSIFIED",
+    "submission_deadline": "RESOLVED",
+    "title": "CONFLICTED"
+  },
+  "stage_d_bid_brief_output": {
+    "bid": {
+      "clarification_deadline": null,
+      "client": null,
+      "file_number": null,
+      "notes": null,
+      "owner": null,
+      "sensitivity": "Standard",
+      "submission_deadline": "2026-09-30",
+      "title": null,
+      "value_cad": null
+    },
+    "brief_scalars": {
+      "contract_term": "Initial term: 12 weeks",
+      "executive_summary": null,
+      "opportunity_type": null,
+      "procurement_model": null,
+      "scope_categories": []
+    }
+  }
+}

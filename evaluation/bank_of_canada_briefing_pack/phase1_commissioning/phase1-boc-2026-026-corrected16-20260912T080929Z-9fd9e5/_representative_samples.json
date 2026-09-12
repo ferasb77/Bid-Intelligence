@@ -1,0 +1,2195 @@
+{
+  "01-abstract.pdf.json": {
+    "requirements": {
+      "_semantic_candidates": [
+        "Submission Compliance"
+      ],
+      "category": "Mandatory",
+      "description": "Appendix A - Submission form must be completed and submitted",
+      "evidence": "Completed Appendix A submission form",
+      "req_id": "M1",
+      "requirement_type": "Submission Compliance",
+      "rfso_ref": "Appendix A",
+      "source_refs": [
+        {
+          "excerpt": "Appendix A - Submission form - Mandatory",
+          "page": 1,
+          "section": "Bid Documents List - Envelope 1",
+          "sheet": null,
+          "source_doc": "abstract.pdf"
+        }
+      ],
+      "weight": null
+    },
+    "dates": {
+      "date": "2026-08-27",
+      "milestone": "Publication",
+      "source_doc": "abstract.pdf"
+    },
+    "submission_rules": {
+      "artifact_type": "Form / Annex",
+      "artifact_type_conflict": false,
+      "artifact_type_observations": [
+        "Form / Annex"
+      ],
+      "details": "Mandatory submission form for Envelope 1 (Identity & Proposal)",
+      "file_format": "DOCX",
+      "file_format_conflict": false,
+      "file_format_observations": [
+        "DOCX"
+      ],
+      "format": "Electronic submission via portal",
+      "item": "Appendix A - Submission form",
+      "mandatory": 1,
+      "mandatory_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "source_doc": "abstract.pdf",
+      "source_refs": [
+        {
+          "excerpt": "Appendix A - Submission form - Mandatory",
+          "page": 1,
+          "section": "Bid Documents List - Envelope 1",
+          "sheet": null,
+          "source_doc": "abstract.pdf"
+        },
+        {
+          "excerpt": "Appendix A - Submission form [docx]",
+          "page": 5,
+          "section": "Documents",
+          "sheet": null,
+          "source_doc": "abstract.pdf"
+        },
+        {
+          "excerpt": "Appendix A - Submission form - Mandatory: Yes - Limited to 1 file",
+          "page": 1,
+          "section": "Bid Documents List",
+          "sheet": null,
+          "source_doc": "abstract.pdf"
+        },
+        {
+          "excerpt": "Appendix A - Submission form [docx] 47 Kb 2026/08/27 01:50:46 PM EDT English",
+          "page": 5,
+          "section": "Documents",
+          "sheet": null,
+          "source_doc": "abstract.pdf"
+        }
+      ],
+      "submission_channel": "Unspecified",
+      "submission_channel_conflict": false,
+      "submission_channel_observations": [
+        "Unspecified"
+      ]
+    },
+    "typed_observations": {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": null,
+      "document_role_basis": null,
+      "duration": null,
+      "family": "IDENTITY",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "RFP 2026-026 - Talent, Learning and Organizational Development Services",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": null,
+        "lot": null
+      },
+      "semantic_kind": "OPPORTUNITY_TITLE",
+      "source_doc": "abstract.pdf",
+      "source_refs": [
+        {
+          "excerpt": "Title - RFP 2026-026 - Talent, Learning and Organizational Development Services",
+          "page": 1,
+          "section": "Notice",
+          "sheet": null,
+          "source_doc": "abstract.pdf"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    }
+  },
+  "02-Amendment1_RFP_2026-026_-_Appendix_D2_-_Rated_Criteria_Response_REVISED.docx.json": {
+    "requirements": {
+      "_semantic_candidates": [
+        "Submission Compliance"
+      ],
+      "category": "Rated",
+      "description": "Responses must not exceed twelve (12) pages (excluding resumes or professional profiles, and work or product samples requested herein). Page size must be 8½ x 11 inches, with standard margins and a minimum font size of 10 points.",
+      "evidence": "Rated Criteria Response Form submission",
+      "req_id": "R1",
+      "requirement_type": "Submission Compliance",
+      "rfso_ref": "Header / Instructions",
+      "source_refs": [
+        {
+          "excerpt": "Responses must not exceed twelve (12) pages (excluding resumes or professional profiles, and work or product samples requested herein) Page size must be 8½ x 11 inches, with standard margins and a minimum font size of 10 points.",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "Amendment1/RFP 2026-026 - Appendix D2 - Rated Criteria Response REVISED.docx"
+        }
+      ],
+      "weight": null
+    },
+    "evaluation_criteria": {
+      "criterion_id": null,
+      "evaluation_role": "Award Criterion",
+      "hierarchy_level": 1,
+      "is_structural_container": false,
+      "notes": "Proponents must describe their organisation, its purpose, structure and makeup, including profile and history, number of employees, list and description of products and services offered, range and depth of experience, core areas of expertise, and any requirements falling outside firm's scope.",
+      "parent_criterion_id": null,
+      "parent_stage": null,
+      "parent_title": null,
+      "role_conflict": false,
+      "role_observations": [
+        "Award Criterion"
+      ],
+      "source_refs": [
+        {
+          "excerpt": "Proponents are to describe their organisation, its purpose, structure and makeup. Responses should include: Profile and history of the organisation; Number of employees; A list and description of the products and services you offer in support of the objectives and scope described in this service category, the range and depth of your experience with each, and identify which are your core areas of expertise or specialty; A list of any of our requirements that fall outside your firm's scope.",
+          "page": null,
+          "section": "Corporate Profile",
+          "sheet": null,
+          "source_doc": "Amendment1/RFP 2026-026 - Appendix D2 - Rated Criteria Response REVISED.docx"
+        }
+      ],
+      "stage": "Corporate Profile",
+      "threshold": null,
+      "title": "Corporate Profile",
+      "weight": null,
+      "weight_basis": "Unknown",
+      "weight_conflict": false,
+      "weight_observations": [],
+      "weight_unit": "None",
+      "weight_value": null
+    },
+    "submission_rules": {
+      "artifact_type": "Proposal / Response",
+      "artifact_type_conflict": false,
+      "artifact_type_observations": [
+        "Proposal / Response"
+      ],
+      "details": "Maximum 12 pages (excluding resumes, professional profiles, and work or product samples). Responses must be in the order presented. Links to external websites or information will not be evaluated. Proponents will be evaluated only on the service category(ies) for which they submit a response.",
+      "file_format": "Unspecified",
+      "file_format_conflict": false,
+      "file_format_observations": [
+        "Unspecified"
+      ],
+      "format": "8½ x 11 inches page size, standard margins, minimum font size 10 points",
+      "item": "Rated Criteria Response Form",
+      "mandatory": 1,
+      "mandatory_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "source_doc": "Amendment1/RFP 2026-026 - Appendix D2 - Rated Criteria Response REVISED.docx",
+      "source_refs": [
+        {
+          "excerpt": "Instructions: Proponents are to respond to each of the following requirements in the order presented below. Unless otherwise stated, links to websites or other information external to the form will not be evaluated. Responses must not exceed twelve (12) pages (excluding resumes or professional profiles, and work or product samples requested herein) Page size must be 8½ x 11 inches, with standard margins and a minimum font size of 10 points.",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "Amendment1/RFP 2026-026 - Appendix D2 - Rated Criteria Response REVISED.docx"
+        }
+      ],
+      "submission_channel": "Unspecified",
+      "submission_channel_conflict": false,
+      "submission_channel_observations": [
+        "Unspecified"
+      ]
+    },
+    "typed_observations": {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": "Rated Criteria Response Form",
+      "document_role_basis": "Explicit document title and section heading",
+      "duration": null,
+      "family": "DOCUMENT_ROLE",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "APPENDIX D2 - RATED CRITERIA RESPONSE FORM – HR Advisory",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": "HR Advisory",
+        "lot": null
+      },
+      "semantic_kind": "DOCUMENT_ROLE",
+      "source_doc": "Amendment1/RFP 2026-026 - Appendix D2 - Rated Criteria Response REVISED.docx",
+      "source_refs": [
+        {
+          "excerpt": "APPENDIX D2 - RATED CRITERIA RESPONSE FORM – HR Advisory",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "Amendment1/RFP 2026-026 - Appendix D2 - Rated Criteria Response REVISED.docx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    }
+  },
+  "03-OriginalRevision_DP_2026-026_-_Annexe_F_-_Questionnaire_ESG.xlsx.json": {
+    "requirements": {
+      "_semantic_candidates": [
+        "Submission Compliance"
+      ],
+      "category": "Supporting",
+      "description": "Respond to ESG questionnaire section with yes/no answers to questions on Indigenous enterprise status, accessibility strategy, and environmental/sustainability practices.",
+      "evidence": "Completed ESG questionnaire responses (yes/no format)",
+      "req_id": "S1",
+      "requirement_type": "Submission Compliance",
+      "rfso_ref": "Annexe F, ESG Sheet, Rows 2-17",
+      "source_refs": [
+        {
+          "excerpt": "Les réponses à cette section sont fournies à des fins de collecte de renseignements seulement et ne seront pas utilisées pour évaluer la proposition ou la participation de votre organisation à des besoins futurs de la Banque.",
+          "page": null,
+          "section": null,
+          "sheet": "ESG",
+          "source_doc": "OriginalRevision/DP 2026-026 - Annexe F - Questionnaire ESG.xlsx"
+        }
+      ],
+      "weight": null
+    },
+    "submission_rules": {
+      "artifact_type": "Form / Annex",
+      "artifact_type_conflict": false,
+      "artifact_type_observations": [
+        "Form / Annex"
+      ],
+      "details": "ESG questionnaire with yes/no response format across four thematic sections: Indigenous Enterprise, Accessibility, and Greening (Verdissement). Responses collected for information purposes only.",
+      "file_format": "XLSX",
+      "file_format_conflict": false,
+      "file_format_observations": [
+        "XLSX"
+      ],
+      "format": "XLSX spreadsheet",
+      "item": "Questionnaire ESG (Annex F)",
+      "mandatory": 0,
+      "mandatory_conflict": false,
+      "mandatory_observations": [
+        0
+      ],
+      "source_doc": "OriginalRevision/DP 2026-026 - Annexe F - Questionnaire ESG.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "Les réponses à cette section sont fournies à des fins de collecte de renseignements seulement et ne seront pas utilisées pour évaluer la proposition ou la participation de votre organisation à des besoins futurs de la Banque.",
+          "page": null,
+          "section": null,
+          "sheet": "ESG",
+          "source_doc": "OriginalRevision/DP 2026-026 - Annexe F - Questionnaire ESG.xlsx"
+        }
+      ],
+      "submission_channel": "Unspecified",
+      "submission_channel_conflict": false,
+      "submission_channel_observations": [
+        "Unspecified"
+      ]
+    },
+    "typed_observations": {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": "INFORMATION_COLLECTION_QUESTIONNAIRE",
+      "document_role_basis": "Explicit statement that responses are for information collection only and will not be used for proposal evaluation or future participation decisions",
+      "duration": null,
+      "family": "DOCUMENT_ROLE",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "Questionnaire ESG - information collection only, not used for evaluation",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": null,
+        "lot": null
+      },
+      "semantic_kind": "DOCUMENT_ROLE",
+      "source_doc": "OriginalRevision/DP 2026-026 - Annexe F - Questionnaire ESG.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "Les réponses à cette section sont fournies à des fins de collecte de renseignements seulement et ne seront pas utilisées pour évaluer la proposition ou la participation de votre organisation à des besoins futurs de la Banque.",
+          "page": null,
+          "section": null,
+          "sheet": "ESG",
+          "source_doc": "OriginalRevision/DP 2026-026 - Annexe F - Questionnaire ESG.xlsx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    }
+  },
+  "04-OriginalRevision_RFP_2026-026_-_Appendix_A_-_Submission_Form.docx.json": {
+    "requirements": {
+      "_semantic_candidates": [
+        "Submission Compliance"
+      ],
+      "category": "Mandatory",
+      "description": "Proponent must acknowledge that the RFP process is governed by the Terms of Reference set out in the RFP, and that the procurement process does not constitute a legally binding bidding process with no legal relationship or obligations created unless and until the Bank of Canada and a selected proponent enter into a contract.",
+      "evidence": "Signed acknowledgement in Submission Form",
+      "req_id": "M1",
+      "requirement_type": "Submission Compliance",
+      "rfso_ref": "Section 2. Acknowledgement of Terms of Reference",
+      "source_refs": [
+        {
+          "excerpt": "The proponent acknowledges that this RFP process will be governed by the specific Terms of Reference set out in this RFP, and that, among other things, the Terms of Reference confirm that this procurement process does not constitute a legally binding bidding process, and that there will be no legal relationship or obligations created unless and until the Bank of Canada and a selected proponent enter into a contract.",
+          "page": null,
+          "section": "2. Acknowledgement of Terms of Reference",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    "submission_rules": {
+      "artifact_type": "Form / Annex",
+      "artifact_type_conflict": false,
+      "artifact_type_observations": [
+        "Form / Annex"
+      ],
+      "details": "Proponent must complete all sections including proponent information, acknowledgement of terms of reference, ability to provide statement of work, financial proposal, addenda confirmation, conflict of interest declaration, and forced labour/child labour certification. Form includes signature block requiring name, title, date, and authority to bind the proponent.",
+      "file_format": "Unspecified",
+      "file_format_conflict": false,
+      "file_format_observations": [
+        "Unspecified"
+      ],
+      "format": "Submission Form",
+      "item": "Appendix A - Submission Form",
+      "mandatory": 1,
+      "mandatory_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx",
+      "source_refs": [
+        {
+          "excerpt": "APPENDIX A. SUBMISSION FORM",
+          "page": null,
+          "section": "APPENDIX A. SUBMISSION FORM",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        },
+        {
+          "excerpt": "Full legal name of proponent | [enter your response here]; Any other relevant name under which the proponent conducts business | [enter your response here]; Proponent address | [enter your response here]; Phone number | [enter your response here]; RFP proponent contact person and title and contact information (email and phone) | [enter your response here]",
+          "page": null,
+          "section": "1. Proponent information",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        },
+        {
+          "excerpt": "Signature of proponent representative; Name and Title; Date:; I have authority to bind the proponent.",
+          "page": null,
+          "section": "TABLE",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        }
+      ],
+      "submission_channel": "Unspecified",
+      "submission_channel_conflict": false,
+      "submission_channel_observations": [
+        "Unspecified"
+      ]
+    },
+    "commercial_clauses": {
+      "clause_kind": "SUBCONTRACTING",
+      "conditions": [],
+      "linked_observation_ids": [],
+      "scope": {
+        "component": null,
+        "location": null,
+        "lot": null,
+        "phase": null
+      },
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx",
+      "source_fact": "Proponent must provide a list of any subcontractors to be used to complete the proposed contract, and proponent and subcontractors must comply with forced labour and child labour prohibitions and the Fighting Against Forced Labour and Child Labour in Supply Chains Act.",
+      "source_refs": [
+        {
+          "excerpt": "The proponent has provided a list of any subcontractors to be used to complete the proposed contract.",
+          "page": null,
+          "section": "3. Ability to provide statement of work",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        },
+        {
+          "excerpt": "The proponent and any subcontractor to be used to complete the proposed contract: do not use or tolerate the use of forced labour or child labour in any part of their activities or supply chains; have implemented and maintain rigorous and well-developed policies and due diligence processes to prevent and mitigate the risk of such practices in their activities and supply chains; and comply with the Fighting Against Forced Labour and Child Labour in Supply Chains Act (SC 2023, c 9), as amended or replaced.",
+          "page": null,
+          "section": "7. No forced labour or child labour",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        }
+      ],
+      "topic": "Subcontractor Disclosure and Responsibility"
+    },
+    "typed_observations": {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": null,
+      "document_role_basis": null,
+      "duration": null,
+      "family": "IDENTITY",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "RFP 2026-026 - Appendix A - Submission Form",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": null,
+        "lot": null
+      },
+      "semantic_kind": "DOCUMENT_TITLE",
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx",
+      "source_refs": [
+        {
+          "excerpt": "RFP 2026-026 - Appendix A - Submission Form",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    }
+  },
+  "05-OriginalRevision_RFP_2026-026_-_Appendix_B1_-_Mandatory_criteria.xlsx.json": {
+    "requirements": {
+      "_semantic_candidates": [
+        "Submission Compliance"
+      ],
+      "category": "Mandatory",
+      "description": "Each proposal must provide written confirmation of the ability to provide all services, materials and solutions in both English and French.",
+      "evidence": "Written confirmation of bilingual service delivery capability",
+      "req_id": "M1",
+      "requirement_type": "Submission Compliance",
+      "rfso_ref": "Appendix B1, Mandatory Criteria (a) - Bilingualism",
+      "source_refs": [
+        {
+          "excerpt": "Each proposal must provide written confirmation of the ability to provide all services, materials and solutions in both English and French.",
+          "page": null,
+          "section": null,
+          "sheet": "Mandatory Criteria",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B1 - Mandatory criteria.xlsx"
+        }
+      ],
+      "weight": null
+    },
+    "evaluation_criteria": {
+      "criterion_id": null,
+      "evaluation_role": "Qualification / Gate",
+      "hierarchy_level": 1,
+      "is_structural_container": false,
+      "notes": "Three mandatory pass/fail criteria that must be satisfied for proposal acceptance: (a) Bilingualism, (b) Security Clearance, (c) Accessibility",
+      "parent_criterion_id": null,
+      "parent_stage": null,
+      "parent_title": null,
+      "role_conflict": false,
+      "role_observations": [
+        "Qualification / Gate"
+      ],
+      "source_refs": [
+        {
+          "excerpt": "# | Mandatory Criteria | Proponent Response",
+          "page": null,
+          "section": null,
+          "sheet": "Mandatory Criteria",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B1 - Mandatory criteria.xlsx"
+        }
+      ],
+      "stage": "Mandatory Criteria",
+      "threshold": null,
+      "title": "Mandatory Criteria",
+      "weight": null,
+      "weight_basis": "Unknown",
+      "weight_conflict": false,
+      "weight_observations": [],
+      "weight_unit": "None",
+      "weight_value": null
+    },
+    "submission_rules": {
+      "artifact_type": "Declaration / Certification",
+      "artifact_type_conflict": false,
+      "artifact_type_observations": [
+        "Declaration / Certification"
+      ],
+      "details": "Written confirmation of ability to provide all services, materials and solutions in both English and French",
+      "file_format": "Unspecified",
+      "file_format_conflict": false,
+      "file_format_observations": [
+        "Unspecified"
+      ],
+      "format": "Written confirmation",
+      "item": "Bilingualism Confirmation",
+      "mandatory": 1,
+      "mandatory_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B1 - Mandatory criteria.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "Each proposal must provide written confirmation of the ability to provide all services, materials and solutions in both English and French.",
+          "page": null,
+          "section": null,
+          "sheet": "Mandatory Criteria",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B1 - Mandatory criteria.xlsx"
+        }
+      ],
+      "submission_channel": "Unspecified",
+      "submission_channel_conflict": false,
+      "submission_channel_observations": [
+        "Unspecified"
+      ]
+    },
+    "commercial_clauses": {
+      "clause_kind": "REGULATORY_COMPLIANCE",
+      "conditions": [],
+      "linked_observation_ids": [],
+      "scope": {
+        "component": "Digital learning content",
+        "location": null,
+        "lot": null,
+        "phase": null
+      },
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B1 - Mandatory criteria.xlsx",
+      "source_fact": "As a Crown corporation, the Bank is required to comply with the Accessible Canada Act (ACA). All digital learning content developed must comply with digital accessibility standards including CAN/ASC - EN 301 549:2024, EN 301 549:2021, and Web Content Accessibility Guidelines (WCAG).",
+      "source_refs": [
+        {
+          "excerpt": "As a Crown corporation, the Bank is required to comply with the Accessible Canada Act (ACA).  All digital learning content developed must comply with digital accessibility standards such as CAN/ASC - EN 301 549:2024 Accessibility requirements for ICT products and services (EN 301 549:2021 and the Web Content Accessibility Guidelines (WCAG).",
+          "page": null,
+          "section": null,
+          "sheet": "Mandatory Criteria",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B1 - Mandatory criteria.xlsx"
+        }
+      ],
+      "topic": "Accessible Canada Act (ACA) Compliance"
+    },
+    "typed_observations": {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": null,
+      "document_role_basis": null,
+      "duration": null,
+      "family": "IDENTITY",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "RFP 2026-026 - Talent, learning and organizational development services",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": null,
+        "lot": null
+      },
+      "semantic_kind": "OPPORTUNITY_TITLE",
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B1 - Mandatory criteria.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "RFP 2026-026 - Talent, learning and organizational development services",
+          "page": null,
+          "section": null,
+          "sheet": "Mandatory Criteria",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B1 - Mandatory criteria.xlsx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    }
+  },
+  "06-OriginalRevision_RFP_2026-026_-_Appendix_B2_-_Mandatory_criteria.xlsx.json": {
+    "requirements": {
+      "_semantic_candidates": [
+        "Submission Compliance"
+      ],
+      "category": "Mandatory",
+      "description": "Each proposal must provide written confirmation of the ability to provide all services, materials and solutions in both English and French.",
+      "evidence": "Written confirmation of bilingual service delivery capability",
+      "req_id": "M1",
+      "requirement_type": "Submission Compliance",
+      "rfso_ref": "Appendix B2, Mandatory Criteria (a) - Bilingualism",
+      "source_refs": [
+        {
+          "excerpt": "Each proposal must provide written confirmation of the ability to provide all services, materials and solutions in both English and French.",
+          "page": null,
+          "section": null,
+          "sheet": "Mandatory Criteria",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B2 - Mandatory criteria.xlsx"
+        }
+      ],
+      "weight": null
+    },
+    "evaluation_criteria": {
+      "criterion_id": null,
+      "evaluation_role": "Qualification / Gate",
+      "hierarchy_level": 1,
+      "is_structural_container": false,
+      "notes": "Mandatory criteria gate; all criteria must be satisfied for proposal to proceed to evaluation.",
+      "parent_criterion_id": null,
+      "parent_stage": null,
+      "parent_title": null,
+      "role_conflict": false,
+      "role_observations": [
+        "Qualification / Gate"
+      ],
+      "source_refs": [
+        {
+          "excerpt": "RFP 2026-026 - Talent, learning and organizational development services; Appendix B2 - HR advisory; Mandatory Criteria",
+          "page": null,
+          "section": null,
+          "sheet": "Mandatory Criteria",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B2 - Mandatory criteria.xlsx"
+        }
+      ],
+      "stage": "Mandatory Criteria",
+      "threshold": null,
+      "title": "Mandatory Criteria",
+      "weight": null,
+      "weight_basis": "Unknown",
+      "weight_conflict": false,
+      "weight_observations": [],
+      "weight_unit": "None",
+      "weight_value": null
+    },
+    "commercial_clauses": {
+      "clause_kind": "BACKGROUND_CHECK_CLEARANCE",
+      "conditions": [],
+      "linked_observation_ids": [],
+      "scope": {
+        "component": "HR advisory services",
+        "location": null,
+        "lot": null,
+        "phase": null
+      },
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B2 - Mandatory criteria.xlsx",
+      "source_fact": "All Service Provider resources involved in the delivery of services must have the ability to meet the Bank's Reliability clearance requirements, which include electronic fingerprints, criminal record check, credit check, and potentially a security screening interview.",
+      "source_refs": [
+        {
+          "excerpt": "All Service Provider resources involved in the delivery of services must have the ability to meet the Bank's Reliability clearance requirements. This will include electronic fingerprints, a criminal record check, a credit check, and potentially a security screening interview.",
+          "page": null,
+          "section": null,
+          "sheet": "Mandatory Criteria",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B2 - Mandatory criteria.xlsx"
+        }
+      ],
+      "topic": "Security Clearance and Reliability Requirements"
+    },
+    "typed_observations": {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": null,
+      "document_role_basis": null,
+      "duration": null,
+      "family": "IDENTITY",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "RFP 2026-026 - Talent, learning and organizational development services",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": null,
+        "lot": null
+      },
+      "semantic_kind": "OPPORTUNITY_TITLE",
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B2 - Mandatory criteria.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "RFP 2026-026 - Talent, learning and organizational development services",
+          "page": null,
+          "section": null,
+          "sheet": "Mandatory Criteria",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B2 - Mandatory criteria.xlsx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    }
+  },
+  "07-OriginalRevision_RFP_2026-026_-_Appendix_B3_-_Mandatory_criteria.xlsx.json": {
+    "requirements": {
+      "_semantic_candidates": [
+        "Submission Compliance"
+      ],
+      "category": "Mandatory",
+      "description": "Each proposal must provide written confirmation of the ability to provide all services, materials and solutions in both English and French.",
+      "evidence": "Written confirmation of bilingual service delivery capability",
+      "req_id": "M1",
+      "requirement_type": "Submission Compliance",
+      "rfso_ref": "Appendix B3, Mandatory Criteria (a) - Bilingualism",
+      "source_refs": [
+        {
+          "excerpt": "Each proposal must provide written confirmation of the ability to provide all services, materials and solutions in both English and French.",
+          "page": null,
+          "section": null,
+          "sheet": "Mandatory Criteria",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx"
+        }
+      ],
+      "weight": null
+    },
+    "evaluation_criteria": {
+      "criterion_id": null,
+      "evaluation_role": "Qualification / Gate",
+      "hierarchy_level": 1,
+      "is_structural_container": false,
+      "notes": "Three mandatory pass/fail criteria: (a) Bilingualism, (b) Security Clearance, (c) Accessibility compliance",
+      "parent_criterion_id": null,
+      "parent_stage": null,
+      "parent_title": null,
+      "role_conflict": false,
+      "role_observations": [
+        "Qualification / Gate"
+      ],
+      "source_refs": [
+        {
+          "excerpt": "Appendix B3 - Facilitation team effectiveness",
+          "page": null,
+          "section": null,
+          "sheet": "Mandatory Criteria",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx"
+        }
+      ],
+      "stage": "Mandatory Criteria - Facilitation Team Effectiveness",
+      "threshold": null,
+      "title": "Mandatory Criteria - Facilitation Team Effectiveness",
+      "weight": null,
+      "weight_basis": "Unknown",
+      "weight_conflict": false,
+      "weight_observations": [],
+      "weight_unit": "None",
+      "weight_value": null
+    },
+    "submission_rules": {
+      "artifact_type": "Declaration / Certification",
+      "artifact_type_conflict": false,
+      "artifact_type_observations": [
+        "Declaration / Certification"
+      ],
+      "details": "Confirmation must address ability to provide all services, materials and solutions in both English and French",
+      "file_format": "Unspecified",
+      "file_format_conflict": false,
+      "file_format_observations": [
+        "Unspecified"
+      ],
+      "format": "Written confirmation",
+      "item": "Written confirmation of bilingual service delivery capability",
+      "mandatory": 1,
+      "mandatory_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "Each proposal must provide written confirmation of the ability to provide all services, materials and solutions in both English and French.",
+          "page": null,
+          "section": null,
+          "sheet": "Mandatory Criteria",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx"
+        }
+      ],
+      "submission_channel": "Unspecified",
+      "submission_channel_conflict": false,
+      "submission_channel_observations": [
+        "Unspecified"
+      ]
+    },
+    "commercial_clauses": {
+      "clause_kind": "REGULATORY_COMPLIANCE",
+      "conditions": [],
+      "linked_observation_ids": [],
+      "scope": {
+        "component": "Digital learning content",
+        "location": null,
+        "lot": null,
+        "phase": null
+      },
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx",
+      "source_fact": "As a Crown corporation, the Bank is required to comply with the Accessible Canada Act (ACA).",
+      "source_refs": [
+        {
+          "excerpt": "As a Crown corporation, the Bank is required to comply with the Accessible Canada Act (ACA).",
+          "page": null,
+          "section": null,
+          "sheet": "Mandatory Criteria",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx"
+        }
+      ],
+      "topic": "Accessible Canada Act (ACA) Compliance"
+    },
+    "typed_observations": {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": null,
+      "document_role_basis": null,
+      "duration": null,
+      "family": "IDENTITY",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "RFP 2026-026 - Talent, learning and organizational development services",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": null,
+        "lot": null
+      },
+      "semantic_kind": "OPPORTUNITY_TITLE",
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "RFP 2026-026 - Talent, learning and organizational development services",
+          "page": null,
+          "section": null,
+          "sheet": "Mandatory Criteria",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    }
+  },
+  "08-OriginalRevision_RFP_2026-026_-_Appendix_C1_-_Minimum_qualification_requirements.xlsx.json": {
+    "requirements": {
+      "_semantic_candidates": [
+        "Supplier Qualification"
+      ],
+      "category": "Mandatory",
+      "description": "Proponent must confirm that it is an established firm and has delivered at least three (3) organization-wide learning and development engagements of similar scope and complexity within the last five (5) years for organizations with a minimum of 1,000 employees.",
+      "evidence": "Proponent Response (Yes/No confirmation); supporting case studies or engagement documentation demonstrating three prior engagements meeting scope, complexity, and client size criteria",
+      "req_id": "M1",
+      "requirement_type": "Supplier Qualification",
+      "rfso_ref": "Appendix C1, Row 4",
+      "source_refs": [
+        {
+          "excerpt": "Organizational Experience (Minimum Five (5) Years) Proponent must confirm that it is an established firm and has delivered at least three (3) organization-wide learning and development engagements of similar scope and complexity within the last five (5) years for organizations with a minimum of 1,000 employees.",
+          "page": null,
+          "section": null,
+          "sheet": "Minimum qualification",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx"
+        }
+      ],
+      "weight": null
+    },
+    "evaluation_criteria": {
+      "criterion_id": null,
+      "evaluation_role": "Qualification / Gate",
+      "hierarchy_level": 1,
+      "is_structural_container": false,
+      "notes": "Two mandatory qualification gates establish supplier eligibility. Both must be satisfied for proponent to proceed. Evaluation mechanism is binary Yes/No confirmation.",
+      "parent_criterion_id": null,
+      "parent_stage": null,
+      "parent_title": null,
+      "role_conflict": false,
+      "role_observations": [
+        "Qualification / Gate"
+      ],
+      "source_refs": [
+        {
+          "excerpt": "# | Minimum qualification requirements | Proponent Response Yes / No",
+          "page": null,
+          "section": null,
+          "sheet": "Minimum qualification",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx"
+        }
+      ],
+      "stage": "Minimum Qualification Gate",
+      "threshold": "Pass/Fail (Yes/No confirmation required for both M1 and M2)",
+      "title": "Minimum Qualification Gate",
+      "weight": null,
+      "weight_basis": "Unknown",
+      "weight_conflict": false,
+      "weight_observations": [],
+      "weight_unit": "None",
+      "weight_value": null
+    },
+    "submission_rules": {
+      "artifact_type": "Form / Annex",
+      "artifact_type_conflict": false,
+      "artifact_type_observations": [
+        "Form / Annex"
+      ],
+      "details": "Proponent must respond Yes or No to each of the two minimum qualification requirements (Organizational Experience and Dedicated Resource Capacity). Supporting evidence (case studies, resumes, staffing documentation) is implied but format and submission channel are not specified in this excerpt.",
+      "file_format": "Unspecified",
+      "file_format_conflict": false,
+      "file_format_observations": [
+        "Unspecified"
+      ],
+      "format": "Yes/No confirmation format as structured in Appendix C1",
+      "item": "Proponent Response (Minimum Qualification Confirmation)",
+      "mandatory": 1,
+      "mandatory_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "# | Minimum qualification requirements | Proponent Response Yes / No",
+          "page": null,
+          "section": null,
+          "sheet": "Minimum qualification",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx"
+        }
+      ],
+      "submission_channel": "Unspecified",
+      "submission_channel_conflict": false,
+      "submission_channel_observations": [
+        "Unspecified"
+      ]
+    },
+    "typed_observations": {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": null,
+      "document_role_basis": null,
+      "duration": null,
+      "family": "IDENTITY",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "RFP 2026-026 - Talent, learning and organizational development services",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": null,
+        "lot": null
+      },
+      "semantic_kind": "OPPORTUNITY_TITLE",
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "RFP 2026-026 - Talent, learning and organizational development services",
+          "page": null,
+          "section": null,
+          "sheet": "Minimum qualification",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    }
+  },
+  "09-OriginalRevision_RFP_2026-026_-_Appendix_C2_-_Minimum_qualification_requirements.xlsx.json": {
+    "requirements": {
+      "_semantic_candidates": [
+        "Supplier Qualification"
+      ],
+      "category": "Mandatory",
+      "description": "Proponents must confirm that they have experience delivering at least three (3) strategic HR advisory engagements within the last three (3) years in at least two of the following areas: talent management, organizational development, workforce planning, succession planning, change management, or performance management.",
+      "evidence": "Proponent Response (Yes/No confirmation)",
+      "req_id": "M1",
+      "requirement_type": "Supplier Qualification",
+      "rfso_ref": "Appendix C2, Row 4",
+      "source_refs": [
+        {
+          "excerpt": "Strategic HR Consulting Experience. Proponents must confirm that they have experience delivering at least three (3) strategic HR advisory engagements within the last three (3) years in at least two of the following areas: talent management, organizational development, workforce planning, succession planning, change management, performance management",
+          "page": null,
+          "section": null,
+          "sheet": "Minimum qualification",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx"
+        }
+      ],
+      "weight": null
+    },
+    "evaluation_criteria": {
+      "criterion_id": null,
+      "evaluation_role": "Qualification / Gate",
+      "hierarchy_level": 1,
+      "is_structural_container": false,
+      "notes": "Mandatory qualification gate. Proponent must confirm delivery of at least 3 strategic HR advisory engagements within last 3 years in at least 2 of 5 specified areas.",
+      "parent_criterion_id": null,
+      "parent_stage": null,
+      "parent_title": null,
+      "role_conflict": false,
+      "role_observations": [
+        "Qualification / Gate"
+      ],
+      "source_refs": [
+        {
+          "excerpt": "Strategic HR Consulting Experience. Proponents must confirm that they have experience delivering at least three (3) strategic HR advisory engagements within the last three (3) years in at least two of the following areas",
+          "page": null,
+          "section": null,
+          "sheet": "Minimum qualification",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx"
+        }
+      ],
+      "stage": "Minimum Qualification Gate 1: Strategic HR Consulting Experience",
+      "threshold": "Pass/Fail (Yes/No confirmation required)",
+      "title": "Minimum Qualification Gate 1: Strategic HR Consulting Experience",
+      "weight": null,
+      "weight_basis": "Unknown",
+      "weight_conflict": false,
+      "weight_observations": [],
+      "weight_unit": "None",
+      "weight_value": null
+    },
+    "submission_rules": {
+      "artifact_type": "Form / Annex",
+      "artifact_type_conflict": false,
+      "artifact_type_observations": [
+        "Form / Annex"
+      ],
+      "details": "Proponents must respond Yes/No to each of three minimum qualification requirements (Strategic HR Consulting Experience, Senior Advisory Resources, Experience with Large/Complex Organizations)",
+      "file_format": "Unspecified",
+      "file_format_conflict": false,
+      "file_format_observations": [
+        "Unspecified"
+      ],
+      "format": "Yes/No confirmation format per Appendix C2",
+      "item": "Minimum Qualification Requirements Response",
+      "mandatory": 1,
+      "mandatory_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "Appendix C2 - HR advisory. # | Minimum qualification requirements | Proponent Response Yes / No",
+          "page": null,
+          "section": null,
+          "sheet": "Minimum qualification",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx"
+        }
+      ],
+      "submission_channel": "Unspecified",
+      "submission_channel_conflict": false,
+      "submission_channel_observations": [
+        "Unspecified"
+      ]
+    },
+    "typed_observations": {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": null,
+      "document_role_basis": null,
+      "duration": null,
+      "family": "IDENTITY",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "RFP 2026-026",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": null,
+        "lot": null
+      },
+      "semantic_kind": "SOLICITATION_NUMBER",
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "RFP 2026-026 - Talent, learning and organizational development services",
+          "page": null,
+          "section": null,
+          "sheet": "Minimum qualification",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    }
+  },
+  "10-OriginalRevision_RFP_2026-026_-_Appendix_C3_-_Minimum_qualification_requirement.xlsx.json": {
+    "requirements": {
+      "_semantic_candidates": [
+        "Supplier Qualification"
+      ],
+      "category": "Mandatory",
+      "description": "Proponents must confirm that they have experience conducting at least ten (10) facilitation engagements within the last three (3) years involving executive teams, senior leadership teams, or cross-functional groups.",
+      "evidence": "Proponent confirmation of facilitation experience; minimum 10 engagements in past 3 years with specified team types",
+      "req_id": "M1",
+      "requirement_type": "Supplier Qualification",
+      "rfso_ref": "Appendix C3, Row 4",
+      "source_refs": [
+        {
+          "excerpt": "Facilitation Experience: Proponents must confirm that they have experience conducting at least ten (10) facilitation engagements within the last three (3) years involving executive teams, senior leadership teams, or cross-functional groups.",
+          "page": null,
+          "section": null,
+          "sheet": "Minimum qualification",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C3 - Minimum qualification requirement.xlsx"
+        }
+      ],
+      "weight": null
+    },
+    "evaluation_criteria": {
+      "criterion_id": null,
+      "evaluation_role": "Qualification / Gate",
+      "hierarchy_level": 1,
+      "is_structural_container": false,
+      "notes": "Pass/fail qualification gate. Proponents must confirm both facilitation experience and team-effectiveness capability to proceed.",
+      "parent_criterion_id": null,
+      "parent_stage": null,
+      "parent_title": null,
+      "role_conflict": false,
+      "role_observations": [
+        "Qualification / Gate"
+      ],
+      "source_refs": [
+        {
+          "excerpt": "Appendix C3 - Facilitation team effectiveness; Minimum qualification requirements with Proponent Response Yes / No column",
+          "page": null,
+          "section": null,
+          "sheet": "Minimum qualification",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C3 - Minimum qualification requirement.xlsx"
+        }
+      ],
+      "stage": "Minimum Qualification Requirements",
+      "threshold": null,
+      "title": "Minimum Qualification Requirements",
+      "weight": null,
+      "weight_basis": "Unknown",
+      "weight_conflict": false,
+      "weight_observations": [],
+      "weight_unit": "None",
+      "weight_value": null
+    },
+    "submission_rules": {
+      "artifact_type": "Form / Annex",
+      "artifact_type_conflict": false,
+      "artifact_type_observations": [
+        "Form / Annex"
+      ],
+      "details": "Proponents must respond Yes or No to each minimum qualification requirement (Facilitation Experience and Team effectiveness capability)",
+      "file_format": "Unspecified",
+      "file_format_conflict": false,
+      "file_format_observations": [
+        "Unspecified"
+      ],
+      "format": "Proponent Response Yes / No confirmation",
+      "item": "Minimum Qualification Requirements Response",
+      "mandatory": 1,
+      "mandatory_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C3 - Minimum qualification requirement.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "Appendix C3 - Facilitation team effectiveness; # | Minimum qualification requirements | Proponent Response Yes / No",
+          "page": null,
+          "section": null,
+          "sheet": "Minimum qualification",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C3 - Minimum qualification requirement.xlsx"
+        }
+      ],
+      "submission_channel": "Unspecified",
+      "submission_channel_conflict": false,
+      "submission_channel_observations": [
+        "Unspecified"
+      ]
+    },
+    "typed_observations": {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": null,
+      "document_role_basis": null,
+      "duration": null,
+      "family": "IDENTITY",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "RFP 2026-026 - Talent, learning and organizational development services",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": null,
+        "lot": null
+      },
+      "semantic_kind": "OPPORTUNITY_TITLE",
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C3 - Minimum qualification requirement.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "RFP 2026-026 - Talent, learning and organizational development services",
+          "page": null,
+          "section": null,
+          "sheet": "Minimum qualification",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C3 - Minimum qualification requirement.xlsx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    }
+  },
+  "11-OriginalRevision_RFP_2026-026_-_Appendix_D1_-_Rated_criteria_response_form.docx.json": {
+    "requirements": {
+      "_semantic_candidates": [
+        "Submission Compliance"
+      ],
+      "category": "Rated",
+      "description": "Responses must not exceed 15 pages (excluding resumes or professional profiles, and work or product samples requested herein).",
+      "evidence": "Submission document page count",
+      "req_id": "R1",
+      "requirement_type": "Submission Compliance",
+      "rfso_ref": "Header / Instructions",
+      "source_refs": [
+        {
+          "excerpt": "Responses must not exceed 15 pages (excluding resumes or professional profiles, and work or product samples requested herein).",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+        }
+      ],
+      "weight": null
+    },
+    "evaluation_criteria": {
+      "criterion_id": null,
+      "evaluation_role": "Award Criterion",
+      "hierarchy_level": 1,
+      "is_structural_container": false,
+      "notes": "Proponents describe their organisation, its purpose, structure and makeup, including profile and history, number of employees, and list and description of off-the-shelf or custom products and services offered, range and depth of experience with each, and core areas of expertise or specialty.",
+      "parent_criterion_id": null,
+      "parent_stage": null,
+      "parent_title": null,
+      "role_conflict": false,
+      "role_observations": [
+        "Award Criterion"
+      ],
+      "source_refs": [
+        {
+          "excerpt": "Proponents are to describe their organisation, its purpose, structure and makeup. Responses should include: Profile and history of the organisation; Number of employees; A list and description of the off the shelf or custom products and services you offer in support of the objectives and scope described in this service category, the range and depth of your experience with each, and identify which are your core areas of expertise or specialty",
+          "page": null,
+          "section": "Corporate Profile",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+        }
+      ],
+      "stage": "Corporate Profile",
+      "threshold": null,
+      "title": "Corporate Profile",
+      "weight": null,
+      "weight_basis": "Unknown",
+      "weight_conflict": false,
+      "weight_observations": [],
+      "weight_unit": "None",
+      "weight_value": null
+    },
+    "submission_rules": {
+      "artifact_type": "Unknown",
+      "artifact_type_conflict": false,
+      "artifact_type_observations": [
+        "Unknown"
+      ],
+      "details": "Maximum 15 pages (excluding resumes or professional profiles, and work or product samples requested herein). Responses must be provided in the order presented. Links to websites or other information external to the form will not be evaluated. Proponents will be evaluated only on the service category(ies) for which they submit a response.",
+      "file_format": "Unspecified",
+      "file_format_conflict": false,
+      "file_format_observations": [
+        "Unspecified"
+      ],
+      "format": "8½ x 11 inches page size, standard margins, minimum font size 10 points",
+      "item": "Rated Criteria Response Form",
+      "mandatory": 1,
+      "mandatory_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx",
+      "source_refs": [
+        {
+          "excerpt": "Instructions: Proponents are to respond to each of the following requirements in the order presented below. Unless otherwise stated, links to websites or other information external to the form will not be evaluated. Responses must not exceed 15 pages (excluding resumes or professional profiles, and work or product samples requested herein). Page size must be 8½ x 11 inches, with standard margins and a minimum font size of 10 points.",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+        },
+        {
+          "excerpt": "Responses must not exceed 15 pages (excluding resumes or professional profiles, and work or product samples requested herein). Page size must be 8½ x 11 inches, with standard margins and a minimum font size of 10 points.",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+        },
+        {
+          "excerpt": "Appendix D1 - Rated criteria response form",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+        }
+      ],
+      "submission_channel": "Unspecified",
+      "submission_channel_conflict": false,
+      "submission_channel_observations": [
+        "Unspecified"
+      ]
+    },
+    "typed_observations": {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": "Rated Criteria Response Form",
+      "document_role_basis": "Explicit heading and structural role as evaluation response template",
+      "duration": null,
+      "family": "DOCUMENT_ROLE",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "APPENDIX D1 - RATED CRITERIA RESPONSE FORM – Learning and Development programs and assessments",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": "Learning and Development programs and assessments",
+        "component": null,
+        "lot": null
+      },
+      "semantic_kind": "DOCUMENT_ROLE",
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx",
+      "source_refs": [
+        {
+          "excerpt": "APPENDIX D1 - RATED CRITERIA RESPONSE FORM – Learning and Development programs and assessments",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    }
+  },
+  "12-OriginalRevision_RFP_2026-026_-_Appendix_D2_-_Rated_Criteria_Response_Form.docx.json": {
+    "requirements": {
+      "_semantic_candidates": [
+        "Submission Compliance"
+      ],
+      "category": "Submission Compliance",
+      "description": "Responses must not exceed twelve (12) pages, excluding resumes or professional profiles, and work or product samples requested herein.",
+      "evidence": "Rated criteria response document",
+      "req_id": "M1",
+      "requirement_type": "Submission Compliance",
+      "rfso_ref": "Header / Instructions",
+      "source_refs": [
+        {
+          "excerpt": "Responses must not exceed twelve (12) pages (excluding resumes or professional profiles, and work or product samples requested herein)",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D2 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    "evaluation_criteria": {
+      "criterion_id": null,
+      "evaluation_role": "Award Criterion",
+      "hierarchy_level": 1,
+      "is_structural_container": false,
+      "notes": "Evaluation of proponent's organization description, purpose, structure, makeup, profile, history, employee count, products and services offered, range and depth of experience, core areas of expertise, and identification of requirements falling outside firm's scope.",
+      "parent_criterion_id": null,
+      "parent_stage": null,
+      "parent_title": null,
+      "role_conflict": false,
+      "role_observations": [
+        "Award Criterion"
+      ],
+      "source_refs": [
+        {
+          "excerpt": "Proponents are to describe their organisation, its purpose, structure and makeup. Responses should include: Profile and history of the organisation; Number of employees; A list and description of the products and services you offer in support of the objectives and scope described in this service category, the range and depth of your experience with each, and identify which are your core areas of expertise or specialty; A list of any of our requirements that fall outside your firm's scope.",
+          "page": null,
+          "section": "Corporate Profile",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D2 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "stage": "Corporate Profile",
+      "threshold": null,
+      "title": "Corporate Profile",
+      "weight": null,
+      "weight_basis": "Unknown",
+      "weight_conflict": false,
+      "weight_observations": [],
+      "weight_unit": "None",
+      "weight_value": null
+    },
+    "submission_rules": {
+      "artifact_type": "Proposal / Response",
+      "artifact_type_conflict": false,
+      "artifact_type_observations": [
+        "Proposal / Response"
+      ],
+      "details": "Responses must not exceed twelve (12) pages, excluding resumes or professional profiles, and work or product samples requested herein. Page size must be 8½ x 11 inches, with standard margins and a minimum font size of 10 points. Unless otherwise stated, links to websites or other information external to the form will not be evaluated.",
+      "file_format": "Unspecified",
+      "file_format_conflict": false,
+      "file_format_observations": [
+        "Unspecified"
+      ],
+      "format": "12 pages maximum (excluding resumes, professional profiles, and work or product samples); 8½ x 11 inches page size; standard margins; minimum 10-point font",
+      "item": "Rated Criteria Response",
+      "mandatory": 1,
+      "mandatory_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D2 - Rated Criteria Response Form.docx",
+      "source_refs": [
+        {
+          "excerpt": "Responses must not exceed twelve (12) pages (excluding resumes or professional profiles, and work or product samples requested herein) Page size must be 8½ x 11 inches, with standard margins and a minimum font size of 10 points.",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D2 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "submission_channel": "Unspecified",
+      "submission_channel_conflict": false,
+      "submission_channel_observations": [
+        "Unspecified"
+      ]
+    },
+    "typed_observations": {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": "Rated criteria response form for HR Advisory services",
+      "document_role_basis": "Document title and structural role as evaluation criteria template",
+      "duration": null,
+      "family": "DOCUMENT_ROLE",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "APPENDIX D2 - RATED CRITERIA RESPONSE FORM – HR Advisory",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": null,
+        "lot": null
+      },
+      "semantic_kind": "DOCUMENT_ROLE",
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D2 - Rated Criteria Response Form.docx",
+      "source_refs": [
+        {
+          "excerpt": "APPENDIX D2 - RATED CRITERIA RESPONSE FORM – HR Advisory",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D2 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    }
+  },
+  "13-OriginalRevision_RFP_2026-026_-_Appendix_D3_-_Rated_Criteria_Response_Form.docx.json": {
+    "requirements": {
+      "_semantic_candidates": [
+        "Submission Compliance"
+      ],
+      "category": "Rated",
+      "description": "Responses must not exceed ten (10) pages (excluding resumes or professional profiles, and work or product samples requested herein).",
+      "evidence": "Proposal document page count",
+      "req_id": "R1",
+      "requirement_type": "Submission Compliance",
+      "rfso_ref": "Header - Instructions",
+      "source_refs": [
+        {
+          "excerpt": "Responses must not exceed ten (10) pages (excluding resumes or professional profiles, and work or product samples requested herein).",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    "evaluation_criteria": {
+      "criterion_id": null,
+      "evaluation_role": "Award Criterion",
+      "hierarchy_level": 1,
+      "is_structural_container": false,
+      "notes": "Evaluation of organization description, purpose, structure, employee count, products and services offered, experience range and depth, core expertise areas, and scope limitations.",
+      "parent_criterion_id": null,
+      "parent_stage": null,
+      "parent_title": null,
+      "role_conflict": false,
+      "role_observations": [
+        "Award Criterion"
+      ],
+      "source_refs": [
+        {
+          "excerpt": "Proponents are to describe their organisation, its purpose, structure and makeup. Responses should include: Profile and history of the organisation; Number of employees; A list and description of the products and services you offer in support of the objectives and scope described in this service category, the range and depth of your experience with each, and identify which are your core areas of expertise or specialty; A list of any of our requirements that fall outside your firm's scope.",
+          "page": null,
+          "section": "Corporate profile",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "stage": "Corporate profile",
+      "threshold": null,
+      "title": "Corporate profile",
+      "weight": null,
+      "weight_basis": "Unknown",
+      "weight_conflict": false,
+      "weight_observations": [],
+      "weight_unit": "None",
+      "weight_value": null
+    },
+    "submission_rules": {
+      "artifact_type": "Proposal / Response",
+      "artifact_type_conflict": false,
+      "artifact_type_observations": [
+        "Proposal / Response"
+      ],
+      "details": "Responses must not exceed ten (10) pages (excluding resumes or professional profiles, and work or product samples requested herein). Page size must be 8½ x 11 inches, with standard margins and a minimum font size of 10 points. Links to websites or other information external to the form will not be evaluated.",
+      "file_format": "Unspecified",
+      "file_format_conflict": false,
+      "file_format_observations": [
+        "Unspecified"
+      ],
+      "format": "10 pages maximum (excluding resumes, professional profiles, and work or product samples); 8½ x 11 inches page size; standard margins; minimum 10-point font",
+      "item": "Rated Criteria Response Form",
+      "mandatory": 1,
+      "mandatory_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx",
+      "source_refs": [
+        {
+          "excerpt": "Responses must not exceed ten (10) pages (excluding resumes or professional profiles, and work or product samples requested herein). Page size must be 8½ x 11 inches, with standard margins and a minimum font size of 10 points.",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "submission_channel": "Unspecified",
+      "submission_channel_conflict": false,
+      "submission_channel_observations": [
+        "Unspecified"
+      ]
+    },
+    "typed_observations": {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": "Rated criteria response form for facilitation service category",
+      "document_role_basis": "EXPLICIT_DOCUMENT_TITLE",
+      "duration": null,
+      "family": "DOCUMENT_ROLE",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "APPENDIX D3 - RATED CRITERIA RESPONSE FORM – Facilitation",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": "Facilitation",
+        "lot": null
+      },
+      "semantic_kind": "EVALUATION_CRITERIA_FORM",
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx",
+      "source_refs": [
+        {
+          "excerpt": "APPENDIX D3 - RATED CRITERIA RESPONSE FORM – Facilitation",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    }
+  },
+  "14-OriginalRevision_RFP_2026-026_-_Appendix_E_-_Pricing_Form.xlsx.json": {
+    "requirements": {
+      "_semantic_candidates": [
+        "Submission Compliance"
+      ],
+      "category": "Mandatory",
+      "description": "Proponents must complete all applicable sections of the Pricing Form. Do not delete any sections; rows may be added as needed.",
+      "evidence": "Completed Pricing Form with all applicable sections intact",
+      "req_id": "M1",
+      "requirement_type": "Submission Compliance",
+      "rfso_ref": "Instructions, Row 5",
+      "source_refs": [
+        {
+          "excerpt": "Proponents must complete all applicable sections of this Pricing Form. Do not delete any sections; rows may be added as needed.",
+          "page": null,
+          "section": null,
+          "sheet": "Instructions",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix E - Pricing Form.xlsx"
+        }
+      ],
+      "weight": null
+    },
+    "evaluation_criteria": {
+      "criterion_id": null,
+      "evaluation_role": "Evaluation / Scored",
+      "hierarchy_level": 1,
+      "is_structural_container": false,
+      "notes": "Standardized pricing scenario used for evaluation purposes only. Proponents must price discovery and assessment, analysis and recommendation, reporting and executive presentation, and project management components for Years 1, 2, and 3.",
+      "parent_criterion_id": null,
+      "parent_stage": null,
+      "parent_title": null,
+      "role_conflict": false,
+      "role_observations": [
+        "Evaluation / Scored"
+      ],
+      "source_refs": [
+        {
+          "excerpt": "HR advisory - Evaluated Pricing Scenario. Proponents must price the standardized scenario. The scenario will be used for evaluation purposes only and does not represent a purchase commitment.",
+          "page": null,
+          "section": null,
+          "sheet": "HR Advisory pricing scenario",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix E - Pricing Form.xlsx"
+        }
+      ],
+      "stage": "HR Advisory Evaluated Pricing Scenario",
+      "threshold": null,
+      "title": "HR Advisory Evaluated Pricing Scenario",
+      "weight": null,
+      "weight_basis": "Unknown",
+      "weight_conflict": false,
+      "weight_observations": [],
+      "weight_unit": "None",
+      "weight_value": null
+    },
+    "submission_rules": {
+      "artifact_type": "Pricing / Financial",
+      "artifact_type_conflict": false,
+      "artifact_type_observations": [
+        "Pricing / Financial"
+      ],
+      "details": "Rate card tab with resource roles, service types, units of measure, Year 1/2/3 rates, maximum annual increase for option years, and notes/restrictions. Proponents may add/remove/edit resource roles and service types as required.",
+      "file_format": "XLSX",
+      "file_format_conflict": false,
+      "file_format_observations": [
+        "XLSX"
+      ],
+      "format": "Spreadsheet (XLSX)",
+      "item": "Pricing Form - Learning and Development Rate Card",
+      "mandatory": 1,
+      "mandatory_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix E - Pricing Form.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "Proponents are to complete this tab for Learning and Development programs and assessment services, including custom program design, delivery, coaching, platform/subscription access, and related services.",
+          "page": null,
+          "section": null,
+          "sheet": "L&D rate card",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix E - Pricing Form.xlsx"
+        }
+      ],
+      "submission_channel": "Unspecified",
+      "submission_channel_conflict": false,
+      "submission_channel_observations": [
+        "Unspecified"
+      ]
+    },
+    "deliverables": {
+      "acceptance_criteria": "Document must summarize key findings, risks, opportunities, and observations from discovery and assessment activities",
+      "conditions": [],
+      "description": "A comprehensive assessment document summarizing key findings, risks, opportunities, and observations from the discovery and assessment phase, including review of up to twenty (20) Bank documents, workforce datasets, and fifteen (15) stakeholder interviews.",
+      "due_milestone": "Within 12-week engagement period",
+      "frequency": "ONE_TIME",
+      "frequency_raw": null,
+      "obligation_state": "MANDATORY",
+      "quantity": "1",
+      "responsible_actor": "SUPPLIER",
+      "scope": {
+        "component": null,
+        "location": "Canada",
+        "lot": null,
+        "phase": "Discovery and assessment"
+      },
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix E - Pricing Form.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "Develop a workforce planning assessment summarizing key findings, risks, opportunities, and observations.",
+          "page": null,
+          "section": null,
+          "sheet": "HR Advisory pricing scenario",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix E - Pricing Form.xlsx"
+        }
+      ],
+      "title": "Workforce Planning Assessment",
+      "unit": "document"
+    },
+    "commercial_clauses": {
+      "clause_kind": "PRICING_ESCALATION",
+      "conditions": [
+        "Pricing must be provided for an identical engagement in Years 2 and 3"
+      ],
+      "linked_observation_ids": [],
+      "scope": {
+        "component": "HR Advisory",
+        "location": "Canada",
+        "lot": null,
+        "phase": null
+      },
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix E - Pricing Form.xlsx",
+      "source_fact": "Proponents must provide pricing for Years 2 and 3 for delivering an identical engagement. The pricing form requires separate pricing entries for Year 1, Year 2, and Year 3.",
+      "source_refs": [
+        {
+          "excerpt": "Provide your pricing in years 2 and 3 for delivering an identical engagement",
+          "page": null,
+          "section": null,
+          "sheet": "HR Advisory pricing scenario",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix E - Pricing Form.xlsx"
+        }
+      ],
+      "topic": "Year 2 and Year 3 Pricing"
+    },
+    "typed_observations": {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": "Pricing submission template for RFP 2026-026",
+      "document_role_basis": "Explicit instruction that proponents must complete this form for each service category",
+      "duration": null,
+      "family": "DOCUMENT_ROLE",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "Appendix E - Pricing Form",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": null,
+        "lot": null
+      },
+      "semantic_kind": "PRICING_SUBMISSION_TEMPLATE",
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix E - Pricing Form.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "Proponents must complete this Pricing Form for each service category for which they are submitting a proposal.",
+          "page": null,
+          "section": null,
+          "sheet": "Instructions",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix E - Pricing Form.xlsx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    }
+  },
+  "15-OriginalRevision_RFP_2026-06_-_Appendix_G_-_Form_of_Agreement.docx.json": {
+    "requirements": {
+      "_semantic_candidates": [
+        "Submission Compliance"
+      ],
+      "category": "Mandatory",
+      "description": "Each Proponent should indicate its agreement (or not) and/or provide comments/redlines regarding the Bank's terms and conditions set out in the Form of Agreement.",
+      "evidence": "Proponent response indicating agreement or providing comments/redlines",
+      "req_id": "M1",
+      "requirement_type": "Submission Compliance",
+      "rfso_ref": "Header",
+      "source_refs": [
+        {
+          "excerpt": "Each Proponent should indicate its agreement (or not) and/or provide comments/redlines regarding the Bank's terms and conditions set out below.",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-06 - Appendix G - Form of Agreement.docx"
+        }
+      ],
+      "weight": null
+    },
+    "dates": {
+      "date": null,
+      "milestone": "Agreement Commencement Date",
+      "source_doc": "OriginalRevision/RFP 2026-06 - Appendix G - Form of Agreement.docx"
+    },
+    "submission_rules": {
+      "artifact_type": "Pricing / Financial",
+      "artifact_type_conflict": false,
+      "artifact_type_observations": [
+        "Pricing / Financial"
+      ],
+      "details": "Invoice must indicate contract number and be sent to accountspayable@bankofcanada.ca. Payment due within 30 days of receipt.",
+      "file_format": "PDF",
+      "file_format_conflict": false,
+      "file_format_observations": [
+        "PDF"
+      ],
+      "format": "PDF via email",
+      "item": "Invoice",
+      "mandatory": 1,
+      "mandatory_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "source_doc": "OriginalRevision/RFP 2026-06 - Appendix G - Form of Agreement.docx",
+      "source_refs": [
+        {
+          "excerpt": "All invoices must indicate the contract number and are to be sent to the Bank via e-mail in PDF format to: accountspayable@bankofcanada.ca.",
+          "page": null,
+          "section": "Payment",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-06 - Appendix G - Form of Agreement.docx"
+        }
+      ],
+      "submission_channel": "Email",
+      "submission_channel_conflict": false,
+      "submission_channel_observations": [
+        "Email"
+      ]
+    },
+    "deliverables": {
+      "acceptance_criteria": "In accordance with the highest professional standards and in compliance with all applicable laws",
+      "conditions": [
+        "Services to be performed conscientiously, without delay, to the best of the Service Provider's ability",
+        "If required, Services to be provided in both of Canada's official languages in accordance with the Bank's Bilingualism Policy"
+      ],
+      "description": "Services as described in Schedule A, to be performed by the Service Provider in accordance with the Agreement.",
+      "due_milestone": "As specified in Schedule A",
+      "frequency": "NOT_STATED",
+      "frequency_raw": null,
+      "obligation_state": "MANDATORY",
+      "quantity": null,
+      "responsible_actor": "SUPPLIER",
+      "scope": {
+        "component": null,
+        "location": null,
+        "lot": null,
+        "phase": null
+      },
+      "source_doc": "OriginalRevision/RFP 2026-06 - Appendix G - Form of Agreement.docx",
+      "source_refs": [
+        {
+          "excerpt": "The Service Provider shall perform the \"Services\" described in Schedule \"A\".",
+          "page": null,
+          "section": "Services",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-06 - Appendix G - Form of Agreement.docx"
+        },
+        {
+          "excerpt": "the Service Provider will perform the Services conscientiously, without delay, to  the best of the Service Provider's ability, in accordance with the highest professional standards and in compliance with all applicable laws;",
+          "page": null,
+          "section": "Services",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-06 - Appendix G - Form of Agreement.docx"
+        }
+      ],
+      "title": "Services",
+      "unit": null
+    },
+    "commercial_clauses": {
+      "clause_kind": "INTELLECTUAL_PROPERTY",
+      "conditions": [
+        "Assignment applies to all material produced or developed for the Bank in performance of Services",
+        "Service Provider must waive or obtain waiver of moral rights as applicable"
+      ],
+      "linked_observation_ids": [],
+      "scope": {
+        "component": null,
+        "location": null,
+        "lot": null,
+        "phase": null
+      },
+      "source_doc": "OriginalRevision/RFP 2026-06 - Appendix G - Form of Agreement.docx",
+      "source_fact": "The Service Provider assigns and transfers to the Bank the worldwide copyright and all other intellectual property rights in and to any material produced or developed for the Bank in the performance of the Services. The Service Provider waives or obtains waiver of all moral rights in such material.",
+      "source_refs": [
+        {
+          "excerpt": "The Service Provider hereby assigns and transfers to the Bank the worldwide copyright and all other intellectual property rights in and to any material produced or developed for the Bank in the performance of the Services.  The Service Provider hereby waives, or will obtain the waiver of, as applicable, all moral rights in such material.",
+          "page": null,
+          "section": "Property Rights",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-06 - Appendix G - Form of Agreement.docx"
+        }
+      ],
+      "topic": "Assignment of Copyright and Intellectual Property Rights"
+    },
+    "typed_observations": {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": null,
+      "document_role_basis": null,
+      "duration": null,
+      "family": "IDENTITY",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "BANK OF CANADA",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": null,
+        "lot": null
+      },
+      "semantic_kind": "BUYER_NAME",
+      "source_doc": "OriginalRevision/RFP 2026-06 - Appendix G - Form of Agreement.docx",
+      "source_refs": [
+        {
+          "excerpt": "BETWEEN BANK OF CANADA a body corporate established under the laws of Canada (the \"Bank\")",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-06 - Appendix G - Form of Agreement.docx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    }
+  },
+  "16-RFP_2026-026_-_Talent__Learning_and_Organizational_Development_Services.pdf.json": {
+    "requirements": {
+      "_semantic_candidates": [
+        "Submission Compliance"
+      ],
+      "category": "Submission Compliance",
+      "description": "Proponents must clearly identify in their proposal the specific service category(ies) for which they are submitting.",
+      "evidence": "Proposal document identifying service category(ies)",
+      "req_id": "M1",
+      "requirement_type": "Submission Compliance",
+      "rfso_ref": "Section 1.1 Invitation",
+      "source_refs": [
+        {
+          "excerpt": "Proponents must clearly identify in their proposal the specific service category(ies) for which they are submitting.",
+          "page": 3,
+          "section": "1.1 Invitation",
+          "sheet": null,
+          "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+        }
+      ],
+      "weight": null
+    },
+    "dates": {
+      "date": "2026-08-27",
+      "milestone": "Issue date",
+      "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+    },
+    "evaluation_criteria": {
+      "criterion_id": null,
+      "evaluation_role": "Qualification / Gate",
+      "hierarchy_level": 1,
+      "is_structural_container": false,
+      "notes": "Review to determine compliance with all mandatory submission requirements. Proponents may be issued a rectification notice to cure deficiencies within a rectification period. Failure to satisfy mandatory submission requirements within rectification period results in proposal rejection.",
+      "parent_criterion_id": null,
+      "parent_stage": null,
+      "parent_title": null,
+      "role_conflict": false,
+      "role_observations": [
+        "Qualification / Gate"
+      ],
+      "source_refs": [
+        {
+          "excerpt": "Stage 1 will consist of a review to determine which proposals comply with all the mandatory submission requirements. If a proposal fails to satisfy all the mandatory submission requirements, the Bank may issue the proponent a rectification notice identifying the deficiencies and providing the proponent an opportunity to rectify the deficiencies.",
+          "page": 9,
+          "section": "3.1 Evaluation of proposals, Stage 1",
+          "sheet": null,
+          "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+        }
+      ],
+      "stage": "Stage 1. Mandatory submission requirements",
+      "threshold": null,
+      "title": "Stage 1. Mandatory submission requirements",
+      "weight": null,
+      "weight_basis": "Unknown",
+      "weight_conflict": false,
+      "weight_observations": [],
+      "weight_unit": "None",
+      "weight_value": null
+    },
+    "submission_rules": {
+      "artifact_type": "Proposal / Response",
+      "artifact_type_conflict": false,
+      "artifact_type_observations": [
+        "Proposal / Response"
+      ],
+      "details": "Submit by 11:59:00pm EST via Merx.com official time clock on September 30, 2026. Proponents must clearly identify the specific service category(ies) for which they are submitting.",
+      "file_format": "Unspecified",
+      "file_format_conflict": false,
+      "file_format_observations": [
+        "Unspecified"
+      ],
+      "format": "Via Merx.com",
+      "item": "Proposal",
+      "mandatory": 1,
+      "mandatory_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+      "source_refs": [
+        {
+          "excerpt": "Submission deadline September 30, 2026; by 11:59:00pm EST via Merx.com official time clock",
+          "page": 3,
+          "section": "1.1 Invitation; 1.2 RFP timetable",
+          "sheet": null,
+          "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+        }
+      ],
+      "submission_channel": "Portal",
+      "submission_channel_conflict": false,
+      "submission_channel_observations": [
+        "Portal"
+      ]
+    },
+    "deliverables": {
+      "acceptance_criteria": null,
+      "conditions": [
+        "Demand may increase and/or be adjusted from year to year based on evolving operational needs, project volumes, and resource capacity requirements"
+      ],
+      "description": "Up to 10 custom workshops for learning and development programs and assessments.",
+      "due_milestone": null,
+      "frequency": "AS_REQUESTED",
+      "frequency_raw": "up to 10 custom workshops over the term of the agreement",
+      "obligation_state": "CONDITIONAL",
+      "quantity": "10",
+      "responsible_actor": "SUPPLIER",
+      "scope": {
+        "component": null,
+        "location": null,
+        "lot": "Category 1: Learning & Development Programs and Assessments",
+        "phase": null
+      },
+      "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+      "source_refs": [
+        {
+          "excerpt": "The Bank anticipates a requirement for up to 10 custom workshops and one possible larger scale curriculum design and delivery over the term of the agreement.",
+          "page": 12,
+          "section": "4.1 Category 1: Learning & Development Programs and Assessments",
+          "sheet": null,
+          "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+        }
+      ],
+      "title": "Custom Workshops (Category 1)",
+      "unit": "workshops"
+    },
+    "commercial_clauses": {
+      "clause_kind": "CONFIDENTIALITY",
+      "conditions": [
+        "Information must be treated as confidential",
+        "Use limited to replying to RFP and performance of subsequent contract",
+        "No disclosure without prior written authorization"
+      ],
+      "linked_observation_ids": [],
+      "scope": {
+        "component": null,
+        "location": null,
+        "lot": null,
+        "phase": null
+      },
+      "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+      "source_fact": "The RFP process is confidential in nature. All information provided by or obtained from the Bank of Canada in any form in connection with the RFP is the sole property of the Bank of Canada and must be treated as confidential. It may not be used for any purpose other than replying to the RFP and the performance of any subsequent contract and must not be disclosed without prior written authorization from the Bank of Canada.",
+      "source_refs": [
+        {
+          "excerpt": "the RFP process is confidential in nature. All information provided by or obtained from the Bank of Canada in any form in connection with the RFP is the sole property of the Bank of Canada and must be treated as confidential. It may not be used for any purpose other than replying to the RFP and the performance of any subsequent contract and must not be disclosed without prior written authorization from the Bank of Canada",
+          "page": 8,
+          "section": null,
+          "sheet": null,
+          "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+        }
+      ],
+      "topic": "RFP Process Confidentiality and Information Protection"
+    },
+    "typed_observations": {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": null,
+      "document_role_basis": null,
+      "duration": null,
+      "family": "IDENTITY",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "2026-026",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": null,
+        "lot": null
+      },
+      "semantic_kind": "SOLICITATION_NUMBER",
+      "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+      "source_refs": [
+        {
+          "excerpt": "Request for Proposals No.: 2026-026",
+          "page": 1,
+          "section": null,
+          "sheet": null,
+          "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    }
+  }
+}

@@ -1,0 +1,1326 @@
+{
+  "facts": {
+    "_extraction_diagnostic": {
+      "recovery_attempts": 0,
+      "status": "VERIFIED_ADEQUATE"
+    },
+    "commercial_clauses": [],
+    "contract_risks": [],
+    "dates": [],
+    "deliverables": [],
+    "doc_metadata": {
+      "client": "The Bank",
+      "file_number": "RFP 2026-026",
+      "notes": "Rated criteria response form for Learning and Development programs and assessments. Proponents must respond to corporate profile, key personnel and roster, and curriculum & program design capability requirements. Responses limited to 15 pages excluding resumes and work samples.",
+      "title": "APPENDIX D1 - RATED CRITERIA RESPONSE FORM – Learning and Development programs and assessments"
+    },
+    "evaluation_criteria": [
+      {
+        "criterion_id": null,
+        "evaluation_role": "Award Criterion",
+        "hierarchy_level": 1,
+        "is_structural_container": false,
+        "notes": "Proponents must describe their organisation, its purpose, structure and makeup, including profile and history, number of employees, and list and description of off-the-shelf or custom products and services offered.",
+        "parent_criterion_id": null,
+        "parent_stage": null,
+        "parent_title": null,
+        "role_conflict": false,
+        "role_observations": [
+          "Award Criterion"
+        ],
+        "source_refs": [
+          {
+            "excerpt": "Proponents are to describe their organisation, its purpose, structure and makeup. Responses should include: Profile and history of the organisation; Number of employees; A list and description of the off the shelf or custom products and services you offer in support of the objectives and scope described in this service category, the range and depth of your experience with each, and identify which are your core areas of expertise or specialty.",
+            "page": null,
+            "section": "Corporate Profile",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "stage": "Corporate Profile",
+        "threshold": null,
+        "title": "Corporate Profile",
+        "weight": null,
+        "weight_basis": "Unknown",
+        "weight_conflict": false,
+        "weight_observations": [],
+        "weight_unit": "None",
+        "weight_value": null
+      },
+      {
+        "criterion_id": null,
+        "evaluation_role": "Award Criterion",
+        "hierarchy_level": 1,
+        "is_structural_container": false,
+        "notes": "Proponents must demonstrate capabilities and capacity by describing their team, including internal and external resources. Maximum 4 key personnel profiles (half page each) required for dedicated relationship/coordination roles. Bench/roster description required showing range of expertise, vetting and development processes, quality assurance, and resource assignment process.",
+        "parent_criterion_id": null,
+        "parent_stage": null,
+        "parent_title": null,
+        "role_conflict": false,
+        "role_observations": [
+          "Award Criterion"
+        ],
+        "source_refs": [
+          {
+            "excerpt": "Proponents are to demonstrate their capabilities and capacity to provide the required services by describing their team, including internal and external resources. The response should include: A brief profile (no more than half a page) for each individual (maximum of 4) who would serve in a dedicated relationship or coordination role with the Bank — for example, an account manager, instructional designer or project manager.",
+            "page": null,
+            "section": "Key Personnel and Roster",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "stage": "Key Personnel and Roster",
+        "threshold": null,
+        "title": "Key Personnel and Roster",
+        "weight": null,
+        "weight_basis": "Unknown",
+        "weight_conflict": false,
+        "weight_observations": [],
+        "weight_unit": "None",
+        "weight_value": null
+      },
+      {
+        "criterion_id": null,
+        "evaluation_role": "Award Criterion",
+        "hierarchy_level": 1,
+        "is_structural_container": false,
+        "notes": "Proponents must describe their approach and experience in designing, developing, delivering and updating learning solutions. Must include description of off-the-shelf program offering focus and scope, list of product categories, overview of quantity and types of products in each category, and access methods (subscription, licensing, pay-per-use, etc.).",
+        "parent_criterion_id": null,
+        "parent_stage": null,
+        "parent_title": null,
+        "role_conflict": false,
+        "role_observations": [
+          "Award Criterion"
+        ],
+        "source_refs": [
+          {
+            "excerpt": "Proponents are to describe their approach and experience in designing, developing, delivering and updating learning solutions. Responses should include: Description of the focus and scope of your off-the-shelf program offering. This could include programs, workshops, toolkits, resources, digital tools or platforms, and so on. Responses should include: A list of the categories of off-the-shelf products you offer; An overview of the quantity and types of products in each category; How these products are accessed, e.g., subscription, licensing, pay-per-use, etc.",
+            "page": null,
+            "section": "Curriculum & Program Design Capability",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "stage": "Curriculum & Program Design Capability",
+        "threshold": null,
+        "title": "Curriculum & Program Design Capability",
+        "weight": null,
+        "weight_basis": "Unknown",
+        "weight_conflict": false,
+        "weight_observations": [],
+        "weight_unit": "None",
+        "weight_value": null
+      },
+      {
+        "criterion_id": null,
+        "evaluation_role": "Award Criterion",
+        "hierarchy_level": 1,
+        "is_structural_container": false,
+        "notes": "Rated criterion evaluating proponent's foundational models, frameworks, methodologies, and distinctive capabilities in learning and development",
+        "parent_criterion_id": null,
+        "parent_stage": null,
+        "parent_title": null,
+        "role_conflict": false,
+        "role_observations": [
+          "Award Criterion"
+        ],
+        "source_refs": [
+          {
+            "excerpt": "A description of any models and frameworks that are foundational to your organization's products, approach and services",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "stage": "Organizational Approach and Capabilities",
+        "threshold": null,
+        "title": "Organizational Approach and Capabilities",
+        "weight": null,
+        "weight_basis": "Unknown",
+        "weight_conflict": false,
+        "weight_observations": [],
+        "weight_unit": "None",
+        "weight_value": null
+      },
+      {
+        "criterion_id": null,
+        "evaluation_role": "Award Criterion",
+        "hierarchy_level": 1,
+        "is_structural_container": false,
+        "notes": "Rated criterion evaluating proponent's approach to measuring learning effectiveness, participant engagement, and return on investment",
+        "parent_criterion_id": null,
+        "parent_stage": null,
+        "parent_title": null,
+        "role_conflict": false,
+        "role_observations": [
+          "Award Criterion"
+        ],
+        "source_refs": [
+          {
+            "excerpt": "Measurement Approach - Proponents are to describe their approach to assessing participant needs, measuring learning effectiveness, and evaluating outcomes.",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "stage": "Measurement Approach",
+        "threshold": null,
+        "title": "Measurement Approach",
+        "weight": null,
+        "weight_basis": "Unknown",
+        "weight_conflict": false,
+        "weight_observations": [],
+        "weight_unit": "None",
+        "weight_value": null
+      },
+      {
+        "criterion_id": null,
+        "evaluation_role": "Award Criterion",
+        "hierarchy_level": 1,
+        "is_structural_container": false,
+        "notes": "Rated criterion evaluating proponent's approach to client relationship management, governance, communication, and issue resolution",
+        "parent_criterion_id": null,
+        "parent_stage": null,
+        "parent_title": null,
+        "role_conflict": false,
+        "role_observations": [
+          "Award Criterion"
+        ],
+        "source_refs": [
+          {
+            "excerpt": "Relationship management - Proponents are to describe their approach to establishing, maintaining, and growing effective client relationships throughout the contract term.",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "stage": "Relationship management",
+        "threshold": null,
+        "title": "Relationship management",
+        "weight": null,
+        "weight_basis": "Unknown",
+        "weight_conflict": false,
+        "weight_observations": [],
+        "weight_unit": "None",
+        "weight_value": null
+      },
+      {
+        "criterion_id": null,
+        "evaluation_role": "Award Criterion",
+        "hierarchy_level": 1,
+        "is_structural_container": false,
+        "notes": "Rated criterion evaluating proponent's additional value-added services, tools, resources, or capabilities that enhance HR objectives",
+        "parent_criterion_id": null,
+        "parent_stage": null,
+        "parent_title": null,
+        "role_conflict": false,
+        "role_observations": [
+          "Award Criterion"
+        ],
+        "source_refs": [
+          {
+            "excerpt": "Value-add - Proponents are to describe any additional, value-added services, tools, resources, or capabilities that would enhance the Bank's ability to achieve its HR objectives.",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "stage": "Value-add",
+        "threshold": null,
+        "title": "Value-add",
+        "weight": null,
+        "weight_basis": "Unknown",
+        "weight_conflict": false,
+        "weight_observations": [],
+        "weight_unit": "None",
+        "weight_value": null
+      },
+      {
+        "criterion_id": null,
+        "evaluation_role": "Award Criterion",
+        "hierarchy_level": 1,
+        "is_structural_container": false,
+        "notes": "Rated criterion evaluating proponent's relevant project experience within the last two years with supporting references",
+        "parent_criterion_id": null,
+        "parent_stage": null,
+        "parent_title": null,
+        "role_conflict": false,
+        "role_observations": [
+          "Award Criterion"
+        ],
+        "source_refs": [
+          {
+            "excerpt": "Relevant Experience and References - Proponents are to provide two (2) examples of relevant projects completed within the last two (2) years, and accompanying references",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "stage": "Relevant Experience and References",
+        "threshold": null,
+        "title": "Relevant Experience and References",
+        "weight": null,
+        "weight_basis": "Unknown",
+        "weight_conflict": false,
+        "weight_observations": [],
+        "weight_unit": "None",
+        "weight_value": null
+      }
+    ],
+    "requirements": [
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Rated",
+        "description": "Responses must not exceed 15 pages (excluding resumes or professional profiles, and work or product samples requested herein). Page size must be 8½ x 11 inches, with standard margins and a minimum font size of 10 points.",
+        "evidence": "Rated criteria response form submission",
+        "req_id": "R1",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Header / Instructions",
+        "source_refs": [
+          {
+            "excerpt": "Responses must not exceed 15 pages (excluding resumes or professional profiles, and work or product samples requested herein). Page size must be 8½ x 11 inches, with standard margins and a minimum font size of 10 points.",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Rated",
+        "description": "Proponents are to respond to each of the following requirements in the order presented below. Unless otherwise stated, links to websites or other information external to the form will not be evaluated.",
+        "evidence": "Rated criteria response form submission",
+        "req_id": "R2",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Header / Instructions",
+        "source_refs": [
+          {
+            "excerpt": "Proponents are to respond to each of the following requirements in the order presented below. Unless otherwise stated, links to websites or other information external to the form will not be evaluated.",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Rated",
+        "description": "Proponents will be evaluated only on the service category(ies) for which they submit a response.",
+        "evidence": "Rated criteria response form submission",
+        "req_id": "R3",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Header / Instructions",
+        "source_refs": [
+          {
+            "excerpt": "Proponents will be evaluated only on the service category(ies) for which they submit a response.",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Technical Specification"
+        ],
+        "category": "Rated",
+        "description": "Corporate Profile: Proponents are to describe their organisation, its purpose, structure and makeup. Responses should include: Profile and history of the organisation; Number of employees; A list and description of the off the shelf or custom products and services you offer in support of the objectives and scope described in this service category, the range and depth of your experience with each, and identify which are your core areas of expertise or specialty.",
+        "evidence": "Corporate profile response",
+        "req_id": "R4",
+        "requirement_type": "Technical Specification",
+        "rfso_ref": "Corporate Profile",
+        "source_refs": [
+          {
+            "excerpt": "Proponents are to describe their organisation, its purpose, structure and makeup. Responses should include: Profile and history of the organisation; Number of employees; A list and description of the off the shelf or custom products and services you offer in support of the objectives and scope described in this service category, the range and depth of your experience with each, and identify which are your core areas of expertise or specialty.",
+            "page": null,
+            "section": "Corporate Profile",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Technical Specification"
+        ],
+        "category": "Rated",
+        "description": "Key Personnel and Roster: Proponents are to demonstrate their capabilities and capacity to provide the required services by describing their team, including internal and external resources. A brief profile (no more than half a page) for each individual (maximum of 4) who would serve in a dedicated relationship or coordination role with the Bank — for example, an account manager, instructional designer or project manager. The profile should include: name and proposed role, years of relevant experience, areas of specialization, professional designations, certifications, and credentials.",
+        "evidence": "Key personnel profiles (maximum 4 individuals, half page each)",
+        "req_id": "R5",
+        "requirement_type": "Technical Specification",
+        "rfso_ref": "Key Personnel and Roster",
+        "source_refs": [
+          {
+            "excerpt": "A brief profile (no more than half a page) for each individual (maximum of 4) who would serve in a dedicated relationship or coordination role with the Bank — for example, an account manager, instructional designer or project manager. These are the people we expect to interact with consistently, independent of any specific engagement. The profile should include: name and proposed role, years of relevant experience, areas of specialization, professional designations, certifications, and credentials.",
+            "page": null,
+            "section": "Key Personnel and Roster",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Technical Specification"
+        ],
+        "category": "Rated",
+        "description": "Key Personnel and Roster: Describe the practitioner talent your firm can draw on, internally or externally. Rather than listing names or submitting bios for all potential resources, tell us about your bench/roster: the range of expertise available, how practitioners are vetted and developed, how you ensure quality and consistency when engaging associates or contractors, and what a typical resource assignment process looks like.",
+        "evidence": "Practitioner talent and bench/roster description",
+        "req_id": "R6",
+        "requirement_type": "Technical Specification",
+        "rfso_ref": "Key Personnel and Roster",
+        "source_refs": [
+          {
+            "excerpt": "Describe the practitioner talent your firm can draw on, internally or externally. Rather than listing names or submitting bios for all potential resources, tell us about your bench/roster: the range of expertise available, how practitioners are vetted and developed, how you ensure quality and consistency when engaging associates or contractors, and what a typical resource assignment process looks like.",
+            "page": null,
+            "section": "Key Personnel and Roster",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Technical Specification"
+        ],
+        "category": "Rated",
+        "description": "Curriculum & Program Design Capability: Proponents are to describe their approach and experience in designing, developing, delivering and updating learning solutions. Description of the focus and scope of your off-the-shelf program offering. This could include programs, workshops, toolkits, resources, digital tools or platforms, and so on. Responses should include: A list of the categories of off-the-shelf products you offer; An overview of the quantity and types of products in each category; How these products are accessed, e.g., subscription, licensing, pay-per-use, etc.",
+        "evidence": "Curriculum and program design capability response",
+        "req_id": "R7",
+        "requirement_type": "Technical Specification",
+        "rfso_ref": "Curriculum & Program Design Capability",
+        "source_refs": [
+          {
+            "excerpt": "Proponents are to describe their approach and experience in designing, developing, delivering and updating learning solutions. Responses should include: A list of the categories of off-the-shelf products you offer; An overview of the quantity and types of products in each category; How these products are accessed, e.g., subscription, licensing, pay-per-use, etc.",
+            "page": null,
+            "section": "Curriculum & Program Design Capability",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Evaluation / Scored"
+        ],
+        "category": "Rated",
+        "description": "Description of models and frameworks foundational to organization's products, approach and services",
+        "evidence": "Narrative response identifying key assessments, tools, or frameworks used by firm",
+        "req_id": "R1",
+        "requirement_type": "Evaluation / Scored",
+        "rfso_ref": "Organizational Approach and Capabilities",
+        "source_refs": [
+          {
+            "excerpt": "A description of any models and frameworks that are foundational to your organization's products, approach and services; Where applicable, identify the key assessments, tools, or frameworks your firm uses.",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Evaluation / Scored"
+        ],
+        "category": "Rated",
+        "description": "Methodology used to analyze learning needs and identify competency gaps",
+        "evidence": "Narrative response describing learning needs analysis methodology",
+        "req_id": "R2",
+        "requirement_type": "Evaluation / Scored",
+        "rfso_ref": "Organizational Approach and Capabilities",
+        "source_refs": [
+          {
+            "excerpt": "The methodology used to analyze learning needs and identify competency gaps",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Evaluation / Scored"
+        ],
+        "category": "Rated",
+        "description": "Approach used to design curriculum frameworks, learning pathways, and development programs",
+        "evidence": "Narrative response describing curriculum design approach",
+        "req_id": "R3",
+        "requirement_type": "Evaluation / Scored",
+        "rfso_ref": "Organizational Approach and Capabilities",
+        "source_refs": [
+          {
+            "excerpt": "The approach used to design curriculum frameworks, learning pathways, and development programs",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Evaluation / Scored"
+        ],
+        "category": "Rated",
+        "description": "Experience creating customized learning solutions aligned to organizational competencies and business objectives",
+        "evidence": "Narrative response demonstrating customized learning solution experience",
+        "req_id": "R4",
+        "requirement_type": "Evaluation / Scored",
+        "rfso_ref": "Organizational Approach and Capabilities",
+        "source_refs": [
+          {
+            "excerpt": "Experience creating customized learning solutions aligned to organizational competencies and business objectives",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Evaluation / Scored"
+        ],
+        "category": "Rated",
+        "description": "Experience developing blended learning solutions, including instructor-led, virtual, self-paced, and experiential learning components",
+        "evidence": "Narrative response demonstrating blended learning solution experience",
+        "req_id": "R5",
+        "requirement_type": "Evaluation / Scored",
+        "rfso_ref": "Organizational Approach and Capabilities",
+        "source_refs": [
+          {
+            "excerpt": "Experience developing blended learning solutions, including instructor-led, virtual, self-paced, and experiential learning components",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Evaluation / Scored"
+        ],
+        "category": "Rated",
+        "description": "Description of what distinguishes organization's approach and capabilities, with emphasis on learning transfer, behaviour change, participant experience and aligning with client needs and outcomes",
+        "evidence": "Narrative response describing organizational differentiation",
+        "req_id": "R6",
+        "requirement_type": "Evaluation / Scored",
+        "rfso_ref": "Organizational Approach and Capabilities",
+        "source_refs": [
+          {
+            "excerpt": "What distinguishes your organization's approach and capabilities, with an emphasis on learning transfer, behaviour change, participant experience and aligning with client needs and outcomes",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Evaluation / Scored"
+        ],
+        "category": "Rated",
+        "description": "Examples of innovative learning practices incorporated into previous engagements",
+        "evidence": "Narrative response with examples of innovative practices",
+        "req_id": "R7",
+        "requirement_type": "Evaluation / Scored",
+        "rfso_ref": "Organizational Approach and Capabilities",
+        "source_refs": [
+          {
+            "excerpt": "Examples of innovative learning practices incorporated into previous engagements",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Evaluation / Scored"
+        ],
+        "category": "Rated",
+        "description": "Approach to assessing participant needs, measuring learning effectiveness, and evaluating outcomes",
+        "evidence": "Narrative response describing measurement methodology",
+        "req_id": "R8",
+        "requirement_type": "Evaluation / Scored",
+        "rfso_ref": "Measurement Approach",
+        "source_refs": [
+          {
+            "excerpt": "Proponents are to describe their approach to assessing participant needs, measuring learning effectiveness, and evaluating outcomes.",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Evaluation / Scored"
+        ],
+        "category": "Rated",
+        "description": "Methods used to measure participant engagement, knowledge acquisition, skill development, and behaviour change",
+        "evidence": "Narrative response describing measurement methods",
+        "req_id": "R9",
+        "requirement_type": "Evaluation / Scored",
+        "rfso_ref": "Measurement Approach",
+        "source_refs": [
+          {
+            "excerpt": "Methods used to measure participant engagement, knowledge acquisition, skill development, and behaviour change",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Evaluation / Scored"
+        ],
+        "category": "Rated",
+        "description": "Frameworks used to evaluate learning outcomes and return on investment",
+        "evidence": "Narrative response describing evaluation frameworks",
+        "req_id": "R10",
+        "requirement_type": "Evaluation / Scored",
+        "rfso_ref": "Measurement Approach",
+        "source_refs": [
+          {
+            "excerpt": "Frameworks used to evaluate learning outcomes and return on investment",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Evaluation / Scored"
+        ],
+        "category": "Rated",
+        "description": "One (1) example of reporting provided to clients",
+        "evidence": "Example client reporting document or description",
+        "req_id": "R11",
+        "requirement_type": "Evaluation / Scored",
+        "rfso_ref": "Measurement Approach",
+        "source_refs": [
+          {
+            "excerpt": "One (1) example of reporting provided to clients",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Evaluation / Scored"
+        ],
+        "category": "Rated",
+        "description": "Approach to establishing, maintaining, and growing effective client relationships throughout the contract term",
+        "evidence": "Narrative response describing relationship management approach",
+        "req_id": "R12",
+        "requirement_type": "Evaluation / Scored",
+        "rfso_ref": "Relationship management",
+        "source_refs": [
+          {
+            "excerpt": "Proponents are to describe their approach to establishing, maintaining, and growing effective client relationships throughout the contract term.",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Evaluation / Scored"
+        ],
+        "category": "Rated",
+        "description": "Governance and account management structure",
+        "evidence": "Narrative response describing governance structure",
+        "req_id": "R13",
+        "requirement_type": "Evaluation / Scored",
+        "rfso_ref": "Relationship management",
+        "source_refs": [
+          {
+            "excerpt": "Governance and account management structure",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Evaluation / Scored"
+        ],
+        "category": "Rated",
+        "description": "Roles and responsibilities of key client-facing personnel",
+        "evidence": "Narrative response describing personnel roles",
+        "req_id": "R14",
+        "requirement_type": "Evaluation / Scored",
+        "rfso_ref": "Relationship management",
+        "source_refs": [
+          {
+            "excerpt": "Roles and responsibilities of key client-facing personnel",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Evaluation / Scored"
+        ],
+        "category": "Rated",
+        "description": "Approach to stakeholder engagement and communication",
+        "evidence": "Narrative response describing stakeholder engagement approach",
+        "req_id": "R15",
+        "requirement_type": "Evaluation / Scored",
+        "rfso_ref": "Relationship management",
+        "source_refs": [
+          {
+            "excerpt": "Approach to stakeholder engagement and communication",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Evaluation / Scored"
+        ],
+        "category": "Rated",
+        "description": "Escalation and issue-resolution processes",
+        "evidence": "Narrative response describing escalation processes",
+        "req_id": "R16",
+        "requirement_type": "Evaluation / Scored",
+        "rfso_ref": "Relationship management",
+        "source_refs": [
+          {
+            "excerpt": "Escalation and issue-resolution processes",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Evaluation / Scored"
+        ],
+        "category": "Rated",
+        "description": "Methods used to monitor client satisfaction and gather feedback",
+        "evidence": "Narrative response describing client satisfaction monitoring",
+        "req_id": "R17",
+        "requirement_type": "Evaluation / Scored",
+        "rfso_ref": "Relationship management",
+        "source_refs": [
+          {
+            "excerpt": "Methods used to monitor client satisfaction and gather feedback",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Evaluation / Scored"
+        ],
+        "category": "Rated",
+        "description": "Approach to managing multiple concurrent assignments and changing priorities",
+        "evidence": "Narrative response describing workload management approach",
+        "req_id": "R18",
+        "requirement_type": "Evaluation / Scored",
+        "rfso_ref": "Relationship management",
+        "source_refs": [
+          {
+            "excerpt": "Approach to managing multiple concurrent assignments and changing priorities",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Evaluation / Scored"
+        ],
+        "category": "Rated",
+        "description": "Example of how the Proponent successfully resolved a significant client issue or adapted to changing client requirements",
+        "evidence": "Example case study or narrative demonstrating issue resolution",
+        "req_id": "R19",
+        "requirement_type": "Evaluation / Scored",
+        "rfso_ref": "Relationship management",
+        "source_refs": [
+          {
+            "excerpt": "Example of how the Proponent successfully resolved a significant client issue or adapted to changing client requirements",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Evaluation / Scored"
+        ],
+        "category": "Rated",
+        "description": "Description of any additional, value-added services, tools, resources, or capabilities that would enhance the Bank's ability to achieve its HR objectives",
+        "evidence": "Narrative response describing value-added services with benefits and alignment to learning objectives",
+        "req_id": "R20",
+        "requirement_type": "Evaluation / Scored",
+        "rfso_ref": "Value-add",
+        "source_refs": [
+          {
+            "excerpt": "Proponents are to describe any additional, value-added services, tools, resources, or capabilities that would enhance the Bank's ability to achieve its HR objectives. For each value-added service, explain: The benefit to the Bank; How it supports learning and development objectives; and Any conditions or limitations",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Evaluation / Scored"
+        ],
+        "category": "Rated",
+        "description": "Two (2) examples of relevant projects completed within the last two (2) years with accompanying references",
+        "evidence": "Project examples with client organization, industry, organizational size, learning objectives, services provided, target audience, delivery model, project duration, and participant numbers",
+        "req_id": "R21",
+        "requirement_type": "Evaluation / Scored",
+        "rfso_ref": "Relevant Experience and References",
+        "source_refs": [
+          {
+            "excerpt": "Proponents are to provide two (2) examples of relevant projects completed within the last two (2) years, and accompanying references, including: Client organization (or anonymized description if confidentiality applies); Industry and organizational size; Learning and development objectives; Services provided by the Proponent; Target audience (e.g., executives, people leaders, individual contributors); Delivery model (e.g., in-person, virtual, blended); Project duration and approximate number of participants",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Rated",
+        "description": "Supplier must document challenges encountered and how they were addressed in response to rated criteria.",
+        "evidence": "Challenges encountered and how they were addressed",
+        "req_id": "R1",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Appendix D1 - Rated criteria response form",
+        "source_refs": [
+          {
+            "excerpt": "Challenges encountered and how they were addressed",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Rated",
+        "description": "Supplier must document measurable outcomes achieved in response to rated criteria.",
+        "evidence": "Measurable outcomes achieved",
+        "req_id": "R2",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Appendix D1 - Rated criteria response form",
+        "source_refs": [
+          {
+            "excerpt": "Measurable outcomes achieved",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Rated",
+        "description": "Supplier must provide client reference including contact name, title, email address, and telephone number.",
+        "evidence": "Client reference, including contact name, title, email address, and telephone number",
+        "req_id": "R3",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Appendix D1 - Rated criteria response form",
+        "source_refs": [
+          {
+            "excerpt": "Client reference, including contact name, title, email address, and telephone number",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "weight": null
+      }
+    ],
+    "submission_rules": [
+      {
+        "artifact_type": "Proposal / Response",
+        "artifact_type_conflict": false,
+        "artifact_type_observations": [
+          "Proposal / Response"
+        ],
+        "details": "Responses must not exceed 15 pages (excluding resumes or professional profiles, and work or product samples requested herein). Page size must be 8½ x 11 inches, with standard margins and a minimum font size of 10 points. Proponents must respond to each requirement in the order presented. Links to external websites or information will not be evaluated. Proponents will be evaluated only on the service category(ies) for which they submit a response.",
+        "file_format": "Unspecified",
+        "file_format_conflict": false,
+        "file_format_observations": [
+          "Unspecified"
+        ],
+        "format": "15 pages maximum (excluding resumes, professional profiles, and work or product samples); 8½ x 11 inches page size; standard margins; minimum 10 point font",
+        "item": "Rated Criteria Response Form",
+        "mandatory": 1,
+        "mandatory_conflict": false,
+        "mandatory_observations": [
+          1
+        ],
+        "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx",
+        "source_refs": [
+          {
+            "excerpt": "Instructions: Proponents are to respond to each of the following requirements in the order presented below. Unless otherwise stated, links to websites or other information external to the form will not be evaluated. Responses must not exceed 15 pages (excluding resumes or professional profiles, and work or product samples requested herein). Page size must be 8½ x 11 inches, with standard margins and a minimum font size of 10 points.",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "submission_channel": "Unspecified",
+        "submission_channel_conflict": false,
+        "submission_channel_observations": [
+          "Unspecified"
+        ]
+      },
+      {
+        "artifact_type": "Evidence / Attachment",
+        "artifact_type_conflict": false,
+        "artifact_type_observations": [
+          "Evidence / Attachment"
+        ],
+        "details": "Maximum of 4 individuals who would serve in a dedicated relationship or coordination role with the Bank (e.g., account manager, instructional designer, project manager). Each profile should include: name and proposed role, years of relevant experience, areas of specialization, professional designations, certifications, and credentials.",
+        "file_format": "Unspecified",
+        "file_format_conflict": false,
+        "file_format_observations": [
+          "Unspecified"
+        ],
+        "format": "Brief profiles (maximum half page each)",
+        "item": "Key Personnel Profiles",
+        "mandatory": 1,
+        "mandatory_conflict": false,
+        "mandatory_observations": [
+          1
+        ],
+        "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx",
+        "source_refs": [
+          {
+            "excerpt": "A brief profile (no more than half a page) for each individual (maximum of 4) who would serve in a dedicated relationship or coordination role with the Bank — for example, an account manager, instructional designer or project manager. These are the people we expect to interact with consistently, independent of any specific engagement. The profile should include: name and proposed role, years of relevant experience, areas of specialization, professional designations, certifications, and credentials.",
+            "page": null,
+            "section": "Key Personnel and Roster",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "submission_channel": "Unspecified",
+        "submission_channel_conflict": false,
+        "submission_channel_observations": [
+          "Unspecified"
+        ]
+      },
+      {
+        "artifact_type": "Proposal / Response",
+        "artifact_type_conflict": false,
+        "artifact_type_observations": [
+          "Proposal / Response"
+        ],
+        "details": "Proponents must provide responses addressing organizational approach and capabilities, measurement approach, relationship management, value-add services, and relevant experience with two project examples and references",
+        "file_format": "Unspecified",
+        "file_format_conflict": false,
+        "file_format_observations": [
+          "Unspecified"
+        ],
+        "format": "Narrative response to rated evaluation criteria",
+        "item": "Rated Criteria Response",
+        "mandatory": 1,
+        "mandatory_conflict": false,
+        "mandatory_observations": [
+          1
+        ],
+        "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx",
+        "source_refs": [
+          {
+            "excerpt": "A description of any models and frameworks that are foundational to your organization's products, approach and services",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "submission_channel": "Unspecified",
+        "submission_channel_conflict": false,
+        "submission_channel_observations": [
+          "Unspecified"
+        ]
+      },
+      {
+        "artifact_type": "Form / Annex",
+        "artifact_type_conflict": false,
+        "artifact_type_observations": [
+          "Form / Annex"
+        ],
+        "details": "Form must include: challenges encountered and how they were addressed; measurable outcomes achieved; and client reference with contact name, title, email address, and telephone number.",
+        "file_format": "Unspecified",
+        "file_format_conflict": false,
+        "file_format_observations": [
+          "Unspecified"
+        ],
+        "format": "Rated criteria response form",
+        "item": "Appendix D1 - Rated criteria response form",
+        "mandatory": 1,
+        "mandatory_conflict": false,
+        "mandatory_observations": [
+          1
+        ],
+        "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx",
+        "source_refs": [
+          {
+            "excerpt": "Challenges encountered and how they were addressed; Measurable outcomes achieved; and Client reference, including contact name, title, email address, and telephone number.",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "submission_channel": "Unspecified",
+        "submission_channel_conflict": false,
+        "submission_channel_observations": [
+          "Unspecified"
+        ]
+      }
+    ],
+    "typed_observations": [
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": "Rated Criteria Response Form",
+        "document_role_basis": "Explicit document title and section heading",
+        "duration": null,
+        "family": "DOCUMENT_ROLE",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "APPENDIX D1 - RATED CRITERIA RESPONSE FORM – Learning and Development programs and assessments",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": "Learning and Development programs and assessments",
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "DOCUMENT_TITLE",
+        "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx",
+        "source_refs": [
+          {
+            "excerpt": "APPENDIX D1 - RATED CRITERIA RESPONSE FORM – Learning and Development programs and assessments",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "IDENTITY",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "RFP 2026-026",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "SOLICITATION_NUMBER",
+        "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx",
+        "source_refs": [
+          {
+            "excerpt": "APPENDIX D1 - RATED CRITERIA RESPONSE FORM – Learning and Development programs and assessments",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "IDENTITY",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "2026-026",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "DOCUMENT_REFERENCE_NUMBER",
+        "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx",
+        "source_refs": [
+          {
+            "excerpt": "RFP 2026-026",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": "Evaluation criteria specification document",
+        "document_role_basis": "Document specifies rated evaluation criteria and required response content for procurement evaluation",
+        "duration": null,
+        "family": "IDENTITY",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "Appendix D1 - Rated criteria response form",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "DOCUMENT_TITLE",
+        "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx",
+        "source_refs": [
+          {
+            "excerpt": "Appendix D1 - Rated criteria response form",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "PROCUREMENT_MECHANIC",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "RFP 2026-026",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "RFP",
+        "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx",
+        "source_refs": [
+          {
+            "excerpt": "RFP 2026-026",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": "Rated criteria response form template / Submission artifact",
+        "document_role_basis": "Appendix designation and form title indicate this is a required submission template for rated evaluation criteria responses",
+        "duration": null,
+        "family": "DOCUMENT_ROLE",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "RFP 2026-026 - Appendix D1 - Rated criteria response form",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "DOCUMENT_TITLE",
+        "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx",
+        "source_refs": [
+          {
+            "excerpt": "RFP 2026-026 - Appendix D1 - Rated criteria response form",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "IDENTITY",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "2026-026",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "SOLICITATION_NUMBER",
+        "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx",
+        "source_refs": [
+          {
+            "excerpt": "RFP 2026-026",
+            "page": null,
+            "section": "Header",
+            "sheet": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      }
+    ]
+  },
+  "file": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+}

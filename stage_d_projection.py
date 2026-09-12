@@ -9,7 +9,7 @@ import json
 import statistics
 from collections import Counter
 
-PROJECTION_VERSION = "stage-d-projection/2"
+PROJECTION_VERSION = "stage-d-projection/3"
 GUARD_CHARS = 580_000
 REQUEST_SEPARATOR = "\n\nNORMALIZED PROCUREMENT SYNTHESIS PROJECTION:\n"
 RESPONSE_REMINDER = '''
@@ -21,10 +21,16 @@ Use exactly synthesis and citations as top-level keys, with every required synth
 Keep executive_summary to 2-3 sentences, scope_categories to at most 6 items, and outline
 to 4-6 suggested headings. Use null for outline notes and word_limit; weights are not limits.
 For each substantive field, cite materially relevant existing entity aliases and visible
-field names. Every field support MUST contain entity_id, field_pointer, and evidence_refs.
-Use evidence_refs: [] when not quoting an excerpt; entity and field still trace to full
-authoritative provenance. Never guess evidence IDs. Any supplied evidence ID must belong
-to that exact entity. Metadata citations also require evidence_refs: [].
+field names. Every field support MUST contain support_id, evidence_catalog_id, and evidence_selectors.
+Select support_id from support_pointer_sets in the projection. Within each set, IDs are
+assigned from first_support_id in entity_ids order, then field_pointers order. The response
+schema permits only integer selectors; use only the published ID range. Never emit a JSON
+pointer or field name. Unknown and stale selectors fail validation.
+Copy the published evidence_catalog_id. Find the selected support's entity in
+owner_evidence_catalogs. evidence_selectors contains only 1-based positions in that owner's
+list. Use [] when not quoting an excerpt. Never emit evidence aliases,
+identifiers, references, or ownership mappings. Never use another owner's catalog.
+Metadata catalogs are empty and require evidence_selectors: [].
 Pointers use /outline/0/title or /brief/scope_categories/0, NEVER brackets like /outline[0].
 Suggested outline titles use section_index, kind: proposal, and supports: [existing IDs].
 Do not cite null/default fields. Do not claim bidder possession or resolve conflicts.
@@ -170,6 +176,94 @@ def _substantive_fields(record, path=""):
                     yield from _substantive_fields(item, ptr + "/" + str(index))
 
 
+_NON_SUPPORT_FIELDS = {
+    "requirement_id", "fact_id", "conflict_projection_id", "observation_id",
+    "evidence_refs", "evidence_ref", "provenance_status", "source_fact",
+}
+
+
+def _support_pointers(record, path=""):
+    """Return every visible scalar pointer the validator permits as support."""
+    pointers = []
+    for key in sorted(record):
+        if key in _NON_SUPPORT_FIELDS:
+            continue
+        value = record[key]
+        pointer = path + "/" + _escape(key)
+        if isinstance(value, dict):
+            pointers.extend(_support_pointers(value, pointer))
+        elif isinstance(value, list):
+            # Array members are structural context, not independently citable
+            # fields. Their owning scalar fields remain available.
+            continue
+        else:
+            pointers.append(pointer)
+    return tuple(sorted(set(pointers)))
+
+
+def _pointer_sets(visible, aliases):
+    """Compact the exact entity/pointer registry by identical pointer sets."""
+    reverse = {full_id: alias for alias, full_id in aliases.items()}
+    groups = {}
+    for full_id, record in visible.items():
+        alias = reverse.get(full_id)
+        if alias is None:
+            continue
+        pointers = _support_pointers(record)
+        if pointers:
+            groups.setdefault(pointers, []).append(alias)
+    result, next_id = [], 1
+    for pointers, entity_ids in sorted(groups.items(), key=lambda item: (item[0], sorted(item[1]))):
+        entry = {"first_support_id": next_id, "entity_ids": sorted(entity_ids),
+                 "field_pointers": list(pointers)}
+        result.append(entry)
+        next_id += len(entry["entity_ids"]) * len(entry["field_pointers"])
+    return result
+
+
+def _support_catalog(pointer_sets):
+    catalog = {}
+    for group in pointer_sets:
+        if (not isinstance(group, dict)
+                or group.keys() != {"first_support_id", "entity_ids", "field_pointers"}
+                or type(group["first_support_id"]) is not int
+                or not isinstance(group["entity_ids"], list)
+                or not isinstance(group["field_pointers"], list)):
+            _fail("PROJECTION_INTEGRITY_FAILURE")
+        current = group["first_support_id"]
+        for entity_id in group["entity_ids"]:
+            for pointer in group["field_pointers"]:
+                if current in catalog:
+                    _fail("PROJECTION_INTEGRITY_FAILURE")
+                catalog[current] = (entity_id, pointer)
+                current += 1
+    if catalog and sorted(catalog) != list(range(1, len(catalog) + 1)):
+        _fail("PROJECTION_INTEGRITY_FAILURE")
+    return catalog
+
+
+def _owner_evidence_catalogs(sidecar):
+    """Publish exact declared ownership, bound to this immutable input snapshot.
+
+    Positions are selectors, not identities. The catalog digest prevents a position
+    from being replayed against a different owner, membership, or input snapshot.
+    """
+    aliases = sidecar["prompt_aliases"]
+    reverse = {full: alias for alias, full in aliases.items()}
+    owners = sorted({alias for alias, _ in
+                     _support_catalog(sidecar["support_pointer_sets"]).values()})
+    owned = {aliases[alias]: [] for alias in owners}
+    for evidence_id, evidence in sorted(sidecar["evidence"].items()):
+        for owner in evidence["owners"]:
+            if owner in owned:
+                owned[owner].append(evidence_id)
+    result = {}
+    for alias in owners:
+        evidence_ids = sorted(set(owned[aliases[alias]]))
+        result[alias] = [reverse[eid] for eid in evidence_ids]
+    return result
+
+
 def _map_record_ids(record, mapping):
     """Map link slots only. Never replace strings inside substantive text."""
     if isinstance(record, list):
@@ -240,9 +334,18 @@ def _pack_prompt_context(context):
             record["evidence"] = {"proof_ref": by_text[record["evidence"]]}
     if shared:
         result["required_proof_text"] = shared
+    # Evidence lists are published once under their exact owner. Expansion restores
+    # the original rows losslessly; this does not omit any evidence or provenance.
+    for record in [*result["requirements"], *result["detected_conflicts"],
+                   *(r for rows in result["facts"].values() for r in rows)]:
+        alias = record.get("requirement_id", record.get("fact_id", record.get("conflict_projection_id")))
+        if alias in result["owner_evidence_catalogs"]:
+            if record["evidence_refs"] != result["owner_evidence_catalogs"][alias]:
+                _fail("PROJECTION_INTEGRITY_FAILURE")
+            del record["evidence_refs"]
     result["requirements"] = _pack_records(result["requirements"])
-    result["facts"] = {k: _pack_records(v) for k, v in context["facts"].items()}
-    result["detected_conflicts"] = _pack_records(context["detected_conflicts"])
+    result["facts"] = {k: _pack_records(v) for k, v in result["facts"].items()}
+    result["detected_conflicts"] = _pack_records(result["detected_conflicts"])
     evidence = [{"evidence_id": key, **value} for key, value in context["evidence_context"].items()]
     packed = _pack_records(evidence)
     if isinstance(packed, dict) and len(canonical_json(packed)) < len(canonical_json(context["evidence_context"])):
@@ -263,6 +366,11 @@ def expand_prompt_context(context):
             record["evidence"] = proof_text[reference["proof_ref"]]
     result["facts"] = {k: _unpack_records(v) for k, v in context["facts"].items()}
     result["detected_conflicts"] = _unpack_records(context["detected_conflicts"])
+    for record in [*result["requirements"], *result["detected_conflicts"],
+                   *(r for rows in result["facts"].values() for r in rows)]:
+        alias = record.get("requirement_id", record.get("fact_id", record.get("conflict_projection_id")))
+        if alias in result["owner_evidence_catalogs"]:
+            record["evidence_refs"] = copy.deepcopy(result["owner_evidence_catalogs"][alias])
     if "table" in context["evidence_context"]:
         rows = _unpack_records(context["evidence_context"]["table"])
         result["evidence_context"] = {r["evidence_id"]: {k: v for k, v in r.items() if k != "evidence_id"} for r in rows}
@@ -276,7 +384,7 @@ def build_stage_d_synthesis_projection(normalized_facts, conflicts):
     canonical_json({"normalized_facts": normalized_facts, "conflicts": conflicts})
     if not isinstance(normalized_facts, dict) or not isinstance(conflicts, list):
         _fail("INVALID_INPUT")
-    unknown = normalized_facts.keys() - ({"requirements", "doc_metadata"} | set(FACT_SECTIONS) | {"_raw_evaluation_criteria", "_canonical_opportunity", "_contract_hygiene"})
+    unknown = normalized_facts.keys() - ({"requirements", "doc_metadata"} | set(FACT_SECTIONS) | {"_raw_evaluation_criteria", "_canonical_opportunity", "_contract_hygiene", "_provenance_rejections"})
     if unknown:
         _fail("UNCLASSIFIED_PROJECTION_FIELD", str(sorted(unknown)))
     snapshot = copy.deepcopy({"normalized_facts": normalized_facts, "conflicts": conflicts})
@@ -533,7 +641,15 @@ def build_stage_d_synthesis_projection(normalized_facts, conflicts):
     aliases.update(clause_aliases)
     sidecar["clause_aliases"] = clause_aliases
     sidecar["prompt_aliases"] = aliases
+    sidecar["support_pointer_sets"] = _pointer_sets(visible, aliases)
+    sidecar["owner_evidence_catalogs"] = _owner_evidence_catalogs(sidecar)
     context = _map_context_ids(context, {full: alias for alias, full in aliases.items()})
+    context["support_pointer_sets"] = copy.deepcopy(sidecar["support_pointer_sets"])
+    context["owner_evidence_catalogs"] = copy.deepcopy(sidecar["owner_evidence_catalogs"])
+    sidecar["evidence_catalog_id"] = digest({"contract": PROJECTION_VERSION,
+        "input_digest": sidecar["input_digest"], "owners": sidecar["owner_evidence_catalogs"],
+        "supports": sidecar["support_pointer_sets"]})
+    context["evidence_catalog_id"] = sidecar["evidence_catalog_id"]
     logical_context = context
     context = _pack_prompt_context(logical_context)
     sidecar["prompt_required_proof_text"] = copy.deepcopy(context.get("required_proof_text", {}))
@@ -616,6 +732,11 @@ def stage_d_output_config(projection=None):
                       "assessment_basis": {"type": "string", "enum": ["AI_ASSISTED"]},
                       "user_decision": null})
     support = obj({"entity_id": entity, "field_pointer": string, "evidence_refs": array(string)})
+    if projection is not None:
+        catalog = _support_catalog(projection["prompt_context"].get("support_pointer_sets", []))
+        support = (obj({"support_id": {"type": "integer"},
+                        "evidence_catalog_id": {"type": "string", "enum": [projection["sidecar"]["evidence_catalog_id"]]},
+                        "evidence_selectors": array({"type": "integer"})}) if catalog else {"not": {}})
     citation = {"anyOf": [obj({"output_pointer": string, "supports": array(support)}),
                            obj({"section_index": {"type": "integer"},
                                 "kind": {"type": "string", "enum": ["proposal"]}, "supports": array(entity)})]}
@@ -683,7 +804,7 @@ def _exact_keys(value, keys, label):
         _fail("INVALID_RESPONSE_SCHEMA", label)
 
 
-def validate_stage_d_response(response, projection):
+def validate_stage_d_response(response, projection, *, provider_contract=False):
     """Strict field-level support validation; never accept a repaired/partial brief."""
     try:
         snapshot = projection["sidecar"]["authoritative_inputs"]
@@ -762,6 +883,15 @@ def validate_stage_d_response(response, projection):
     entities.update({f["fact_id"]: f for records in expanded["facts"].values() for f in records})
     entities.update({c["conflict_projection_id"]: c for c in expanded["detected_conflicts"]})
     entities.update({oid: record["visible"] for oid, record in sidecar.get("canonical_observations", {}).items()})
+    prompt_catalog = _support_catalog(projection["prompt_context"].get("support_pointer_sets", []))
+    if projection["prompt_context"].get("support_pointer_sets") != sidecar.get("support_pointer_sets"):
+        _fail("PROJECTION_INTEGRITY_FAILURE")
+    published_pointers = {}
+    for alias, pointer in prompt_catalog.values():
+        full = sidecar["prompt_aliases"].get(alias)
+        if full is None:
+            _fail("PROJECTION_INTEGRITY_FAILURE")
+        published_pointers.setdefault(full, set()).add(pointer)
     prompt_citations = copy.deepcopy(data["citations"])
 
     def full_id(alias, code):
@@ -775,12 +905,42 @@ def validate_stage_d_response(response, projection):
         if "section_index" in citation:
             citation["supports"] = [full_id(v, "UNKNOWN_ENTITY_ID") for v in citation["supports"]]
         else:
+            converted = []
             for support in citation["supports"]:
+                if provider_contract:
+                    _exact_keys(support, {"support_id", "evidence_catalog_id", "evidence_selectors"}, "support")
+                if isinstance(support, dict) and "evidence_selectors" in support:
+                    _exact_keys(support, {"support_id", "evidence_catalog_id", "evidence_selectors"}, "support")
+                    selector = support["support_id"]
+                    if type(selector) is not int or selector not in prompt_catalog:
+                        _fail("UNKNOWN_SUPPORT_ID")
+                    owner, pointer = prompt_catalog[selector]
+                    catalog = sidecar["owner_evidence_catalogs"][owner]
+                    if support["evidence_catalog_id"] != sidecar["evidence_catalog_id"]:
+                        _fail("EVIDENCE_CATALOG_MISMATCH")
+                    selections = support["evidence_selectors"]
+                    if not isinstance(selections, list):
+                        _fail("INVALID_CITATION")
+                    if any(type(index) is not int or not 1 <= index <= len(catalog)
+                           for index in selections):
+                        _fail("UNKNOWN_EVIDENCE_SELECTOR")
+                    support = {"entity_id": owner, "field_pointer": pointer,
+                               "evidence_refs": [catalog[index - 1]
+                                                 for index in sorted(set(selections))]}
+                if isinstance(support, dict) and support.keys() == {"support_id", "evidence_refs"}:
+                    support_id = support["support_id"]
+                    if type(support_id) is not int or support_id not in prompt_catalog:
+                        _fail("UNKNOWN_SUPPORT_ID")
+                    entity_alias, field_pointer = prompt_catalog[support_id]
+                    support = {"entity_id": entity_alias, "field_pointer": field_pointer,
+                               "evidence_refs": support["evidence_refs"]}
                 _exact_keys(support, {"entity_id", "field_pointer", "evidence_refs"}, "support")
                 support["entity_id"] = full_id(support["entity_id"], "UNKNOWN_ENTITY_ID")
                 if not isinstance(support["evidence_refs"], list):
                     _fail("INVALID_CITATION")
                 support["evidence_refs"] = [full_id(v, "UNKNOWN_EVIDENCE_ID") for v in support["evidence_refs"]]
+                converted.append(support)
+            citation["supports"] = converted
     supported = {}
     proposals = set()
 
@@ -792,6 +952,8 @@ def validate_stage_d_response(response, projection):
         ptr = support["field_pointer"]
         if not isinstance(ptr, str) or not ptr or any(part in {"requirement_id", "fact_id", "conflict_projection_id", "evidence_refs", "evidence_ref", "provenance_status"} for part in ptr.split("/")):
             _fail("NON_SUBSTANTIVE_SUPPORT_FIELD")
+        if ptr not in published_pointers.get(eid, ()):
+            _fail("UNPUBLISHED_SUPPORT_POINTER", f"{eid}: {ptr}")
         value = resolve_pointer(entities[eid], ptr)
         if isinstance(value, (dict, list)):
             _fail("NON_SCALAR_SUPPORT_FIELD")
@@ -913,13 +1075,14 @@ def validate_stage_d_response(response, projection):
 
 
 SYNTHESIS_PROMPT = '''You are an executive bid director synthesizing a Bid Brief from normalized procurement facts.
-Use ONLY the supplied stage-d-projection/2 facts. The sidecar is authoritative;
+Use ONLY the supplied stage-d-projection/3 facts. The sidecar is authoritative;
 the projection includes every normalized requirement once. Do not repeat the register.
 Some record families use lossless tables: columns names each cell in rows by its
 position. Each row is one individual requirement/fact, never a group. The optional
 absent map lists missing row indices per column name; other nulls are explicit.
-Cite the row's requirement_id/fact_id and the COLUMN NAME as field_pointer, e.g.
-/description. Evidence tables use evidence_id for each row. Do not cite row indices.
+Use the row's requirement_id/fact_id to find its support_id in support_pointer_sets.
+Never emit field pointers. Evidence tables use evidence_id for each row; evidence
+selectors are 1-based positions in owner_evidence_catalogs, never evidence table rows.
 The sources dictionary resolves d1 etc. to full source filenames. Evidence source_id
 points there. Page/row/cell navigation remains in the sidecar; section may be omitted
 only when exactly repeated in an owning requirement's rfso_ref. verified:null means
@@ -964,12 +1127,16 @@ unless a cited numeric source field explicitly establishes it.
 
 Every non-null substantive output field needs a citation. Cite each scope_categories item.
 Citation: {"output_pointer":"/brief/executive_summary","supports":[
-{"entity_id":"r1","field_pointer":"/description","evidence_refs":["e1"]}]}.
+{"support_id":1,"evidence_catalog_id":"COPY_PUBLISHED_CATALOG_ID","evidence_selectors":[1]}]}.
 Pointers address synthesis, without a /synthesis prefix. Use exact supplied prompt-local
 aliases: r1 for a requirement, f1 for a fact, c1 for a conflict, e1 for evidence.
 Aliases are local to this request and resolve to full stable IDs in the sidecar.
-For metadata use fact_id and /value. For facts use fact_id and a visible scalar field.
-Evidence must belong to the cited entity. If provenance is unavailable use [];
+For field support use only the integer support_id assigned by support_pointer_sets.
+Copy evidence_catalog_id exactly. Find that support's entity in owner_evidence_catalogs.
+Select evidence only by 1-based positions in that owner's published list.
+Never emit evidence aliases, identifiers, references, or ownership mappings in a support.
+Catalog IDs bind the owner and input snapshot; unknown, foreign and stale selections fail closed.
+If provenance is unavailable use evidence_selectors: [];
 do not fabricate evidence or quote unavailable excerpts. Cite no hidden sidecar fields.
 No character spans. Citations establish traceability, not proof of semantic entailment.
 For a suggested outline title use {"section_index":0,"kind":"proposal","supports":["r1","f1"]}.

@@ -1,0 +1,20 @@
+{
+  "evaluation_conflicts_stable": true,
+  "new_evaluation_conflict_ids": [
+    "CONF-EVAL-1",
+    "CONF-EVAL-2",
+    "CONF-EVAL-3",
+    "CONF-EVAL-4"
+  ],
+  "new_run_id": "phase3-boc-2026-026-stagec-refresh-20260912T144353Z-3194c8",
+  "new_total_conflicts": 8,
+  "old_evaluation_conflict_ids": [
+    "CONF-EVAL-1",
+    "CONF-EVAL-2",
+    "CONF-EVAL-3",
+    "CONF-EVAL-4"
+  ],
+  "old_run_id": "phase3-boc-2026-026-stagec-20260912T130007Z-dd391b",
+  "old_total_conflicts": 7,
+  "reason_for_refresh": "title/client/file_number conflict_ids are content-addressed over the canonical observation set, which grew after the contract-term provenance fix (more VERIFIED observations correctly admitted); contract_term itself gained a new conflict; procurement_model newly resolved. None of this touches the 5 families Opportunity Structure reads, which remain byte-identical, but the conflict list itself is stale."
+}

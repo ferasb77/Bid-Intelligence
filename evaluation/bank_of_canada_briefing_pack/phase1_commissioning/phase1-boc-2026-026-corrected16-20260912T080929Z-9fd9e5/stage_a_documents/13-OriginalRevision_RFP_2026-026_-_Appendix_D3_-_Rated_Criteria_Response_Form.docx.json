@@ -1,0 +1,669 @@
+{
+  "_extraction_diagnostic": {
+    "recovery_attempts": 0,
+    "status": "VERIFIED_ADEQUATE"
+  },
+  "commercial_clauses": [],
+  "contract_risks": [],
+  "dates": [],
+  "deliverables": [],
+  "doc_metadata": {
+    "client": "The Bank",
+    "file_number": "RFP 2026-026",
+    "notes": "Response form template for proponents bidding on facilitation services. Specifies rated evaluation criteria and submission requirements for corporate profile, key personnel, facilitation methodology, value-added services, and relevant experience.",
+    "title": "APPENDIX D3 - RATED CRITERIA RESPONSE FORM – Facilitation"
+  },
+  "evaluation_criteria": [
+    {
+      "criterion_id": null,
+      "evaluation_role": "Award Criterion",
+      "hierarchy_level": 1,
+      "is_structural_container": false,
+      "notes": "Evaluation of organization description, purpose, structure, employee count, products and services offered, experience range and depth, core expertise areas, and scope limitations.",
+      "parent_criterion_id": null,
+      "parent_stage": null,
+      "parent_title": null,
+      "role_conflict": false,
+      "role_observations": [
+        "Award Criterion"
+      ],
+      "source_refs": [
+        {
+          "excerpt": "Proponents are to describe their organisation, its purpose, structure and makeup. Responses should include: Profile and history of the organisation; Number of employees; A list and description of the products and services you offer in support of the objectives and scope described in this service category, the range and depth of your experience with each, and identify which are your core areas of expertise or specialty; A list of any of our requirements that fall outside your firm's scope.",
+          "page": null,
+          "section": "Corporate profile",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "stage": "Corporate profile",
+      "threshold": null,
+      "title": "Corporate profile",
+      "weight": null,
+      "weight_basis": "Unknown",
+      "weight_conflict": false,
+      "weight_observations": [],
+      "weight_unit": "None",
+      "weight_value": null
+    },
+    {
+      "criterion_id": null,
+      "evaluation_role": "Award Criterion",
+      "hierarchy_level": 1,
+      "is_structural_container": false,
+      "notes": "Evaluation of key personnel profiles (maximum 4 individuals) and practitioner talent bench/roster, including vetting, development, quality standards, and resource assignment processes.",
+      "parent_criterion_id": null,
+      "parent_stage": null,
+      "parent_title": null,
+      "role_conflict": false,
+      "role_observations": [
+        "Award Criterion"
+      ],
+      "source_refs": [
+        {
+          "excerpt": "Proponents are to demonstrate their capabilities and capacity to provide the required services by describing their team, including internal and external resources.",
+          "page": null,
+          "section": "Key Personnel and Roster",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "stage": "Key Personnel and Roster",
+      "threshold": null,
+      "title": "Key Personnel and Roster",
+      "weight": null,
+      "weight_basis": "Unknown",
+      "weight_conflict": false,
+      "weight_observations": [],
+      "weight_unit": "None",
+      "weight_value": null
+    },
+    {
+      "criterion_id": null,
+      "evaluation_role": "Process / Methodology",
+      "hierarchy_level": 1,
+      "is_structural_container": false,
+      "notes": "Evaluation of facilitation methodology and approach for designing and delivering workshops and group engagements, including client objective understanding, workshop design, facilitation techniques, conflict management, foundational models and frameworks, assessments and tools, engagement approaches (in-person, virtual, hybrid), insight capture and consensus techniques, coaching use, effectiveness measurement, and sample workshop agenda.",
+      "parent_criterion_id": null,
+      "parent_stage": null,
+      "parent_title": null,
+      "role_conflict": false,
+      "role_observations": [
+        "Process / Methodology"
+      ],
+      "source_refs": [
+        {
+          "excerpt": "Proponents are to describe their facilitation methodology and approach for designing and delivering effective workshops and group engagements.",
+          "page": null,
+          "section": "Facilitation Methodology",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "stage": "Facilitation Methodology",
+      "threshold": null,
+      "title": "Facilitation Methodology",
+      "weight": null,
+      "weight_basis": "Unknown",
+      "weight_conflict": false,
+      "weight_observations": [],
+      "weight_unit": "None",
+      "weight_value": null
+    },
+    {
+      "criterion_id": null,
+      "evaluation_role": "Award Criterion",
+      "hierarchy_level": 1,
+      "is_structural_container": false,
+      "notes": "Evaluation of additional value-added services, tools, resources, or capabilities that enhance the Bank's ability to achieve HR objectives, including benefits, support for facilitation objectives, and conditions or limitations.",
+      "parent_criterion_id": null,
+      "parent_stage": null,
+      "parent_title": null,
+      "role_conflict": false,
+      "role_observations": [
+        "Award Criterion"
+      ],
+      "source_refs": [
+        {
+          "excerpt": "Proponents are to describe any additional, value-added services, tools, resources, or capabilities that would enhance the Bank's ability to achieve its HR objectives.",
+          "page": null,
+          "section": "Value-added",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "stage": "Value-added",
+      "threshold": null,
+      "title": "Value-added",
+      "weight": null,
+      "weight_basis": "Unknown",
+      "weight_conflict": false,
+      "weight_observations": [],
+      "weight_unit": "None",
+      "weight_value": null
+    },
+    {
+      "criterion_id": null,
+      "evaluation_role": "Award Criterion",
+      "hierarchy_level": 1,
+      "is_structural_container": false,
+      "notes": "Evaluation of experience facilitating strategic planning sessions, retreats, workshops, team effectiveness initiatives, consultations, and stakeholder engagement activities. Three (3) facilitation engagements completed within the last three (3) years required, with details on client organization, purpose and objectives, audience type and participant profile, number of participants, duration and format, facilitation services provided, techniques and tools utilized, key outcomes achieved, and client reference contact information.",
+      "parent_criterion_id": null,
+      "parent_stage": null,
+      "parent_title": null,
+      "role_conflict": false,
+      "role_observations": [
+        "Award Criterion"
+      ],
+      "source_refs": [
+        {
+          "excerpt": "Proponents are to demonstrate experience facilitating strategic planning sessions, retreats, workshops, team effectiveness initiatives, consultations, and stakeholder engagement activities. Provide details for three (3) facilitation engagements completed within the last three (3) years",
+          "page": null,
+          "section": "Relevant Experience and References",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "stage": "Relevant Experience and References",
+      "threshold": null,
+      "title": "Relevant Experience and References",
+      "weight": null,
+      "weight_basis": "Unknown",
+      "weight_conflict": false,
+      "weight_observations": [],
+      "weight_unit": "None",
+      "weight_value": null
+    }
+  ],
+  "requirements": [
+    {
+      "_semantic_candidates": [
+        "Submission Compliance"
+      ],
+      "category": "Rated",
+      "description": "Responses must not exceed ten (10) pages (excluding resumes or professional profiles, and work or product samples requested herein).",
+      "evidence": "Proposal document page count",
+      "req_id": "R1",
+      "requirement_type": "Submission Compliance",
+      "rfso_ref": "Header - Instructions",
+      "source_refs": [
+        {
+          "excerpt": "Responses must not exceed ten (10) pages (excluding resumes or professional profiles, and work or product samples requested herein).",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    {
+      "_semantic_candidates": [
+        "Submission Compliance"
+      ],
+      "category": "Rated",
+      "description": "Page size must be 8½ x 11 inches, with standard margins and a minimum font size of 10 points.",
+      "evidence": "Proposal document formatting",
+      "req_id": "R2",
+      "requirement_type": "Submission Compliance",
+      "rfso_ref": "Header - Instructions",
+      "source_refs": [
+        {
+          "excerpt": "Page size must be 8½ x 11 inches, with standard margins and a minimum font size of 10 points.",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    {
+      "_semantic_candidates": [
+        "Submission Compliance"
+      ],
+      "category": "Rated",
+      "description": "Proponents will be evaluated only on the service category(ies) for which they submit a response.",
+      "evidence": "Service category selection in response",
+      "req_id": "R3",
+      "requirement_type": "Submission Compliance",
+      "rfso_ref": "Header - Instructions",
+      "source_refs": [
+        {
+          "excerpt": "Proponents will be evaluated only on the service category(ies) for which they submit a response.",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    {
+      "_semantic_candidates": [
+        "Evaluation / Scored"
+      ],
+      "category": "Rated",
+      "description": "Corporate profile: Proponents are to describe their organisation, its purpose, structure and makeup, including profile and history, number of employees, list and description of products and services offered, range and depth of experience, core areas of expertise, and any requirements falling outside firm's scope.",
+      "evidence": "Corporate profile section in proposal",
+      "req_id": "R4",
+      "requirement_type": "Evaluation / Scored",
+      "rfso_ref": "Corporate profile",
+      "source_refs": [
+        {
+          "excerpt": "Proponents are to describe their organisation, its purpose, structure and makeup. Responses should include: Profile and history of the organisation; Number of employees; A list and description of the products and services you offer in support of the objectives and scope described in this service category, the range and depth of your experience with each, and identify which are your core areas of expertise or specialty; A list of any of our requirements that fall outside your firm's scope.",
+          "page": null,
+          "section": "Corporate profile",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    {
+      "_semantic_candidates": [
+        "Evaluation / Scored"
+      ],
+      "category": "Rated",
+      "description": "Key Personnel and Roster: Proponents are to demonstrate capabilities and capacity by describing their team, including brief profiles (maximum half page each) for up to 4 key individuals in dedicated relationship or coordination roles, with name, proposed role, years of relevant experience, areas of specialization, professional designations, certifications, and credentials.",
+      "evidence": "Key personnel profiles in proposal",
+      "req_id": "R5",
+      "requirement_type": "Evaluation / Scored",
+      "rfso_ref": "Key Personnel and Roster",
+      "source_refs": [
+        {
+          "excerpt": "A brief profile (no more than half a page) for each individual (maximum of 4) who would serve in a dedicated relationship or coordination role with the Bank — for example, a consultant, facilitator or project manager. These are the people we expect to interact with consistently, independent of any specific engagement. The profile should include: name and proposed role, years of relevant experience, areas of specialization, professional designations, certifications, and credentials.",
+          "page": null,
+          "section": "Key Personnel and Roster",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    {
+      "_semantic_candidates": [
+        "Evaluation / Scored"
+      ],
+      "category": "Rated",
+      "description": "Key Personnel and Roster: Proponents are to describe the practitioner talent available internally or externally, including range of expertise, vetting and development processes, quality and consistency standards for associates or contractors, and typical resource assignment process.",
+      "evidence": "Bench/roster description in proposal",
+      "req_id": "R6",
+      "requirement_type": "Evaluation / Scored",
+      "rfso_ref": "Key Personnel and Roster",
+      "source_refs": [
+        {
+          "excerpt": "Describe the practitioner talent your firm can draw on, internally or externally. Rather than listing names or submitting bios for all potential resources, tell us about your bench/roster: the range of expertise available, how practitioners are vetted and developed, how you ensure quality and consistency when engaging associates or contractors, and what a typical resource assignment process looks like.",
+          "page": null,
+          "section": "Key Personnel and Roster",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    {
+      "_semantic_candidates": [
+        "Evaluation / Scored"
+      ],
+      "category": "Rated",
+      "description": "Facilitation Methodology: Proponents are to describe their facilitation methodology and approach for designing and delivering effective workshops and group engagements, including approach to understanding client objectives and participant needs, workshop design and session planning methodology, facilitation techniques for participation and collaboration, methods for managing differing viewpoints and conflict, and description of foundational models and frameworks.",
+      "evidence": "Facilitation methodology section in proposal",
+      "req_id": "R7",
+      "requirement_type": "Evaluation / Scored",
+      "rfso_ref": "Facilitation Methodology",
+      "source_refs": [
+        {
+          "excerpt": "Proponents are to describe their facilitation methodology and approach for designing and delivering effective workshops and group engagements. The response should include: Approach to understanding client objectives and participant needs; Workshop design and session planning methodology; Facilitation techniques used to encourage participation and collaboration; Methods used to manage differing viewpoints, sensitive discussions, and conflict; A description of any models and frameworks that are foundational to your organization's products, approach and services",
+          "page": null,
+          "section": "Facilitation Methodology",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    {
+      "_semantic_candidates": [
+        "Evaluation / Scored"
+      ],
+      "category": "Rated",
+      "description": "Facilitation Methodology: Proponents are to identify key assessments, tools, or frameworks used by the firm, focusing on go-to instruments and rationale for selection.",
+      "evidence": "Assessment and tools description in proposal",
+      "req_id": "R8",
+      "requirement_type": "Evaluation / Scored",
+      "rfso_ref": "Facilitation Methodology",
+      "source_refs": [
+        {
+          "excerpt": "Where applicable, identify the key assessments, tools, or frameworks your firm uses. Rather than a comprehensive inventory, focus on your go-to instruments and why you chose them",
+          "page": null,
+          "section": "Facilitation Methodology",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    {
+      "_semantic_candidates": [
+        "Evaluation / Scored"
+      ],
+      "category": "Rated",
+      "description": "Facilitation Methodology: Proponents are to describe approaches for engaging in-person, virtual, and hybrid participants, techniques for capturing insights and achieving consensus, use of team and individual coaching, and methods for measuring session effectiveness and outcomes.",
+      "evidence": "Engagement approaches and measurement methods in proposal",
+      "req_id": "R9",
+      "requirement_type": "Evaluation / Scored",
+      "rfso_ref": "Facilitation Methodology",
+      "source_refs": [
+        {
+          "excerpt": "Approaches used to engage in-person, virtual, and hybrid participants; Techniques used to capture insights, identify priorities, and achieve consensus; Use of team and individual coaching in support of these engagements; Methods used to measure session effectiveness and outcomes",
+          "page": null,
+          "section": "Facilitation Methodology",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    {
+      "_semantic_candidates": [
+        "Evaluation / Scored"
+      ],
+      "category": "Rated",
+      "description": "Facilitation Methodology: Proponents are to provide a sample workshop agenda or facilitation plan from a previous engagement (anonymized if necessary).",
+      "evidence": "Sample workshop agenda or facilitation plan in proposal",
+      "req_id": "R10",
+      "requirement_type": "Evaluation / Scored",
+      "rfso_ref": "Facilitation Methodology",
+      "source_refs": [
+        {
+          "excerpt": "A sample workshop agenda or facilitation plan from a previous engagement (anonymized if necessary).",
+          "page": null,
+          "section": "Facilitation Methodology",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    {
+      "_semantic_candidates": [
+        "Evaluation / Scored"
+      ],
+      "category": "Rated",
+      "description": "Value-added: Proponents are to describe any additional, value-added services, tools, resources, or capabilities that would enhance the Bank's ability to achieve its HR objectives, including the benefit to the Bank, how it supports facilitation objectives, and any conditions or limitations.",
+      "evidence": "Value-added services section in proposal",
+      "req_id": "R11",
+      "requirement_type": "Evaluation / Scored",
+      "rfso_ref": "Value-added",
+      "source_refs": [
+        {
+          "excerpt": "Proponents are to describe any additional, value-added services, tools, resources, or capabilities that would enhance the Bank's ability to achieve its HR objectives. For each value-added service, explain: The benefit to the Bank; How it supports facilitation objectives; and Any conditions or limitations",
+          "page": null,
+          "section": "Value-added",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    {
+      "_semantic_candidates": [
+        "Evaluation / Scored"
+      ],
+      "category": "Rated",
+      "description": "Relevant Experience and References: Proponents are to demonstrate experience facilitating strategic planning sessions, retreats, workshops, team effectiveness initiatives, consultations, and stakeholder engagement activities by providing details for three (3) facilitation engagements completed within the last three (3) years.",
+      "evidence": "Three case studies or engagement references in proposal",
+      "req_id": "R12",
+      "requirement_type": "Evaluation / Scored",
+      "rfso_ref": "Relevant Experience and References",
+      "source_refs": [
+        {
+          "excerpt": "Proponents are to demonstrate experience facilitating strategic planning sessions, retreats, workshops, team effectiveness initiatives, consultations, and stakeholder engagement activities. Provide details for three (3) facilitation engagements completed within the last three (3) years",
+          "page": null,
+          "section": "Relevant Experience and References",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    {
+      "_semantic_candidates": [
+        "Evaluation / Scored"
+      ],
+      "category": "Rated",
+      "description": "Relevant Experience and References: For each of three (3) facilitation engagements, proponents are to provide client organization (or anonymized description), purpose and objectives, audience type and participant profile, number of participants, duration and format (in-person, virtual, or hybrid), facilitation services provided, techniques and tools utilized, key outcomes achieved, and client reference with contact name, title, email address, and telephone number.",
+      "evidence": "Detailed case study information for each engagement",
+      "req_id": "R13",
+      "requirement_type": "Evaluation / Scored",
+      "rfso_ref": "Relevant Experience and References",
+      "source_refs": [
+        {
+          "excerpt": "Provide details for three (3) facilitation engagements completed within the last three (3) years, including: Client organization (or anonymized description if confidentiality applies); Purpose and objectives of the engagement; Audience type and participant profile; Number of participants; Duration and format (in-person, virtual, or hybrid); Facilitation services provided; Techniques and tools utilized; Key outcomes achieved; and Client reference, including contact name, title, email address, and telephone number.",
+          "page": null,
+          "section": "Relevant Experience and References",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "weight": null
+    }
+  ],
+  "submission_rules": [
+    {
+      "artifact_type": "Proposal / Response",
+      "artifact_type_conflict": false,
+      "artifact_type_observations": [
+        "Proposal / Response"
+      ],
+      "details": "Responses must not exceed ten (10) pages (excluding resumes or professional profiles, and work or product samples requested herein). Page size must be 8½ x 11 inches, with standard margins and a minimum font size of 10 points. Links to websites or other information external to the form will not be evaluated.",
+      "file_format": "Unspecified",
+      "file_format_conflict": false,
+      "file_format_observations": [
+        "Unspecified"
+      ],
+      "format": "10 pages maximum (excluding resumes, professional profiles, and work or product samples); 8½ x 11 inches page size; standard margins; minimum 10-point font",
+      "item": "Rated Criteria Response Form",
+      "mandatory": 1,
+      "mandatory_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx",
+      "source_refs": [
+        {
+          "excerpt": "Responses must not exceed ten (10) pages (excluding resumes or professional profiles, and work or product samples requested herein). Page size must be 8½ x 11 inches, with standard margins and a minimum font size of 10 points.",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "submission_channel": "Unspecified",
+      "submission_channel_conflict": false,
+      "submission_channel_observations": [
+        "Unspecified"
+      ]
+    },
+    {
+      "artifact_type": "Evidence / Attachment",
+      "artifact_type_conflict": false,
+      "artifact_type_observations": [
+        "Evidence / Attachment"
+      ],
+      "details": "A brief profile (no more than half a page) for each individual (maximum of 4) who would serve in a dedicated relationship or coordination role with the Bank. The profile should include: name and proposed role, years of relevant experience, areas of specialization, professional designations, certifications, and credentials.",
+      "file_format": "Unspecified",
+      "file_format_conflict": false,
+      "file_format_observations": [
+        "Unspecified"
+      ],
+      "format": "Brief profiles (maximum half page each) for up to 4 key individuals",
+      "item": "Key Personnel Profiles",
+      "mandatory": 1,
+      "mandatory_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx",
+      "source_refs": [
+        {
+          "excerpt": "A brief profile (no more than half a page) for each individual (maximum of 4) who would serve in a dedicated relationship or coordination role with the Bank — for example, a consultant, facilitator or project manager.",
+          "page": null,
+          "section": "Key Personnel and Roster",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "submission_channel": "Unspecified",
+      "submission_channel_conflict": false,
+      "submission_channel_observations": [
+        "Unspecified"
+      ]
+    },
+    {
+      "artifact_type": "Evidence / Attachment",
+      "artifact_type_conflict": false,
+      "artifact_type_observations": [
+        "Evidence / Attachment"
+      ],
+      "details": "A sample workshop agenda or facilitation plan from a previous engagement (anonymized if necessary).",
+      "file_format": "Unspecified",
+      "file_format_conflict": false,
+      "file_format_observations": [
+        "Unspecified"
+      ],
+      "format": "Sample workshop agenda or facilitation plan from previous engagement",
+      "item": "Sample Workshop Agenda or Facilitation Plan",
+      "mandatory": 1,
+      "mandatory_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx",
+      "source_refs": [
+        {
+          "excerpt": "A sample workshop agenda or facilitation plan from a previous engagement (anonymized if necessary).",
+          "page": null,
+          "section": "Facilitation Methodology",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "submission_channel": "Unspecified",
+      "submission_channel_conflict": false,
+      "submission_channel_observations": [
+        "Unspecified"
+      ]
+    },
+    {
+      "artifact_type": "Evidence / Attachment",
+      "artifact_type_conflict": false,
+      "artifact_type_observations": [
+        "Evidence / Attachment"
+      ],
+      "details": "Provide details for three (3) facilitation engagements completed within the last three (3) years, including: Client organization (or anonymized description if confidentiality applies); Purpose and objectives of the engagement; Audience type and participant profile; Number of participants; Duration and format (in-person, virtual, or hybrid); Facilitation services provided; Techniques and tools utilized; Key outcomes achieved; and Client reference, including contact name, title, email address, and telephone number.",
+      "file_format": "Unspecified",
+      "file_format_conflict": false,
+      "file_format_observations": [
+        "Unspecified"
+      ],
+      "format": "Three (3) detailed case studies or engagement references",
+      "item": "Case Studies / Engagement References",
+      "mandatory": 1,
+      "mandatory_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx",
+      "source_refs": [
+        {
+          "excerpt": "Provide details for three (3) facilitation engagements completed within the last three (3) years, including: Client organization (or anonymized description if confidentiality applies); Purpose and objectives of the engagement; Audience type and participant profile; Number of participants; Duration and format (in-person, virtual, or hybrid); Facilitation services provided; Techniques and tools utilized; Key outcomes achieved; and Client reference, including contact name, title, email address, and telephone number.",
+          "page": null,
+          "section": "Relevant Experience and References",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "submission_channel": "Unspecified",
+      "submission_channel_conflict": false,
+      "submission_channel_observations": [
+        "Unspecified"
+      ]
+    }
+  ],
+  "typed_observations": [
+    {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": "Rated criteria response form for facilitation service category",
+      "document_role_basis": "EXPLICIT_DOCUMENT_TITLE",
+      "duration": null,
+      "family": "DOCUMENT_ROLE",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "APPENDIX D3 - RATED CRITERIA RESPONSE FORM – Facilitation",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": "Facilitation",
+        "lot": null
+      },
+      "semantic_kind": "EVALUATION_CRITERIA_FORM",
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx",
+      "source_refs": [
+        {
+          "excerpt": "APPENDIX D3 - RATED CRITERIA RESPONSE FORM – Facilitation",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    },
+    {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": null,
+      "document_role_basis": null,
+      "duration": null,
+      "family": "PROCUREMENT_MECHANIC",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "Five rated evaluation criteria: Corporate profile, Key Personnel and Roster, Facilitation Methodology, Value-added, Relevant Experience and References",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": "Facilitation",
+        "lot": null
+      },
+      "semantic_kind": "RATED_CRITERIA",
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx",
+      "source_refs": [
+        {
+          "excerpt": "Proponents are to respond to each of the following requirements in the order presented below.",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    }
+  ]
+}

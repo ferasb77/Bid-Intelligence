@@ -1,0 +1,93 @@
+{
+  "warnings": [
+    {
+      "extraction_diagnostic": {
+        "has_recovered_truncation": true,
+        "note": "Document facts recovered from truncated JSON parser; bounded retries completed without complete parse",
+        "recovery_attempts": 0,
+        "status": "RECOVERED_TRUNCATED"
+      },
+      "parse_status": null,
+      "path": "abstract.pdf",
+      "record_counts": {
+        "commercial_clauses": 0,
+        "dates": 9,
+        "deliverables": 0,
+        "evaluation_criteria": 0,
+        "requirements": 26,
+        "submission_rules": 15,
+        "typed_observations": 26
+      },
+      "role": "NOTICE_AND_DOCUMENT_INVENTORY",
+      "sequence": 1,
+      "total_records": 76
+    },
+    {
+      "extraction_diagnostic": {
+        "has_recovered_truncation": true,
+        "note": "Document facts recovered from truncated JSON parser; bounded retries completed without complete parse",
+        "recovery_attempts": 0,
+        "status": "RECOVERED_TRUNCATED"
+      },
+      "parse_status": null,
+      "path": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx",
+      "record_counts": {
+        "commercial_clauses": 0,
+        "dates": 0,
+        "deliverables": 0,
+        "evaluation_criteria": 8,
+        "requirements": 51,
+        "submission_rules": 8,
+        "typed_observations": 6
+      },
+      "role": "PROCUREMENT_ATTACHMENT",
+      "sequence": 11,
+      "total_records": 73
+    },
+    {
+      "extraction_diagnostic": {
+        "has_recovered_truncation": true,
+        "note": "Document facts recovered from truncated JSON parser; bounded retries completed without complete parse",
+        "recovery_attempts": 0,
+        "status": "RECOVERED_TRUNCATED"
+      },
+      "parse_status": null,
+      "path": "OriginalRevision/RFP 2026-06 - Appendix G - Form of Agreement.docx",
+      "record_counts": {
+        "commercial_clauses": 61,
+        "dates": 3,
+        "deliverables": 7,
+        "evaluation_criteria": 0,
+        "requirements": 158,
+        "submission_rules": 5,
+        "typed_observations": 13
+      },
+      "role": "PROCUREMENT_ATTACHMENT",
+      "sequence": 15,
+      "total_records": 247
+    },
+    {
+      "extraction_diagnostic": {
+        "has_recovered_truncation": true,
+        "note": "Document facts recovered from truncated JSON parser; bounded retries completed without complete parse",
+        "recovery_attempts": 0,
+        "status": "RECOVERED_TRUNCATED"
+      },
+      "parse_status": null,
+      "path": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+      "record_counts": {
+        "commercial_clauses": 20,
+        "dates": 11,
+        "deliverables": 6,
+        "evaluation_criteria": 55,
+        "requirements": 107,
+        "submission_rules": 32,
+        "typed_observations": 57
+      },
+      "role": "MASTER_RFP",
+      "sequence": 16,
+      "total_records": 288
+    }
+  ],
+  "zero_output_documents": []
+}

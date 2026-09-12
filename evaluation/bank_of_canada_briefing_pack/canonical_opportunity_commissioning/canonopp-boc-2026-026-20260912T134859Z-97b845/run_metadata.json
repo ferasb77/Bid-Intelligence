@@ -1,0 +1,22 @@
+{
+  "api_cost": 0,
+  "elapsed_seconds": 1.478,
+  "git_commit": "7e797830f42d06ff08745648585de0e26557addb",
+  "git_working_tree_dirty": true,
+  "llm_calls": 0,
+  "phase1_run_id": "phase1-boc-2026-026-corrected16-20260912T080929Z-9fd9e5",
+  "phase2_run_id": "phase2-boc-2026-026-stageb-20260912T125051Z-91a22b",
+  "phase3_run_id": "phase3-boc-2026-026-stagec-20260912T130007Z-dd391b",
+  "phase4_run_id": "phase4-boc-2026-026-staged-20260912T131303Z-2cc8af",
+  "production_entry_points": [
+    "canonical_opportunity.build_canonical_opportunity (called from extractor.normalize_package_facts)",
+    "canonical_opportunity.resolve_canonical_opportunity + apply_legacy_conflict_fallback (called from extractor.reconcile_package_facts)"
+  ],
+  "run_id": "canonopp-boc-2026-026-20260912T134859Z-97b845",
+  "stage_a_rerun": false,
+  "stage_b_regenerated": false,
+  "stage_c_rerun_for_new_authoritative_artifact": false,
+  "stage_d_invoked": false,
+  "stage_d_narrative_diagnostic_run_id": "phase4-narrative-diag-boc-2026-026-20260912T133437Z-2a74e2",
+  "timestamp_utc": "2026-09-12T13:49:03.999751+00:00"
+}

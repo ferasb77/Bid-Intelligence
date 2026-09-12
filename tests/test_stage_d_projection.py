@@ -70,6 +70,11 @@ def supported_response(projection):
     return response
 
 
+def support_id(projection, entity_id, field_pointer):
+    catalog = proj._support_catalog(projection["prompt_context"]["support_pointer_sets"])
+    return next(key for key, pair in catalog.items() if pair == (entity_id, field_pointer))
+
+
 def model_client(response=None, stop_reason="end_turn"):
     client = MagicMock()
     client.with_options.return_value = client
@@ -121,7 +126,7 @@ def test_canonical_wrong_owner_and_hidden_pointer_are_rejected():
     with pytest.raises(proj.ProjectionValidationError, match="WRONG_EVIDENCE_OWNER"):
         proj.validate_stage_d_response(response, p)
     response = canonical_tier2_response(p); response["citations"][0]["supports"][0]["field_pointer"] = "/document_role_basis"
-    with pytest.raises(proj.ProjectionValidationError, match="MISSING_POINTER"):
+    with pytest.raises(proj.ProjectionValidationError, match="UNPUBLISHED_SUPPORT_POINTER"):
         proj.validate_stage_d_response(response, p)
 
 
@@ -358,7 +363,7 @@ def test_valid_field_citation():
 @pytest.mark.parametrize("change,error", [
     ({"entity_id": "R-invented"}, "UNKNOWN_ENTITY_ID"),
     ({"evidence_refs": ["E-invented"]}, "UNKNOWN_EVIDENCE_ID"),
-    ({"field_pointer": "/source_refs/0/excerpt"}, "MISSING_POINTER"),
+    ({"field_pointer": "/source_refs/0/excerpt"}, "UNPUBLISHED_SUPPORT_POINTER"),
     ({"field_pointer": "/requirement_id"}, "NON_SUBSTANTIVE_SUPPORT_FIELD"),
 ])
 def test_invalid_citations(change, error):
@@ -367,6 +372,51 @@ def test_invalid_citations(change, error):
     r["citations"][0]["supports"][0].update(change)
     with pytest.raises(proj.ProjectionValidationError, match=error):
         proj.validate_stage_d_response(r, p)
+
+
+def test_projection_publishes_exact_deterministic_support_pointer_sets():
+    first = proj.build_stage_d_synthesis_projection(facts(), conflicts())
+    second = proj.build_stage_d_synthesis_projection(copy.deepcopy(facts()), copy.deepcopy(conflicts()))
+    pointer_sets = first["sidecar"]["support_pointer_sets"]
+    assert pointer_sets == second["sidecar"]["support_pointer_sets"]
+    assert pointer_sets
+    aliases = [alias for group in pointer_sets for alias in group["entity_ids"]]
+    assert len(aliases) == len(set(aliases))
+    assert all(group["field_pointers"] == sorted(set(group["field_pointers"])) for group in pointer_sets)
+    assert proj.finalize_stage_d_request(first, "instructions")["request_text"] == \
+        proj.finalize_stage_d_request(second, "instructions")["request_text"]
+
+
+def test_native_schema_accepts_only_published_entity_pointer_pairs():
+    import jsonschema
+    p = proj.build_stage_d_synthesis_projection(facts(), [])
+    schema = proj.stage_d_output_config(p)["format"]["schema"]
+    response = supported_response(p)
+    legacy = response["citations"][0]["supports"][0]
+    response["citations"][0]["supports"][0] = {
+        "support_id": support_id(p, legacy["entity_id"], legacy["field_pointer"]),
+        "evidence_catalog_id": p["prompt_context"]["evidence_catalog_id"],
+        "evidence_selectors": [1],
+    }
+    jsonschema.validate(response, schema)
+    assert proj.validate_stage_d_response(response, p)["status"] == "VALIDATED"
+    response["citations"][0]["supports"][0]["support_id"] = 999999
+    with pytest.raises(proj.ProjectionValidationError, match="UNKNOWN_SUPPORT_ID"):
+        proj.validate_stage_d_response(response, p)
+
+
+def test_unknown_missing_and_stale_support_pointers_fail_closed():
+    p = proj.build_stage_d_synthesis_projection(facts(), [])
+    for pointer, error in (("/unknown_field", "UNPUBLISHED_SUPPORT_POINTER"),
+                           ("/value", "UNPUBLISHED_SUPPORT_POINTER")):
+        response = supported_response(p)
+        response["citations"][0]["supports"][0]["field_pointer"] = pointer
+        with pytest.raises(proj.ProjectionValidationError, match=error):
+            proj.validate_stage_d_response(response, p)
+    response = supported_response(p)
+    del response["citations"][0]["supports"][0]["field_pointer"]
+    with pytest.raises(proj.ProjectionValidationError, match="INVALID_RESPONSE_SCHEMA"):
+        proj.validate_stage_d_response(response, p)
 
 
 def test_cross_owner_evidence_rejected():
@@ -599,6 +649,40 @@ def test_diagnostics_and_failure_saved_before_dispatch(tmp_path):
         assert "secret-key" not in "".join(p.read_text(encoding="utf-8") for p in store.root.rglob("*.json"))
 
 
+def test_response_checkpoint_captures_token_usage_without_changing_result(tmp_path):
+    """Diagnostic token-usage capture is additive: identical result with or
+    without checkpointing, and the persisted response.json carries the raw
+    text, stop_reason, and token counts needed to diagnose an empty
+    narrative layer without another API call."""
+    raw = json.dumps(empty_response())
+    usage = SimpleNamespace(input_tokens=12345, output_tokens=67)
+    client = MagicMock()
+    client.with_options.return_value = client
+    client.messages.create.return_value = SimpleNamespace(
+        content=[SimpleNamespace(type="text", text=raw)], stop_reason="end_turn", usage=usage)
+    with patch("extractor.get_anthropic_client", return_value=client):
+        baseline = extractor.synthesize_bid_brief(facts(), [], "secret-key")
+    with cp.checkpoint_run(mode="required", root=tmp_path) as store, patch("extractor.get_anthropic_client", return_value=client):
+        instrumented = extractor.synthesize_bid_brief(facts(), [], "secret-key")
+    assert instrumented == baseline
+    response = json.loads((store.root / "stage-d/attempt-01/response.json").read_text(encoding="utf-8"))
+    assert response["text"] == raw
+    assert response["stop_reason"] == "end_turn"
+    assert response["input_tokens"] == 12345
+    assert response["output_tokens"] == 67
+
+
+def test_response_checkpoint_tolerates_missing_usage_attribute(tmp_path):
+    """Older/mocked SDK responses without a .usage attribute must not break
+    checkpointing; token fields degrade to null rather than raising."""
+    client = model_client()
+    with cp.checkpoint_run(mode="required", root=tmp_path) as store, patch("extractor.get_anthropic_client", return_value=client):
+        extractor.synthesize_bid_brief(facts(), [], "secret-key")
+    response = json.loads((store.root / "stage-d/attempt-01/response.json").read_text(encoding="utf-8"))
+    assert response["input_tokens"] is None
+    assert response["output_tokens"] is None
+
+
 def test_one_retry_same_facts_and_strict_stop_reason(tmp_path):
     client = model_client()
     bad = SimpleNamespace(content=[SimpleNamespace(type="text", text="{}")], stop_reason="max_tokens")
@@ -750,7 +834,7 @@ def test_resume_rejects_stale_or_corrupt_checkpoint(tmp_path, corruption):
 def test_d_version_change_reuses_only_verified_upstream(tmp_path):
     store, sources = make_checkpoint(tmp_path)
     versions = cp.runtime_versions()
-    versions["projection_version"] = "stage-d-projection/3"
+    versions["projection_version"] = "stage-d-projection/future"
     versions["code_sha"] = "next-commit"
     verified = cp.load_verified_checkpoint(store.root, sources, versions=versions)
     assert verified["stage_d_rebuild_required"] and verified["stage_d_version_changed"]

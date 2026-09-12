@@ -1,0 +1,56 @@
+{
+  "document_count": 7,
+  "documents": [
+    {
+      "document_id": "document:about",
+      "sha256": "c775e538d612e3a09273cc47d81c31d7d1e5fbc23d7aaea9baa4270aff03bc3b",
+      "title": "About the Bank of Canada",
+      "url": "https://www.bankofcanada.ca/about/"
+    },
+    {
+      "document_id": "document:accessibility-plan",
+      "sha256": "a57f6bbab64c86ea0f40e6e28e44f958ebed48ccde2b1bce384ff62adc60970a",
+      "title": "2026-28 Accessibility Plan",
+      "url": "https://www.bankofcanada.ca/accessibility/2026-28-accessibility-plan/"
+    },
+    {
+      "document_id": "document:annual-report-2025",
+      "sha256": "14879250ad75ea291779249c713118d9b8af613e84b6f9d02deed7a6b0275b37",
+      "title": "Annual Report 2025",
+      "url": "https://www.bankofcanada.ca/2026/04/annual-report-2025/"
+    },
+    {
+      "document_id": "document:bank-act",
+      "sha256": "cc3eea542fc1644a6b42b9a056a168e702e5f9a3616a622a29d8967cce702e9c",
+      "title": "Bank of Canada Act",
+      "url": "https://laws-lois.justice.gc.ca/PDF/B-2.pdf"
+    },
+    {
+      "document_id": "document:procurement-policy",
+      "sha256": "dc7538fb5404585682380cd907d27544ee106c94229baa4741bc3d674a0f082c",
+      "title": "Procurement Policy",
+      "url": "https://www.bankofcanada.ca/about/governance-documents/procurement-policy-statement/"
+    },
+    {
+      "document_id": "document:strategic-plan",
+      "sha256": "c92b87268e95571368aeec1b11185ec7838e54299e40cf5cdbb786bdf66a922a",
+      "title": "2025-27 Strategic Plan",
+      "url": "https://www.bankofcanada.ca/about/governance-documents/the-bank-of-canadas-2025-27-strategic-plan/"
+    },
+    {
+      "document_id": "document:workforce-priority",
+      "sha256": "67cd707e111061b842429338be5b2789e89105d8cf7714afb2643c36a02706ae",
+      "title": "Equipping our workforce for the future",
+      "url": "https://www.bankofcanada.ca/about/governance-documents/the-bank-of-canadas-2025-27-strategic-plan/equipping-our-workforce-for-the-future/"
+    }
+  ],
+  "evaluation_only": true,
+  "extract_count": 8,
+  "procurement_package": {
+    "aggregate_sha256": "0e43d0c22153b4e9fbcd905ca53e70ea6cd5e71525373342ac6fa416249bc02f",
+    "file_count": 16,
+    "master_rfp_present": true
+  },
+  "retrieved_on": "2026-09-08",
+  "source_count": 2
+}

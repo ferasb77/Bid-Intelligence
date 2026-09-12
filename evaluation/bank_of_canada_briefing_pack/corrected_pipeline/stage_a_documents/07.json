@@ -1,0 +1,440 @@
+{
+  "facts": {
+    "_extraction_diagnostic": {
+      "recovery_attempts": 0,
+      "status": "VERIFIED_ADEQUATE"
+    },
+    "commercial_clauses": [
+      {
+        "clause_kind": "REGULATORY_COMPLIANCE",
+        "conditions": [],
+        "linked_observation_ids": [],
+        "scope": {
+          "component": "Digital learning content",
+          "location": null,
+          "lot": null,
+          "phase": null
+        },
+        "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx",
+        "source_fact": "As a Crown corporation, the Bank is required to comply with the Accessible Canada Act (ACA).",
+        "source_refs": [
+          {
+            "excerpt": "As a Crown corporation, the Bank is required to comply with the Accessible Canada Act (ACA).",
+            "page": null,
+            "section": null,
+            "sheet": "Mandatory Criteria",
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx"
+          }
+        ],
+        "topic": "Accessible Canada Act Compliance"
+      }
+    ],
+    "contract_risks": [],
+    "dates": [],
+    "deliverables": [],
+    "doc_metadata": {
+      "client": "The Bank (Crown corporation)",
+      "file_number": "RFP 2026-026",
+      "notes": "Appendix B3 specifies mandatory criteria for facilitation team effectiveness, including bilingualism, security clearance eligibility, and digital accessibility compliance.",
+      "title": "RFP 2026-026 - Talent, learning and organizational development services"
+    },
+    "evaluation_criteria": [
+      {
+        "criterion_id": null,
+        "evaluation_role": "Qualification / Gate",
+        "hierarchy_level": 1,
+        "is_structural_container": false,
+        "notes": "Three mandatory pass/fail criteria for proposal eligibility: bilingualism, security clearance ability, and digital accessibility compliance.",
+        "parent_criterion_id": null,
+        "parent_stage": "Facilitation team effectiveness",
+        "parent_title": "Facilitation team effectiveness",
+        "role_conflict": false,
+        "role_observations": [
+          "Qualification / Gate"
+        ],
+        "source_refs": [
+          {
+            "excerpt": "RFP 2026-026 - Talent, learning and organizational development services; Appendix B3 - Facilitation team effectiveness",
+            "page": null,
+            "section": null,
+            "sheet": "Mandatory Criteria",
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx"
+          }
+        ],
+        "stage": "Mandatory Criteria",
+        "threshold": null,
+        "title": "Mandatory Criteria",
+        "weight": null,
+        "weight_basis": "Unknown",
+        "weight_conflict": false,
+        "weight_observations": [],
+        "weight_unit": "None",
+        "weight_value": null
+      },
+      {
+        "criterion_id": null,
+        "evaluation_role": "Subcriterion",
+        "hierarchy_level": 2,
+        "is_structural_container": false,
+        "notes": "Mandatory criterion (a): Written confirmation of bilingual service delivery capability in English and French.",
+        "parent_criterion_id": null,
+        "parent_stage": "Mandatory Criteria",
+        "parent_title": "Mandatory Criteria",
+        "role_conflict": false,
+        "role_observations": [
+          "Subcriterion"
+        ],
+        "source_refs": [
+          {
+            "excerpt": "Bilingualism - Each proposal must provide written confirmation of the ability to provide all services, materials and solutions in both English and French.",
+            "page": null,
+            "section": null,
+            "sheet": "Mandatory Criteria",
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx"
+          }
+        ],
+        "stage": "Bilingualism",
+        "threshold": null,
+        "title": "Bilingualism",
+        "weight": null,
+        "weight_basis": "Unknown",
+        "weight_conflict": false,
+        "weight_observations": [],
+        "weight_unit": "None",
+        "weight_value": null
+      },
+      {
+        "criterion_id": null,
+        "evaluation_role": "Subcriterion",
+        "hierarchy_level": 2,
+        "is_structural_container": false,
+        "notes": "Mandatory criterion (b): All Service Provider resources must have ability to meet Bank's Reliability clearance requirements including electronic fingerprints, criminal record check, credit check, and security screening interview.",
+        "parent_criterion_id": null,
+        "parent_stage": "Mandatory Criteria",
+        "parent_title": "Mandatory Criteria",
+        "role_conflict": false,
+        "role_observations": [
+          "Subcriterion"
+        ],
+        "source_refs": [
+          {
+            "excerpt": "Security Clearance - All Service Provider resources involved in the delivery of services must have the ability to meet the Bank's Reliability clearance requirements. This will include electronic fingerprints, a criminal record check, a credit check, and potentially a security screening interview.",
+            "page": null,
+            "section": null,
+            "sheet": "Mandatory Criteria",
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx"
+          }
+        ],
+        "stage": "Security Clearance",
+        "threshold": null,
+        "title": "Security Clearance",
+        "weight": null,
+        "weight_basis": "Unknown",
+        "weight_conflict": false,
+        "weight_observations": [],
+        "weight_unit": "None",
+        "weight_value": null
+      },
+      {
+        "criterion_id": null,
+        "evaluation_role": "Subcriterion",
+        "hierarchy_level": 2,
+        "is_structural_container": false,
+        "notes": "Mandatory criterion (c): All digital learning content must comply with CAN/ASC - EN 301 549:2024, EN 301 549:2021, and WCAG standards per Accessible Canada Act requirements.",
+        "parent_criterion_id": null,
+        "parent_stage": "Mandatory Criteria",
+        "parent_title": "Mandatory Criteria",
+        "role_conflict": false,
+        "role_observations": [
+          "Subcriterion"
+        ],
+        "source_refs": [
+          {
+            "excerpt": "Accessibility - As a Crown corporation, the Bank is required to comply with the Accessible Canada Act (ACA). All digital learning content developed must comply with digital accessibility standards such as CAN/ASC - EN 301 549:2024 Accessibility requirements for ICT products and services (EN 301 549:2021 and the Web Content Accessibility Guidelines (WCAG).",
+            "page": null,
+            "section": null,
+            "sheet": "Mandatory Criteria",
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx"
+          }
+        ],
+        "stage": "Accessibility",
+        "threshold": null,
+        "title": "Accessibility",
+        "weight": null,
+        "weight_basis": "Unknown",
+        "weight_conflict": false,
+        "weight_observations": [],
+        "weight_unit": "None",
+        "weight_value": null
+      }
+    ],
+    "requirements": [
+      {
+        "_semantic_candidates": [
+          "Submission Compliance"
+        ],
+        "category": "Mandatory",
+        "description": "Each proposal must provide written confirmation of the ability to provide all services, materials and solutions in both English and French.",
+        "evidence": "Written confirmation of bilingual service delivery capability",
+        "req_id": "M1",
+        "requirement_type": "Submission Compliance",
+        "rfso_ref": "Appendix B3, Mandatory Criteria (a) - Bilingualism",
+        "source_refs": [
+          {
+            "excerpt": "Each proposal must provide written confirmation of the ability to provide all services, materials and solutions in both English and French.",
+            "page": null,
+            "section": null,
+            "sheet": "Mandatory Criteria",
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Supplier Qualification"
+        ],
+        "category": "Mandatory",
+        "description": "All Service Provider resources involved in the delivery of services must have the ability to meet the Bank's Reliability clearance requirements. This will include electronic fingerprints, a criminal record check, a credit check, and potentially a security screening interview.",
+        "evidence": "Demonstrated ability to meet Reliability clearance requirements; evidence of eligibility for electronic fingerprints, criminal record check, credit check, and security screening interview",
+        "req_id": "M2",
+        "requirement_type": "Supplier Qualification",
+        "rfso_ref": "Appendix B3, Mandatory Criteria (b) - Security Clearance",
+        "source_refs": [
+          {
+            "excerpt": "All Service Provider resources involved in the delivery of services must have the ability to meet the Bank's Reliability clearance requirements. This will include electronic fingerprints, a criminal record check, a credit check, and potentially a security screening interview.",
+            "page": null,
+            "section": null,
+            "sheet": "Mandatory Criteria",
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [
+          "Technical Specification"
+        ],
+        "category": "Mandatory",
+        "description": "All digital learning content developed must comply with digital accessibility standards such as CAN/ASC - EN 301 549:2024 Accessibility requirements for ICT products and services (EN 301 549:2021) and the Web Content Accessibility Guidelines (WCAG).",
+        "evidence": "Digital learning content compliance with CAN/ASC - EN 301 549:2024, EN 301 549:2021, and WCAG standards",
+        "req_id": "M3",
+        "requirement_type": "Technical Specification",
+        "rfso_ref": "Appendix B3, Mandatory Criteria (c) - Accessibility",
+        "source_refs": [
+          {
+            "excerpt": "All digital learning content developed must comply with digital accessibility standards such as CAN/ASC - EN 301 549:2024 Accessibility requirements for ICT products and services (EN 301 549:2021 and the Web Content Accessibility Guidelines (WCAG).",
+            "page": null,
+            "section": null,
+            "sheet": "Mandatory Criteria",
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx"
+          }
+        ],
+        "weight": null
+      },
+      {
+        "_semantic_candidates": [],
+        "category": "Mandatory",
+        "description": "As a Crown corporation, the Bank is required to comply with the Accessible Canada Act (ACA).",
+        "evidence": "Compliance with Accessible Canada Act requirements",
+        "req_id": "M4",
+        "requirement_type": "General Compliance",
+        "rfso_ref": "Appendix B3, Mandatory Criteria (c) - Accessibility",
+        "source_refs": [
+          {
+            "excerpt": "As a Crown corporation, the Bank is required to comply with the Accessible Canada Act (ACA).",
+            "page": null,
+            "section": null,
+            "sheet": "Mandatory Criteria",
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx"
+          }
+        ],
+        "weight": null
+      }
+    ],
+    "submission_rules": [
+      {
+        "artifact_type": "Declaration / Certification",
+        "artifact_type_conflict": false,
+        "artifact_type_observations": [
+          "Declaration / Certification"
+        ],
+        "details": "Written confirmation of ability to provide all services, materials and solutions in both English and French",
+        "file_format": "Unspecified",
+        "file_format_conflict": false,
+        "file_format_observations": [
+          "Unspecified"
+        ],
+        "format": "Written confirmation",
+        "item": "Bilingualism Confirmation",
+        "mandatory": 1,
+        "mandatory_conflict": false,
+        "mandatory_observations": [
+          1
+        ],
+        "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx",
+        "source_refs": [
+          {
+            "excerpt": "Each proposal must provide written confirmation of the ability to provide all services, materials and solutions in both English and French.",
+            "page": null,
+            "section": null,
+            "sheet": "Mandatory Criteria",
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx"
+          }
+        ],
+        "submission_channel": "Unspecified",
+        "submission_channel_conflict": false,
+        "submission_channel_observations": [
+          "Unspecified"
+        ]
+      }
+    ],
+    "typed_observations": [
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "IDENTITY",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "RFP 2026-026 - Talent, learning and organizational development services",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "OPPORTUNITY_TITLE",
+        "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx",
+        "source_refs": [
+          {
+            "excerpt": "RFP 2026-026 - Talent, learning and organizational development services",
+            "page": null,
+            "section": null,
+            "sheet": "Mandatory Criteria",
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "IDENTITY",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "RFP 2026-026",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "SOLICITATION_NUMBER",
+        "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx",
+        "source_refs": [
+          {
+            "excerpt": "RFP 2026-026 - Talent, learning and organizational development services",
+            "page": null,
+            "section": null,
+            "sheet": "Mandatory Criteria",
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "IDENTITY",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "The Bank",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "BUYER_NAME",
+        "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx",
+        "source_refs": [
+          {
+            "excerpt": "As a Crown corporation, the Bank is required to comply with the Accessible Canada Act (ACA).",
+            "page": null,
+            "section": null,
+            "sheet": "Mandatory Criteria",
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      },
+      {
+        "amount": null,
+        "currency": null,
+        "date": null,
+        "document_role": null,
+        "document_role_basis": null,
+        "duration": null,
+        "family": "PROCUREMENT_MECHANIC",
+        "guarantee_status": null,
+        "option_count": null,
+        "optional": null,
+        "original_value": "RFP 2026-026",
+        "period_basis": null,
+        "precision": null,
+        "scope": {
+          "category": null,
+          "component": null,
+          "lot": null
+        },
+        "semantic_kind": "RFP",
+        "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx",
+        "source_refs": [
+          {
+            "excerpt": "RFP 2026-026 - Talent, learning and organizational development services",
+            "page": null,
+            "section": null,
+            "sheet": "Mandatory Criteria",
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx"
+          }
+        ],
+        "supersession": null,
+        "tax_basis": null,
+        "time": null,
+        "timezone": null,
+        "unit": null
+      }
+    ]
+  },
+  "file": "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx"
+}

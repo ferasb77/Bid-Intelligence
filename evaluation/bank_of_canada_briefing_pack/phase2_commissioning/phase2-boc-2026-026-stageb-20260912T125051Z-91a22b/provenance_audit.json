@@ -1,0 +1,71 @@
+{
+  "canonical_opportunity_observations": {
+    "collision_ids": [],
+    "conflicts_field_empty_at_stage_b": true,
+    "explicit_supersession_declarations": 0,
+    "invalid_family_kind_dropped": 17,
+    "provenance_PARTIAL": 48,
+    "provenance_UNVERIFIED": 2,
+    "provenance_VERIFIED": 70,
+    "resolved_field_empty_at_stage_b": true,
+    "supersession_resolution_state_resolved": 0,
+    "total": 120
+  },
+  "clause_occurrences_prefilter": {
+    "evidence_state_unverified": 1,
+    "evidence_state_verified": 90,
+    "final_commercial_clauses_output_count": 91,
+    "legacy_clauses_count": 1,
+    "logical_clause_records_total": 91,
+    "logical_clause_records_unverified_dropped_from_final": 1,
+    "logical_clause_records_verified": 90,
+    "note": "REMEDIATED: same reference-dropping behavior as deliverables at the occurrence level (contract_hygiene._verified_refs() keeps only verified refs before building an occurrence; the excerpt-required extra gate that previously discarded a valid document+section citation with no excerpt has been removed -- a ref is now valid on the same terms validate_source_refs() itself uses). At the logical-record level, a fresh (non-legacy) clause record with evidence_state != VERIFIED is now excluded from normalized['commercial_clauses'] and quarantined into _provenance_rejections, exactly like deliverables -- previously deliverables kept such records unflagged in the trusted array while clauses silently excluded them with no diagnostic; both families now behave identically.",
+    "occurrences": 91
+  },
+  "contract_risks": {
+    "final_count": 0,
+    "note": "contract_risks are never validated against physical evidence at all; every item becomes an unconditional 'legacy_risks' record (UNVERIFIED/LEGACY_EXTRACTION).",
+    "raw_count_across_stage_a": 0
+  },
+  "dates": {
+    "note": "REMEDIATED: each date's source_doc is now wrapped and validated via validate_source_refs(); a date whose source document does not resolve is quarantined into _provenance_rejections rather than admitted unflagged.",
+    "rejected_zero_provenance": 0,
+    "total_dates": 23,
+    "valid": 23
+  },
+  "deliverable_occurrences_prefilter": {
+    "evidence_state_unverified": 1,
+    "evidence_state_verified": 23,
+    "final_deliverables_output_count": 23,
+    "legacy_deliverables_count": 0,
+    "note": "contract_hygiene._verified_refs() DROPS unverified references before an occurrence is built, rather than flagging them; counts below are what survived. REMEDIATED: a logical record left with zero verified references is now excluded from normalized['deliverables'] and quarantined into _provenance_rejections (previously it was retained, unflagged, in the trusted array).",
+    "occurrences": 24,
+    "occurrences_with_zero_refs_after_filter": 1
+  },
+  "evaluation_criteria": {
+    "invalid": 0,
+    "invalid_document_not_found": 0,
+    "invalid_other_reason": 0,
+    "note": "REMEDIATED: evaluation_criteria source_refs are now validated via validate_source_refs() before admission; a record with zero verified references is quarantined into _provenance_rejections (see below) rather than admitted unflagged.",
+    "records_with_zero_valid_reference": 0,
+    "rejected_zero_provenance": 0,
+    "total_references": 106,
+    "valid": 106
+  },
+  "requirements": {
+    "invalid": 0,
+    "invalid_document_not_found": 0,
+    "invalid_other_reason": 0,
+    "records_with_zero_valid_reference": 0,
+    "total_references": 446,
+    "valid": 446
+  },
+  "submission_rules": {
+    "invalid": 0,
+    "invalid_document_not_found": 0,
+    "invalid_other_reason": 0,
+    "records_with_zero_valid_reference": 0,
+    "total_references": 143,
+    "valid": 143
+  }
+}

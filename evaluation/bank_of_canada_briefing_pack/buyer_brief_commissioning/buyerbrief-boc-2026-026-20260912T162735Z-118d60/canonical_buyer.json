@@ -1,0 +1,30 @@
+{
+  "aliases": [],
+  "buyer_id": "buyer:bank-of-canada",
+  "common_name": null,
+  "contract_version": "canonical-buyer/1",
+  "country_code": "CA",
+  "evidence_ids": [
+    "extract:boc-crown-corporation",
+    "extract:boc-identity",
+    "extract:boc-independence",
+    "extract:boc-mandate"
+  ],
+  "government_level": "FEDERAL",
+  "identifiers": [],
+  "jurisdiction": {
+    "country_code": "CA",
+    "name": "Canada",
+    "subdivision_code": null
+  },
+  "languages": [],
+  "legal_name": "Bank of Canada",
+  "official_website": "https://www.bankofcanada.ca",
+  "organization_type": "CENTRAL_BANK",
+  "organizational_notes": [],
+  "parent_organization_id": null,
+  "primary_procurement_authority": null,
+  "public_contacts": [],
+  "public_mandate": "to regulate credit and currency in the best interests of the economic life of the nation",
+  "sector": null
+}

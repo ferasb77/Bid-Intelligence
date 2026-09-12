@@ -1,9 +1,25 @@
 # Opportunity Intelligence Analyst — Functional Specification
 
-**Specification version:** `opportunity-intelligence-analyst/1.0.0`  
-**Framework dependency:** Decision Intelligence Phase 1 and Decision Analyst Contract Phase 2  
-**Status:** Authoritative implementation specification  
+**Specification version:** `opportunity-intelligence-analyst/1.1.1`
+**Framework dependency:** Decision Intelligence Phase 1 and Decision Analyst Contract Phase 2
+**Status:** Authoritative implementation specification
 **Implementation status:** Not implemented
+
+## Summary of amendments
+
+Version 1.1.0 adds one responsibility established by [`OPPORTUNITY_INTELLIGENCE_PUBLICATION_ARCHITECTURAL_REVIEW.md`](OPPORTUNITY_INTELLIGENCE_PUBLICATION_ARCHITECTURAL_REVIEW.md): Opportunity Intelligence publishes the immutable analytical objects it already owns for governed downstream resolution.
+
+The amendment defines publication identity, snapshot, version and digest binding, owner-declared semantic and relationship publication, compatibility, validation, fail-closed behavior, and downstream guarantees. It does not change analytical semantics, computation, evidence or canonical ownership, or any downstream domain.
+
+Version 1.1.1 clarifies the existing publication identity contract by separating semantic publication from operational execution metadata. Operational metadata remains available for audit, replay, diagnostics, and execution traceability, but cannot affect semantic publication identity, publication-snapshot identity, semantic digests, governed-reference identity, canonical ordering, or downstream semantic equality.
+
+## Rationale
+
+The existing contract makes `DecisionAnalysis` an immutable, validated analytical output, but stable IDs alone do not make its owned objects resolvable across domain boundaries. [`GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md`](GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md) requires the owning domain to publish exact semantic representations under immutable owner, version, snapshot, digest, and relationship bindings.
+
+Opportunity Intelligence must provide those owner declarations because it owns the analytical meaning. Governed Reference Resolution may verify them but cannot create them. Executive Opportunity Understanding may organize their references but cannot bind or republish their semantics. Publication therefore closes the existing cross-domain boundary without creating another source of truth.
+
+The version 1.1.1 clarification follows the constitutional separation of evidence, computation, inference, and operational process. A governed semantic identity describes what an owner declares, while an execution record describes when and how processing occurred. Allowing process metadata to change semantic identity would make identical governed meaning appear different without an owner-declared semantic change, weakening determinism, immutable ownership, historical resolution, and downstream equality.
 
 ## 1. Purpose
 
@@ -293,6 +309,136 @@ The output contains:
 
 Although Phase 2 supports advisory recommendations generally, Opportunity Intelligence version 1 must declare no `RECOMMENDATION` capability and must return an empty recommendations collection. Management considerations belong in inference or moderator-ready consideration structures and cannot contain directives.
 
+### 11.1 Owner publication for governed resolution
+
+After a `DecisionAnalysis` passes its complete owner validation, Opportunity Intelligence publishes its owned analytical objects as one immutable publication snapshot conforming to [`GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md`](GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md). Publication is part of the Opportunity Intelligence owner boundary. It is not a separate domain, service, analysis, projection, or persistence authority.
+
+Publication does not create or alter semantic content. It makes the exact validated content already owned by Opportunity Intelligence resolvable by other governed domains.
+
+#### Publication identity and binding
+
+Each publication has:
+
+- the owner domain `OPPORTUNITY_INTELLIGENCE`;
+- the exact Opportunity Intelligence owner-contract identity and version;
+- the stable `analysis_id`;
+- the immutable authoritative input-snapshot identity and digest against which the analysis was validated;
+- a deterministic publication-snapshot identity;
+- a reproducible publication-snapshot digest;
+- a closed, canonically ordered object manifest;
+- a reproducible object digest for every published object; and
+- the exact versions of owner contracts needed to interpret published objects and their relationships.
+
+The publication-snapshot identity is derived deterministically from the owner-contract version, `analysis_id`, authoritative input-snapshot identity and digest, and publication object-manifest digest. The snapshot digest covers the canonical semantic publication and excludes operational metadata that has no effect on meaning. Any change to semantic content, object membership, relationship membership, owner version, or authoritative input binding creates a different digest and, where the identity inputs change, a different publication-snapshot identity.
+
+The published snapshot is immutable. It cannot mean “latest,” depend on mutable current state, or be rebound to another authoritative input snapshot. Historical references remain bound to the exact historical publication and authoritative input snapshots.
+
+#### Semantic publication and operational execution metadata
+
+Semantic publication consists only of owner-declared analytical meaning and the governed bindings required to identify, interpret, order, validate, and resolve that meaning. It includes published object membership, semantic fields, authority and reasoning properties, uncertainty, assumptions, alternatives, limitations, relationship membership, owner-contract version, authoritative input-snapshot binding, and the canonical ordering required by this specification.
+
+Operational execution metadata describes the process that produced or handled an analysis without changing what the validated analysis means. It includes execution timestamps, execution identifiers, runtime and processing-environment metadata, performance measurements, transport or storage locations, and execution diagnostics. Such metadata is not an owner-declared analytical fact merely because it is recorded beside a `DecisionAnalysis` or publication record.
+
+Operational execution metadata MUST NOT participate in:
+
+- semantic publication identity;
+- publication-snapshot identity;
+- semantic publication or object digests;
+- governed-reference identity;
+- canonical semantic ordering; or
+- downstream semantic equality.
+
+In particular, the timezone-aware execution timestamp required by the `DecisionAnalysis` output contract remains operational metadata. For the same validated semantic analysis, owner-contract version, authoritative input-snapshot binding, published object set, relationships, and canonical semantic values, changing only the execution timestamp or other operational metadata produces the identical semantic publication identity, publication-snapshot identity, semantic digests, governed references, ordering, and downstream semantic equality.
+
+Operational metadata may remain separately attributable to the immutable execution or publication record for audit, deterministic replay verification, diagnostics, and operational traceability. Its storage and audit identity are independent of semantic publication identity. Excluding it from semantic identity does not permit mutation of an existing audit record, loss of execution history, or substitution of one execution record for another.
+
+#### Published objects
+
+Opportunity Intelligence publishes only the analytical objects it owns and that are present in the validated `DecisionAnalysis`:
+
+- deterministic computed facts;
+- typed analytical observations and inferences;
+- hypotheses and their complete unranked alternatives;
+- explicit assumptions;
+- explicit unknowns and evidence gaps;
+- explicit limitations;
+- management considerations; and
+- unanswered management questions.
+
+For each object, Opportunity Intelligence publishes the exact owner-declared semantic representation required to interpret it without consumer inference. The representation retains all applicable existing fields, including stable identity, semantic type, exact wording or value, computation metadata, authority class, reasoning state, confidence, support status, scope, units, assumptions, alternatives, gaps, limitations, and governed absence. Publication introduces no replacement wording, summary, classification, score, or display-specific variant.
+
+Version 1 publishes no recommendations or human decisions because the Opportunity Intelligence contract does not authorize them.
+
+#### Published relationships
+
+The publication manifest exposes the exact existing relationships required to understand and validate each published object, with explicit role, direction, identity, owner, contract version, snapshot binding, and canonical order where order is meaningful. These include, as applicable:
+
+- contributing authoritative entity and fact references;
+- evidence-support references;
+- supporting and contradicting evidence;
+- computation inputs;
+- assumption dependencies;
+- alternative-hypothesis membership;
+- unknown, evidence-gap, and limitation relationships;
+- affected entity references; and
+- the governed basis for management considerations and questions.
+
+Upstream evidence, provenance, requirements, deliverables, clauses, canonical facts, observations, conflicts, dates, monetary values, procurement mechanics, evaluation criteria, and submission requirements remain owned and published by their existing domains. Opportunity Intelligence publishes only exact governed references to them. It does not copy their semantic content into an Opportunity Intelligence-owned object or claim their authority.
+
+Every required outbound relationship must close within the immutable bounded resolution context formed by the Opportunity Intelligence publication snapshot and the exact compatible upstream snapshots against which the analysis was validated. Publication cannot add a relationship that was not present in the validated analysis or its admitted input bindings.
+
+#### Explicit publication exclusions
+
+Opportunity Intelligence does not publish:
+
+- upstream authoritative or canonical objects as Opportunity Intelligence-owned objects;
+- copied provenance or evidence content as a new source of truth;
+- raw extraction, normalization, reconciliation, Stage D, prompt, or model-provider state;
+- diagnostic or rejected inputs that were not admitted to the validated analysis;
+- mutable internal state, credentials, transport metadata, or unrelated domain records;
+- presentation sections, executive organization, rendered narratives, or consumer-specific labels;
+- inferred relationships, repaired references, fallback values, or current-state substitutions; or
+- recommendations, rankings, scores, predictions, procurement strategy, or human decisions.
+
+#### Downstream guarantees
+
+When Governed Reference Resolution successfully resolves an Opportunity Intelligence publication reference, the consumer is guaranteed:
+
+- exact object identity, ownership, semantic class, contract version, snapshot identity, and verified digests;
+- the complete owner-declared semantic representation required by the consumer contract;
+- unchanged authority, reasoning state, confidence, support status, uncertainty, assumptions, alternatives, gaps, and limitations;
+- exact evidence, provenance-navigation, support, dependency, and affected-entity relationships required by the object;
+- deterministic owner ordering and canonical serialization;
+- consistency with the exact authoritative input snapshot used by the analysis; and
+- a clear distinction between governed absence and resolution failure.
+
+Successful resolution grants read-only semantic access. It does not transfer ownership, promote analysis to canonical fact, authorize a consumer to alter the object, or answer a management question.
+
+#### Publication validation and fail-closed behavior
+
+Opportunity Intelligence emits no publication snapshot unless:
+
+- the complete `DecisionAnalysis` validates under the exact owner-contract version;
+- every published object has a unique stable identity and supported semantic class;
+- the analysis and publication bind to the same authoritative input snapshot and digest;
+- canonical serialization reproduces every snapshot and object digest;
+- the object manifest is complete and deterministically ordered;
+- every owner-declared required semantic field is present;
+- every required relationship is typed, directionally explicit, and closed in the bounded resolution context;
+- all referenced owner contracts and exact versions are supported;
+- authority, uncertainty, confidence, support status, assumptions, alternatives, and limitations remain unchanged; and
+- the publication contains no excluded object, copied authority, inferred relationship, or consumer-authored meaning.
+
+Missing or duplicate identities, unsupported versions, owner mismatch, snapshot or object digest mismatch, incomplete manifests, missing semantic content, broken relationship closure, incompatible snapshot sets, or nondeterministic serialization fail publication. Opportunity Intelligence does not drop the affected object, repair the reference, search another snapshot, substitute current state, or emit a partially trusted publication.
+
+#### Publication compatibility
+
+Every governed reference names the exact Opportunity Intelligence owner-contract version and publication snapshot that define its meaning. Consumers declare supported versions and fail on incompatible versions.
+
+A compatibility transformation is permitted only when an explicit deterministic contract preserves stable owner and object identities, all required semantic content, authority, uncertainty, evidence and provenance relationships, snapshot and digest traceability, and canonical ordering. It must identify source and target versions and fail when required meaning cannot be represented. It cannot rerun analysis, recompute a fact, reinterpret prose, add or remove an alternative, repair evidence, or substitute a newer publication.
+
+Historical publication snapshots remain immutable and resolvable for as long as governed references to them remain valid.
+
 ## 12. Required report sections
 
 Every section is structured data backed by typed statements. Display headings do not create additional facts.
@@ -528,6 +674,39 @@ Competition Intelligence may later add verified competitor and award evidence. O
 
 Organizational Intelligence may later compare opportunity demands with verified internal capability and history. Opportunity Intelligence v1 describes demands only.
 
+### Governed downstream resolution
+
+The governed flow is:
+
+```text
+Opportunity Intelligence
+        ↓ owns and validates analysis
+Owner Publication
+        ↓ binds exact semantics, relationships, version, snapshot, and digests
+Governed Reference Resolution
+        ↓ verifies identity, authority, integrity, and closure
+Executive Opportunity Understanding
+        ↓ organizes resolved governed references
+Presentation Consumers
+```
+
+Owner Publication is a responsibility of Opportunity Intelligence, not an intervening domain. Governed Reference Resolution performs verification only. Executive Opportunity Understanding performs organization only. Presentation consumers perform rendering only.
+
+### Compatibility analysis
+
+This amendment is compatible with the existing repository architecture:
+
+- **Analytical semantics are unchanged.** The same validated `DecisionAnalysis` objects and meaning are published without new reasoning or computation.
+- **Canonical ownership is unchanged.** Canonical Opportunity and other authoritative domains remain the sole owners of authoritative facts and conflicts.
+- **Evidence ownership is unchanged.** Opportunity Intelligence publishes evidence relationships, while evidence and provenance remain in their owning domains.
+- **Resolution authority is unchanged.** Governed Reference Resolution verifies owner declarations and creates no semantic content.
+- **Executive organization is unchanged.** Executive Opportunity Understanding receives resolvable references and continues to own only organization and coverage.
+- **Presentation authority is unchanged.** Downstream consumers render resolved meaning and receive no analytical or canonical ownership.
+- **Existing immutable analyses retain their meaning.** Version 1.0.0 analyses are not silently reinterpreted as publications. Cross-domain resolution requires an exact supported publication binding or an explicit lossless compatibility contract.
+- **Operational auditability is preserved without semantic drift.** Execution metadata remains independently attributable for audit, replay, diagnostics, and operational traceability, while semantic identity remains stable across executions that produce the same governed meaning.
+
+The amendment satisfies the finding in [`OPPORTUNITY_INTELLIGENCE_PUBLICATION_ARCHITECTURAL_REVIEW.md`](OPPORTUNITY_INTELLIGENCE_PUBLICATION_ARCHITECTURAL_REVIEW.md) by assigning the missing owner-publication responsibility to Opportunity Intelligence and supplying the identity, semantic, snapshot, version, digest, relationship, compatibility, validation, and fail-closed guarantees required by [`GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md`](GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md).
+
 ## 23. Version roadmap
 
 ### Version 1 — Opportunity evidence
@@ -571,8 +750,14 @@ A future implementation is conformant only if it proves:
 13. output validates through the Phase 2 registry;
 14. identical inputs produce identical computed facts and ordering;
 15. malicious or irrelevant document instructions cannot extend allowed inputs or outputs;
-16. existing public API, persistence, replay, checkpoint, proposal, and UI behavior remains unchanged; and
-17. the full existing regression suite remains unchanged and passing.
+16. existing public API, persistence, replay, checkpoint, proposal, and UI behavior remains unchanged;
+17. the full existing regression suite remains unchanged and passing;
+18. every cross-domain-resolvable Opportunity Intelligence object is published under the exact owner contract, immutable publication snapshot, authoritative input-snapshot binding, and reproducible digests;
+19. the published semantic representation and required relationship manifest are complete, immutable, canonically ordered, and sufficient for governed downstream resolution without inference;
+20. publication never transfers or duplicates canonical, evidence, provenance, understanding, resolution, presentation, or human-decision authority;
+21. historical and incompatible publication versions fail or transform only through an explicit deterministic lossless compatibility contract; and
+22. publication fails closed for missing, duplicate, stale, incompatible, incomplete, corrupt, or unresolved content; and
+23. changing only execution timestamps, execution identifiers, runtime metadata, processing environment, execution diagnostics, or other non-semantic operational metadata leaves semantic publication identity, publication-snapshot identity, semantic digests, governed references, canonical ordering, and downstream semantic equality unchanged while preserving independently attributable operational audit records.
 
 ## 25. Explicit exclusions
 
@@ -594,3 +779,5 @@ Version 1 does not implement:
 - analyst moderation.
 
 This document fixes the functional boundary for a future Opportunity Intelligence Analyst. It introduces no runtime behavior.
+
+Versions 1.1.0 and 1.1.1 amend this architecture specification only. Version 1.1.1 resolves the validated publication identity conflict by making operational execution metadata constitutionally non-semantic while preserving its independent auditability. No production code, prompts, tests, schemas, APIs, persistence, pipelines, evaluation artifacts, or other architecture documents were modified.

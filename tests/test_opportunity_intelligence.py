@@ -68,6 +68,47 @@ def test_requirement_and_evaluation_computations():
     assert values["threshold_count"] == "1"
 
 
+def test_total_conflicts_does_not_double_count_canonical_conflicts_already_merged():
+    """reconcile_package_facts() (real Stage C) always merges canonical
+    opportunity's own conflicts into the list it returns, so the `conflicts`
+    parameter already contains them in every real invocation. Counting
+    len(conflicts) + len(canonical conflicts) on top of that double-counts
+    the same conflicts; the count must reflect distinct conflicts."""
+    value = facts()
+    canonical_conflict = {"conflict_id": "conf-shared", "state": "ACTIVE", "semantic_kind": "OPPORTUNITY_TITLE"}
+    value["_canonical_opportunity"]["conflicts"] = [canonical_conflict]
+    # Real Stage C behavior: the returned conflicts list already includes it.
+    merged_conflicts = [canonical_conflict, {"conflict_id": "conf-eval-1", "conflict_type": "EVALUATION_CONFLICT"}]
+    result = analyze_opportunity(value, merged_conflicts, context_id="opportunity-1")
+    assert metrics(result)["total_conflicts"] == "2"
+
+
+def test_total_conflicts_still_correct_when_conflicts_do_not_already_include_canonical():
+    value = facts()
+    value["_canonical_opportunity"]["conflicts"] = [{"conflict_id": "conf-canonical-only", "state": "ACTIVE"}]
+    result = analyze_opportunity(value, [{"conflict_id": "conf-eval-1", "conflict_type": "EVALUATION_CONFLICT"}],
+                                 context_id="opportunity-1")
+    assert metrics(result)["total_conflicts"] == "2"
+
+
+def test_unresolved_milestone_conflicts_counts_conflicted_term_and_deadline_fields():
+    """The check must key on the resolved FIELD NAME (submission_deadline,
+    clarification_deadline, contract_term), not the state dict's own
+    stringified content -- a conflicted field's state dict never literally
+    spells DATE/DEADLINE/TERM, so checking its content could never match."""
+    value = facts()
+    value["_canonical_opportunity"]["resolved"]["contract_term"] = {"status": "CONFLICTED", "value": None, "conflict_ids": ["conf-term"]}
+    result = analyze_opportunity(value, context_id="opportunity-1")
+    assert metrics(result)["unresolved_milestone_conflicts"] == "1"
+
+
+def test_unresolved_milestone_conflicts_ignores_conflicted_non_date_fields():
+    value = facts()
+    value["_canonical_opportunity"]["resolved"]["client"] = {"status": "CONFLICTED", "value": None, "conflict_ids": ["conf-client"]}
+    result = analyze_opportunity(value, context_id="opportunity-1")
+    assert metrics(result)["unresolved_milestone_conflicts"] == "0"
+
+
 def test_submission_timeline_and_commercial_computations():
     values = metrics(analyze_opportunity(facts(), context_id="opportunity-1"))
     assert values["submission_artifact_count"] == "2"
@@ -79,6 +120,56 @@ def test_submission_timeline_and_commercial_computations():
     assert values["verified_clause_counts"] == '{"LIABILITY_INDEMNITY":1}'
     assert values["deliverable_count"] == "1"
     assert values["monetary_observation_count"] == "1"
+
+
+def test_dates_entries_duplicating_a_canonical_milestone_are_not_double_counted():
+    # Real production evidence: Stage A's legacy "dates" section frequently
+    # restates a date already captured, independently and already
+    # reconciled, as a typed_observations MILESTONE. Re-merging both must
+    # not inflate milestone_completeness.observed.
+    value = facts()
+    value["dates"] = [{"milestone": "Question Deadline", "date": "2030-01-01", "source_doc": "a.pdf"},
+                       {"milestone": "Bid Closing", "date": "2030-01-11", "source_doc": "a.pdf"}]
+    values = metrics(analyze_opportunity(value, context_id="opportunity-1"))
+    completeness = values["milestone_completeness"]
+    # 2 canonical MILESTONE observations parse to a date (clarification,
+    # submission -- the PARTIAL award-date has no parseable day); the two
+    # duplicate "dates" entries add nothing further. Before this change,
+    # "observed" summed the raw MILESTONE family count (3, including the
+    # unparsed award-date) with len(dates) (2), inflating it to 5.
+    assert completeness == '{"dated":2,"observed":2}'
+
+
+def test_undated_dates_entry_is_preserved_not_lost():
+    # A dates entry with no parseable date names a real milestone the
+    # governed MILESTONE family cannot yet express -- this is the one piece
+    # of information "dates" carries that is not already redundant, and it
+    # must survive as visible, evidence-derived content rather than being
+    # silently dropped.
+    value = facts()
+    value["dates"] = [{"milestone": "Agreement Commencement Date", "date": None, "source_doc": "g.docx"}]
+    result = analyze_opportunity(value, context_id="opportunity-1")
+    values = metrics(result)
+    assert values["undated_milestone_labels"] == '["Agreement Commencement Date"]'
+    completeness = values["milestone_completeness"]
+    assert completeness == '{"dated":2,"observed":3}'
+    assert any("Agreement Commencement Date" in item for item in result.limitations)
+
+
+def test_dates_entries_never_require_their_own_governed_reference():
+    # "dates" records must never appear as individually citable evidence --
+    # no publication owns them, and none of the analyst's own computed
+    # facts about milestones cite an individual dates record (they cite the
+    # analysis-level root, exactly like every other package-level metric).
+    value = facts()
+    value["dates"] = [{"milestone": "Agreement Commencement Date", "date": None, "source_doc": "g.docx"},
+                       {"milestone": "Question Deadline", "date": "2030-01-01", "source_doc": "a.pdf"}]
+    result = analyze_opportunity(value, context_id="opportunity-1")
+    # Before this change, each dates record got its own FUTURE_ENTITY
+    # support keyed by an "oi-dates-..." hash -- no publication anywhere
+    # can supply a governed reference for that id (confirmed by live
+    # commissioning). No such entity may exist any more.
+    assert not any(item.entity_id.startswith("oi-dates-") for item in result.evidence_used)
 
 
 def test_evidence_closure_and_confidence_rules():

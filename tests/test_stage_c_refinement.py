@@ -92,8 +92,10 @@ class TestStageCEvaluationCriteriaIdentity(unittest.TestCase):
         """Overall Technical Weight = 75% vs Overall Technical Weight = 70% -> TRUE_CONFLICT."""
         normalized = {
             "evaluation_criteria": [
-                {"stage": "Overall Scoring Ratio", "criterion": "Overall Technical Weight", "weight": "75%", "source_doc": "Main_RFP.pdf"},
-                {"stage": "Overall Scoring Ratio", "criterion": "Overall Technical Weight", "weight": "70%", "source_doc": "Addendum_1.pdf"}
+                {"stage": "Overall Scoring Ratio", "criterion": "Overall Technical Weight", "weight": "75%",
+                 "source_refs": [{"source_doc": "Main_RFP.pdf"}]},
+                {"stage": "Overall Scoring Ratio", "criterion": "Overall Technical Weight", "weight": "70%",
+                 "source_refs": [{"source_doc": "Addendum_1.pdf"}]}
             ]
         }
         pkg_files = ["Main_RFP.pdf", "Addendum_1.pdf"]
@@ -106,8 +108,10 @@ class TestStageCEvaluationCriteriaIdentity(unittest.TestCase):
         """Criterion 'Methodology' = 25 points vs 'Methodology' = 30 points -> TRUE_CONFLICT."""
         normalized = {
             "evaluation_criteria": [
-                {"stage": "Rated Criteria", "criterion": "Technical Methodology", "weight": "25 points", "source_doc": "Main_RFP.pdf"},
-                {"stage": "Rated Criteria", "criterion": "Technical Methodology", "weight": "30 points", "source_doc": "Addendum_2.pdf"}
+                {"stage": "Rated Criteria", "criterion": "Technical Methodology", "weight": "25 points",
+                 "source_refs": [{"source_doc": "Main_RFP.pdf"}]},
+                {"stage": "Rated Criteria", "criterion": "Technical Methodology", "weight": "30 points",
+                 "source_refs": [{"source_doc": "Addendum_2.pdf"}]}
             ]
         }
         pkg_files = ["Main_RFP.pdf", "Addendum_2.pdf"]
@@ -151,8 +155,10 @@ class TestStageCEvaluationCriteriaIdentity(unittest.TestCase):
         """Pipeline-realistic stage strings: R1 - Methodology = 20 vs R1 - Methodology = 30 across docs -> TRUE_CONFLICT."""
         normalized = {
             "evaluation_criteria": [
-                {"stage": "R1 - Methodology", "weight": "20 points", "threshold": "70%", "notes": "", "source_doc": "Main_RFP.pdf"},
-                {"stage": "R1 - Methodology", "weight": "30 points", "threshold": "70%", "notes": "", "source_doc": "Addendum_1.pdf"}
+                {"stage": "R1 - Methodology", "weight": "20 points", "threshold": "70%", "notes": "",
+                 "source_refs": [{"source_doc": "Main_RFP.pdf"}]},
+                {"stage": "R1 - Methodology", "weight": "30 points", "threshold": "70%", "notes": "",
+                 "source_refs": [{"source_doc": "Addendum_1.pdf"}]}
             ]
         }
         pkg_files = ["Main_RFP.pdf", "Addendum_1.pdf"]
@@ -177,8 +183,10 @@ class TestStageCEvaluationCriteriaIdentity(unittest.TestCase):
         """Category 1 Methodology = 30 vs Category 1 Addendum Methodology = 25 -> TRUE_CONFLICT."""
         normalized = {
             "evaluation_criteria": [
-                {"stage": "Category 1 Technical Evaluation", "criterion": "Technical Methodology", "weight": "30 points", "source_doc": "Main_RFP.pdf"},
-                {"stage": "Category 1 Technical Evaluation", "criterion": "Technical Methodology", "weight": "25 points", "source_doc": "Addendum_1.pdf"}
+                {"stage": "Category 1 Technical Evaluation", "criterion": "Technical Methodology", "weight": "30 points",
+                 "source_refs": [{"source_doc": "Main_RFP.pdf"}]},
+                {"stage": "Category 1 Technical Evaluation", "criterion": "Technical Methodology", "weight": "25 points",
+                 "source_refs": [{"source_doc": "Addendum_1.pdf"}]}
             ]
         }
         pkg_files = ["Main_RFP.pdf", "Addendum_1.pdf"]

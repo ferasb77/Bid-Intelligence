@@ -66,15 +66,28 @@ METADATA = DecisionAnalystMetadata(
 
 
 def _record_id(section: str, record: Mapping, index: int) -> str:
+    # "requirements" is deliberately absent here. Stage A's req_id (e.g.
+    # "M1") is a document-local label -- each source document restarts its
+    # own numbering -- not a package-wide identifier. contract_hygiene.py
+    # already recognizes this distinction for "deliverables" and
+    # "commercial_clauses": it never trusts a source-supplied label as
+    # identity, generating its own deterministic content hash instead
+    # (deliverable_id/clause_id). Requirements never pass through that
+    # reconciliation, so trusting req_id here would let a Reality-layer
+    # label collide across documents into one wrongly-merged identity --
+    # confirmed by live commissioning of the real Bank of Canada corpus,
+    # where 41 of 65 req_id values named two or more textually distinct
+    # requirements. Falling through to the same content-and-position hash
+    # already used below keeps identity evidence-derived and collision-free
+    # without inventing a new identifier scheme; the original req_id label
+    # remains fully visible as ordinary record content for citation.
     keys = {
-        "requirements": ("requirement_id", "req_id"),
         "deliverables": ("deliverable_id",),
         "commercial_clauses": ("clause_id",),
         "evaluation_criteria": ("criterion_id",),
         "observations": ("observation_id",),
         "conflicts": ("conflict_id",),
         "submission_rules": ("submission_rule_id", "artifact_id"),
-        "dates": ("date_id", "milestone_id"),
     }.get(section, ())
     for key in keys:
         if isinstance(record.get(key), str) and record[key].strip():
@@ -128,7 +141,7 @@ class OpportunityIntelligenceAnalyst:
         links = {("root", 0): root}
 
         sections = ("requirements", "deliverables", "commercial_clauses",
-                    "evaluation_criteria", "submission_rules", "dates")
+                    "evaluation_criteria", "submission_rules")
         records = {}
         for section in sections:
             value = facts.get(section, []) or []
@@ -138,6 +151,20 @@ class OpportunityIntelligenceAnalyst:
             for index, item in enumerate(value):
                 links[(section, index)] = EvidenceSupport(
                     _entity_type(section), _record_id(section, item, index), _evidence_ids(item))
+
+        # Stage A's legacy "dates" section is never reconciled across
+        # documents (extractor.py's normalize_package_facts only ever
+        # concatenates it) and, in real production data, duplicates
+        # canonical_opportunity.py's already-governed, already-reconciled
+        # typed_observations MILESTONE family for the overwhelming majority
+        # of entries. It is read here only for the residual information the
+        # governed MILESTONE family cannot yet express -- a named milestone
+        # with no confirmed date -- not treated as individually citable
+        # evidence requiring its own governed reference (see
+        # OPPORTUNITY_IDENTITY_AND_LEGACY_DATES_ARCHITECTURE.md).
+        dates_records = facts.get("dates", []) or []
+        if not isinstance(dates_records, list) or any(not isinstance(item, Mapping) for item in dates_records):
+            raise ContractValidationError("dates must contain mappings")
 
         canonical = facts.get("_canonical_opportunity") or {}
         if not isinstance(canonical, Mapping):
@@ -149,7 +176,32 @@ class OpportunityIntelligenceAnalyst:
             links[("observations", index)] = EvidenceSupport(
                 SupportedEntityType.OBSERVATION, _record_id("observations", item, index),
                 _evidence_ids(item))
+        # `conflicts` (Stage C's reconcile_package_facts() output) is a flat
+        # concatenation of two structurally unrelated populations: (1)
+        # canonical_opportunity.py's own FIELD_KINDS conflicts (title/client/
+        # file_number/contract_term/headline_value/opportunity_type/
+        # procurement_model), which Canonical Opportunity Publication genuinely
+        # publishes as governed CONFLICT objects under this exact conflict_id;
+        # and (2) extractor.detect_document_conflicts() /
+        # contract_hygiene.structured_*_conflicts()'s own ordinal, Stage-C-
+        # local advisory review items (CONF-DATE-N, CONF-EVAL-N, CONF-SUB-N,
+        # CONF-MAND-N, CONF-COMM-N, CONF-SCOPE-N, CONF-HYGIENE-N,
+        # CONF-CLAUSE-N), which were never designed to become individually
+        # governed, publishable objects and structurally cannot resolve to
+        # one anywhere downstream. Citing (2) as FUTURE_ENTITY evidence_used
+        # support that a publication boundary is expected to resolve is what
+        # caused Executive Opportunity Brief commissioning to fail with "no
+        # governed reference exists" for CONF-EVAL-1..4 (see
+        # BANK_OF_CANADA_CONFLICT_IDENTITY_REMEDIATION_REPORT.md). Only (1) is
+        # linked as citable support here; unresolved_conflict_ids below still
+        # lists every conflict in `conflicts`, (1) and (2) alike -- no
+        # uncertainty signal is dropped, only the citable-support contract is
+        # scoped to what a publication boundary can actually honor.
+        governed_conflict_ids = {c.get("conflict_id") for c in canonical.get("conflicts", []) or []
+                                 if isinstance(c, Mapping) and isinstance(c.get("conflict_id"), str)}
         for index, item in enumerate(conflicts):
+            if item.get("conflict_id") not in governed_conflict_ids:
+                continue
             links[("conflicts", index)] = EvidenceSupport(
                 SupportedEntityType.FUTURE_ENTITY, _record_id("conflicts", item, index),
                 _evidence_ids(item))
@@ -189,12 +241,19 @@ class OpportunityIntelligenceAnalyst:
             partial_dates += int(partial or item.get("precision") in {"MONTH", "YEAR", "UNKNOWN"})
             if parsed:
                 milestones.append((str(item.get("semantic_kind") or "MILESTONE"), parsed))
-        for item in records["dates"]:
-            parsed, partial = _date_value(item.get("date"))
-            partial_dates += int(partial)
-            if parsed:
-                milestones.append((str(item.get("milestone") or "MILESTONE"), parsed))
         milestones = sorted(set(milestones), key=lambda pair: (pair[1], pair[0]))
+        # A dates entry with no parseable date names a real contract
+        # milestone the governed MILESTONE family does not yet capture (it
+        # requires a valid date to be admitted at all) -- this is the one
+        # piece of information "dates" carries that canonical_opportunity.py
+        # does not already, redundantly, express. Entries with a parseable
+        # date are not read here at all: real production data shows they
+        # duplicate an existing MILESTONE observation, and re-merging them
+        # would reproduce the double-counting this change corrects.
+        undated_milestone_labels = tuple(sorted({
+            str(item.get("milestone")).strip() for item in dates_records
+            if str(item.get("milestone") or "").strip() and _date_value(item.get("date"))[0] is None
+        }))
         intervals = tuple((milestones[i - 1][0], milestones[i][0],
                            (milestones[i][1] - milestones[i - 1][1]).days)
                           for i in range(1, len(milestones)))
@@ -204,9 +263,15 @@ class OpportunityIntelligenceAnalyst:
         submission, _ = _date_value((resolved.get("submission_deadline") or {}).get("value")
                                     if isinstance(resolved.get("submission_deadline"), Mapping) else None)
         clarification_interval = (submission - clarification).days if submission and clarification else None
-        milestone_conflicts = sum(1 for value in resolved.values()
+        # Checks the resolved FIELD NAME (e.g. "contract_term", "submission_deadline")
+        # against the keyword list, not the state dict's own content -- a
+        # conflicted field's state dict (status/value/observation_ids/
+        # conflict_ids/resolution_basis/provenance_status) never itself
+        # contains the literal words DATE/DEADLINE/TERM, so checking the
+        # stringified value here would silently never match anything.
+        milestone_conflicts = sum(1 for field, value in resolved.items()
                                   if isinstance(value, Mapping) and value.get("status") == "CONFLICTED"
-                                  and any(word in str(value).upper() for word in ("DATE", "DEADLINE", "TERM")))
+                                  and any(word in field.upper() for word in ("DATE", "DEADLINE", "TERM")))
         milestone_conflicts += sum(1 for item in conflicts
                                    if "DATE" in str(item.get("conflict_type") or "").upper())
 
@@ -218,13 +283,27 @@ class OpportunityIntelligenceAnalyst:
                         if item.get("evidence_state") == "VERIFIED" or "deliverable_id" not in item]
         monetary = [item for item in observations if item.get("family") == "MONETARY"]
 
+        # reconcile_package_facts() (the real production Stage C) already
+        # merges canonical_opportunity's own conflicts into the list it
+        # returns, so `conflicts` (this analyst's own parameter) already
+        # contains them in every real invocation; adding
+        # canonical.get("conflicts") again double-counted the same
+        # conflicts under their two different aggregation paths. Dedup by
+        # the same content-addressed conflict identity used everywhere
+        # else in this module (conflict_ids/unresolved_conflict_ids below)
+        # so the count is correct whether or not a caller's `conflicts`
+        # already includes canonical's.
+        distinct_conflict_ids = {_record_id("conflicts", item, i) for i, item in enumerate(conflicts)}
+        distinct_conflict_ids |= {_record_id("conflicts", item, i)
+                                  for i, item in enumerate(canonical.get("conflicts", []) or [])}
+
         values = {
             "total_requirements": len(requirements),
             "requirement_category_counts": dict(sorted(categories.items())),
             "mandatory_requirements": mandatory,
             "optional_requirements": optional,
             "requirement_evidence_coverage": {"ready": evidence_ready, "total": len(requirements)},
-            "total_conflicts": len(conflicts) + len(canonical.get("conflicts", []) or []),
+            "total_conflicts": len(distinct_conflict_ids),
             "evaluation_hierarchy_depth": hierarchy_depth,
             "weighted_criteria": weighted,
             "criteria_missing_weights": missing_weights,
@@ -235,12 +314,13 @@ class OpportunityIntelligenceAnalyst:
             "unresolved_submission_ambiguity": submission_ambiguity,
             "milestone_intervals_days": intervals,
             "clarification_to_submission_days": clarification_interval,
-            "milestone_completeness": {"dated": len(milestones), "observed": sum(1 for item in observations if item.get("family") == "MILESTONE") + len(records["dates"])},
+            "milestone_completeness": {"dated": len(milestones), "observed": len(milestones) + len(undated_milestone_labels)},
             "partial_date_count": partial_dates,
             "unresolved_milestone_conflicts": milestone_conflicts,
             "verified_clause_counts": dict(sorted(clause_counts.items())),
             "deliverable_count": len(deliverables),
             "monetary_observation_count": len(monetary),
+            "undated_milestone_labels": undated_milestone_labels,
         }
 
         computed = []
@@ -312,11 +392,13 @@ class OpportunityIntelligenceAnalyst:
                 "Which documented uncertainties require management escalation before allocating internal effort?",
                 related,
             ))
-        limitations = tuple(value for value in (
+        limitations = (
             "Analysis uses only the supplied authoritative opportunity context.",
             "No buyer, competitor, market, pricing, CRM, or organizational capability data is available.",
             "No composite complexity or pursuit score is produced.",
-        ))
+        ) + ((f"{len(undated_milestone_labels)} contract milestone(s) are named in source material "
+              f"without a confirmed date: {', '.join(undated_milestone_labels)}.",)
+             if undated_milestone_labels else ())
         output = DecisionAnalysis(
             _id("oi-analysis-", {"context": context.analyst_context.context_id,
                                   "facts": facts, "conflicts": conflicts}),
@@ -346,7 +428,7 @@ def validate_opportunity_analysis(context: OpportunityAnalysisContext,
                         context.analyst_context.context_id)
     }
     for section in ("requirements", "deliverables", "commercial_clauses",
-                    "evaluation_criteria", "submission_rules", "dates"):
+                    "evaluation_criteria", "submission_rules"):
         records = context.normalized_facts.get(section, []) or []
         if isinstance(records, list):
             allowed_evidence.update(

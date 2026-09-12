@@ -1,0 +1,499 @@
+{
+  "_extraction_diagnostic": {
+    "recovery_attempts": 0,
+    "status": "VERIFIED_ADEQUATE"
+  },
+  "commercial_clauses": [
+    {
+      "clause_kind": "SUBCONTRACTING",
+      "conditions": [],
+      "linked_observation_ids": [],
+      "scope": {
+        "component": null,
+        "location": null,
+        "lot": null,
+        "phase": null
+      },
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx",
+      "source_fact": "Proponent must provide a list of any subcontractors to be used to complete the proposed contract, and proponent and subcontractors must comply with forced labour and child labour prohibitions and the Fighting Against Forced Labour and Child Labour in Supply Chains Act.",
+      "source_refs": [
+        {
+          "excerpt": "The proponent has provided a list of any subcontractors to be used to complete the proposed contract.",
+          "page": null,
+          "section": "3. Ability to provide statement of work",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        },
+        {
+          "excerpt": "The proponent and any subcontractor to be used to complete the proposed contract: do not use or tolerate the use of forced labour or child labour in any part of their activities or supply chains; have implemented and maintain rigorous and well-developed policies and due diligence processes to prevent and mitigate the risk of such practices in their activities and supply chains; and comply with the Fighting Against Forced Labour and Child Labour in Supply Chains Act (SC 2023, c 9), as amended or replaced.",
+          "page": null,
+          "section": "7. No forced labour or child labour",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        }
+      ],
+      "topic": "Subcontractor Disclosure and Responsibility"
+    },
+    {
+      "clause_kind": "REGULATORY_COMPLIANCE",
+      "conditions": [],
+      "linked_observation_ids": [],
+      "scope": {
+        "component": null,
+        "location": null,
+        "lot": null,
+        "phase": null
+      },
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx",
+      "source_fact": "Proponent and any subcontractor must not use or tolerate forced labour or child labour in any part of their activities or supply chains, must maintain rigorous policies and due diligence processes to prevent and mitigate such risks, and must comply with the Fighting Against Forced Labour and Child Labour in Supply Chains Act (SC 2023, c 9), as amended or replaced.",
+      "source_refs": [
+        {
+          "excerpt": "The proponent and any subcontractor to be used to complete the proposed contract: do not use or tolerate the use of forced labour or child labour in any part of their activities or supply chains; have implemented and maintain rigorous and well-developed policies and due diligence processes to prevent and mitigate the risk of such practices in their activities and supply chains; and comply with the Fighting Against Forced Labour and Child Labour in Supply Chains Act (SC 2023, c 9), as amended or replaced.",
+          "page": null,
+          "section": "7. No forced labour or child labour",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        }
+      ],
+      "topic": "Forced Labour and Child Labour Compliance"
+    },
+    {
+      "clause_kind": "CONFIDENTIALITY",
+      "conditions": [],
+      "linked_observation_ids": [],
+      "scope": {
+        "component": null,
+        "location": null,
+        "lot": null,
+        "phase": null
+      },
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx",
+      "source_fact": "Proponent must not have, or have access to, information in the preparation of its proposal that is confidential and not available to other proponents, as part of conflict of interest definition.",
+      "source_refs": [
+        {
+          "excerpt": "\"Conflict of Interest\" includes, but is not limited to, any situation or circumstance where: in relation to the bidding process, the proponent has an unfair advantage or engages in conduct, directly or indirectly, that may give it an unfair advantage, including but not limited to: having, or having access to, information in the preparation of its proposal that is confidential and not available to other proponents.",
+          "page": null,
+          "section": "6. Conflict of interest",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        }
+      ],
+      "topic": "Conflict of Interest - Confidential Information Access"
+    }
+  ],
+  "contract_risks": [],
+  "dates": [],
+  "deliverables": [],
+  "doc_metadata": {
+    "client": "Bank of Canada",
+    "file_number": "2026-026",
+    "notes": "Standard submission form for RFP 2026-026 requiring proponent acknowledgements, certifications, and declarations regarding terms of reference, statement of work capability, financial proposal accuracy, addenda receipt, conflict of interest, and forced labour/child labour compliance.",
+    "title": "RFP 2026-026 - Appendix A - Submission Form"
+  },
+  "evaluation_criteria": [],
+  "requirements": [
+    {
+      "_semantic_candidates": [
+        "Submission Compliance"
+      ],
+      "category": "Mandatory",
+      "description": "Proponent must acknowledge that the RFP process is governed by the Terms of Reference set out in the RFP, and that the procurement process does not constitute a legally binding bidding process with no legal relationship or obligations created unless and until the Bank of Canada and a selected proponent enter into a contract.",
+      "evidence": "Signed acknowledgement in Submission Form",
+      "req_id": "M1",
+      "requirement_type": "Submission Compliance",
+      "rfso_ref": "Section 2. Acknowledgement of Terms of Reference",
+      "source_refs": [
+        {
+          "excerpt": "The proponent acknowledges that this RFP process will be governed by the specific Terms of Reference set out in this RFP, and that, among other things, the Terms of Reference confirm that this procurement process does not constitute a legally binding bidding process, and that there will be no legal relationship or obligations created unless and until the Bank of Canada and a selected proponent enter into a contract.",
+          "page": null,
+          "section": "2. Acknowledgement of Terms of Reference",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    {
+      "_semantic_candidates": [
+        "Supplier Qualification"
+      ],
+      "category": "Mandatory",
+      "description": "Proponent must certify that it has carefully examined the RFP and has clear and comprehensive knowledge of the statement of work required, and represents and warrants its ability to meet the requirements detailed in the statement of work in accordance with the terms of the RFP for the pricing provided in its proposal.",
+      "evidence": "Certification statement in Submission Form",
+      "req_id": "M2",
+      "requirement_type": "Supplier Qualification",
+      "rfso_ref": "Section 3. Ability to provide statement of work",
+      "source_refs": [
+        {
+          "excerpt": "The proponent certifies that it has carefully examined this RFP and has a clear and comprehensive knowledge of the statement of work required. The proponent represents and warrants its ability to meet the requirements detailed in the statement of work in accordance with the terms of the RFP for the pricing provided in its proposal.",
+          "page": null,
+          "section": "3. Ability to provide statement of work",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    {
+      "_semantic_candidates": [
+        "Submission Compliance"
+      ],
+      "category": "Mandatory",
+      "description": "Proponent must provide a list of any subcontractors to be used to complete the proposed contract.",
+      "evidence": "Subcontractor list in Submission Form",
+      "req_id": "M3",
+      "requirement_type": "Submission Compliance",
+      "rfso_ref": "Section 3. Ability to provide statement of work",
+      "source_refs": [
+        {
+          "excerpt": "The proponent has provided a list of any subcontractors to be used to complete the proposed contract.",
+          "page": null,
+          "section": "3. Ability to provide statement of work",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    {
+      "_semantic_candidates": [
+        "Submission Compliance"
+      ],
+      "category": "Mandatory",
+      "description": "Proponent must certify that it has submitted its rates in accordance with section 4. RFP Particulars and confirm that the financial proposal provided is accurate.",
+      "evidence": "Financial proposal certification in Submission Form",
+      "req_id": "M4",
+      "requirement_type": "Submission Compliance",
+      "rfso_ref": "Section 4. Financial proposal",
+      "source_refs": [
+        {
+          "excerpt": "The proponent certifies that it has submitted its rates in accordance with section 4. RFP Particulars. The proponent confirms that the financial proposal provided is accurate.",
+          "page": null,
+          "section": "4. Financial proposal",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    {
+      "_semantic_candidates": [],
+      "category": "Mandatory",
+      "description": "Proponent acknowledges that any inaccurate, misleading or incomplete information, including withdrawn or altered pricing, could adversely impact the acceptance of its proposal or its eligibility for future work.",
+      "evidence": "Acknowledgement in Submission Form",
+      "req_id": "M5",
+      "requirement_type": "General Compliance",
+      "rfso_ref": "Section 4. Financial proposal",
+      "source_refs": [
+        {
+          "excerpt": "The proponent acknowledges that any inaccurate, misleading or incomplete information, including withdrawn or altered pricing, could adversely impact the acceptance of its proposal or its eligibility for future work.",
+          "page": null,
+          "section": "4. Financial proposal",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    {
+      "_semantic_candidates": [
+        "Submission Compliance"
+      ],
+      "category": "Mandatory",
+      "description": "Proponent must confirm receipt of all addenda issued by the Bank of Canada prior to the final date for issuing addenda by listing the addenda numbers or, if no addenda were issued, by writing the word 'None'. Proponents that fail to complete this section will be deemed to have received all posted addenda.",
+      "evidence": "Addenda confirmation in Submission Form",
+      "req_id": "M6",
+      "requirement_type": "Submission Compliance",
+      "rfso_ref": "Section 5. Addenda",
+      "source_refs": [
+        {
+          "excerpt": "The proponent is requested to confirm that it has received all addenda by listing the addenda numbers or, if no addenda were issued, by writing the word 'None' on the following line: ____________________________. Proponents that fail to complete this section will be deemed to have received all posted addenda.",
+          "page": null,
+          "section": "5. Addenda",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    {
+      "_semantic_candidates": [
+        "Submission Compliance"
+      ],
+      "category": "Mandatory",
+      "description": "Proponent must declare in its proposal either that there was no conflict of interest in preparing its proposal and there is no foreseeable conflict of interest in performing the contractual obligations contemplated in the RFP, OR provide full details on the nature of any conflict of interest and any steps taken to mitigate it. If a proposal does not declare a conflict of interest, the proponent will be deemed to have no conflict of interest.",
+      "evidence": "Conflict of interest declaration in Submission Form",
+      "req_id": "M7",
+      "requirement_type": "Submission Compliance",
+      "rfso_ref": "Section 6. Conflict of interest",
+      "source_refs": [
+        {
+          "excerpt": "Proponents must clearly state in their proposal that: there was no conflict of interest in preparing its proposal; and there is no foreseeable conflict of interest in performing the contractual obligations contemplated in the RFP; OR, if there is a conflict of interest, proponents must provide full details on the nature of the conflict of interest and any steps taken to mitigate it. If a proposal does not declare a conflict of interest, then the proponent will be deemed to have no conflict of interest with respect to the submission of a proposal or the performance of a potential contract.",
+          "page": null,
+          "section": "6. Conflict of interest",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    {
+      "_semantic_candidates": [
+        "Supplier Qualification"
+      ],
+      "category": "Mandatory",
+      "description": "Proponent and any subcontractor to be used to complete the proposed contract must not use or tolerate the use of forced labour or child labour in any part of their activities or supply chains.",
+      "evidence": "Certification in Submission Form",
+      "req_id": "M8",
+      "requirement_type": "Supplier Qualification",
+      "rfso_ref": "Section 7. No forced labour or child labour",
+      "source_refs": [
+        {
+          "excerpt": "The proponent and any subcontractor to be used to complete the proposed contract: do not use or tolerate the use of forced labour or child labour in any part of their activities or supply chains.",
+          "page": null,
+          "section": "7. No forced labour or child labour",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    {
+      "_semantic_candidates": [
+        "Supplier Qualification"
+      ],
+      "category": "Mandatory",
+      "description": "Proponent and any subcontractor to be used to complete the proposed contract must have implemented and maintain rigorous and well-developed policies and due diligence processes to prevent and mitigate the risk of forced labour or child labour in their activities and supply chains.",
+      "evidence": "Certification in Submission Form",
+      "req_id": "M9",
+      "requirement_type": "Supplier Qualification",
+      "rfso_ref": "Section 7. No forced labour or child labour",
+      "source_refs": [
+        {
+          "excerpt": "The proponent and any subcontractor to be used to complete the proposed contract: have implemented and maintain rigorous and well-developed policies and due diligence processes to prevent and mitigate the risk of such practices in their activities and supply chains.",
+          "page": null,
+          "section": "7. No forced labour or child labour",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        }
+      ],
+      "weight": null
+    },
+    {
+      "_semantic_candidates": [],
+      "category": "Mandatory",
+      "description": "Proponent and any subcontractor to be used to complete the proposed contract must comply with the Fighting Against Forced Labour and Child Labour in Supply Chains Act (SC 2023, c 9), as amended or replaced.",
+      "evidence": "Certification in Submission Form",
+      "req_id": "M10",
+      "requirement_type": "General Compliance",
+      "rfso_ref": "Section 7. No forced labour or child labour",
+      "source_refs": [
+        {
+          "excerpt": "The proponent and any subcontractor to be used to complete the proposed contract: comply with the Fighting Against Forced Labour and Child Labour in Supply Chains Act (SC 2023, c 9), as amended or replaced.",
+          "page": null,
+          "section": "7. No forced labour or child labour",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        }
+      ],
+      "weight": null
+    }
+  ],
+  "submission_rules": [
+    {
+      "artifact_type": "Form / Annex",
+      "artifact_type_conflict": false,
+      "artifact_type_observations": [
+        "Form / Annex"
+      ],
+      "details": "Proponent must complete all sections including proponent information, acknowledgement of terms of reference, ability to provide statement of work, financial proposal, addenda confirmation, conflict of interest declaration, and forced labour/child labour certification. Form includes signature block requiring name, title, date, and authority to bind the proponent.",
+      "file_format": "Unspecified",
+      "file_format_conflict": false,
+      "file_format_observations": [
+        "Unspecified"
+      ],
+      "format": "Submission Form",
+      "item": "Appendix A - Submission Form",
+      "mandatory": 1,
+      "mandatory_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx",
+      "source_refs": [
+        {
+          "excerpt": "APPENDIX A. SUBMISSION FORM",
+          "page": null,
+          "section": "APPENDIX A. SUBMISSION FORM",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        },
+        {
+          "excerpt": "Full legal name of proponent | [enter your response here]; Any other relevant name under which the proponent conducts business | [enter your response here]; Proponent address | [enter your response here]; Phone number | [enter your response here]; RFP proponent contact person and title and contact information (email and phone) | [enter your response here]",
+          "page": null,
+          "section": "1. Proponent information",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        },
+        {
+          "excerpt": "Signature of proponent representative; Name and Title; Date:; I have authority to bind the proponent.",
+          "page": null,
+          "section": "TABLE",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        }
+      ],
+      "submission_channel": "Unspecified",
+      "submission_channel_conflict": false,
+      "submission_channel_observations": [
+        "Unspecified"
+      ]
+    }
+  ],
+  "typed_observations": [
+    {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": null,
+      "document_role_basis": null,
+      "duration": null,
+      "family": "IDENTITY",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "RFP 2026-026 - Appendix A - Submission Form",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": null,
+        "lot": null
+      },
+      "semantic_kind": "DOCUMENT_TITLE",
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx",
+      "source_refs": [
+        {
+          "excerpt": "RFP 2026-026 - Appendix A - Submission Form",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    },
+    {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": null,
+      "document_role_basis": null,
+      "duration": null,
+      "family": "IDENTITY",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "2026-026",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": null,
+        "lot": null
+      },
+      "semantic_kind": "SOLICITATION_NUMBER",
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx",
+      "source_refs": [
+        {
+          "excerpt": "RFP 2026-026",
+          "page": null,
+          "section": "Header",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    },
+    {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": null,
+      "document_role_basis": null,
+      "duration": null,
+      "family": "IDENTITY",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "Bank of Canada",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": null,
+        "lot": null
+      },
+      "semantic_kind": "BUYER_NAME",
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx",
+      "source_refs": [
+        {
+          "excerpt": "the Bank of Canada and a selected proponent enter into a contract",
+          "page": null,
+          "section": "2. Acknowledgement of Terms of Reference",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    },
+    {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": null,
+      "document_role_basis": null,
+      "duration": null,
+      "family": "PROCUREMENT_MECHANIC",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "RFP process governed by Terms of Reference",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": null,
+        "lot": null
+      },
+      "semantic_kind": "RFP",
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx",
+      "source_refs": [
+        {
+          "excerpt": "The proponent acknowledges that this RFP process will be governed by the specific Terms of Reference set out in this RFP",
+          "page": null,
+          "section": "2. Acknowledgement of Terms of Reference",
+          "sheet": null,
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    }
+  ]
+}

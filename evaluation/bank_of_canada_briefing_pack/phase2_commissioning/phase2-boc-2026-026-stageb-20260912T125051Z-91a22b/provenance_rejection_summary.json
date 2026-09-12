@@ -1,0 +1,8 @@
+{
+  "by_family": {
+    "commercial_clauses": 1,
+    "deliverables": 1
+  },
+  "note": "Every record here was excluded from its family's trusted normalized array with an explicit ZERO_VALID_PROVENANCE diagnostic (original record + checked source_refs preserved) -- none of these records silently disappeared.",
+  "total_rejections": 2
+}

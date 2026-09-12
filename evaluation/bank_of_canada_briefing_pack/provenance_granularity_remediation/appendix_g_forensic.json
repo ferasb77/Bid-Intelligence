@@ -1,0 +1,1587 @@
+{
+  "cited_sections": [
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "obs_53ae733367c137b7542b67b671aa70ffed2f78a899ebae79fefa80368f950c66",
+      "entity_kind": "OBSERVATION",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "OriginalRevision/RFP 2026-06 - Appendix G - Form of Agreement.docx",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "obs_67385ceb6adceb866cde98287e950975a7c49a90d38750f80e0f9a1c970ee7b4",
+      "entity_kind": "OBSERVATION",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider acknowledges that improper disclosure or use of the Confidential Information may cause irreparable ",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "obs_81ae3f66a5622940994c7352e91dbc115f01b3c86786c29c434b90a5fbfc4520",
+      "entity_kind": "OBSERVATION",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "RFP 2026-06",
+      "requested_section": "TABLE",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "obs_8742fa552746272aa3de4e5b51384b0c78f4c7ee679f73b63b0ed788f5037ba1",
+      "entity_kind": "OBSERVATION",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "RFP 2026-06 - Appendix G - Form of Agreement",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "obs_b155f429f985f3c4903807e95170f777e6be3075b52d054874a9a7e578f184cb",
+      "entity_kind": "OBSERVATION",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider represents that it will comply, and will ensure that its employees and agents comply, with the Bank",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "obs_f0199ad3bb900791918774388ee6c3ddaaf5314d6f1441edb487f87d59cb17db",
+      "entity_kind": "OBSERVATION",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "BETWEEN BANK OF CANADA a body corporate established under the laws of Canada (the \"Bank\")",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_01fe80b239672cc0da146638",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "insurance policies will contain a provision obligating the insurer to give the Bank thirty (30) days advance written not",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_037e86def7400a7d454b02b1",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "In the event of an actual or suspected Data Breach, the Service Provider shall notify the Bank in writing without undue ",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_0398b36a55632374553b487d",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "if the Service Provider breaches any term, condition or provision of this Agreement, unless the Service Provider remedie",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_055f01c8761230cb73be4fb4",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider shall refer all third-party requests for Bank information or Personal Information to the Bank witho",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_127c6958e46032c2c6882fe4",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Bank will be liable to pay the Service Provider only for the Services performed, and expenses properly incurred, pri",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_1b63eb595628f02519f9c043",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider represents that it will abide, and will ensure that its employees and agents abide, by the provisio",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_24a30302216ed595d73475e2",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "If, in the opinion of the Bank, an individual is not adequately performing the Services, or if an individual is not elig",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_25c15de9f583fdc56419d475",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider shall not market to or attempt to solicit additional business from Bank employees or contractors to",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_280b0654b4c24b22d610c056",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "\"Data Breach\" means any incident, whether actual or suspected, in which Bank data or Personal Information is: Accessed, ",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "clause_2bb6d83a46b6d872235f4e4e",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "The amounts payable by the Bank under this Agreement do not include any sales, use, goods and services or other similar ",
+      "requested_section": "Payment",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_395ed9ac3aca749712ca4d2f",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider shall retain Personal Information only for the minimum period necessary to fulfill its obligations ",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "clause_3ca4ba5474eba05058795271",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "The Service Provider shall keep the Confidential Information strictly confidential. The Service Provider shall not use t",
+      "requested_section": "Confidentiality",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_482a4595e159974cd36b5283",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "if the Bank property is misused, damaged or destroyed by the Service Provider or if the Bank deems the Bank property to ",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "clause_50476ef924b145ff31c2a02e",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "The Service Provider acknowledges that all information which it receives from the Bank in the course or in connection wi",
+      "requested_section": "Confidentiality",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_536150563a69085942f2551b",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "In the event that one or more terms of this Agreement becomes or is declared to be illegal or otherwise unenforceable by",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_559a49696287be1a69bf8ef0",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "Some obligations of the Parties are by their nature intended to continue beyond the termination of this Agreement. These",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_56f52f853c36d0dc6d109e46",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "Notice shall be deemed to have been given on the day of actual delivery. Termination",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_5b0f588383e5613b40a2c289",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider shall have the insurance required in full force and effect prior to execution of this Agreement and",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_672424f0660a3b866494a499",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider hereby agrees to indemnify and save harmless the Bank, its servants, employees, directors, officers",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_6c4b77b96631c531fbb12c2d",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider's relationship to the Bank is that of independent contractor and not that of an agent or employee o",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "clause_709571f8ea19d7f3371a11dc",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "The Service Provider hereby assigns and transfers to the Bank the worldwide copyright and all other intellectual propert",
+      "requested_section": "Property Rights",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_722e5028a85877ff88ac8f58",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "if the Service Provider becomes insolvent, is adjudged a bankrupt, makes a general assignment for the benefit of credito",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_73c5cc32ee960a886c889d84",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "if the Service Provider or any third party providing services on the Service Provider's behalf is a non-resident, the Se",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_7674376441ab320eb2c0da39",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider may have access to Personal Information, as defined under the Privacy Act, in the course of perform",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_77f8841bd6786f78515b9c85",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider shall implement and maintain appropriate safeguards in accordance with current industry standards t",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_7bfd35b947663a0dab4324e3",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider shall, as required by law: purchase, or otherwise arrange at its own expense for, Workplace Safety ",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_7d3748754b3470b5e3f2d8f5",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "Bank health and safety policies require that all individuals entering Bank premises or working onsite at the Bank must b",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "clause_7ff6aedcb6b01222eb8c7d30",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "Notwithstanding anything to the contrary contained herein, the Service Provider may disclose the Confidential Informatio",
+      "requested_section": "Confidentiality",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_8428d5be485834dc5975b71b",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "Commercial General Liability Insurance in an amount not less than three million dollars ($3,000,000.00) inclusive per oc",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_85eb1d3d40b4df209b38199b",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "If, in the opinion of the Bank, an individual is deemed to present a security risk to the Bank, notice will be provided ",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_87d77f767d27ab01b34ac564",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "Privacy, Access to Information and Data Breaches",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_8b67cb8275ecb07ab69af393",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider shall, except as may be specified in the notice, stop performing the Services on the Termination Ef",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_8bbba29617dc50bc2e235d3e",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "If the Services provided by the Service Provider or its subcontractors include work relating to the planning (e.g. conce",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "clause_8bc5755f4e3d590909401e03",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "If required by law, the Bank will deduct all such taxes and amounts from the amounts otherwise payable to the Service Pr",
+      "requested_section": "Payment",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_962b84283fd82cab42f3a4eb",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "if a receiver or manager is appointed for the business of the Service Provider;",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_9b04e137c140fe348746fac0",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "If, after securing such consent from the Bank, the Service Provider utilizes the services of subcontractors the Service ",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_9d49dfe921e212310324bcc1",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "This Agreement and the attached Schedules embody the entire agreement between the parties with respect to the subject ma",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_a0664a627680443df47cf5ab",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider represents that the Service Provider and any party providing services or acting on the Service Prov",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_a400d441b03aa32348909c4f",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "if the Service Provider takes the benefit of any Act in force for the winding up or liquidation of corporations.",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_aa3ea134356112bf75aa3160",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "As a condition of performing the Services, the Bank may require the Service Provider and the Service Provider's employee",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_ab666d8703add56f3249c515",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "the Commercial General Liability insurance policy will contain a cross-liability clause.",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "clause_b0986ddc5a0bf3e57a81debd",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "The Service Provider is responsible for, and shall indemnify the Bank against, and hold the Bank harmless from, the paym",
+      "requested_section": "Payment",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_b2a88b4d1f3061a8387eab59",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Bank may terminate this Agreement at any time with or without cause on at least ten (10) Business days written notic",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_b8d06e6b18fc07f69b67344d",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "make all payments or deductions required by applicable provincial or federal law in respect of Workplace Safety and Insu",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_baab2b3ab2c42a06977a2891",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider represents that it will have at all material times the right to assign and transfer the rights as r",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_bac90a96b5cad40dae92f797",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider shall not subcontract this Agreement or any part of this Agreement, or any of its obligations under",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_c17b74fd7402da8d058a7f86",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Bank is subject to the Privacy Act (RSC, 1985, c P-21) and the Access to Information Act (RSC, 1985, c A-1), as amen",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_c2a02ca8bd8e1dd026341ce5",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "Failure of either party to insist on the strict performance by the other party of any of the terms of this Agreement wil",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "clause_c5c21bb1b3215d20970c7174",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "Unless otherwise specified, the Service Provider will procure from the proper authorities all permits and licenses which",
+      "requested_section": "Permits, Taxes and Royalties",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_c790df3ae2e58f86d8aa95c2",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "if the ownership or effective control of the Service Provider changes;",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_ca72046419660ee4af66e131",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "Errors and omissions liability insurance covering wrongful or negligent acts or omissions committed by the employees of ",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_caef8d2a59f377af25729ccc",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider shall not use any Bank Information, including any Confidential Information and Personal Information",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_cc73466ae987c8e256ddd604",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "This Agreement will be governed by and is to be construed in accordance with the laws applicable in the Province of Onta",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_cd69a58b1f6b1a62c6af90e0",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_cf070f23424d68f52cfca572",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider shall immediately notify the Bank if the Key Personnel is unable to perform their responsibilities ",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_d6cb4d9f753fdd7a1cfda896",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "No amendment of this agreement will be effective unless it is in writing and signed by the parties.",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "clause_f0e484f7c10acbf025235e74",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "if the Service Provider ceases to do business as a going concern;",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "dlv_19e7cf63afb36910f42a462f",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "Upon the completion of the Services or sooner termination of this Agreement by either party for any reason, the Service ",
+      "requested_section": "Property Rights",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "dlv_474b1102d7e7578cc3522db8",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "The Service Provider shall keep records of the time spent and expenses incurred, if any, in the performance of the Servi",
+      "requested_section": "Payment",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "dlv_732f27cafddaa89ce9f68d2d",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "If required, the Service Provider shall provide the Services in both of Canada's official languages, in accordance with ",
+      "requested_section": "Services",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "dlv_732f27cafddaa89ce9f68d2d",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "In relation to any purchase of software or any hardware, product, equipment or system under this Agreement, the Service ",
+      "requested_section": "Services",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "dlv_732f27cafddaa89ce9f68d2d",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "The Service Provider shall perform the \"Services\" described in Schedule \"A\".",
+      "requested_section": "Services",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "dlv_7f5816bf92fbea46bd062666",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider shall provide the Bank with a written certificate of destruction confirming that all Personal Infor",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "dlv_bd9f9748e248189c136e6c94",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "the Service Provider will perform the Services conscientiously, without delay, to  the best of the Service Provider's ab",
+      "requested_section": "Services",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-074515b2296d41c9fbd5cffc85ced8c89ff5290e2a2252393b7a0129ee2fbbbf",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "shall, on demand, and at such times as the Bank may reasonably request, provide the Bank with evidence of all insurance ",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "oi-requirements-0b955f86fd2e95174181aa8a134c3cb71a00adf88855219116741ab97d63c585",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "The Service Provider shall not provide or otherwise make available the Confidential Information, in whole or in part, to",
+      "requested_section": "Confidentiality",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-0cb389586e688aa98d07a2d6d63692b59e802a8d23a7e2dbdcdcca183daf187d",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "This Agreement and the attached Schedules embody the entire agreement between the parties with respect to the subject ma",
+      "requested_section": "General",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-15cfc4575b749870531e4abb533b3f89d31461f39d2e4d18555106fab90b8adc",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "The Service Provider's relationship to the Bank is that of independent contractor and not that of an agent or employee o",
+      "requested_section": "General",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-17dabd90cc0535ba1e4e5cdf32575ec3fdb2cb84a9f128dbd0e53aaead0d17c6",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider shall have the insurance required in full force and effect prior to execution of this Agreement and",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-188900341a01b66e52710de3b410a46acb751c7c83fa2eb3b50e001a76dfadec",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "In addition to the foregoing, the Service Provider agrees to bind every subcontractor to the terms and conditions of thi",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-1abd17fb0336232aa135eaef22413965b8ee2bddb5cadc9cb04b9a3f40cd3dd3",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "Upon termination or expiration of the Agreement, or at any time upon the Bank's written request, the Service Provider sh",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-1b9c827bbe89b79d60ba3bbcc8d90364a897cd2f8440d03126865d4a19c197d2",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider shall not use any Bank Information, including any Confidential Information and Personal Information",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-2151f68ffad5effd6705229a7941257fbf899177fc534a4258b539f25e168831",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "If you are unwilling or unable to comply with any specific terms and conditions, you must red line your proposed changes",
+      "requested_section": "General",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "oi-requirements-23734c1aebf88b969a3a80eb3d697c95ac29f47d18030464817ded6cc9b9934f",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "In relation to any purchase of software or any hardware, product, equipment or system under this Agreement, the Service ",
+      "requested_section": "Services",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-2845a10c6beb93ef997b89eec93dd7a9825eb9900d0f45c8558e7583f88346dc",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "the Service Provider is legally and professionally qualified and competent to perform the Services;",
+      "requested_section": "Representations",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-2845a10c6beb93ef997b89eec93dd7a9825eb9900d0f45c8558e7583f88346dc",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "The Service Provider represents that: the Service Provider is legally and professionally qualified and competent to perf",
+      "requested_section": "Representations",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-2c4d31e529df82e17b1b336164799c756eb1f77b5eb43abd241cc7460596a9ad",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "Failure of either party to insist on the strict performance by the other party of any of the terms of this Agreement wil",
+      "requested_section": "General",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-2c660e7e43ec4be3ee56189713fa7603877dfffb65ef5c33e0fecd6a48e183ff",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "Fully cooperate with the Bank and its authorized representatives in investigating any Data Breach, including providing t",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-2e8539da2713615852966bcee13a4207127717ca6e3eae5b4e96d676721145c9",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider acknowledges that improper disclosure or use of the Confidential Information may cause irreparable ",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-2ea25a1bc0ba53e8e74b6ad963536b02df5c272ef604cf9abb193db13924a8c4",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "No amendment of this agreement will be effective unless it is in writing and signed by the parties.",
+      "requested_section": "General",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-309ba4105b3583f32ed232ce14017dccca8893b200507508917d2c8362c6842a",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "Such employee shall be replaced, subject to the Bank's approval, with replacement personnel who will be deemed to be Key",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-32123fdc95caffbeb95856ca8ba379a816188c1b8a2dfbe1fafc32d49cdf3354",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "Signature of Proponent Representative",
+      "requested_section": "TABLE",
+      "text_grounded_via_coarser_occurrence": "OTHER_EXACT:exact:TABLE",
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-3223088846cb8bfa838525091a30e7168bca5ca88742cc2465051b8d639f5f58",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "Assist the Bank in identifying the cause(s) of the Data Breach, addressing vulnerabilities, and taking immediate correct",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-351ab269501d60ac4afe860f74489f9e769373dff701436ba93f59eafe434c3d",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "In the event of termination, except as provided elsewhere in this Agreement, the Bank will be discharged from and have n",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "oi-requirements-3609454a1605bb64e88f90a0797a24242dacfddf64fe119eeb4a9e4072cbe1ae",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "If, in the opinion of the Bank, an individual is deemed to present a security risk to the Bank, notice will be provided ",
+      "requested_section": "Key Personnel",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-3a3357d838a8e7a41f99842a72e0f42fa47d321f0fdf38730a0ddcdfb892745e",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider will have no further or other claim against the Bank for damages or specific performance or any oth",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-425c956e48c6ab172578fee404e9e7ec687df88540876c540dd8c196efb6d26f",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider represents that it will abide, and will ensure that its employees and agents abide, by the provisio",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-4293f43daae95ed17f1d274707afda85cdffec94d9a4017526e02a14ad118a74",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "To support the Bank's compliance with these Acts, the Service Provider shall promptly provide the Bank with all records,",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "oi-requirements-44272e17f1d886d2751909dae6c55f82d3c46f1815ed4aff4659364617a12574",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "I agree to the Bank's terms and conditions. Yes / No",
+      "requested_section": "General",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-44d512ae406a97cf1fe5e6181815cc739e8b06af63588fa376871886bd70f723",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "Unless otherwise specified, the Service Provider will procure from the proper authorities all permits and licenses which",
+      "requested_section": "Permits, Taxes and Royalties",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-494528e68f4435a4bac1167a7225f3f3bbd73c498ef8c96b9dc3b735171e6f2a",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider shall fully cooperate with the Bank in fulfilling its obligations under these Acts.",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-4b5c78b283e0f4c79c306d5a06a1c464a4d4732485fb1e3e4b30d38763c7bc42",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider shall promptly provide the Bank with all records, documents, data, and other information in its pos",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-5197a7f7e3975e2579d856934e67b7515991ae2efa1eb41bf4981b006fcbb52a",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider agrees that in addition to all other remedies that the Bank may have, the Bank may seek and obtain ",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "oi-requirements-52387ffb18e667ce2e8ce55d9e9a7770c9499a372d830dc86e6608ee5a2c0ca5",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "If required, the Service Provider shall assign the employees listed in Schedule \"C\" (the \"Key Personnel\") to perform the",
+      "requested_section": "Key Personnel",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "oi-requirements-52686881ae09ba413831b32e94d0c3a114166fd921965e64d16505c23a27ccb9",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "if the Service Provider or any third party providing services on the Service Provider's behalf is a non-resident, the Se",
+      "requested_section": "Representations",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-5394fb557fdf5d96037d6486bfa81d7979e5e98f322629ee852df17fdd6fcf6b",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "The Service Provider shall also pay all customs, duties, and all excise, license, occupation and other taxes or royaltie",
+      "requested_section": "Permits, Taxes and Royalties",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-548d64f50a851d134f0098361003d97d5f221384d5aeef48258cbcadaa728fb1",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "Any permitted use of Bank Information for AI purposes shall comply fully with the confidentiality, data protection, and ",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-560bb336496370ce288eb78919236dbeca4c3a0c44fd7e6dbb5050dfe518f779",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "if a receiver or manager is appointed for the business of the Service Provider; or",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-575d78283f66c9cffa235be88b574ed916abf9435982b54fb8cd18eb3ce7100b",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider shall immediately notify the Bank if the Key Personnel is unable to perform their responsibilities ",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-5dd24ed6a37d6a121902c833a23ddd4095b4674917c8b550e919fbd753747057",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider shall fully cooperate with the Bank in fulfilling its obligations under these Acts. The Service Pro",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-614216720f382b243a2d6a722f907cd860993aabd0ff5018cc7a0f625a189ceb",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "At the Bank's option, the Service Provider shall, at its own expense, promptly assume the defence of any claim, suit or ",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-64c31b8e337ad24399ecc5a5f81396d4fbc3d2fa093e661f2e4190c85163f2d1",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "Date:",
+      "requested_section": "TABLE",
+      "text_grounded_via_coarser_occurrence": "OTHER_EXACT:exact:TABLE",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-65b137f77d7f3b541819fa52cb866076b52af69e17afa8e83bd12afcb9c0e0db",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "The Service Provider shall keep the Confidential Information strictly confidential. The Service Provider shall not use t",
+      "requested_section": "Confidentiality",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-69fe263a6115f6779cc958aa115ef9051bb21246436c79b578cd45dd0989975d",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "In the event of a Data Breach that includes Personal Information, the Service Provider shall not notify or otherwise com",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-6adc139f70a30136a7cc836d7a6f9b19d82d75e36b259b9dae7f44bd3925378a",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "The Bank is required to disclose information on certain contracts in accordance with its policies and regulatory require",
+      "requested_section": "Disclosure of Contract",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-70fd9ef10c41b14f0c6b9e342497e60f8a5ef49a21d0ede11f394235fa1ac34d",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider shall collect, process, access, use, disclose, and store Personal Information solely in accordance ",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-72895af7a5ad8aa148b804883f7465b60d91cb47e2a3ffd4ed05571ca55086ff",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "Name and Title",
+      "requested_section": "TABLE",
+      "text_grounded_via_coarser_occurrence": "OTHER_EXACT:exact:TABLE",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-75686496a7e6593a77fba65e276697a51b137ed2cfaccc97f71cb1894d7db720",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "If the Services provided by the Service Provider or its subcontractors include work relating to the planning (e.g. conce",
+      "requested_section": "General",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-781ac5b443397ef22a65968bdac13e2c62b751d36795dee124185ab5f08eb87f",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "The Service Provider represents that it will have at all material times the right to assign and transfer the rights as r",
+      "requested_section": "Representations",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-79dbd57a24108558d6a45ec288c7a41a991b9bfaecf80510f2249812c2766d69",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "The Service Provider shall not market to or attempt to solicit additional business from Bank employees or contractors to",
+      "requested_section": "General",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-7bd1caf3b28c56acaa1cace1e33126daab14f056e03708d7e821e2dd6dae6672",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "Support the Bank in meeting its notification and reporting obligations under applicable laws (including the Privacy Act)",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-7ffa276fafb2539127158dff0d720d19c3ada049fdb6228ecaa419d210e4e9a3",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "Please complete the following: I agree to the Bank's terms and conditions. Yes / No",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-80b4effaabd1f5392476f8073189e9944fc6cb54c290fbbce649c82cc3952c2b",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "Termination of this Agreement by the Bank will not deprive the Bank of any of its rights, remedies or actions against th",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "oi-requirements-8592b9531892c030dc345debc7627a41083bd392a06b7bcc85906d6ea183dacf",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "Delays in or failure of performance by either party under this Agreement shall not constitute default hereunder or give ",
+      "requested_section": "Force Majeure",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-8833e7fc7e8134578f5b9c4ad97900ad9beb76d618f7cfb2a97a80f1dc8c96cc",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Bank is required to disclose information on certain contracts in accordance with its policies and regulatory require",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-89446290dcaa5ec1cdfe75e5e62d697c23124017427651e864dd0b7e116320b6",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "The Service Provider represents that the Service Provider and any party providing services or acting on the Service Prov",
+      "requested_section": "Representations",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "oi-requirements-8f730eed57e311b869c8a8927fd806ffebf5448678625a730fb21bfaa496d738",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "The Service Provider represents that it will abide, and will ensure that its employees and agents abide, by the provisio",
+      "requested_section": "Representations",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-939dcfb522703e534571cc2ec02e9a372072df1fbd90d2c79dbdcd5ccb2e8f1f",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "Any notice required or authorized to be given by either party to the other in accordance with the provisions of this Agr",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-9621b35e2390bc480ac3617322250161e6235a307f9c7ac8b2790ee13406c9e3",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Bank may terminate this Agreement at any time with or without cause on at least ten (10) Business days written notic",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-9624ac2700adb6cd136c0635b203364c114081ced205529f32b1809ad147a73c",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider shall not be relieved of any schedule commitments or any other terms of this Agreement should the s",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "oi-requirements-9c6e271c93e5d158a9de5477ff33911e27a98f5d57386d41c4cf020a33a589d0",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "The Service Provider shall immediately notify the Bank if the Key Personnel is unable to perform their responsibilities ",
+      "requested_section": "Key Personnel",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-9d4c0d1ce0c50aad368068453b71d1e3d1bda1abdde622249af2b766f1d5ebee",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "If, in the opinion of the Bank, an individual is not adequately performing the Services, or if an individual is not elig",
+      "requested_section": "Key Personnel",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-9ea673d3174d62f2bb3e89b83223a776bd14251f95b1f772507b3e4bc979df0d",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "Bank health and safety policies require that all individuals entering Bank premises or working onsite at the Bank must b",
+      "requested_section": "Representations",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-a91d2c5658286f770b0c4d9472bb83b1c021f7f0b57131849a95288d33a51a26",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "Commercial General Liability Insurance in an amount not less than three million dollars ($3,000,000.00) inclusive per oc",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "oi-requirements-aa6fb2abe5f0a87160a7f852e33baa29e16baacc9ea963a18ec35bb022b57443",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "The Service Provider shall not, without the Bank's prior written consent, remove the Key Personnel from the performance ",
+      "requested_section": "Key Personnel",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "oi-requirements-ae916c4a9efb8b5bbdb0b043fdfd8a8f33207e613665bcd436bdfded48cded32",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "",
+      "requested_section": "General",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "oi-requirements-b8052fa3fbc334cd0d60ccc75b1a9d8e83f27b3e84e85fda7f3b5128d80113f5",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "The Service Provider acknowledges that all information which it receives from the Bank in the course or in connection wi",
+      "requested_section": "Confidentiality",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-b9cf66d1b67df2ea49a6619a74f81a32b886d16f471e04ed9d59a6ca9cdeb25c",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider shall not use the Bank's name in any public statement or marketing material or publicize the fact t",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-ba4a2f0354dee6622e7f8296fbc3099ccf80c87cb239da3af38ad640f7ad438a",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "All invoices must indicate the contract number and are to be sent to the Bank via e-mail in PDF format to: accountspayab",
+      "requested_section": "Payment",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-bb76646e2980e8a89e2fe72e2bcdc56cc116dff8a149c2d11fc2ed3cb5eebcee",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "Each Proponent should indicate its agreement (or not) and/or provide comments/redlines regarding the Bank's terms and co",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "oi-requirements-c48ae8f88eb1cbf54111b0966671165bee125dba4f6981309aa4f0260ff93dc5",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "The Service Provider represents that it will comply, and will ensure that its employees and agents comply, with the Bank",
+      "requested_section": "Representations",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-c80c55287b7eaeb0481ac9f2137154006f569b6d2e5e10292e8158622c80a812",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "If required, the Service Provider shall assign the employees listed in Schedule \"C\" (the \"Key Personnel\") to perform the",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-c953520dddf1e0271bb55e03b0d5642f6e909ed3b1ecb5daa47969f4675d5682",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "Payment of fees is due no later than thirty (30) days after the Bank receives an invoice from the Service Provider in fo",
+      "requested_section": "Payment",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-ca14d5c4c3cbe04a3df40e4ddc6401b49f440ed67eeeb18b00ceb708493eba46",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "In the event that performance of this Agreement in the reasonable opinion of the Bank is made impossible by force majeur",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "oi-requirements-cfd71c83a1e1b3af2c48ad833373efbfe8cbe924f85b83e735de1f91edd949a0",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "the Service Provider will perform the Services conscientiously, without delay, to  the best of the Service Provider's ab",
+      "requested_section": "Representations",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-d0dc4bf09e9baa080a0fafda1e639a1912b2703ec9739ac7f7cb9e3ccb610ed5",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "Delays in or failure of performance by either party under this Agreement shall not constitute default hereunder or give ",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-d6e846a3b9599e0364fedce87e831a934aa14271b342a410313a7e313c34d7e1",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "This Agreement will be governed by and is to be construed in accordance with the laws applicable in the Province of Onta",
+      "requested_section": "General",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-d7634fe5ed53637b09c4081065fafd5cdef777f30657d8fb067272e9510e8654",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "If the Bank requests that the Service Provider notify affected individuals, the Service Provider shall do so at its own ",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "oi-requirements-db1b92d03045a4a9b8a320321ec986f5eaa56879a7fc07d56fe4e47a1237bda6",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "The Service Provider shall not use the Bank's name in any public statement or marketing material or publicize the fact t",
+      "requested_section": "No Publicity",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-de99658fad1450c18297bc0c61475bec75e3c6bbb2c46856e9f8387570c8f794",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "If, after securing such consent from the Bank, the Service Provider utilizes the services of subcontractors the Service ",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-e4daf3051681d613e992fa902e013fa700b8083d568e1f8588eefcfc4fecf34e",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "In the event that performance of this Agreement in the reasonable opinion of the Bank is made impossible by force majeur",
+      "requested_section": "Force Majeure",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-f0618172c4d3b923a90abb60d2c410c12ea269b13c1df9dc954bd1f647bb34ac",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Bank, its officers, employees, servants and agents shall be named as additional insureds in respect of the Services ",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-f289b7a59aefd22f0e2f0a754a140af425fab59a2128ab2a481ef61a0aa21757",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Service Provider shall not, without the Bank's prior written consent, remove the Key Personnel from the performance ",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-f623cccbb243f2dbc87189ea8d5c9ce590a3ede0beb35a3853b9622c72c3fa24",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "The Bank may at any time during the term of this Agreement inspect the services of any subcontractor, and may immediatel",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-requirements-f9437647cdccb0c2357613e11d39b6447e95576b13f1b77c061e54979845913e",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "A valid waiver of any right or remedy herein shall in no event be deemed to: constitute a waiver of such right or remedy",
+      "requested_section": "General",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-requirements-fc3cb44812123402a9ea922297efca02a8c9f0faa0f7f91e27b0a3d32095c546",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "To be valid, any waiver by either party must be made in writing expressly referencing this Agreement.",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "VERIFIED"
+    },
+    {
+      "correct_status": "VERIFIED-BY-COARSER-GROUNDING (Class B)",
+      "entity_id": "oi-submission_rules-a1f0c60631a858d99bbadf267888367858b4c001a4ddfaa376cdf0530e918f33",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "The Service Provider agrees to ensure that any of its employees, subcontractors or representatives coming to Bank premis",
+      "requested_section": "Representations",
+      "text_grounded_via_coarser_occurrence": "SECTION:section:Header",
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-submission_rules-b56b7414b6bc456638a4758a2e7925341f0d5367056b669265f5446b7ef43966",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "Acknowledging agreement with the above the parties have executed this agreement. BANK OF CANADA [Name of Service Provide",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "EXACT (Class A)",
+      "entity_id": "oi-submission_rules-b56b7414b6bc456638a4758a2e7925341f0d5367056b669265f5446b7ef43966",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": true,
+      "excerpt_snippet": "If you are unwilling or unable to comply with any specific terms and conditions, you must red line your proposed changes",
+      "requested_section": "Header",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    },
+    {
+      "correct_status": "UNGROUNDED (Class D) -- must not bind",
+      "entity_id": "oi-submission_rules-b56b7414b6bc456638a4758a2e7925341f0d5367056b669265f5446b7ef43966",
+      "entity_kind": "STRUCTURE_RECORD",
+      "exact_locator_exists": false,
+      "excerpt_snippet": "Signature of Proponent Representative; Name and Title; Date:",
+      "requested_section": "TABLE",
+      "text_grounded_via_coarser_occurrence": null,
+      "upstream_provenance_status": "PARTIAL"
+    }
+  ],
+  "document": "OriginalRevision/RFP 2026-06 - Appendix G - Form of Agreement.docx",
+  "real_markers": [
+    {
+      "extract_chars": 14,
+      "locator": "exact:TABLE",
+      "locator_kind": "OTHER_EXACT"
+    },
+    {
+      "extract_chars": 5,
+      "locator": "exact:TABLE",
+      "locator_kind": "OTHER_EXACT"
+    },
+    {
+      "extract_chars": 37,
+      "locator": "exact:TABLE",
+      "locator_kind": "OTHER_EXACT"
+    },
+    {
+      "extract_chars": 32035,
+      "locator": "section:Header",
+      "locator_kind": "SECTION"
+    }
+  ]
+}

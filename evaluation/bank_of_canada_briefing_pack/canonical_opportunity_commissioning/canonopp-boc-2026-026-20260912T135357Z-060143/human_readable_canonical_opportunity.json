@@ -1,0 +1,73 @@
+{
+  "clarification_deadline": {
+    "disposition": "UNRESOLVED",
+    "resolution_basis": null,
+    "status": "UNVERIFIED",
+    "value": null
+  },
+  "client": {
+    "disposition": "UNRESOLVED",
+    "resolution_basis": null,
+    "status": "CONFLICTED",
+    "value": null
+  },
+  "contract_term": {
+    "disposition": "ASSERTED",
+    "resolution_basis": "STRUCTURED_COMPONENTS",
+    "status": "RESOLVED",
+    "value": [
+      {
+        "kind": "INITIAL_DURATION",
+        "scope": {
+          "component": "HR Advisory",
+          "period_basis": "WEEKS"
+        },
+        "value": {
+          "duration": "12",
+          "unit": "weeks"
+        }
+      }
+    ]
+  },
+  "file_number": {
+    "disposition": "UNRESOLVED",
+    "resolution_basis": null,
+    "status": "CONFLICTED",
+    "value": null
+  },
+  "headline_value": {
+    "disposition": "ABSENT",
+    "resolution_basis": null,
+    "status": "MISSING",
+    "value": null
+  },
+  "opportunity_type": {
+    "disposition": "UNRESOLVED",
+    "resolution_basis": null,
+    "status": "NOT_CLASSIFIED",
+    "value": null
+  },
+  "procurement_model": {
+    "disposition": "UNRESOLVED",
+    "resolution_basis": null,
+    "status": "NOT_CLASSIFIED",
+    "value": null
+  },
+  "submission_deadline": {
+    "disposition": "ASSERTED",
+    "resolution_basis": "EXACT_AGREEMENT",
+    "status": "RESOLVED",
+    "value": {
+      "date": "2026-09-30",
+      "precision": "DATE",
+      "time": null,
+      "timezone": null
+    }
+  },
+  "title": {
+    "disposition": "UNRESOLVED",
+    "resolution_basis": null,
+    "status": "CONFLICTED",
+    "value": null
+  }
+}

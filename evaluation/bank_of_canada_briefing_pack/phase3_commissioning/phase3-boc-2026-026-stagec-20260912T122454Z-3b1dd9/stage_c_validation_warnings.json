@@ -1,0 +1,50 @@
+[
+  {
+    "conflict_id": "CONF-EVAL-1",
+    "doc": "Document",
+    "side": "a",
+    "type": "SOURCE_NOT_IN_EVIDENCE_UNIVERSE"
+  },
+  {
+    "conflict_id": "CONF-EVAL-1",
+    "doc": "Document",
+    "side": "b",
+    "type": "SOURCE_NOT_IN_EVIDENCE_UNIVERSE"
+  },
+  {
+    "conflict_id": "CONF-EVAL-2",
+    "doc": "Document",
+    "side": "a",
+    "type": "SOURCE_NOT_IN_EVIDENCE_UNIVERSE"
+  },
+  {
+    "conflict_id": "CONF-EVAL-2",
+    "doc": "Document",
+    "side": "b",
+    "type": "SOURCE_NOT_IN_EVIDENCE_UNIVERSE"
+  },
+  {
+    "conflict_id": "CONF-EVAL-3",
+    "doc": "Document",
+    "side": "a",
+    "type": "SOURCE_NOT_IN_EVIDENCE_UNIVERSE"
+  },
+  {
+    "conflict_id": "CONF-EVAL-3",
+    "doc": "Document",
+    "side": "b",
+    "type": "SOURCE_NOT_IN_EVIDENCE_UNIVERSE"
+  },
+  {
+    "conflict_id": "CONF-EVAL-4",
+    "doc": "Document",
+    "side": "a",
+    "type": "SOURCE_NOT_IN_EVIDENCE_UNIVERSE"
+  },
+  {
+    "conflict_id": "CONF-EVAL-4",
+    "doc": "Document",
+    "side": "b",
+    "type": "SOURCE_NOT_IN_EVIDENCE_UNIVERSE"
+  }
+]

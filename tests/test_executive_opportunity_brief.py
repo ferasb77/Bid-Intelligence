@@ -1,87 +1,176 @@
-from dataclasses import fields
-import copy
+from dataclasses import FrozenInstanceError, fields, replace
+from datetime import datetime, timezone
 
-from executive_opportunity_brief import build_executive_opportunity_brief, render_executive_opportunity_brief
-from opportunity_intelligence import analyze_opportunity
+import pytest
 
-
-def inputs():
-    facts = {
-        "requirements": [
-            {"req_id": "r-cv", "category": "Mandatory", "evidence_status": "READY", "description": "Provide CVs and personnel credentials", "evidence_id": "e-cv"},
-            {"req_id": "r-case", "category": "Mandatory", "evidence_status": "MISSING", "description": "Provide two case studies and client references", "evidence_id": "e-case"},
-        ],
-        "evaluation_criteria": [{"criterion_id": "c1", "hierarchy_level": 2, "weight": "60%"}],
-        "submission_rules": [{"artifact_id": "a1", "mandatory": None, "submission_channel": "Portal"}],
-        "dates": [], "deliverables": [], "commercial_clauses": [],
-        "conflicts": [{"conflict_id": "conflict-1", "conflict_type": "DATE_CONFLICT", "topic": "Submission time", "reason": "Two times are stated."}],
-        "_canonical_opportunity": {"observations": [], "resolved": {}, "conflicts": []},
-    }
-    synthesis = {"bid": {"title": "Leadership Services", "client": "Example Buyer", "file_number": "RFP-1", "submission_deadline": "2030-02-01"},
-                 "brief": {"executive_summary": "Leadership development services.", "opportunity_type": "Services RFP", "contract_term": "Three years", "scope_categories": ["Leadership Development", "Executive Coaching"]}}
-    analysis = analyze_opportunity(facts, facts["conflicts"], context_id="opportunity-1")
-    return facts, synthesis, analysis
-
-
-def test_sections_preserve_fact_observation_question_and_unknown_boundaries():
-    facts, synthesis, analysis = inputs()
-    brief = build_executive_opportunity_brief(facts, synthesis, analysis)
-    assert brief.opportunity_at_a_glance and brief.engagement_workstreams
-    assert tuple(item.observation_id for item in brief.executive_attention_areas) == tuple(item.statement.statement_id for item in analysis.inferences)
-    assert tuple(item.related_analysis_ids for item in brief.kickoff_questions) == tuple(item.related_analysis_ids for item in analysis.unanswered_questions)
-    assert brief.known_unknowns.missing_evidence == ("Team evidence remains outstanding for 1 documented requirement across Bid Team.",)
-    assert brief.known_unknowns.unresolved_conflicts == ("Submission time: Two times are stated.",)
+from decision_analyst import (
+    AnalystReasoning, AnalystUnknowns, DecisionAnalysis, ManagementQuestion,
+    SupportStatus,
+)
+from decision_intelligence import (
+    Confidence, ContractValidationError, DecisionStatement, EvidenceSupport,
+    ReasoningStatus, SourceType, StatementSource, StatementType,
+    SupportedEntityType,
+)
+from executive_opportunity_brief import (
+    BRIEF_VERSION, ExecutiveOpportunityBrief, build_executive_opportunity_brief,
+    render_executive_opportunity_brief,
+)
+from executive_opportunity_understanding import (
+    ExecutiveUnderstandingInput, SECTION_ORDER,
+    build_executive_opportunity_understanding,
+)
+from governed_reference_resolution import (
+    AuthorityClass, SemanticField, SemanticValue, SemanticValueKind,
+    create_governed_object, create_governed_snapshot, create_resolution_context,
+    reference_to,
+)
+from opportunity_intelligence import ANALYST_VERSION
+from opportunity_intelligence_publication import (
+    OpportunitySupportBinding, publish_opportunity_intelligence,
+)
 
 
-def test_evidence_is_preserved_for_facts_observations_and_team_inputs():
-    facts, synthesis, analysis = inputs()
-    brief = build_executive_opportunity_brief(facts, synthesis, analysis)
-    preparations = tuple(item for group in brief.preparation_by_owner for item in group.items)
-    assert all(item.evidence for item in (*brief.opportunity_at_a_glance, *brief.engagement_workstreams, *brief.opportunity_characteristics, *brief.opportunity_timeline, *brief.executive_attention_areas, *preparations))
-    assert any("e-cv" in link.evidence_ids for item in preparations for link in item.evidence)
+def _understanding():
+    fact = create_governed_object(
+        owner_domain="canonical-opportunity", owner_contract="canonical-opportunity",
+        contract_version="1.0.0", object_class="canonical-fact",
+        object_id="canonical-1", authority=AuthorityClass.CANONICAL_FACT,
+        semantic_fields=(SemanticField(
+            "value", SemanticValue(SemanticValueKind.STRING, "Known fact")),),
+    )
+    evidence = create_governed_object(
+        owner_domain="canonical-opportunity", owner_contract="canonical-opportunity",
+        contract_version="1.0.0", object_class="evidence", object_id="evidence-1",
+        authority=AuthorityClass.EVIDENCE,
+        semantic_fields=(SemanticField(
+            "locator", SemanticValue(SemanticValueKind.STRING, "page 1")),),
+    )
+    snapshot = create_governed_snapshot(
+        owner_domain="canonical-opportunity", owner_contract="canonical-opportunity",
+        contract_version="1.0.0", snapshot_id="canonical-snapshot-1",
+        objects=(fact, evidence),
+    )
+    context = create_resolution_context(
+        context_id="authoritative-context-1", context_version="1.0.0",
+        snapshots=(snapshot,),
+    )
+    support = EvidenceSupport(
+        SupportedEntityType.CANONICAL_FACT, "canonical-1", ("evidence-1",))
+    binding = OpportunitySupportBinding(
+        support, reference_to(snapshot, "canonical-fact", "canonical-1"),
+        (reference_to(snapshot, "evidence", "evidence-1"),),
+    )
+    computed = DecisionStatement(
+        "computed-1", StatementType.COMPUTED_FACT, "requirement_count=4",
+        StatementSource(SourceType.DETERMINISTIC_COMPUTATION, "test/count"),
+        None, ReasoningStatus.VALIDATED, support.evidence_ids,
+        (support.entity_id,), (support,),
+    )
+    inference = DecisionStatement(
+        "inference-1", StatementType.AI_INFERENCE,
+        "The documented structure contains an effort consideration.",
+        StatementSource(SourceType.SPECIALIST_ANALYST, "opportunity-intelligence"),
+        Confidence.MODERATE, ReasoningStatus.PROPOSED, support.evidence_ids,
+        (computed.statement_id,), (support,),
+    )
+    analysis = DecisionAnalysis(
+        "analysis-1", "opportunity-intelligence",
+        datetime(2030, 1, 1, 12, tzinfo=timezone.utc), Confidence.MODERATE,
+        (support,), (computed,),
+        (AnalystReasoning(inference, SupportStatus.PARTIALLY_SUPPORTED),),
+        (), (), ("Analysis is limited to supplied evidence.",), (),
+        (ManagementQuestion("question-1", "What requires human judgment?",
+                            (inference.statement_id,)),),
+        AnalystUnknowns(ambiguous_observation_ids=(support.entity_id,)),
+    )
+    publication = publish_opportunity_intelligence(
+        analysis, analyst_version=ANALYST_VERSION,
+        authoritative_context=context, support_bindings=(binding,),
+    )
+    return build_executive_opportunity_understanding(
+        ExecutiveUnderstandingInput("opportunity-1", publication))
 
 
-def test_clarification_candidates_preserve_conflict_without_advice():
-    facts, synthesis, analysis = inputs()
-    brief = build_executive_opportunity_brief(facts, synthesis, analysis)
-    assert brief.clarification_candidates[0].candidate_id == "conflict-1"
-    assert brief.clarification_candidates[0].reason == "Two times are stated."
+def test_accepts_only_validated_executive_opportunity_understanding():
+    understanding = _understanding()
+    brief = build_executive_opportunity_brief(understanding)
+    assert isinstance(brief, ExecutiveOpportunityBrief)
+    assert brief.brief_version == BRIEF_VERSION
+    with pytest.raises(ContractValidationError, match="ExecutiveOpportunityUnderstanding"):
+        build_executive_opportunity_brief({})
 
 
-def test_separate_pipeline_conflicts_are_supported():
-    facts, synthesis, analysis = inputs()
-    conflicts = facts.pop("conflicts")
-    brief = build_executive_opportunity_brief(
-        facts, synthesis, analysis, conflicts=conflicts)
-    assert brief.clarification_candidates[0].candidate_id == "conflict-1"
-    assert brief.known_unknowns.unresolved_conflicts == ("Submission time: Two times are stated.",)
+def test_preserves_index_detail_coverage_and_identity_bindings():
+    understanding = _understanding()
+    brief = build_executive_opportunity_brief(understanding)
+    assert tuple(item.section for item in brief.sections) == SECTION_ORDER
+    assert tuple(item.object_ids for item in brief.sections) == tuple(
+        item.object_ids for item in understanding.executive_index)
+    assert brief.detail_register == understanding.detail_register.references()
+    assert brief.coverage_ledger == understanding.coverage_ledger
+    assert brief.publication_id == understanding.publication_id
+    assert brief.publication_snapshot_id == understanding.publication_snapshot_id
+    assert brief.publication_snapshot_digest == understanding.publication_snapshot_digest
 
 
-def test_output_is_stable_and_input_is_not_mutated():
-    facts, synthesis, analysis = inputs()
-    before = copy.deepcopy((facts, synthesis, analysis))
-    first = build_executive_opportunity_brief(facts, synthesis, analysis)
-    second = build_executive_opportunity_brief(copy.deepcopy(facts), copy.deepcopy(synthesis), copy.deepcopy(analysis))
-    assert first == second
-    assert render_executive_opportunity_brief(first) == render_executive_opportunity_brief(second)
-    assert (facts, synthesis, analysis) == before
-
-
-def test_brief_contract_has_no_recommendation_score_or_decision_fields():
-    brief = build_executive_opportunity_brief(*inputs())
-    names = {item.name for item in fields(brief)}
-    assert not names & {"recommendations", "recommendation", "score", "ranking", "decision", "bid_no_bid", "win_probability"}
-    rendered = render_executive_opportunity_brief(brief).casefold()
-    assert "win probability" not in rendered and "bid / no bid" not in rendered
-    assert not any(token in rendered for token in ("pipeline", "engine", "internal identifier"))
-    assert "r-case" not in rendered and "r-cv" not in rendered
-
-
-def test_stable_ordering_follows_authoritative_and_analysis_order():
-    facts, synthesis, analysis = inputs()
-    brief = build_executive_opportunity_brief(facts, synthesis, analysis)
-    assert [item.value for item in brief.engagement_workstreams] == ["Leadership Development", "Executive Coaching"]
-    assert [item.observation_id for item in brief.executive_attention_areas] == [item.statement.statement_id for item in analysis.inferences]
+def test_rendering_uses_resolved_owner_values_and_preserves_provenance():
+    brief = build_executive_opportunity_brief(_understanding())
     rendered = render_executive_opportunity_brief(brief)
-    headings = ["## Opportunity at a Glance", "## Engagement Workstreams", "## Opportunity Characteristics", "## Opportunity Timeline", "## Executive Attention Areas", "## Preparation by Owner", "## Kickoff Questions", "## Clarification Candidates", "## Known Unknowns", "## Limitations"]
-    assert [rendered.index(value) for value in headings] == sorted(rendered.index(value) for value in headings)
+    assert "requirement_count=4" in rendered
+    assert "The documented structure contains an effort consideration." in rendered
+    assert "canonical-opportunity/canonical-opportunity/1.0.0/evidence/evidence-1" in rendered
+    assert "EVIDENCE_SUPPORT" in rendered
+    assert brief.publication_snapshot_id in rendered
+
+
+def test_rendering_fails_closed_for_a_stale_bound_context():
+    brief = build_executive_opportunity_brief(_understanding())
+    with pytest.raises(ContractValidationError):
+        replace(brief.understanding, context_digest="0" * 64)
+
+
+def test_identical_understanding_produces_identical_brief_and_bytes():
+    understanding = _understanding()
+    first = build_executive_opportunity_brief(understanding)
+    second = build_executive_opportunity_brief(understanding)
+    assert first == second
+    assert first.to_json() == second.to_json()
+    assert render_executive_opportunity_brief(first) == render_executive_opportunity_brief(second)
+
+
+def test_brief_is_immutable_and_contains_no_semantic_value_or_upstream_fields():
+    brief = build_executive_opportunity_brief(_understanding())
+    with pytest.raises(FrozenInstanceError):
+        brief.brief_id = "changed"
+    names = {item.name for item in fields(brief)}
+    assert not names & {
+        "analysis", "decision_analysis", "normalized_facts", "stage_d",
+        "synthesis", "semantic_values", "recommendations", "score", "decision",
+    }
+    assert "understanding" not in brief.to_dict()
+    assert "semantic_fields" not in brief.to_json()
+
+
+def test_section_order_is_executive_index_order_and_repeated_values_render_once():
+    brief = build_executive_opportunity_brief(_understanding())
+    rendered = render_executive_opportunity_brief(brief)
+    headings = [f"## {item.heading}" for item in brief.sections]
+    assert [rendered.index(value) for value in headings] == sorted(
+        rendered.index(value) for value in headings)
+    assert rendered.count("The documented structure contains an effort consideration.") == 1
+
+
+def test_every_detail_object_has_exactly_one_coverage_record_and_is_presented():
+    brief = build_executive_opportunity_brief(_understanding())
+    detail_ids = tuple(item.object_id for item in brief.detail_register)
+    coverage_ids = tuple(item.object_id for item in brief.coverage_ledger)
+    assert set(detail_ids) == set(coverage_ids)
+    assert len(coverage_ids) == len(set(coverage_ids))
+    rendered = render_executive_opportunity_brief(brief)
+    assert all(object_id in rendered for object_id in detail_ids)
+
+
+def test_legacy_multi_input_construction_path_is_removed():
+    with pytest.raises(TypeError):
+        build_executive_opportunity_brief({}, {}, object())

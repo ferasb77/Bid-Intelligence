@@ -1,0 +1,14 @@
+{
+  "canonical_opportunity_observations": 120,
+  "commercial_clauses": 91,
+  "dates": 23,
+  "deliverables": 23,
+  "evaluation_criteria": 83,
+  "phase1_run_id": "phase1-boc-2026-026-corrected16-20260912T080929Z-9fd9e5",
+  "phase2_run_id": "phase2-boc-2026-026-stageb-20260912T125051Z-91a22b",
+  "provenance_rejections_present_in_input": 2,
+  "requirements": 427,
+  "stage_a_rerun": false,
+  "stage_b_recomputed": "Stage B's own deterministic function was re-run against the SAME frozen Phase 1 Stage A output (Stage A itself was never re-invoked) after a proven Stage B structural defect was fixed; see the hardening report Section 0.",
+  "submission_rules": 68
+}

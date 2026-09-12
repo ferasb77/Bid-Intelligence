@@ -1,0 +1,14 @@
+{
+  "canonical_conflicts": [
+    "conf_14f51c2bf4250805e28f1d8ebf74b1f8f637a1b3c0dd73d368a4743cc230dd8f",
+    "conf_90315cf488ecf37fadd71407565aebd1c23797995a46543126de87b994f5087a",
+    "conf_cc97deb3e8dea0821254c1a89fb35a3e7af96f97c30af4b945a7ee24c71815bc"
+  ],
+  "review_items": [
+    "CONF-EVAL-1",
+    "CONF-EVAL-2",
+    "CONF-EVAL-3",
+    "CONF-EVAL-4"
+  ],
+  "true_conflicts": []
+}

@@ -1,0 +1,39 @@
+{
+  "manifest": {
+    "buyer_id": "buyer:bank-of-canada",
+    "edition": "two-volume-executive",
+    "manifest_digest": "aa9bcb634559bd63e080326760db9601644586dcb7624e1e579efcbcc50bf805",
+    "members": [
+      {
+        "artifact_digest": "0d0c5e80e13e46d807086ad8427bed120e0461a7bff83318cde4938e90bab34a",
+        "artifact_id": "executive-brief-629c785ebbb8417871fc99fea4b371ec83ad0f83bb5a1cc03db7addb419b81f6",
+        "buyer_id": null,
+        "contract_version": "executive-opportunity-brief/2.0.0",
+        "evidence_cutoff": null,
+        "evidence_cutoff_governed_absence": true,
+        "opportunity_id": "opportunity:bank-of-canada-rfp-2026-026-corrected16",
+        "revision_id": "executive-brief-629c785ebbb8417871fc99fea4b371ec83ad0f83bb5a1cc03db7addb419b81f6",
+        "slot": "executive_opportunity_brief",
+        "volume_class": "EXECUTIVE_OPPORTUNITY_BRIEF"
+      },
+      {
+        "artifact_digest": "3c8fd50ba3643d123b7c2c186379b8afb90bfd4341c4896d39f2bb2a804f16b9",
+        "artifact_id": "buyer-brief:fe087ac591d49f2f47532e9f8d07385e78536cde0107909498a7b87ef23558eb",
+        "buyer_id": "buyer:bank-of-canada",
+        "contract_version": "buyer-brief/1",
+        "evidence_cutoff": "2026-09-12",
+        "evidence_cutoff_governed_absence": false,
+        "opportunity_id": "opportunity:bank-of-canada-rfp-2026-026-corrected16",
+        "revision_id": "buyer-brief:fe087ac591d49f2f47532e9f8d07385e78536cde0107909498a7b87ef23558eb",
+        "slot": "buyer_brief",
+        "volume_class": "BUYER_BRIEF"
+      }
+    ],
+    "opportunity_id": "opportunity:bank-of-canada-rfp-2026-026-corrected16",
+    "pack_contract_name": "executive-briefing-pack",
+    "pack_contract_version": "1.0.0"
+  },
+  "pack_digest": "pack-digest-1b119bfe385002e2505b416ece164f5b8c4b28c60dda8d8c726dc4542519f943",
+  "pack_id": "pack-b11fe92992b988d51edba6077dc7f1999d864838a7e01acd7e332b3b3faeb600",
+  "pack_revision_id": "pack-revision-8b3b21c79dd82605e7ea70ad5d622905aae826dddd1ce4b343fdb4ad8e945ebe"
+}

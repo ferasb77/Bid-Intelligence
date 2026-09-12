@@ -1,0 +1,230 @@
+{
+  "clarification_deadline": {
+    "competing_values": null,
+    "conflict_ids": [],
+    "contributing_lineage": [],
+    "contributing_observation_ids": [],
+    "disposition": "UNRESOLVED",
+    "final_value": null,
+    "provenance_status": "UNVERIFIED",
+    "resolution_basis": null,
+    "status": "UNVERIFIED"
+  },
+  "client": {
+    "competing_values": {
+      "affected_observation_ids": [
+        "obs_31463d092c3fb5abe5d26806255389e3a90831e71cbfa6ffd61564b284ff3e0c",
+        "obs_510a386067677bd05eb31b347a0c93c078052870c77af7069f70813412a2c9c8",
+        "obs_67385ceb6adceb866cde98287e950975a7c49a90d38750f80e0f9a1c970ee7b4",
+        "obs_704b41e31f698e1f4cdab660a49167a006738359241f81fc39433f7c1a1caecd",
+        "obs_7af49bb84693b24d794e2fcf1949f299e9914250c8807a67edb1426dd79771a9",
+        "obs_9551dfcf39d74ff7964bbf5ba0b4b90982ce74287141a9e84a67c2fc753b3c6a",
+        "obs_9b894018b06a1cc55e397c31e4816ebadedca48e75d2c2b0be37a5fc41d4f8ed",
+        "obs_9f510f2024dcd0413a7492fba8b8c2490bd3e7d6c6ea28e68bc61ccff82a2187",
+        "obs_bdb9919d667453e80d0c500bdd6bec907b7477a718d32389e5c783fda6b56224",
+        "obs_c6a859e1b2e8ac27c30379fcd2ab8a7bd38b546c6d932d1e1b95ee3353404e35",
+        "obs_cf7f6f0b61df5bfb722c9159a30fb6dce42b0a972ebdcbcc1ad8cb91cfa11167",
+        "obs_dec10d0c96542eee52a9e074ab2af6e2f39da126d3a66b60744d7681c83db314",
+        "obs_f0199ad3bb900791918774388ee6c3ddaaf5314d6f1441edb487f87d59cb17db"
+      ],
+      "conflict_id": "conf_90315cf488ecf37fadd71407565aebd1c23797995a46543126de87b994f5087a",
+      "incompatible_values": [
+        "bank of canada",
+        "bank",
+        "the bank"
+      ]
+    },
+    "conflict_ids": [
+      "conf_90315cf488ecf37fadd71407565aebd1c23797995a46543126de87b994f5087a"
+    ],
+    "contributing_lineage": [],
+    "contributing_observation_ids": [],
+    "disposition": "UNRESOLVED",
+    "final_value": null,
+    "provenance_status": "UNVERIFIED",
+    "resolution_basis": null,
+    "status": "CONFLICTED"
+  },
+  "contract_term": {
+    "competing_values": null,
+    "conflict_ids": [],
+    "contributing_lineage": [
+      {
+        "family": "CONTRACT_TERM",
+        "observation_id": "obs_2282cb0c886607df6632ef7986a4b14859d17453bf0d9f68e8a27da78cb3139a",
+        "original_value": "approximately twelve (12) weeks",
+        "provenance_status": "VERIFIED",
+        "semantic_kind": "INITIAL_DURATION",
+        "source_doc": "OriginalRevision/RFP 2026-026 - Appendix E - Pricing Form.xlsx",
+        "source_refs": [
+          {
+            "page": null,
+            "section": null,
+            "source_doc": "OriginalRevision/RFP 2026-026 - Appendix E - Pricing Form.xlsx",
+            "verified": null
+          }
+        ]
+      }
+    ],
+    "contributing_observation_ids": [
+      "obs_2282cb0c886607df6632ef7986a4b14859d17453bf0d9f68e8a27da78cb3139a"
+    ],
+    "disposition": "ASSERTED",
+    "final_value": [
+      {
+        "kind": "INITIAL_DURATION",
+        "scope": {
+          "component": "HR Advisory",
+          "period_basis": "WEEKS"
+        },
+        "value": {
+          "duration": "12",
+          "unit": "weeks"
+        }
+      }
+    ],
+    "provenance_status": "VERIFIED",
+    "resolution_basis": "STRUCTURED_COMPONENTS",
+    "status": "RESOLVED"
+  },
+  "file_number": {
+    "competing_values": {
+      "affected_observation_ids": [
+        "obs_022023ce41f30c23d7f749bc9c04b6d6ce43b5c29dbb8d942f8c92b7f29e713f",
+        "obs_04d7aba306c459dc57f429da79ebefb1408d36b3d4065b462f0dcb647ef9c0a7",
+        "obs_118afa1ace3d7721ed98bfe3166831fc2d8f144b3fc0ddbfcd9ec9c3981961c1",
+        "obs_2e25023e844d280948a1d870440dd7d3910c39f54c61e7c22eca19e7ebbeaf9f",
+        "obs_45bef5c06e08aca421c74e2e12315b08451c7403f77f038f090372b9b25367a8",
+        "obs_50a40a0316c092337641b28f9a07f9b2a416d69e92f89688415b1a5bf6ac0a17",
+        "obs_60086ffaccaaa73026032647d2e5715f90d13012d36889d866430668182ad958",
+        "obs_68f72ec472ad494bb9ede7167e84b78593d202d869fcc6cc223405a8375cf74e",
+        "obs_6f1540b3943dd6afee73a6270c2c723643baf5d3b8ccce9f31f090ae3cba119b",
+        "obs_730700fc2a708c31f67d95ef4817b2298aff66b0556b09a0989a23daddee4ea0",
+        "obs_8d127acdfd18c227fd90a4e4cc3cf170e6bf01062694606ff449efaebac4db83",
+        "obs_9f18b1cc72406be05036a4d937db763552936785e3ca7fa61a977e4922b70962",
+        "obs_a3f013393ed5191eed3358098cc80cddb614a7c9db82d5941bbc6f14b1a0aad1",
+        "obs_aa0c7d04750970ccbab80365c09bc878a78724971dd5ba7336e483d699e8b0d7",
+        "obs_ae55be021ff6598826e78c250ec9ff33c77c2aef2f2ebfabba788e81d915b51f",
+        "obs_aea74bce350ef5aec44f8fb53f94352b8e119a0a80ecdb6d2014776d5369536b",
+        "obs_b487c6615119d627f733441f73670b5b0d5bb1eba2066bdbd3d5cb71a15bdbaf",
+        "obs_b4c907704b3ad255ac845638bd60227bf2c98fce8f51bb9a7f80e77a2793888b",
+        "obs_cb0b2271a98632976aef971dca4f4f986d4ceb486fddb1397bd15fa36d0dd1fa",
+        "obs_d7c10153e2641f10a3cdaf79c58251d990c503b58e236152ce8bc69502f05bdd"
+      ],
+      "conflict_id": "conf_14f51c2bf4250805e28f1d8ebf74b1f8f637a1b3c0dd73d368a4743cc230dd8f",
+      "incompatible_values": [
+        "2026-026",
+        "rfp 2026-026"
+      ]
+    },
+    "conflict_ids": [
+      "conf_14f51c2bf4250805e28f1d8ebf74b1f8f637a1b3c0dd73d368a4743cc230dd8f"
+    ],
+    "contributing_lineage": [],
+    "contributing_observation_ids": [],
+    "disposition": "UNRESOLVED",
+    "final_value": null,
+    "provenance_status": "UNVERIFIED",
+    "resolution_basis": null,
+    "status": "CONFLICTED"
+  },
+  "headline_value": {
+    "competing_values": null,
+    "conflict_ids": [],
+    "contributing_lineage": [],
+    "contributing_observation_ids": [],
+    "disposition": "ABSENT",
+    "final_value": null,
+    "provenance_status": "UNVERIFIED",
+    "resolution_basis": null,
+    "status": "MISSING"
+  },
+  "opportunity_type": {
+    "competing_values": null,
+    "conflict_ids": [],
+    "contributing_lineage": [],
+    "contributing_observation_ids": [],
+    "disposition": "UNRESOLVED",
+    "final_value": null,
+    "provenance_status": "UNVERIFIED",
+    "resolution_basis": null,
+    "status": "NOT_CLASSIFIED"
+  },
+  "procurement_model": {
+    "competing_values": null,
+    "conflict_ids": [],
+    "contributing_lineage": [],
+    "contributing_observation_ids": [],
+    "disposition": "UNRESOLVED",
+    "final_value": null,
+    "provenance_status": "UNVERIFIED",
+    "resolution_basis": null,
+    "status": "NOT_CLASSIFIED"
+  },
+  "submission_deadline": {
+    "competing_values": null,
+    "conflict_ids": [],
+    "contributing_lineage": [
+      {
+        "family": "MILESTONE",
+        "observation_id": "obs_1e01dde39a3f08cf3897b3dc845939e774373218e59cb101797b659dd2fe9e01",
+        "original_value": "September 30, 2026",
+        "provenance_status": "VERIFIED",
+        "semantic_kind": "SUBMISSION_DEADLINE",
+        "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+        "source_refs": [
+          {
+            "page": 1,
+            "section": null,
+            "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+            "verified": null
+          }
+        ]
+      }
+    ],
+    "contributing_observation_ids": [
+      "obs_1e01dde39a3f08cf3897b3dc845939e774373218e59cb101797b659dd2fe9e01"
+    ],
+    "disposition": "ASSERTED",
+    "final_value": {
+      "date": "2026-09-30",
+      "precision": "DATE",
+      "time": null,
+      "timezone": null
+    },
+    "provenance_status": "VERIFIED",
+    "resolution_basis": "EXACT_AGREEMENT",
+    "status": "RESOLVED"
+  },
+  "title": {
+    "competing_values": {
+      "affected_observation_ids": [
+        "obs_238e499bf286ebbd9686a902b4f3e030f18477822565fbbd0cf8747420083ca2",
+        "obs_39a2f8d1e2cd647fa885c7ebf1db71ef62099d7ed7af499bcdb7f1c042e8742c",
+        "obs_4ee9959fef649bb3c14bd1fffe6c5605819553bec8a2b00dfd91492879c6cc5f",
+        "obs_5dc5243297845de757e5cb8a28c6eebc24ea15a8658ba81e93ad3bf897b49306",
+        "obs_691d382f119a63080520b1da0f3c251170962f01930fd7a20d45cd82029a7a9e",
+        "obs_903a91ca91849986c416daeb81202cabf9951b0ad4cb673c4f9a03ceb153b761",
+        "obs_c992d10e6365b4831374e2613652869166ec5abb2151d75a45300a498a529162",
+        "obs_cc8b9dc546f85d8f666c428c8b1939992a74690a92e64cac1c6b2fd4ab07ecc3",
+        "obs_ee5ca6c3a7b1b5210bc6096201ba34c0241b202f292fa3e88aea84e97dcb6147",
+        "obs_f378f2180e40fbb36f5b2d37029c18c246b1ce5b6e9c5ed295058623dc2319f3"
+      ],
+      "conflict_id": "conf_cc97deb3e8dea0821254c1a89fb35a3e7af96f97c30af4b945a7ee24c71815bc",
+      "incompatible_values": [
+        "rfp 2026-026 - talent, learning and organizational development services",
+        "talent, learning and organizational development services"
+      ]
+    },
+    "conflict_ids": [
+      "conf_cc97deb3e8dea0821254c1a89fb35a3e7af96f97c30af4b945a7ee24c71815bc"
+    ],
+    "contributing_lineage": [],
+    "contributing_observation_ids": [],
+    "disposition": "UNRESOLVED",
+    "final_value": null,
+    "provenance_status": "UNVERIFIED",
+    "resolution_basis": null,
+    "status": "CONFLICTED"
+  }
+}

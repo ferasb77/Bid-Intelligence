@@ -1,0 +1,95 @@
+{
+  "clause_occurrences": {
+    "groups_merged_gt1": 0,
+    "groups_singleton": 91,
+    "raw_records_total": 91,
+    "top_group_sizes": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "total_groups": 91
+  },
+  "dates": {
+    "note": "Stage B performs no deduplication on dates (raw concatenation)"
+  },
+  "deliverable_occurrences": {
+    "groups_merged_gt1": 0,
+    "groups_singleton": 24,
+    "raw_records_total": 24,
+    "top_group_sizes": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "total_groups": 24
+  },
+  "evaluation_criteria": {
+    "groups_merged_gt1": 11,
+    "groups_singleton": 72,
+    "raw_records_total": 102,
+    "top_group_sizes": [
+      4,
+      4,
+      4,
+      3,
+      3,
+      2,
+      2,
+      2,
+      2,
+      2
+    ],
+    "total_groups": 83
+  },
+  "requirements": {
+    "groups_merged_gt1": 9,
+    "groups_singleton": 418,
+    "raw_records_total": 445,
+    "top_group_sizes": [
+      4,
+      4,
+      4,
+      3,
+      3,
+      3,
+      2,
+      2,
+      2,
+      1
+    ],
+    "total_groups": 427
+  },
+  "submission_rules": {
+    "groups_merged_gt1": 18,
+    "groups_singleton": 44,
+    "raw_records_total": 85,
+    "top_group_sizes": [
+      4,
+      3,
+      3,
+      3,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2
+    ],
+    "total_groups": 62
+  }
+}

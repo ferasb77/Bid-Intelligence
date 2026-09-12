@@ -1,0 +1,23 @@
+{
+  "api_cost": "not applicable, same reason",
+  "git_commit": "7e797830f42d06ff08745648585de0e26557addb",
+  "git_working_tree_dirty": true,
+  "input_phase2_run_id": "phase2-boc-2026-026-stageb-20260912T111643Z-1da5ab",
+  "llm_calls_made_this_run": 0,
+  "model_used": null,
+  "phase3_run_id": "phase3-boc-2026-026-stagec-20260912T122355Z-4624ac",
+  "production_entry_point": "scripts/commission_phase3_stage_c_bank_of_canada.py -> extractor.reconcile_package_facts()",
+  "provenance_rejections_untouched": true,
+  "stage_a_rerun": false,
+  "stage_b_recomputed": false,
+  "stage_c_elapsed_seconds": 0.048532,
+  "stage_c_functions": [
+    "extractor.reconcile_package_facts",
+    "extractor.detect_document_conflicts",
+    "contract_hygiene.structured_deliverable_conflicts",
+    "canonical_opportunity.resolve_canonical_opportunity",
+    "canonical_opportunity.apply_legacy_conflict_fallback"
+  ],
+  "timestamp_utc": "2026-09-12T12:23:58.329940+00:00",
+  "token_usage": "not applicable -- Stage C is fully deterministic; verified by code inspection (no client.messages.create / get_anthropic_client anywhere in reconcile_package_facts, detect_document_conflicts, structured_deliverable_conflicts, resolve_canonical_opportunity, apply_legacy_conflict_fallback, or any function they call)"
+}

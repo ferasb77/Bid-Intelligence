@@ -1,0 +1,18 @@
+{
+  "api_cost": "not captured, same reason.",
+  "git_commit": "7e797830f42d06ff08745648585de0e26557addb",
+  "git_working_tree_dirty": true,
+  "input_phase2_run_id": "phase2-boc-2026-026-stageb-20260912T125051Z-91a22b",
+  "input_phase3_run_id": "phase3-boc-2026-026-stagec-20260912T130007Z-dd391b",
+  "phase4_run_id": "phase4-boc-2026-026-staged-20260912T131303Z-2cc8af",
+  "production_entry_point": "scripts/commission_phase4_stage_d_bank_of_canada.py -> extractor.synthesize_bid_brief()",
+  "provenance_rejections_untouched": true,
+  "stage_d_context_char_limit": 580000,
+  "stage_d_elapsed_seconds": 28.394,
+  "stage_d_max_attempts": 2,
+  "stage_d_max_tokens": 8000,
+  "stage_d_model": "claude-haiku-4-5-20251001",
+  "stage_d_status": "PASS",
+  "timestamp_utc": "2026-09-12T13:13:33.928278+00:00",
+  "token_usage": "not captured by the production code path -- extractor.py's Stage D client.messages.create() call does not read/log response.usage anywhere in this call graph (same gap already documented for Stage A in the Phase 1 report). Not fabricated here."
+}

@@ -1,0 +1,325 @@
+{
+  "_extraction_diagnostic": {
+    "recovery_attempts": 0,
+    "status": "VERIFIED_ADEQUATE"
+  },
+  "commercial_clauses": [],
+  "contract_risks": [],
+  "dates": [],
+  "deliverables": [],
+  "doc_metadata": {
+    "file_number": "RFP 2026-026",
+    "notes": "Appendix C2 specifies minimum qualification requirements for HR advisory services. Document contains three mandatory supplier qualification gates.",
+    "title": "RFP 2026-026 - Talent, learning and organizational development services"
+  },
+  "evaluation_criteria": [
+    {
+      "criterion_id": null,
+      "evaluation_role": "Qualification / Gate",
+      "hierarchy_level": 1,
+      "is_structural_container": false,
+      "notes": "Mandatory qualification gate. Proponent must confirm delivery of at least 3 strategic HR advisory engagements within last 3 years in at least 2 of 5 specified areas.",
+      "parent_criterion_id": null,
+      "parent_stage": null,
+      "parent_title": null,
+      "role_conflict": false,
+      "role_observations": [
+        "Qualification / Gate"
+      ],
+      "source_refs": [
+        {
+          "excerpt": "Strategic HR Consulting Experience. Proponents must confirm that they have experience delivering at least three (3) strategic HR advisory engagements within the last three (3) years in at least two of the following areas",
+          "page": null,
+          "section": null,
+          "sheet": "Minimum qualification",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx"
+        }
+      ],
+      "stage": "Minimum Qualification Gate 1: Strategic HR Consulting Experience",
+      "threshold": "Pass/Fail (Yes/No confirmation required)",
+      "title": "Minimum Qualification Gate 1: Strategic HR Consulting Experience",
+      "weight": null,
+      "weight_basis": "Unknown",
+      "weight_conflict": false,
+      "weight_observations": [],
+      "weight_unit": "None",
+      "weight_value": null
+    },
+    {
+      "criterion_id": null,
+      "evaluation_role": "Qualification / Gate",
+      "hierarchy_level": 1,
+      "is_structural_container": false,
+      "notes": "Mandatory qualification gate. Proponent must confirm minimum 3 senior HR consultants each with minimum 7 years strategic HR advisory experience.",
+      "parent_criterion_id": null,
+      "parent_stage": null,
+      "parent_title": null,
+      "role_conflict": false,
+      "role_observations": [
+        "Qualification / Gate"
+      ],
+      "source_refs": [
+        {
+          "excerpt": "Senior Advisory Resources. Proponents must confirm they have a minimum of at least three (3) senior HR consultants with a minimum of seven (7) years of experience providing strategic HR advisory services.",
+          "page": null,
+          "section": null,
+          "sheet": "Minimum qualification",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx"
+        }
+      ],
+      "stage": "Minimum Qualification Gate 2: Senior Advisory Resources",
+      "threshold": "Pass/Fail (Yes/No confirmation required)",
+      "title": "Minimum Qualification Gate 2: Senior Advisory Resources",
+      "weight": null,
+      "weight_basis": "Unknown",
+      "weight_conflict": false,
+      "weight_observations": [],
+      "weight_unit": "None",
+      "weight_value": null
+    },
+    {
+      "criterion_id": null,
+      "evaluation_role": "Qualification / Gate",
+      "hierarchy_level": 1,
+      "is_structural_container": false,
+      "notes": "Mandatory qualification gate. Proponent must confirm delivery of at least 2 HR advisory engagements for organizations with more than 1,000 employees.",
+      "parent_criterion_id": null,
+      "parent_stage": null,
+      "parent_title": null,
+      "role_conflict": false,
+      "role_observations": [
+        "Qualification / Gate"
+      ],
+      "source_refs": [
+        {
+          "excerpt": "Experience with Large/Complex Organizations. Proponents must confirm they have delivered at least two (2) HR advisory engagements for organizations with more than 1,000 employees.",
+          "page": null,
+          "section": null,
+          "sheet": "Minimum qualification",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx"
+        }
+      ],
+      "stage": "Minimum Qualification Gate 3: Experience with Large/Complex Organizations",
+      "threshold": "Pass/Fail (Yes/No confirmation required)",
+      "title": "Minimum Qualification Gate 3: Experience with Large/Complex Organizations",
+      "weight": null,
+      "weight_basis": "Unknown",
+      "weight_conflict": false,
+      "weight_observations": [],
+      "weight_unit": "None",
+      "weight_value": null
+    }
+  ],
+  "requirements": [
+    {
+      "_semantic_candidates": [
+        "Supplier Qualification"
+      ],
+      "category": "Mandatory",
+      "description": "Proponents must confirm that they have experience delivering at least three (3) strategic HR advisory engagements within the last three (3) years in at least two of the following areas: talent management, organizational development, workforce planning, succession planning, change management, or performance management.",
+      "evidence": "Proponent Response (Yes/No confirmation)",
+      "req_id": "M1",
+      "requirement_type": "Supplier Qualification",
+      "rfso_ref": "Appendix C2, Row 4",
+      "source_refs": [
+        {
+          "excerpt": "Strategic HR Consulting Experience. Proponents must confirm that they have experience delivering at least three (3) strategic HR advisory engagements within the last three (3) years in at least two of the following areas: talent management, organizational development, workforce planning, succession planning, change management, performance management",
+          "page": null,
+          "section": null,
+          "sheet": "Minimum qualification",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx"
+        }
+      ],
+      "weight": null
+    },
+    {
+      "_semantic_candidates": [
+        "Supplier Qualification"
+      ],
+      "category": "Mandatory",
+      "description": "Proponents must confirm they have a minimum of at least three (3) senior HR consultants with a minimum of seven (7) years of experience providing strategic HR advisory services.",
+      "evidence": "Proponent Response (Yes/No confirmation)",
+      "req_id": "M2",
+      "requirement_type": "Supplier Qualification",
+      "rfso_ref": "Appendix C2, Row 5",
+      "source_refs": [
+        {
+          "excerpt": "Senior Advisory Resources. Proponents must confirm they have a minimum of at least three (3) senior HR consultants with a minimum of seven (7) years of experience providing strategic HR advisory services.",
+          "page": null,
+          "section": null,
+          "sheet": "Minimum qualification",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx"
+        }
+      ],
+      "weight": null
+    },
+    {
+      "_semantic_candidates": [
+        "Supplier Qualification"
+      ],
+      "category": "Mandatory",
+      "description": "Proponents must confirm they have delivered at least two (2) HR advisory engagements for organizations with more than 1,000 employees.",
+      "evidence": "Proponent Response (Yes/No confirmation)",
+      "req_id": "M3",
+      "requirement_type": "Supplier Qualification",
+      "rfso_ref": "Appendix C2, Row 6",
+      "source_refs": [
+        {
+          "excerpt": "Experience with Large/Complex Organizations. Proponents must confirm they have delivered at least two (2) HR advisory engagements for organizations with more than 1,000 employees.",
+          "page": null,
+          "section": null,
+          "sheet": "Minimum qualification",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx"
+        }
+      ],
+      "weight": null
+    }
+  ],
+  "submission_rules": [
+    {
+      "artifact_type": "Form / Annex",
+      "artifact_type_conflict": false,
+      "artifact_type_observations": [
+        "Form / Annex"
+      ],
+      "details": "Proponents must respond Yes/No to each of three minimum qualification requirements (Strategic HR Consulting Experience, Senior Advisory Resources, Experience with Large/Complex Organizations)",
+      "file_format": "Unspecified",
+      "file_format_conflict": false,
+      "file_format_observations": [
+        "Unspecified"
+      ],
+      "format": "Yes/No confirmation format per Appendix C2",
+      "item": "Minimum Qualification Requirements Response",
+      "mandatory": 1,
+      "mandatory_conflict": false,
+      "mandatory_observations": [
+        1
+      ],
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "Appendix C2 - HR advisory. # | Minimum qualification requirements | Proponent Response Yes / No",
+          "page": null,
+          "section": null,
+          "sheet": "Minimum qualification",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx"
+        }
+      ],
+      "submission_channel": "Unspecified",
+      "submission_channel_conflict": false,
+      "submission_channel_observations": [
+        "Unspecified"
+      ]
+    }
+  ],
+  "typed_observations": [
+    {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": null,
+      "document_role_basis": null,
+      "duration": null,
+      "family": "IDENTITY",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "RFP 2026-026",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": null,
+        "lot": null
+      },
+      "semantic_kind": "SOLICITATION_NUMBER",
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "RFP 2026-026 - Talent, learning and organizational development services",
+          "page": null,
+          "section": null,
+          "sheet": "Minimum qualification",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    },
+    {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": null,
+      "document_role_basis": null,
+      "duration": null,
+      "family": "IDENTITY",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "Talent, learning and organizational development services",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": null,
+        "lot": null
+      },
+      "semantic_kind": "OPPORTUNITY_TITLE",
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "RFP 2026-026 - Talent, learning and organizational development services",
+          "page": null,
+          "section": null,
+          "sheet": "Minimum qualification",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    },
+    {
+      "amount": null,
+      "currency": null,
+      "date": null,
+      "document_role": "MINIMUM_QUALIFICATION_REQUIREMENTS",
+      "document_role_basis": "Appendix C2 contains structured minimum qualification requirements table with pass/fail gates",
+      "duration": null,
+      "family": "DOCUMENT_ROLE",
+      "guarantee_status": null,
+      "option_count": null,
+      "optional": null,
+      "original_value": "Appendix C2 - HR advisory",
+      "period_basis": null,
+      "precision": null,
+      "scope": {
+        "category": null,
+        "component": null,
+        "lot": null
+      },
+      "semantic_kind": "DOCUMENT_TITLE",
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "Appendix C2 - HR advisory",
+          "page": null,
+          "section": null,
+          "sheet": "Minimum qualification",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx"
+        }
+      ],
+      "supersession": null,
+      "tax_basis": null,
+      "time": null,
+      "timezone": null,
+      "unit": null
+    }
+  ]
+}

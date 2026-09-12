@@ -1,0 +1,31 @@
+{
+  "entries": [
+    {
+      "at": "2026-09-11T18:38:29.608856+00:00",
+      "boundary": "Procurement Corpus",
+      "detail": {
+        "file_count": 16,
+        "manifest": "corrected_corpus_manifest.json"
+      },
+      "status": "PASS"
+    },
+    {
+      "at": "2026-09-11T18:38:30.662788+00:00",
+      "boundary": "Evidence",
+      "detail": {
+        "object_count": 150,
+        "snapshot_id": "esnap-19903aafc6af033c0d369d04bbf6c60a82426edf194a1c9ef8eec9baeffabdea"
+      },
+      "status": "PASS"
+    },
+    {
+      "at": "2026-09-11T18:38:31.181736+00:00",
+      "boundary": "Evidence Publication",
+      "detail": {
+        "publication_id": "evidence-publication-record-898f76bfb9993a5a7d8e5e480b055cd3e81c2af857176b6856b7c190519e0ca5"
+      },
+      "status": "PASS"
+    }
+  ],
+  "last_successful_boundary": "Evidence Publication"
+}

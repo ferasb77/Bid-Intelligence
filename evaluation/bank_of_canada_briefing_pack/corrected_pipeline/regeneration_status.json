@@ -1,0 +1,17 @@
+{
+  "buyer_brief": "NOT_REPLACED",
+  "corpus_files": 16,
+  "doctrine_changed": false,
+  "docx": "NOT_REGENERATED",
+  "executive_opportunity_brief": "NOT_GENERATED",
+  "opportunity_intelligence": "PASS",
+  "pdf": "NOT_REGENERATED",
+  "prior_customer_artifacts_replaced": false,
+  "production_code_changed_by_regeneration": false,
+  "stage_a": "PASS",
+  "stage_b": "PASS",
+  "stage_c": "PASS",
+  "stage_d_projection": "PASS",
+  "stage_d_synthesis": "FAIL_CLOSED",
+  "status": "BLOCKED_AT_STAGE_D"
+}

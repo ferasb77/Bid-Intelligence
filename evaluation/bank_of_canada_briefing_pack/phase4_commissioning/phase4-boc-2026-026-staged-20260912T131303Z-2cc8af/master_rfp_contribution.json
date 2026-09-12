@@ -1,0 +1,26 @@
+{
+  "commercial_structure": {
+    "count": 20,
+    "sole_source_count": 20
+  },
+  "deliverables_summary": {
+    "count": 6,
+    "sole_source_count": 6
+  },
+  "evaluation_breakdown": {
+    "count": 55,
+    "sole_source_count": 54
+  },
+  "key_dates": {
+    "count": 11,
+    "sole_source_count": 11
+  },
+  "qualification_gates": {
+    "count": 0,
+    "sole_source_count": 0
+  },
+  "submission_requirements": {
+    "count": 32,
+    "sole_source_count": 18
+  }
+}

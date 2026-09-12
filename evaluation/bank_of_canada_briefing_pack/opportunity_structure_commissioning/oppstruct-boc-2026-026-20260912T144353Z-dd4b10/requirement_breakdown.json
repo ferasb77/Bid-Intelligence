@@ -1,0 +1,20 @@
+{
+  "by_category": {
+    "Financial": 1,
+    "General Compliance": 1,
+    "Mandatory": 314,
+    "Rated": 89,
+    "Submission Compliance": 13,
+    "Supporting": 9
+  },
+  "by_requirement_type": {
+    "Commercial / Contractual": 72,
+    "Delivery / SLA": 16,
+    "Evaluation / Scored": 61,
+    "General Compliance": 58,
+    "Submission Compliance": 127,
+    "Supplier Qualification": 42,
+    "Technical Specification": 51
+  },
+  "total": 427
+}

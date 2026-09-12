@@ -436,7 +436,7 @@ class TestStageAPreservationAndDAuthoritativeRebuild(unittest.TestCase):
             ],
             "requirements": [], "dates": [], "submission_rules": [], "deliverables": [], "commercial_clauses": [], "contract_risks": []
         }
-        norm = normalize_package_facts([df1, df2], {"doc_texts": {}})
+        norm = normalize_package_facts([df1, df2], {"files": ["RFP.pdf", "Addendum.pdf"], "doc_texts": {}})
         ec = norm["evaluation_criteria"]
         self.assertEqual(len(ec), 1)
         self.assertTrue(ec[0]["weight_conflict"])
@@ -682,7 +682,7 @@ class TestStageAToStageBConflictPreservation(unittest.TestCase):
             "evaluation_criteria": stage_a_deduped,
             "requirements": [], "dates": [], "submission_rules": [], "deliverables": [], "commercial_clauses": [], "contract_risks": []
         }
-        norm = normalize_package_facts([df1], {"doc_texts": {}})
+        norm = normalize_package_facts([df1], {"files": ["RFP.pdf"], "doc_texts": {}})
         stage_b_eval = norm["evaluation_criteria"]
         self.assertEqual(len(stage_b_eval), 1)
         self.assertTrue(stage_b_eval[0]["role_conflict"], "Role conflict must survive Stage B")
@@ -703,7 +703,7 @@ class TestStageAToStageBConflictPreservation(unittest.TestCase):
             "evaluation_criteria": stage_a_deduped,
             "requirements": [], "dates": [], "submission_rules": [], "deliverables": [], "commercial_clauses": [], "contract_risks": []
         }
-        norm = normalize_package_facts([df1], {"doc_texts": {}})
+        norm = normalize_package_facts([df1], {"files": ["RFP.pdf"], "doc_texts": {}})
         stage_b_eval = norm["evaluation_criteria"]
         self.assertEqual(len(stage_b_eval), 1)
         self.assertTrue(stage_b_eval[0]["weight_conflict"], "Weight conflict must survive Stage B")
@@ -723,7 +723,7 @@ class TestStageAToStageBConflictPreservation(unittest.TestCase):
         df1 = {"evaluation_criteria": doc1_eval, "requirements": [], "dates": [], "submission_rules": [], "deliverables": [], "commercial_clauses": [], "contract_risks": []}
         df2 = {"evaluation_criteria": doc2_eval, "requirements": [], "dates": [], "submission_rules": [], "deliverables": [], "commercial_clauses": [], "contract_risks": []}
 
-        norm = normalize_package_facts([df1, df2], {"doc_texts": {}})
+        norm = normalize_package_facts([df1, df2], {"files": ["Doc1.pdf", "Doc2.pdf"], "doc_texts": {}})
         stage_b_eval = norm["evaluation_criteria"]
         self.assertEqual(len(stage_b_eval), 1)
         self.assertTrue(stage_b_eval[0]["weight_conflict"], "Additional observation must not clear prior conflict")

@@ -1,0 +1,15 @@
+[
+  {
+    "boundary": "Evidence (real corpus, deterministic parse)",
+    "elapsed_seconds": 1.481,
+    "objects": 150,
+    "status": "PASS"
+  },
+  {
+    "boundary": "Canonical Opportunity Publication",
+    "elapsed_seconds": 0.011,
+    "exception": "obs_95004a639671e7dd7f078b2854f039e60c6992c3293d4ee5fb66c8d63b3e34b4: excerpt not found verbatim in the Evidence extract for PAGE:page:1 in 'abstract.pdf'",
+    "exception_type": "ObservationBindingError",
+    "status": "FAIL"
+  }
+]

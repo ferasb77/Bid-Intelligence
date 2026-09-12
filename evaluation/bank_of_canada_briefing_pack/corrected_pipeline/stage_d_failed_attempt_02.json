@@ -1,0 +1,9 @@
+{
+  "status": "REJECTED_FAIL_CLOSED",
+  "stage": "Stage D",
+  "error_type": "ProjectionValidationError",
+  "error_code": "WRONG_EVIDENCE_OWNER",
+  "normalized_facts_retained": true,
+  "accepted_as_output": false,
+  "note": "The live model response failed deterministic evidence-ownership validation. No invalid brief was accepted."
+}

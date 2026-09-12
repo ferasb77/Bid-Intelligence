@@ -1,0 +1,15 @@
+{
+  "api_cost": 0,
+  "elapsed_seconds": 0.431,
+  "git_commit": "7e797830f42d06ff08745648585de0e26557addb",
+  "llm_calls": 0,
+  "phase1_run_id": "phase1-boc-2026-026-corrected16-20260912T080929Z-9fd9e5",
+  "phase2_run_id_before": "phase2-boc-2026-026-stageb-20260912T125051Z-91a22b",
+  "phase2_run_id_regenerated": "phase2-boc-2026-026-stageb-canonterm-fix-20260912T142551Z-34a031",
+  "prior_canonical_commissioning_run_id": "canonopp-boc-2026-026-20260912T135357Z-060143",
+  "run_id": "canonopp-boc-2026-026-20260912T142551Z-34a031",
+  "stage_a_rerun": false,
+  "stage_b_non_canonical_families_unchanged": true,
+  "stage_b_regeneration_reason": "canonical_opportunity.py provenance-validation defect fix changes observation-level provenance_status, which is computed once at build_canonical_opportunity() time and cannot be refreshed by re-resolving a stale, pre-fix Stage B artifact.",
+  "timestamp_utc": "2026-09-12T14:25:55.019731+00:00"
+}

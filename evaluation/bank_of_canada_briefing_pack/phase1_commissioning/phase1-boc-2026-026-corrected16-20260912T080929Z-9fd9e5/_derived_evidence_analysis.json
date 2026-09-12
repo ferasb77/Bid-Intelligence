@@ -1,0 +1,159 @@
+{
+  "per_document": {
+    "OriginalRevision/DP 2026-026 - Annexe F - Questionnaire ESG.xlsx": {
+      "occurrences": 1,
+      "extracts": 1,
+      "artifact_id": "eart-0b16d430ee68fe9469977f5ade2eeaaea4572da2684ac23eb698d0ddf99fa5f7"
+    },
+    "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx": {
+      "occurrences": 1,
+      "extracts": 1,
+      "artifact_id": "eart-0e1d2e5a101357e9267aef3328a4042ae79cd781665e146d3c753ed642576a8b"
+    },
+    "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx": {
+      "occurrences": 1,
+      "extracts": 1,
+      "artifact_id": "eart-17e137253b3a4ab466b8093ba4ea7a61f957bf16d201c695ebd7741320330bfb"
+    },
+    "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx": {
+      "occurrences": 1,
+      "extracts": 1,
+      "artifact_id": "eart-265994972a5a05e6bd5eabb0ccafb708faaa982e29bdadd4b9d0b56ca5b300b5"
+    },
+    "OriginalRevision/RFP 2026-026 - Appendix D2 - Rated Criteria Response Form.docx": {
+      "occurrences": 1,
+      "extracts": 1,
+      "artifact_id": "eart-2ba2e2c8fb0d2d7f0387da2c74b2e073618c70a03ab59c46450d4e7496183b37"
+    },
+    "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx": {
+      "occurrences": 17,
+      "extracts": 14,
+      "artifact_id": "eart-532f767cab2423865ed3b47d93e73322fe634d9bc10f669f9a4a8737d5cd042f"
+    },
+    "Amendment1/RFP 2026-026 - Appendix D2 - Rated Criteria Response REVISED.docx": {
+      "occurrences": 1,
+      "extracts": 1,
+      "artifact_id": "eart-59163ec0a3328eff20fc5ef1b3cf845850a43ff3c5cd0d4e2eac94d9d18c5e92"
+    },
+    "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf": {
+      "occurrences": 21,
+      "extracts": 21,
+      "artifact_id": "eart-604faad20200943d2a4ebbcefdc70e11eae3344888fe6bd364a70188942a21cc"
+    },
+    "OriginalRevision/RFP 2026-026 - Appendix E - Pricing Form.xlsx": {
+      "occurrences": 9,
+      "extracts": 9,
+      "artifact_id": "eart-6e28d85b2552b9a1a4b15566426d5390f08d77d7bb3f87eac455058e1c299fb4"
+    },
+    "OriginalRevision/RFP 2026-026 - Appendix B1 - Mandatory criteria.xlsx": {
+      "occurrences": 1,
+      "extracts": 1,
+      "artifact_id": "eart-8037b2c653df5f70657fe588edb6626534b8b2047208ccb96547d7d1f188509b"
+    },
+    "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx": {
+      "occurrences": 1,
+      "extracts": 1,
+      "artifact_id": "eart-a90cff16541913f4e0eface69614eea8f68a8f147c7b0a22b7cf8dca1acec348"
+    },
+    "OriginalRevision/RFP 2026-026 - Appendix B2 - Mandatory criteria.xlsx": {
+      "occurrences": 1,
+      "extracts": 1,
+      "artifact_id": "eart-bfe2ab91c05a7c72ed30acb860da13c25fff14488caecb92245f8434267f7b0e"
+    },
+    "OriginalRevision/RFP 2026-026 - Appendix C3 - Minimum qualification requirement.xlsx": {
+      "occurrences": 1,
+      "extracts": 1,
+      "artifact_id": "eart-c17c45fd733b222e4e436ad292fd541e8f66cc0001e89fc68468f81e5a8cbecc"
+    },
+    "abstract.pdf": {
+      "occurrences": 6,
+      "extracts": 6,
+      "artifact_id": "eart-c33f6445e30e4836dcf9a291410bd07a98ec1ab07a57d044de64910fcaa3e4bc"
+    },
+    "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx": {
+      "occurrences": 1,
+      "extracts": 1,
+      "artifact_id": "eart-f086be19bf9fb7b463c45685596b0266758c22427ced62cbfb14c0793149ea68"
+    },
+    "OriginalRevision/RFP 2026-06 - Appendix G - Form of Agreement.docx": {
+      "occurrences": 4,
+      "extracts": 4,
+      "artifact_id": "eart-f72626076d5f2f8268fa0698b7fa43b8ac16d3f27215c4ddaf331ea64b026c7f"
+    }
+  },
+  "occurrences_without_extract": [
+    {
+      "occurrence_id": "eocc-77049a29dd1b691c88091d5b80a4a2abcaa7ac61659d6f671b5995de6e3a81e4",
+      "source_document": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx",
+      "locator_kind": "SECTION",
+      "locator": "section:Header",
+      "occurrence_key": "4c03455236a93c7438e42267eedae6f18a95c34b79986d71f5049f4dfbd1c3e2:0"
+    },
+    {
+      "occurrence_id": "eocc-c572b484ba3bc5c08e3a3515790cd584cbebf0bc34e5e224b51e0e707a2dae79",
+      "source_document": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx",
+      "locator_kind": "SECTION",
+      "locator": "section:APPENDIX A. SUBMISSION FORM",
+      "occurrence_key": "4c03455236a93c7438e42267eedae6f18a95c34b79986d71f5049f4dfbd1c3e2:97"
+    },
+    {
+      "occurrence_id": "eocc-f84d293fa3e3bb68a3cf2be04e669bf2ebe9525fad1d19b93eeb5a190a761bc4",
+      "source_document": "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx",
+      "locator_kind": "SECTION",
+      "locator": "section:1.\tProponent information",
+      "occurrence_key": "4c03455236a93c7438e42267eedae6f18a95c34b79986d71f5049f4dfbd1c3e2:215"
+    }
+  ],
+  "master_rfp": {
+    "artifact_id": "eart-604faad20200943d2a4ebbcefdc70e11eae3344888fe6bd364a70188942a21cc",
+    "occurrences": 21,
+    "extracts": 21,
+    "pages_with_occurrence": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21
+    ],
+    "pages_with_extract": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21
+    ],
+    "pages_with_occurrence_no_extract": []
+  }
+}

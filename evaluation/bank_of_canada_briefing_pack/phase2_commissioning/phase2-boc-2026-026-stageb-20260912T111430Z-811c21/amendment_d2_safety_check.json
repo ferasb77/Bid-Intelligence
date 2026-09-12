@@ -1,0 +1,7 @@
+{
+  "normalized_requirements_citing_both_d2_variants": 1,
+  "note": "Stage B's requirement dedup key is an exact normalized-description match; overlap>0 means original and revised D2 shared at least one byte-identical (post-normalization) requirement description and were merged into one normalized record citing both documents. Stage B performs no amendment-precedence or supersession decision here -- both documents' evidence survives; that adjudication belongs to Stage C.",
+  "original_d2_requirement_desc_keys": 11,
+  "overlap_desc_keys": 1,
+  "revised_d2_requirement_desc_keys": 10
+}

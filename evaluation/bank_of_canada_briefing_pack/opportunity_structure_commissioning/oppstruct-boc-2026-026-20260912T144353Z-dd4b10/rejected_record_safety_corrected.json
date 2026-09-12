@@ -1,0 +1,5 @@
+{
+  "method": "exact deliverable_id/clause_id and exact-description/exact-details text match (not substring)",
+  "note": "An earlier substring-based check in this same run incorrectly flagged 3 false positives -- unrelated real records (a different deliverable that mentions the same topic among several conditions, and two independently-extracted requirements-family records describing the same real-world clause via a different extraction channel with their own valid provenance) -- corrected here.",
+  "rejected_record_re_entry_count": 0
+}

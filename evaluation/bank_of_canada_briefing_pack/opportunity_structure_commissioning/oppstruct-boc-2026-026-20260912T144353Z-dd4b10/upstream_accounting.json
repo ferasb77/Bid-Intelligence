@@ -1,0 +1,37 @@
+{
+  "COMMERCIAL_CLAUSE": {
+    "accounted_for": true,
+    "input_record_count": 91,
+    "section": "commercial_clauses",
+    "structure_record_count": 91,
+    "total_occurrences_absorbed": 91
+  },
+  "DELIVERABLE": {
+    "accounted_for": true,
+    "input_record_count": 23,
+    "section": "deliverables",
+    "structure_record_count": 23,
+    "total_occurrences_absorbed": 23
+  },
+  "EVALUATION_CRITERION": {
+    "accounted_for": true,
+    "input_record_count": 83,
+    "section": "evaluation_criteria",
+    "structure_record_count": 83,
+    "total_occurrences_absorbed": 83
+  },
+  "REQUIREMENT": {
+    "accounted_for": true,
+    "input_record_count": 427,
+    "section": "requirements",
+    "structure_record_count": 427,
+    "total_occurrences_absorbed": 427
+  },
+  "SUBMISSION_RULE": {
+    "accounted_for": true,
+    "input_record_count": 68,
+    "section": "submission_rules",
+    "structure_record_count": 68,
+    "total_occurrences_absorbed": 68
+  }
+}

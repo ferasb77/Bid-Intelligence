@@ -1,0 +1,19 @@
+{
+  "conflicts_count": 9,
+  "dispatch_allowed": true,
+  "evidence_id_count": 740,
+  "guard_chars": 580000,
+  "headroom_chars": 20599,
+  "included_requirement_count": 413,
+  "input_digest": "4e571953dfdbc00be9a40b8b7cd2ab3284c3678a61725c1c53ba30271de283fd",
+  "omitted_requirement_count": 0,
+  "output_config_chars": 15568,
+  "projection_digest": "fc129e3c8a6225fdfd81c0b93c752d150d4a08633e98b72f3a5a4ab704e4ce83",
+  "projection_version": "stage-d-projection/2",
+  "provenance_available_count": 765,
+  "provenance_unavailable_count": 6,
+  "request_text_chars": 543833,
+  "requirement_bijection_verified": true,
+  "requirement_count": 413,
+  "total_prompt_chars": 559401
+}

@@ -1,0 +1,60 @@
+[
+  {
+    "boundary": "Evidence (real corpus, deterministic parse)",
+    "elapsed_seconds": 1.8,
+    "objects": 150,
+    "status": "PASS"
+  },
+  {
+    "boundary": "Canonical Opportunity Publication",
+    "elapsed_seconds": 0.335,
+    "objects": 134,
+    "status": "PASS"
+  },
+  {
+    "boundary": "Opportunity Structure Publication",
+    "elapsed_seconds": 2.519,
+    "objects": 696,
+    "status": "PASS"
+  },
+  {
+    "boundary": "Opportunity Intelligence (real analyst, already independently commissioned)",
+    "computed_facts": 23,
+    "elapsed_seconds": 0.103,
+    "evidence_used": 817,
+    "hypotheses": 4,
+    "inferences": 1,
+    "status": "PASS",
+    "unresolved_conflict_ids": 8
+  },
+  {
+    "bindings": 817,
+    "boundary": "Opportunity Intelligence Support Binding Derivation",
+    "elapsed_seconds": 0.631,
+    "status": "PASS"
+  },
+  {
+    "boundary": "Opportunity Intelligence Publication",
+    "elapsed_seconds": 12.827,
+    "objects": 33,
+    "references": 33,
+    "status": "PASS"
+  },
+  {
+    "boundary": "Executive Opportunity Understanding",
+    "coverage_records": 33,
+    "detail_references": 33,
+    "elapsed_seconds": 14.173,
+    "index_sections": 13,
+    "status": "PASS"
+  },
+  {
+    "boundary": "Executive Opportunity Brief",
+    "coverage_ledger": 33,
+    "detail_register": 33,
+    "elapsed_seconds": 40.111,
+    "markdown_chars": 16053217,
+    "sections": 13,
+    "status": "PASS"
+  }
+]

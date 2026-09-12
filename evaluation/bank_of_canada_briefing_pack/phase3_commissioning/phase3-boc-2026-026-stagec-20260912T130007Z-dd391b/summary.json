@@ -1,0 +1,15 @@
+{
+  "canonical_conflicts": 3,
+  "d2_conflicts": 1,
+  "explicit_supersession_declarations": 0,
+  "master_rfp_conflicts": 7,
+  "phase2_run_id": "phase2-boc-2026-026-stageb-20260912T125051Z-91a22b",
+  "phase3_run_id": "phase3-boc-2026-026-stagec-20260912T130007Z-dd391b",
+  "provenance_rejections_untouched": true,
+  "review_items": 4,
+  "stage_c_elapsed_seconds": 0.052064,
+  "supersession_relationships_applied": 0,
+  "total_conflicts": 7,
+  "true_conflicts": 0,
+  "validation_warnings": 0
+}

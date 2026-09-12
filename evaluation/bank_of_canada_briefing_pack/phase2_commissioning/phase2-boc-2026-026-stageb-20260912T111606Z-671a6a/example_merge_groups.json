@@ -1,0 +1,116 @@
+{
+  "clause_occurrences": [],
+  "deliverable_occurrences": [],
+  "evaluation_criteria": [
+    {
+      "key": [
+        "corporate profile",
+        "",
+        1
+      ],
+      "size": 4
+    },
+    {
+      "key": [
+        "key personnel and roster",
+        "",
+        1
+      ],
+      "size": 4
+    },
+    {
+      "key": [
+        "methodology & advisory approach",
+        "",
+        1
+      ],
+      "size": 2
+    },
+    {
+      "key": [
+        "thought leadership & innovation",
+        "",
+        1
+      ],
+      "size": 2
+    },
+    {
+      "key": [
+        "relationship management",
+        "",
+        1
+      ],
+      "size": 3
+    }
+  ],
+  "requirements": [
+    {
+      "docs": [
+        "Amendment1/RFP 2026-026 - Appendix D2 - Rated Criteria Response REVISED.docx",
+        "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx"
+      ],
+      "key": "proponentsaretorespondtoeachofthefollowingrequirementsintheorderpresentedbelowunlessotherwisestatedlinkstowebsitesorotherinformationexternaltotheformwillnotbeevaluated",
+      "size": 2
+    },
+    {
+      "docs": [
+        "Amendment1/RFP 2026-026 - Appendix D2 - Rated Criteria Response REVISED.docx",
+        "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx",
+        "OriginalRevision/RFP 2026-026 - Appendix D2 - Rated Criteria Response Form.docx",
+        "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+      ],
+      "key": "proponentswillbeevaluatedonlyontheservicecategoryiesforwhichtheysubmitaresponse",
+      "size": 4
+    },
+    {
+      "docs": [
+        "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx",
+        "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+      ],
+      "key": "proponentmustprovidealistofanysubcontractorstobeusedtocompletetheproposedcontract",
+      "size": 3
+    },
+    {
+      "docs": [
+        "OriginalRevision/RFP 2026-026 - Appendix B1 - Mandatory criteria.xlsx",
+        "OriginalRevision/RFP 2026-026 - Appendix B2 - Mandatory criteria.xlsx",
+        "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx",
+        "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+      ],
+      "key": "eachproposalmustprovidewrittenconfirmationoftheabilitytoprovideallservicesmaterialsandsolutionsinbothenglishandfrench",
+      "size": 4
+    },
+    {
+      "docs": [
+        "OriginalRevision/RFP 2026-026 - Appendix B1 - Mandatory criteria.xlsx",
+        "OriginalRevision/RFP 2026-026 - Appendix B2 - Mandatory criteria.xlsx",
+        "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx",
+        "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+      ],
+      "key": "allserviceproviderresourcesinvolvedinthedeliveryofservicesmusthavetheabilitytomeetthebanksreliabilityclearancerequirementsthiswillincludeelectronicfingerprintsacriminalrecordcheckacreditcheckandpotentiallyasecurityscreeninginterview",
+      "size": 4
+    }
+  ],
+  "submission_rules": [
+    {
+      "key": "appendix a",
+      "size": 3
+    },
+    {
+      "key": "appendix b1",
+      "size": 2
+    },
+    {
+      "key": "appendix b2",
+      "size": 2
+    },
+    {
+      "key": "appendix b3",
+      "size": 2
+    },
+    {
+      "key": "appendix c1",
+      "size": 2
+    }
+  ]
+}

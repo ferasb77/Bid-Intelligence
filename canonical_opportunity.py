@@ -51,6 +51,21 @@ def _norm(value):
     return _text(value).casefold()
 
 
+def _grounding_norm(value):
+    """Whitespace-insensitive comparison for excerpt grounding only.
+
+    PDF text extraction routinely reflows incidental whitespace around a
+    hyphenated line-wrap ("one-\\nyear" -> "one- year") or drops a space a
+    human would read after label punctuation ("Duration:3 years"). Neither
+    changes the words present. Ignoring inter-token whitespace here (but
+    nowhere else -- every other comparison in this module keeps using _norm,
+    which preserves word boundaries) tolerates that reflow without weakening
+    the underlying requirement that the excerpt's actual words appear in the
+    cited source segment.
+    """
+    return re.sub(r"\s+", "", str(value or "")).casefold()
+
+
 def _valid_iso_date(value):
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(value or "")):
         return False
@@ -110,7 +125,12 @@ def _locator_matches(parsed, ref):
             if int(parsed.get("page", "")) != int(ref["page"]): return False
         except (TypeError, ValueError): return False
     for key in ("sheet", "section"):
-        if ref.get(key) is not None and _norm(parsed.get(key)) != _norm(ref[key]): return False
+        # A marker that simply never publishes this locator dimension (common
+        # for page-granularity-only PDF markers) cannot corroborate OR refute
+        # a more precise citation -- only an actual mismatch disqualifies it.
+        # Citing extra precision must never be worse than omitting it.
+        if ref.get(key) is not None and parsed.get(key) is not None and _norm(parsed.get(key)) != _norm(ref[key]):
+            return False
     marker_rows = _row_interval(parsed.get("rows"))
     requested = ref.get("rows", ref.get("row_range", ref.get("row")))
     if requested is None and (ref.get("row_start") is not None or ref.get("row_end") is not None):
@@ -158,7 +178,7 @@ def _validate_ref(ref, package_metadata):
     ref["source_doc"] = source_doc
     text = package_metadata.get("doc_texts", {}).get(source_doc, "")
     segment = _source_segment(text, source_doc, ref)
-    grounded = bool(excerpt and segment and _norm(excerpt) in _norm(segment))
+    grounded = bool(excerpt and segment and _grounding_norm(excerpt) in _grounding_norm(segment))
     locator = bool(_coordinates(ref))
     if grounded and locator:
         return ref, "VERIFIED"
@@ -548,26 +568,37 @@ def compact_stage_d_summary(canonical):
             "verified_mechanics": mechanics, "coverage": canonical.get("coverage", {}), "input_digest": canonical.get("input_digest")}
 
 
+def _scope_suffix(item):
+    # A term observation scoped to one lot/component/category is not an
+    # opportunity-wide fact; silently dropping the scope here would let a
+    # single-category value read as if it applied to the whole opportunity.
+    scope = item.get("scope") or {}
+    if not scope:
+        return ""
+    return " (" + "; ".join(f"{k}: {v}" for k, v in sorted(scope.items())) + ")"
+
+
 def format_contract_term(resolved):
     if resolved.get("status") != "RESOLVED": return "Not stated"
     parts = []
     for item in resolved.get("value") or []:
         value = item.get("value")
+        suffix = _scope_suffix(item)
         def duration_text(v):
             if not isinstance(v, dict): return _text(v)
             amount, unit = _text(v.get("duration")), _text(v.get("unit"))
             return (amount + (" " + unit if unit else "")).strip()
-        if item.get("kind") == "INITIAL_DURATION": parts.append("Initial term: " + duration_text(value))
+        if item.get("kind") == "INITIAL_DURATION": parts.append("Initial term: " + duration_text(value) + suffix)
         elif item.get("kind") in {"EXTENSION_OPTION", "RENEWAL_OPTION"}:
             count = value.get("option_count") if isinstance(value, dict) else None
             conditions = value.get("conditions") if isinstance(value, dict) else None
             label = (f"Up to {count} optional {duration_text(value)} extensions" if count else "Optional extension: " + duration_text(value))
-            parts.append(label + ((" subject to " + _text(conditions)) if conditions else ""))
-        elif item.get("kind") == "MAXIMUM_TERM": parts.append("Maximum potential term: " + duration_text(value))
+            parts.append(label + ((" subject to " + _text(conditions)) if conditions else "") + suffix)
+        elif item.get("kind") == "MAXIMUM_TERM": parts.append("Maximum potential term: " + duration_text(value) + suffix)
         elif item.get("kind") in {"COMMENCEMENT_DATE", "END_DATE"}:
             label = "Commencement date" if item["kind"] == "COMMENCEMENT_DATE" else "End date"
-            parts.append(label + ": " + (_text(value.get("date")) if isinstance(value, dict) else _text(value)))
-        else: parts.append(item.get("kind", "Term").replace("_", " ").title() + ": " + _text(value))
+            parts.append(label + ": " + (_text(value.get("date")) if isinstance(value, dict) else _text(value)) + suffix)
+        else: parts.append(item.get("kind", "Term").replace("_", " ").title() + ": " + _text(value) + suffix)
     return "; ".join(p for p in parts if p) or "Not stated"
 
 

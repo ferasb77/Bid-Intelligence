@@ -1,0 +1,254 @@
+{
+  "after": [
+    {
+      "admitted_to_resolution_candidacy": false,
+      "normalization_state": "NORMALIZED",
+      "normalized_value": {
+        "duration": "12",
+        "unit": "weeks"
+      },
+      "observation_id": "obs_2282cb0c886607df6632ef7986a4b14859d17453bf0d9f68e8a27da78cb3139a",
+      "original_value": "approximately twelve (12) weeks",
+      "provenance_status": "VERIFIED",
+      "scope": {
+        "component": "HR Advisory",
+        "period_basis": "WEEKS"
+      },
+      "semantic_kind": "INITIAL_DURATION",
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix E - Pricing Form.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "The engagement will be completed over approximately twelve (12) weeks",
+          "page": null,
+          "section": null,
+          "sheet": "HR Advisory pricing scenario",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix E - Pricing Form.xlsx"
+        }
+      ],
+      "supersession_state": "ACTIVE"
+    },
+    {
+      "admitted_to_resolution_candidacy": false,
+      "normalization_state": "NORMALIZED",
+      "normalized_value": "3 years",
+      "observation_id": "obs_95004a639671e7dd7f078b2854f039e60c6992c3293d4ee5fb66c8d63b3e34b4",
+      "original_value": "3 years",
+      "provenance_status": "VERIFIED",
+      "scope": {},
+      "semantic_kind": "INITIAL_DURATION",
+      "source_doc": "abstract.pdf",
+      "source_refs": [
+        {
+          "excerpt": "Duration: 3 years",
+          "page": 1,
+          "section": "Details",
+          "sheet": null,
+          "source_doc": "abstract.pdf"
+        }
+      ],
+      "supersession_state": "ACTIVE"
+    },
+    {
+      "admitted_to_resolution_candidacy": false,
+      "normalization_state": "NORMALIZED",
+      "normalized_value": {
+        "duration": "3",
+        "unit": "years"
+      },
+      "observation_id": "obs_a769a7bae62b288527f93d9a5ccb9c7b5ab7aa1f7a767f01f4cfba0083e13622",
+      "original_value": "three (3) years",
+      "provenance_status": "VERIFIED",
+      "scope": {},
+      "semantic_kind": "INITIAL_DURATION",
+      "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+      "source_refs": [
+        {
+          "excerpt": "The term of each agreement will be for a period of three (3) years, with the option to extend for up to two (2) additional one-year terms, if required.",
+          "page": 14,
+          "section": "4.2",
+          "sheet": null,
+          "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+        }
+      ],
+      "supersession_state": "ACTIVE"
+    },
+    {
+      "admitted_to_resolution_candidacy": false,
+      "normalization_state": "NORMALIZED",
+      "normalized_value": {
+        "duration": "1",
+        "option_count": 2,
+        "optional": 1,
+        "unit": "years"
+      },
+      "observation_id": "obs_e8a6ffec1ef6a6cc9e85894092efb631fd1229958e8d47ab694954ca5dd925b5",
+      "original_value": "option to extend for up to two (2) additional one-year terms, if required",
+      "provenance_status": "VERIFIED",
+      "scope": {},
+      "semantic_kind": "EXTENSION_OPTION",
+      "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+      "source_refs": [
+        {
+          "excerpt": "The term of each agreement will be for a period of three (3) years, with the option to extend for up to two (2) additional one-year terms, if required.",
+          "page": 14,
+          "section": "4.2",
+          "sheet": null,
+          "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+        }
+      ],
+      "supersession_state": "ACTIVE"
+    },
+    {
+      "admitted_to_resolution_candidacy": false,
+      "normalization_state": "NORMALIZED",
+      "normalized_value": {
+        "duration": "2",
+        "unit": "DAYS"
+      },
+      "observation_id": "obs_fa5b0a7ad3060123ae195cecf635619fe210352da10e7eae00218d5cb572aa78",
+      "original_value": "Rectification period Two (2) days",
+      "provenance_status": "VERIFIED",
+      "scope": {
+        "period_basis": "FIXED"
+      },
+      "semantic_kind": "TERM_STATEMENT",
+      "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+      "source_refs": [
+        {
+          "excerpt": "Rectification period Two (2) days",
+          "page": 3,
+          "section": "1.2 RFP timetable",
+          "sheet": null,
+          "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+        }
+      ],
+      "supersession_state": "ACTIVE"
+    }
+  ],
+  "before": [
+    {
+      "admitted_to_resolution_candidacy": true,
+      "normalization_state": "NORMALIZED",
+      "normalized_value": {
+        "duration": "12",
+        "unit": "weeks"
+      },
+      "observation_id": "obs_2282cb0c886607df6632ef7986a4b14859d17453bf0d9f68e8a27da78cb3139a",
+      "original_value": "approximately twelve (12) weeks",
+      "provenance_status": "VERIFIED",
+      "scope": {
+        "component": "HR Advisory",
+        "period_basis": "WEEKS"
+      },
+      "semantic_kind": "INITIAL_DURATION",
+      "source_doc": "OriginalRevision/RFP 2026-026 - Appendix E - Pricing Form.xlsx",
+      "source_refs": [
+        {
+          "excerpt": "The engagement will be completed over approximately twelve (12) weeks",
+          "page": null,
+          "section": null,
+          "sheet": "HR Advisory pricing scenario",
+          "source_doc": "OriginalRevision/RFP 2026-026 - Appendix E - Pricing Form.xlsx"
+        }
+      ],
+      "supersession_state": "ACTIVE"
+    },
+    {
+      "admitted_to_resolution_candidacy": false,
+      "normalization_state": "NORMALIZED",
+      "normalized_value": "3 years",
+      "observation_id": "obs_95004a639671e7dd7f078b2854f039e60c6992c3293d4ee5fb66c8d63b3e34b4",
+      "original_value": "3 years",
+      "provenance_status": "PARTIAL",
+      "scope": {},
+      "semantic_kind": "INITIAL_DURATION",
+      "source_doc": "abstract.pdf",
+      "source_refs": [
+        {
+          "excerpt": "Duration: 3 years",
+          "page": 1,
+          "section": "Details",
+          "sheet": null,
+          "source_doc": "abstract.pdf"
+        }
+      ],
+      "supersession_state": "ACTIVE"
+    },
+    {
+      "admitted_to_resolution_candidacy": false,
+      "normalization_state": "NORMALIZED",
+      "normalized_value": {
+        "duration": "3",
+        "unit": "years"
+      },
+      "observation_id": "obs_a769a7bae62b288527f93d9a5ccb9c7b5ab7aa1f7a767f01f4cfba0083e13622",
+      "original_value": "three (3) years",
+      "provenance_status": "PARTIAL",
+      "scope": {},
+      "semantic_kind": "INITIAL_DURATION",
+      "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+      "source_refs": [
+        {
+          "excerpt": "The term of each agreement will be for a period of three (3) years, with the option to extend for up to two (2) additional one-year terms, if required.",
+          "page": 14,
+          "section": "4.2",
+          "sheet": null,
+          "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+        }
+      ],
+      "supersession_state": "ACTIVE"
+    },
+    {
+      "admitted_to_resolution_candidacy": false,
+      "normalization_state": "NORMALIZED",
+      "normalized_value": {
+        "duration": "1",
+        "option_count": 2,
+        "optional": 1,
+        "unit": "years"
+      },
+      "observation_id": "obs_e8a6ffec1ef6a6cc9e85894092efb631fd1229958e8d47ab694954ca5dd925b5",
+      "original_value": "option to extend for up to two (2) additional one-year terms, if required",
+      "provenance_status": "PARTIAL",
+      "scope": {},
+      "semantic_kind": "EXTENSION_OPTION",
+      "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+      "source_refs": [
+        {
+          "excerpt": "The term of each agreement will be for a period of three (3) years, with the option to extend for up to two (2) additional one-year terms, if required.",
+          "page": 14,
+          "section": "4.2",
+          "sheet": null,
+          "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+        }
+      ],
+      "supersession_state": "ACTIVE"
+    },
+    {
+      "admitted_to_resolution_candidacy": false,
+      "normalization_state": "NORMALIZED",
+      "normalized_value": {
+        "duration": "2",
+        "unit": "DAYS"
+      },
+      "observation_id": "obs_fa5b0a7ad3060123ae195cecf635619fe210352da10e7eae00218d5cb572aa78",
+      "original_value": "Rectification period Two (2) days",
+      "provenance_status": "PARTIAL",
+      "scope": {
+        "period_basis": "FIXED"
+      },
+      "semantic_kind": "TERM_STATEMENT",
+      "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+      "source_refs": [
+        {
+          "excerpt": "Rectification period Two (2) days",
+          "page": 3,
+          "section": "1.2 RFP timetable",
+          "sheet": null,
+          "source_doc": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+        }
+      ],
+      "supersession_state": "ACTIVE"
+    }
+  ]
+}

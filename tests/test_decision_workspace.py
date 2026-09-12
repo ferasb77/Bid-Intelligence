@@ -11,7 +11,7 @@ from decision_workspace import (
     build_decision_workspace,
     render_decision_workspace,
 )
-from opportunity_intelligence import METADATA, analyze_opportunity
+from opportunity_intelligence import METADATA, _record_id, analyze_opportunity
 
 
 def _facts():
@@ -38,6 +38,14 @@ def _facts():
 
 def _analysis(context_id="opportunity-1", conflicts=()):
     return analyze_opportunity(_facts(), conflicts, context_id=context_id)
+
+
+def _missing_evidence_requirement_id():
+    # req_id is a document-local Stage A label, not a trusted identity, so
+    # opportunity_intelligence._record_id falls through to its deterministic
+    # content-and-position hash for "requirements" -- compute the same way
+    # production code does rather than hardcoding a stale literal.
+    return _record_id("requirements", _facts()["requirements"][0], 0)
 
 
 def _metadata(analyst_id):
@@ -67,7 +75,7 @@ def test_evidence_overview_organizes_without_evaluating():
         key=lambda item: (item.entity_type.value, item.entity_id, item.evidence_ids)))
     assert overview.coverage[0].referenced_evidence == len(analysis.evidence_used)
     assert overview.coverage[0].evidence_with_source_ids == 20
-    assert overview.coverage[0].unresolved_evidence_gaps == ("r-0",)
+    assert overview.coverage[0].unresolved_evidence_gaps == (_missing_evidence_requirement_id(),)
     assert sum(item.count for item in overview.categories) == len(overview.authoritative_evidence)
 
 
@@ -75,7 +83,7 @@ def test_unknowns_are_grouped_without_loss():
     analysis = _analysis(conflicts=(
         {"conflict_id": "conflict-1", "conflict_type": "DATE_CONFLICT"},))
     group = build_decision_workspace((analysis,)).unknowns[0]
-    assert group.missing_evidence == ("r-0",)
+    assert group.missing_evidence == (_missing_evidence_requirement_id(),)
     assert group.unresolved_conflicts == ("conflict-1",)
     assert group.unavailable_information == ()
     assert group.ambiguity == ()

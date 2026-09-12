@@ -1,0 +1,21 @@
+[
+  {
+    "boundary": "Evidence (real corpus, deterministic parse)",
+    "elapsed_seconds": 1.655,
+    "objects": 150,
+    "status": "PASS"
+  },
+  {
+    "boundary": "Canonical Opportunity Publication",
+    "elapsed_seconds": 0.206,
+    "objects": 134,
+    "status": "PASS"
+  },
+  {
+    "boundary": "Opportunity Structure Publication",
+    "elapsed_seconds": 0.69,
+    "exception": "unsupported structure semantic value type: float",
+    "exception_type": "OpportunityStructurePublicationError",
+    "status": "FAIL"
+  }
+]

@@ -242,6 +242,32 @@ def test_repeatable_extensions_and_human_display():
     assert "{" not in display
 
 
+def test_scoped_term_display_retains_scope_qualifier():
+    """A term observation scoped to one lot/component is not an
+    opportunity-wide fact. The formatted display must say so, or a reader
+    (including Stage D's authoritative brief.contract_term) would take a
+    single-category value as if it applied to the whole opportunity."""
+    items = [obs("INITIAL_DURATION", "12 weeks", family="CONTRACT_TERM", duration=12, unit="weeks",
+                 component="HR Advisory")]
+    meta = metadata("a.pdf"); meta["doc_texts"]["a.pdf"] += " 12 weeks HR Advisory"
+    c = resolved([{"typed_observations": items}], meta)
+    assert c["resolved"]["contract_term"]["status"] == "RESOLVED"
+    assert c["resolved"]["contract_term"]["value"][0]["scope"] == {"component": "HR Advisory"}
+    display = apply_authoritative_values({"bid": {}, "brief": {}}, c)["brief"]["contract_term"]
+    assert display == "Initial term: 12 weeks (component: HR Advisory)"
+
+
+def test_unscoped_term_display_has_no_scope_suffix():
+    """An opportunity-wide term (no scope) must not gain a spurious suffix --
+    the fix is additive only when a real scope dict is present."""
+    items = [obs("INITIAL_DURATION", "3 years", family="CONTRACT_TERM", duration=3, unit="years")]
+    meta = metadata("a.pdf"); meta["doc_texts"]["a.pdf"] += " 3 years"
+    c = resolved([{"typed_observations": items}], meta)
+    display = apply_authoritative_values({"bid": {}, "brief": {}}, c)["brief"]["contract_term"]
+    assert display == "Initial term: 3 years"
+    assert "(" not in display
+
+
 def test_same_identified_option_disagreement_conflicts():
     items = [obs("EXTENSION_OPTION", "12 months", family="CONTRACT_TERM", duration=12, unit="months", option_sequence="1"),
              obs("EXTENSION_OPTION", "6 months", family="CONTRACT_TERM", duration=6, unit="months", option_sequence="1")]
@@ -376,3 +402,129 @@ def test_unscoped_single_and_multiple_awards_conflict_without_tier2_escape():
     assert result["status"] == "CONFLICTED" and result["value"] is None
     assert result["stage_d_tier2_permitted"] is False
     assert any(x["affected_fields"] == ["/resolved/procurement_model"] for x in c["conflicts"])
+
+
+# ── Contract-term candidacy and scope audit regression tests ────────────────
+#
+# A real-corpus finding: a source marker that only publishes page granularity
+# (true for every PDF in the Bank of Canada corpus around these pages) cannot
+# corroborate a ref's more precise `section` citation, and _locator_matches()
+# used to treat that as an outright mismatch -- rejecting genuinely valid,
+# page-locatable evidence for citing MORE precision than the marker system
+# happens to publish. Separately, _validate_ref()'s excerpt-grounding check
+# used plain _norm() (collapse whitespace to one space), which does not
+# tolerate two extremely common PDF-extraction artifacts: a hyphenated
+# line-wrap ("one-\nyear" -> "one- year") and a missing space after label
+# punctuation ("Duration:3 years"). Both defects independently caused a
+# genuinely well-evidenced, page/section-cited, real-text excerpt to be
+# downgraded from VERIFIED to PARTIAL, excluding it from every resolver's
+# VERIFIED-only candidacy gate (contract_term, procurement_model, ...).
+
+def test_section_citation_against_a_page_only_marker_still_verifies():
+    """Citing extra precision (a section number) must never be worse than
+    omitting it. A page-only marker cannot corroborate or refute section, so
+    it must not block verification of an otherwise well-grounded excerpt."""
+    meta = metadata("a.pdf")
+    meta["doc_texts"]["a.pdf"] += " The term of each agreement will be three years."
+    items = [obs("INITIAL_DURATION", "three years", family="CONTRACT_TERM", duration=3, unit="years",
+                 source_refs=[{"source_doc": "a.pdf", "page": 1, "section": "4.2",
+                              "excerpt": "The term of each agreement will be three years."}])]
+    c = resolved([{"typed_observations": items}], meta)
+    o = next(x for x in c["observations"] if x["family"] == "CONTRACT_TERM")
+    assert o["provenance_status"] == "VERIFIED"
+
+
+def test_section_mismatch_against_a_real_section_marker_still_rejected():
+    """The relaxation is narrow: when the marker DOES publish a section and
+    it genuinely disagrees with the ref, that is a real mismatch and must
+    still fail to ground -- this is not a blanket bypass of section checks."""
+    meta = metadata("a.pdf")
+    meta["doc_texts"]["a.pdf"] = ("[[SOURCE: a.pdf | PAGE: 1 | SECTION: 3.1]]\n"
+                                  "The term of each agreement will be three years.")
+    items = [obs("INITIAL_DURATION", "three years", family="CONTRACT_TERM", duration=3, unit="years",
+                 source_refs=[{"source_doc": "a.pdf", "page": 1, "section": "4.2",
+                              "excerpt": "The term of each agreement will be three years."}])]
+    c = resolved([{"typed_observations": items}], meta)
+    o = next(x for x in c["observations"] if x["family"] == "CONTRACT_TERM")
+    assert o["provenance_status"] == "PARTIAL"
+
+
+def test_hyphenated_line_wrap_excerpt_still_grounds():
+    """A word hyphenated across a PDF line wrap ('one-\\nyear') must ground
+    against a clean excerpt ('one-year') -- the words are identical, only
+    incidental reflow whitespace differs."""
+    meta = metadata("a.pdf")
+    meta["doc_texts"]["a.pdf"] += " with the option to extend for up to two additional one-\nyear terms."
+    items = [obs("EXTENSION_OPTION", "one year", family="CONTRACT_TERM", duration=1, unit="years", optional=True,
+                 source_refs=[{"source_doc": "a.pdf", "page": 1,
+                              "excerpt": "with the option to extend for up to two additional one-year terms."}])]
+    c = resolved([{"typed_observations": items}], meta)
+    o = next(x for x in c["observations"] if x["family"] == "CONTRACT_TERM")
+    assert o["provenance_status"] == "VERIFIED"
+
+
+def test_missing_space_after_punctuation_still_grounds():
+    """A label/value pair extracted from a PDF with no space after the colon
+    ('Duration:3 years') must ground against a naturally-spaced excerpt
+    ('Duration: 3 years') -- same words, incidental layout whitespace only."""
+    meta = metadata("a.pdf")
+    meta["doc_texts"]["a.pdf"] += " Purchase Type\nDuration:3 years\nOption: 2 years"
+    items = [obs("INITIAL_DURATION", "3 years", family="CONTRACT_TERM", duration=3, unit="years",
+                 source_refs=[{"source_doc": "a.pdf", "page": 1, "excerpt": "Duration: 3 years"}])]
+    c = resolved([{"typed_observations": items}], meta)
+    o = next(x for x in c["observations"] if x["family"] == "CONTRACT_TERM")
+    assert o["provenance_status"] == "VERIFIED"
+
+
+def test_genuinely_absent_excerpt_still_fails_to_ground():
+    """The whitespace tolerance must not become a license to fabricate --
+    an excerpt whose actual words are not present anywhere in the source
+    must remain unverified, not just cosmetically different."""
+    meta = metadata("a.pdf")
+    meta["doc_texts"]["a.pdf"] += " The engagement covers unrelated deliverables only."
+    items = [obs("INITIAL_DURATION", "three years", family="CONTRACT_TERM", duration=3, unit="years",
+                 source_refs=[{"source_doc": "a.pdf", "page": 1,
+                              "excerpt": "The term of each agreement will be three years."}])]
+    c = resolved([{"typed_observations": items}], meta)
+    o = next(x for x in c["observations"] if x["family"] == "CONTRACT_TERM")
+    assert o["provenance_status"] == "PARTIAL"
+
+
+def test_scoped_and_unscoped_contract_terms_coexist_without_conflict():
+    """An opportunity-wide term and a differently-scoped service-level
+    duration are not the same canonical fact and must not compete for the
+    same slot -- both should resolve, side by side, distinctly scoped."""
+    meta = metadata("a.pdf")
+    meta["doc_texts"]["a.pdf"] += " Overall term three years. HR Advisory engagement twelve weeks."
+    items = [
+        obs("INITIAL_DURATION", "three years", family="CONTRACT_TERM", duration=3, unit="years",
+           source_refs=[{"source_doc": "a.pdf", "page": 1, "excerpt": "Overall term three years."}]),
+        obs("INITIAL_DURATION", "twelve weeks", family="CONTRACT_TERM", duration=12, unit="weeks",
+           component="HR Advisory",
+           source_refs=[{"source_doc": "a.pdf", "page": 1, "excerpt": "HR Advisory engagement twelve weeks."}]),
+    ]
+    c = resolved([{"typed_observations": items}], meta)
+    result = c["resolved"]["contract_term"]
+    assert result["status"] == "RESOLVED"
+    scopes = [item["scope"] for item in result["value"]]
+    assert {} in scopes and {"component": "HR Advisory"} in scopes and len(scopes) == 2
+    assert not c["conflicts"]
+
+
+def test_same_scope_contract_term_shape_mismatch_conflicts():
+    """Two verified, same-scope INITIAL_DURATION observations whose
+    normalized_value shapes genuinely differ (one carries structured
+    duration/unit, the other only a bare string) must not be silently
+    assumed equivalent -- that would be inferring semantic identity beyond
+    what the structured facts state. This must conflict, not corroborate."""
+    meta = metadata("a.pdf")
+    meta["doc_texts"]["a.pdf"] += " Duration: 3 years. Term of three years stated separately."
+    items = [
+        obs("INITIAL_DURATION", "3 years", family="CONTRACT_TERM",
+           source_refs=[{"source_doc": "a.pdf", "page": 1, "excerpt": "Duration: 3 years."}]),
+        obs("INITIAL_DURATION", "three years", family="CONTRACT_TERM", duration=3, unit="years",
+           source_refs=[{"source_doc": "a.pdf", "page": 1, "excerpt": "Term of three years stated separately."}]),
+    ]
+    c = resolved([{"typed_observations": items}], meta)
+    result = c["resolved"]["contract_term"]
+    assert result["status"] == "CONFLICTED" and result["value"] is None
