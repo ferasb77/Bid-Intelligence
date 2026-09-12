@@ -133,16 +133,21 @@ py -3.13 -m pytest -q
 
 ## 9. Baseline commit and tag
 
-| Field | Value |
-|---|---|
-| Baseline commit SHA | `1526c2cb1199eebb9992b593cf0c322d377af6ca` |
-| Baseline tag | `bid-intelligence-rc2` (repository's existing `bid-intelligence-rc<N>` convention, continuing from `bid-intelligence-rc1`) |
+Two distinct commits, two distinct meanings — kept separate deliberately
+rather than made artificially identical, since a commit cannot contain its
+own SHA:
+
+| Field | Value | Meaning |
+|---|---|---|
+| Commissioned code commit | `1526c2cb1199eebb9992b593cf0c322d377af6ca` | The exact substantive production/test code state that was fully commissioned. Zero production or test files differ between this commit and the release commit below. |
+| Release / tag commit | `385b63c2923d7bd25164ffa53e016fee3dc600cb` | Adds this finalized manifest and `COMMISSIONED_BASELINE_FINGERPRINT.json` on top of the commissioned code commit — documentation/metadata only. |
+| Baseline tag | `bid-intelligence-rc2` (repository's existing `bid-intelligence-rc<N>` convention, continuing from `bid-intelligence-rc1`) — resolves to the **release/tag commit** above |
 | Baseline timestamp (UTC) | see `COMMISSIONED_BASELINE_MANIFEST.json` → `baseline_timestamp_utc` |
 | Pushed to remote | no — local tag only; push requires separate authorization |
 
-`output/` and `tmp/` remain untracked and excluded from this commit (Section
-4). A small, code-free follow-up commit adds `COMMISSIONED_BASELINE_FINGERPRINT.json`
-and finalizes this section's commit-SHA references (the fingerprint could
-not be generated before the baseline commit existed, since it records that
-commit's own SHA) — the tag above points to the substantive baseline commit
-itself, not the follow-up.
+The tag is the authoritative pointer to the release commit; resolve it with
+`git rev-parse bid-intelligence-rc2^{commit}` rather than expecting either
+commit SHA to be self-described inside a file it contains.
+
+`output/` and `tmp/` remain untracked and excluded from both commits
+(Section 4).

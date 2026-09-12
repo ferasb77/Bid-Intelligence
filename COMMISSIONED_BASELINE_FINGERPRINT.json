@@ -1,6 +1,6 @@
 {
   "baseline_name": "Bid Intelligence — Commissioned Baseline 1",
-  "git_commit_sha": "1526c2cb1199eebb9992b593cf0c322d377af6ca",
+  "commissioned_code_commit_sha": "1526c2cb1199eebb9992b593cf0c322d377af6ca",
   "git_tag": "bid-intelligence-rc2",
   "corpus_manifest_path": "evaluation/bank_of_canada_briefing_pack/corrected_corpus_manifest.json",
   "corpus_manifest_sha256": "5493933d2bba7ce80ede3c367e865635c4bd410d702b64a103d916d4573b95f2",
@@ -33,5 +33,6 @@
   "manifest_path": "evaluation/bank_of_canada_briefing_pack/COMMISSIONED_BASELINE_MANIFEST.json",
   "release_notes_path": "BASELINE_RELEASE_NOTES.md",
   "known_architectural_debt_count": 8,
-  "known_non_blocking_limitation_count": 3
+  "known_non_blocking_limitation_count": 3,
+  "commit_semantics_note": "commissioned_code_commit_sha is the exact substantive production/test code state that was fully commissioned. git_tag is the authoritative pointer to the release commit (which additionally includes this finalized fingerprint/manifest documentation, added in a necessarily-separate follow-up commit, since a commit cannot contain its own SHA) -- resolve git_tag with `git rev-parse <git_tag>^{commit}` for the exact release commit SHA rather than expecting it embedded here."
 }
