@@ -173,11 +173,14 @@
   "baseline_timestamp_utc": "2026-09-12T18:17:37.187831+00:00",
   "baseline_version_tag_candidate": "commissioned-baseline-2026-09-12",
   "code_state": {
+    "baseline_commit": "1526c2cb1199eebb9992b593cf0c322d377af6ca",
+    "baseline_tag": "bid-intelligence-rc2",
+    "baseline_tag_pushed": false,
     "dependency_lockfile": "requirements.txt",
     "dependency_lockfile_sha256": "9e1f16f27b045422646c499e32fec5c3d1d0dbfad93b607254c8d8edea6d19d6",
-    "git_commit": "7e797830f42d06ff08745648585de0e26557addb",
-    "git_working_tree_dirty_at_manifest_time": true,
-    "note": "git_commit above reflects HEAD at manifest-generation time, BEFORE the baseline commit. The actual baseline commit SHA is recorded separately once created (see FINAL RESPONSE / COMMISSIONED_BASELINE.md 'Baseline commit' field, added after this manifest is generated and the freeze commit is made).",
+    "git_commit_before_freeze": "7e797830f42d06ff08745648585de0e26557addb",
+    "git_working_tree_dirty_before_freeze": true,
+    "note": "git_commit_before_freeze reflects HEAD at manifest-generation time, BEFORE the baseline commit. baseline_commit/baseline_tag are the actual, final frozen values, recorded in a small follow-up commit once the freeze commit and tag existed (the fingerprint/tag could not be known before the commit that creates them).",
     "python_version": "3.13.15"
   },
   "corpus": {

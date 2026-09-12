@@ -29,7 +29,8 @@ Full per-file SHA-256 list is in `COMMISSIONED_BASELINE_MANIFEST.json` →
 
 | Field | Value |
 |---|---|
-| Git commit (baseline) | *(recorded after the freeze commit — see Section 9 and `COMMISSIONED_BASELINE_FINGERPRINT.json`)* |
+| Git commit (baseline) | `1526c2cb1199eebb9992b593cf0c322d377af6ca` |
+| Git tag | `bid-intelligence-rc2` |
 | Working tree at tag point | clean (verified before tagging) |
 | Python version | 3.13.15 |
 | Dependency lockfile | `requirements.txt` |
@@ -132,12 +133,16 @@ py -3.13 -m pytest -q
 
 ## 9. Baseline commit and tag
 
-*(Filled in after the freeze commit and tag are created — see
-`COMMISSIONED_BASELINE_FINGERPRINT.json` and the commissioning session's
-final response for the authoritative values.)*
-
 | Field | Value |
 |---|---|
-| Baseline commit SHA | see `COMMISSIONED_BASELINE_FINGERPRINT.json` |
-| Baseline tag | see `COMMISSIONED_BASELINE_FINGERPRINT.json` |
+| Baseline commit SHA | `1526c2cb1199eebb9992b593cf0c322d377af6ca` |
+| Baseline tag | `bid-intelligence-rc2` (repository's existing `bid-intelligence-rc<N>` convention, continuing from `bid-intelligence-rc1`) |
 | Baseline timestamp (UTC) | see `COMMISSIONED_BASELINE_MANIFEST.json` → `baseline_timestamp_utc` |
+| Pushed to remote | no — local tag only; push requires separate authorization |
+
+`output/` and `tmp/` remain untracked and excluded from this commit (Section
+4). A small, code-free follow-up commit adds `COMMISSIONED_BASELINE_FINGERPRINT.json`
+and finalizes this section's commit-SHA references (the fingerprint could
+not be generated before the baseline commit existed, since it records that
+commit's own SHA) — the tag above points to the substantive baseline commit
+itself, not the follow-up.
