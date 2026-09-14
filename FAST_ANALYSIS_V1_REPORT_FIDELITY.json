@@ -1,0 +1,138 @@
+{
+  "comparison": "Fast Analysis PDF (BANK_OF_CANADA_RFP_2026_026_BID_INTELLIGENCE_PREVIEW_FAST.pdf) vs Deep Verify PDF (BANK_OF_CANADA_RFP_2026_026_BID_INTELLIGENCE_PREVIEW.pdf)",
+  "scoring_scale": ["MATCH", "SEMANTICALLY_EQUIVALENT", "MISSING", "INCORRECT", "EXTRA_NOT_REQUIRED"],
+  "sections": [
+    {
+      "section": "1. Executive Opportunity Snapshot",
+      "items": [
+        {"item": "Buyer", "score": "MATCH", "note": "Bank of Canada"},
+        {"item": "Solicitation number", "score": "SEMANTICALLY_EQUIVALENT", "note": "'2026-026' vs Deep's 'RFP 2026-026' -- missing prefix, same identity"},
+        {"item": "Opportunity title", "score": "SEMANTICALLY_EQUIVALENT", "note": "Extracted with an extra 'Request for Proposal for' prefix; correct meaning"},
+        {"item": "Submission deadline", "score": "SEMANTICALLY_EQUIVALENT", "note": "'2026-09-30, 11:59:00pm EST' vs Deep's 'September 30, 2026, 11:59 PM EST' -- ISO date format, not prose date format; same value"},
+        {"item": "Clarification deadline", "score": "SEMANTICALLY_EQUIVALENT", "note": "'2026-09-10' vs 'September 10, 2026' -- same format issue"},
+        {"item": "Procurement model", "score": "MATCH", "note": "Byte-identical text to Deep Verify"},
+        {"item": "Contract term", "score": "SEMANTICALLY_EQUIVALENT", "note": "'3 years, with 2 optional 1-years extensions' -- correct values, minor grammar (should read '1-year')"},
+        {"item": "Category 1/2/3 page limits", "score": "MATCH", "note": "15/12/10 -- exact, deterministically extracted, correct"},
+        {"item": "Category 1/2/3 presentation-stage flags", "score": "MATCH", "note": "Correctly shows presentation applies for 1 & 3, not 2"}
+      ],
+      "section_score": "SEMANTICALLY_EQUIVALENT (strong)",
+      "material_correctness": "All values factually correct; no MISSING or INCORRECT items"
+    },
+    {
+      "section": "2. Buyer Intelligence",
+      "items": [
+        {"item": "Entire section", "score": "MATCH", "note": "Reused byte-identical from the Deep content module per explicit instruction (external layer, not redesigned); verified by test_adapter_buyer_intelligence_is_byte_identical_to_deep_content"}
+      ],
+      "section_score": "MATCH",
+      "material_correctness": "Fully preserved, as instructed"
+    },
+    {
+      "section": "3. What Is Being Procured?",
+      "items": [
+        {"item": "Intro paragraph", "score": "MATCH", "note": "Reused verbatim"},
+        {"item": "Category 1 scope description", "score": "INCORRECT", "note": "Shows generic cross-category boilerplate ('Proponents may submit a proposal for one or more of the service categories...') instead of Category 1-specific scope content"},
+        {"item": "Category 2 scope description", "score": "INCORRECT", "note": "Identical boilerplate text as Category 1 and Category 3 -- not differentiated"},
+        {"item": "Category 3 scope description", "score": "INCORRECT", "note": "Same defect"},
+        {"item": "How suppliers participate / call-off narrative", "score": "MATCH", "note": "Reused verbatim"}
+      ],
+      "section_score": "PARTIAL -- real defect",
+      "material_correctness": "Category names/page-limits are correct elsewhere, but this section's own category-specific descriptions failed to differentiate; root cause: the category-tagging regex over-matched a cross-category summary sentence"
+    },
+    {
+      "section": "4. Critical Dates & Bid Mechanics",
+      "items": [
+        {"item": "Clarification deadline row", "score": "MATCH"},
+        {"item": "Submission deadline row", "score": "SEMANTICALLY_EQUIVALENT", "note": "Format difference only"},
+        {"item": "Category 1 presentation date (Oct 26, 2026)", "score": "MATCH"},
+        {"item": "Category 3 presentation date (Nov 2, 2026)", "score": "MATCH"},
+        {"item": "Extra row: 'up to seven (7) top-ranked proponents...'", "score": "INCORRECT", "note": "A non-date MILESTONE observation (a quota sentence) was misrouted into the dates table by the adapter"},
+        {"item": "Extra row: 'up to nine (9) top-ranked proponents...'", "score": "INCORRECT", "note": "Same defect"},
+        {"item": "Submission mechanics bullets", "score": "MATCH", "note": "Reused verbatim"}
+      ],
+      "section_score": "PARTIAL -- real defect",
+      "material_correctness": "The 4 correct, required dates are all present and accurate; 2 garbled extra rows are a genuine data-quality defect, not a missing-content problem"
+    },
+    {
+      "section": "5. Evaluation",
+      "items": [
+        {"item": "5-stage structure table", "score": "MATCH", "note": "Reused verbatim (structural, not per-run extracted)"},
+        {"item": "Minimum-qualification gate examples", "score": "SEMANTICALLY_EQUIVALENT", "note": "Real, genuinely extracted gates (Bilingualism, Security Clearance, Accessibility) -- different specific examples than Deep's (which used quantitative C1/C2/C3 thresholds), but equally valid and correct; one duplicate entry (Bilingualism listed twice)"},
+        {"item": "Category 1 (D1) weight table -- all 7 rows", "score": "MATCH", "note": "Byte-identical point values to Deep Verify: 5/15/35/5/5/5/5"},
+        {"item": "Category 2 (D2) weight table -- all 5 rows", "score": "MATCH", "note": "Byte-identical: 5/15/35/5/5"},
+        {"item": "Category 3 (D3) weight table -- all 6 rows", "score": "MATCH", "note": "Byte-identical: 10/20/30/5/10/25 (incl. Price)"},
+        {"item": "Weight-table note", "score": "INCORRECT", "note": "References 'Ambiguity 1 in Section 8' -- a dangling cross-reference, since Fast Analysis's own Section 8 does not contain an evaluation-weight-conflict ambiguity as item 1 (see Section 8 finding below)"}
+      ],
+      "section_score": "MATCH on the highest-value content (weight tables); one dangling cross-reference",
+      "material_correctness": "The single most load-bearing content in the whole report (18 exact point values across 3 categories) reproduced perfectly"
+    },
+    {
+      "section": "6. Response Requirements",
+      "items": [
+        {"item": "9-row checklist", "score": "MATCH", "note": "Reused verbatim (structurally corpus-derived, not per-document LLM extracted, per the audit)"},
+        {"item": "Also-required bullets", "score": "MATCH", "note": "Reused verbatim"}
+      ],
+      "section_score": "MATCH",
+      "material_correctness": "Fully preserved"
+    },
+    {
+      "section": "7. Commercial & Contractual",
+      "items": [
+        {"item": "Intellectual Property", "score": "SEMANTICALLY_EQUIVALENT", "note": "Real clause text, different specific wording than Deep's summary"},
+        {"item": "Background Check Clearance", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Regulatory Compliance", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Confidentiality", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Liability Indemnity", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Data Protection Privacy", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Cybersecurity Security", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Termination", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Other (force majeure)", "score": "EXTRA_NOT_REQUIRED", "note": "Not present in Deep's 10-row list; real, accurate content, just not previously surfaced"},
+        {"item": "Personnel Key Staff", "score": "EXTRA_NOT_REQUIRED", "note": "Same -- real content, additive"},
+        {"item": "Insurance (CGL $3M / E&O / WSIB)", "score": "MISSING", "note": "Confirmed empirically: zero INSURANCE-kind commercial_clauses were extracted in this run. This is explicitly named as a 'material commercial point' the success criteria require to remain present"},
+        {"item": "Pricing Structure", "score": "MISSING", "note": "Deep Verify sourced this from requirements/typed_observations, not commercial_clauses; Fast Analysis's Commercial section is commercial_clauses-only and does not merge in pricing narrative"},
+        {"item": "Abnormally Low Pricing", "score": "MISSING", "note": "Same reason"},
+        {"item": "Contract Term & Extensions", "score": "MISSING", "note": "Same reason -- available elsewhere in Fast's own output (Section 1's Contract Term fact), just not merged into Section 7"}
+      ],
+      "section_score": "PARTIAL -- one named material gap",
+      "material_correctness": "8 of 10 Deep topics have a semantically equivalent Fast counterpart; Insurance is a genuine, material miss"
+    },
+    {
+      "section": "8. Important Ambiguities",
+      "items": [
+        {"item": "Ambiguity class: evaluation-weight conflict", "score": "MISSING", "note": "Zero conflicts detected. Root cause confirmed in raw telemetry: the master RFP's second chunk (of 3) hit the 4,000-token output ceiling (stop_reason=max_tokens, parse_status=RECOVERED_TRUNCATED) and the bounded-retry logic did not trigger, because it only checks for a missing doc_metadata field on this route, not missing/incomplete evaluation_criteria. The conflicting second occurrence of several criteria (e.g. a second 'Corporate Profile' mention at a different point value) was in the truncated portion of that response and was silently lost."},
+        {"item": "Ambiguity class: pricing-stage structural ambiguity", "score": "MISSING", "note": "Same root cause -- the detector requires both a Price-in-table row and a top-level Pricing-stage row from the SAME extraction pass to be present; the top-level Stage 4 mention was in the truncated portion"},
+        {"item": "Ambiguity class: category-specific date distinction", "score": "SEMANTICALLY_EQUIVALENT", "note": "Correctly detected (1 finding, PRESENTATION_OR_DEMO, both Oct 26 and Nov 2 present) but rendered with materially lower prose quality than Deep's hand-authored version -- raw enum name shown instead of 'Presentation Date', generic why/source text"}
+      ],
+      "section_score": "FAIL on 2 of 3 required classes",
+      "material_correctness": "This is the most serious finding in this benchmark. The single highest-value fact in the entire Deep Verify PDF (the evaluation-weight conflict) is not reproduced. See FAST_ANALYSIS_V1_IMPLEMENTATION_REPORT.md S5 for the full root-cause analysis and recommended fix."
+    },
+    {
+      "section": "9. Bid Team Attention Points",
+      "items": [
+        {"item": "8 attention-point bullets", "score": "MATCH", "note": "Reused verbatim (same text as Deep Verify)"},
+        {"item": "Cross-references to 'Ambiguity 1' / 'Ambiguity 3'", "score": "INCORRECT", "note": "These bullets reference Deep Verify's specific ambiguity numbering, which does not match Fast Analysis's actual Section 8 (which has only 1 ambiguity, not 3). This is a downstream consequence of the Section 8 gap, not a separate defect"}
+      ],
+      "section_score": "MATCH in text, INCORRECT in context due to Section 8 gap",
+      "material_correctness": "Text itself is sound bid advice; the numbered cross-references are misleading given what Section 8 actually contains in this run"
+    },
+    {
+      "section": "10. Source Map",
+      "items": [
+        {"item": "Primary documents table", "score": "MATCH", "note": "Reused verbatim -- corpus-structural, not per-run extracted"},
+        {"item": "Selected source references table", "score": "MATCH", "note": "Reused verbatim"},
+        {"item": "Validation footer note", "score": "MATCH", "note": "Fast-specific wording, correctly describes the narrowed-extraction methodology"}
+      ],
+      "section_score": "MATCH",
+      "material_correctness": "Fully preserved"
+    }
+  ],
+  "summary": {
+    "total_scored_items": 45,
+    "match_count": 20,
+    "semantically_equivalent_count": 14,
+    "missing_count": 6,
+    "incorrect_count": 4,
+    "extra_not_required_count": 2,
+    "match_or_semantically_equivalent_pct_procurement_content_excl_buyer_intel": "34 of 40 procurement-specific items = 85.0%",
+    "note_on_percentage": "This falls short of the 90% target primarily because of Section 8 (2 of 3 ambiguity classes entirely missing, weighted heavily here because ambiguity detection is called out as its own independent, non-negotiable success criterion, not merely one line item among many) and Section 7's Insurance gap. Sections 1, 2, 5 (weight tables), 6, 9, 10 are at or near 100%."
+  }
+}

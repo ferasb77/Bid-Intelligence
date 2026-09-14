@@ -126,9 +126,42 @@ def _field_name(value: str, name: str) -> str:
     return value
 
 
+_canonical_memo_cache: dict[int, tuple[object, object]] = {}
+
+
 def _canonical(value):
     if isinstance(value, Enum):
         return value.value
+    # GovernedSnapshot/GovernedObject are the large, immutable, frequently
+    # re-embedded structures (a ResolutionContext's payload embeds every
+    # bound snapshot's full object graph so its digest is tamper-evident
+    # against any change anywhere in them -- see _context_payload). The
+    # SAME snapshot/object instance is routinely canonicalized many times
+    # over a run (once per ResolutionContext that includes it, doubled by
+    # each context's own create-then-verify digest check). _canonical is a
+    # pure function of an already-validated, frozen instance, so recomputing
+    # it from scratch every time is redundant work, not extra safety.
+    # Memoized by identity (not content-hash, which would require walking
+    # the same content this cache exists to avoid re-walking) and guarded
+    # against id() reuse the same way _objects_by_id is.
+    #
+    # The cached dict/list structure is returned by reference, not copied,
+    # on a hit -- every consumer of _canonical()'s output in this codebase
+    # (json.dumps() via _json/_sha, and every existing to_dict() caller,
+    # confirmed by inspection) only reads it (indexing, equality, iteration)
+    # and never mutates it in place. Returning it by reference is therefore
+    # exactly as safe as returning a fresh equal structure every time, and
+    # avoids the deep-copy cost this optimization exists to eliminate --
+    # copying a large nested structure is not meaningfully cheaper than the
+    # dataclass introspection (is_dataclass/fields/getattr) it would replace.
+    if isinstance(value, (GovernedSnapshot, GovernedObject)):
+        key = id(value)
+        cached = _canonical_memo_cache.get(key)
+        if cached is not None and cached[0] is value:
+            return cached[1]
+        result = {item.name: _canonical(getattr(value, item.name)) for item in fields(value)}
+        _canonical_memo_cache[key] = (value, result)
+        return result
     if is_dataclass(value):
         return {item.name: _canonical(getattr(value, item.name)) for item in fields(value)}
     if isinstance(value, tuple):
@@ -737,12 +770,19 @@ class ResolutionResult:
         if len(edge_keys) != len(set(edge_keys)):
             _fail(ResolutionFailureCode.DUPLICATE_IDENTITY,
                   "resolved result contains duplicate relationships")
-        if any(item.source.identity_key not in set(object_keys)
-               or item.target.identity_key not in set(object_keys)
+        # `object_key_set` is built once and reused for every relationship
+        # checked below -- the original code called `set(object_keys)` fresh
+        # on every loop iteration (twice per relationship), rebuilding the
+        # same set from the same already-computed tuple each time. Hoisting
+        # it out of the loop changes nothing about which relationships pass
+        # or fail this check; it only stops recomputing an unchanging value.
+        object_key_set = set(object_keys)
+        if any(item.source.identity_key not in object_key_set
+               or item.target.identity_key not in object_key_set
                for item in self.relationships):
             _fail(ResolutionFailureCode.INCOMPLETE_RELATIONSHIP_CLOSURE,
                   "resolved result contains a relationship outside its object closure")
-        if self.root_reference.identity_key not in set(object_keys):
+        if self.root_reference.identity_key not in object_key_set:
             _fail(ResolutionFailureCode.MISSING_REFERENCE,
                   "resolved result does not contain its root reference")
 
@@ -811,10 +851,44 @@ def _find_snapshot(reference: GovernedObjectReference,
     return snapshot
 
 
+_snapshot_object_index_cache: dict[int, tuple[GovernedSnapshot, dict[str, tuple[GovernedObject, ...]]]] = {}
+
+
+def _objects_by_id(snapshot: GovernedSnapshot) -> dict[str, tuple[GovernedObject, ...]]:
+    """Intra-process memoized object_id -> objects index for one immutable,
+    already-validated snapshot -- pure and deterministic given a snapshot's
+    own frozen, already-validated `objects` tuple, so it is computed once
+    per distinct snapshot instance and reused, never recomputed from a fresh
+    linear scan on every lookup. Grouped by object_id alone (not also by
+    object_class) so `_resolve_one` can still distinguish "no object with
+    this id" from "an object with this id but the wrong class" exactly as
+    before -- this changes nothing about which reference resolves or which
+    error a mismatch raises, only how the (id, class) group is found.
+
+    Keyed by `id(snapshot)` rather than snapshot content/hash, which would
+    require walking the same content this index exists to avoid re-walking.
+    Guarded against id() reuse (e.g. a garbage-collected snapshot's address
+    being reassigned to an unrelated later snapshot) by also storing the
+    snapshot object itself and verifying it `is` the one being looked up
+    before trusting the cached index -- a stale hit is impossible by
+    construction, not merely unlikely. Never persisted across process runs.
+    """
+    key = id(snapshot)
+    cached = _snapshot_object_index_cache.get(key)
+    if cached is not None and cached[0] is snapshot:
+        return cached[1]
+    index: dict[str, list[GovernedObject]] = {}
+    for item in snapshot.objects:
+        index.setdefault(item.object_id, []).append(item)
+    frozen_index = {object_id: tuple(items) for object_id, items in index.items()}
+    _snapshot_object_index_cache[key] = (snapshot, frozen_index)
+    return frozen_index
+
+
 def _resolve_one(reference: GovernedObjectReference,
                  context: ResolutionContext) -> GovernedObject:
     snapshot = _find_snapshot(reference, context)
-    same_id = tuple(item for item in snapshot.objects if item.object_id == reference.object_id)
+    same_id = _objects_by_id(snapshot).get(reference.object_id, ())
     exact = tuple(item for item in same_id if item.object_class == reference.object_class)
     if not exact:
         if same_id:

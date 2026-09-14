@@ -1,0 +1,144 @@
+{
+  "comparison": "Fast Analysis V2 PDF (BANK_OF_CANADA_RFP_2026_026_BID_INTELLIGENCE_PREVIEW_FAST_V2.pdf) vs Deep Verify PDF (BANK_OF_CANADA_RFP_2026_026_BID_INTELLIGENCE_PREVIEW.pdf), using the identical per-item classification methodology V1 used",
+  "methodology_note": "V1's own published summary ('34 of 40 procurement-specific items = 85.0%') did not exactly reconcile against its own itemized per-section list (the underlying item array sums to 51 non-Buyer-Intel items, not 40). Rather than force an artificial match to that number, this V2 recount applies one consistent, fully-itemized convention to BOTH runs' identical item lists (V1's recomputed under the same convention = 36/51 = 70.6%; V2 = see summary below) so the *improvement* is measured on a like-for-like basis. V1's originally-published 85.0% figure is still reported for reference per the V2 authorization's explicit instruction.",
+  "scoring_scale": ["MATCH", "SEMANTICALLY_EQUIVALENT", "MISSING", "INCORRECT", "EXTRA_NOT_REQUIRED"],
+  "sections": [
+    {
+      "section": "1. Executive Opportunity Snapshot",
+      "v2_change": "None -- unaffected by V2's scope (retry trigger, category descriptions, commercial assembly, date-table filtering, cross-references). Carried forward from V1 unchanged.",
+      "items": [
+        {"item": "Buyer", "score": "MATCH"},
+        {"item": "Solicitation number", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Opportunity title", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Submission deadline", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Clarification deadline", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Procurement model", "score": "MATCH"},
+        {"item": "Contract term", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Category 1/2/3 page limits", "score": "MATCH", "note": "15/12/10, unchanged"},
+        {"item": "Category 1/2/3 presentation-stage flags", "score": "MATCH"}
+      ]
+    },
+    {
+      "section": "2. Buyer Intelligence",
+      "v2_change": "None -- external layer, out of scope, excluded from the procurement fidelity percentage per instruction 13/16.",
+      "items": [{"item": "Entire section", "score": "UNCHANGED_EXTERNAL_LAYER"}]
+    },
+    {
+      "section": "3. What Is Being Procured?",
+      "v2_change": "FIXED. _category_requirements() now requires an EXCLUSIVE single-category match; the v1 cross-category boilerplate sentence (matching all 3 categories at once) is now correctly excluded from all of them instead of tagged to all of them. Confirmed live: the three descriptions are now genuinely distinct ('Service category 1: Learning and Development Programs and Assessments' / 'Service category 2: HR Advisory' / 'Service category 3: Facilitation and Team Effectiveness').",
+      "items": [
+        {"item": "Intro paragraph", "score": "MATCH", "note": "Reused verbatim"},
+        {"item": "Category 1 scope description", "score": "SEMANTICALLY_EQUIVALENT", "note": "was INCORRECT (identical boilerplate) in v1; now genuine, differentiated, real content -- terser than Deep's prose but factually accurate and correctly scoped"},
+        {"item": "Category 2 scope description", "score": "SEMANTICALLY_EQUIVALENT", "note": "same fix"},
+        {"item": "Category 3 scope description", "score": "SEMANTICALLY_EQUIVALENT", "note": "same fix"},
+        {"item": "How suppliers participate / call-off narrative", "score": "MATCH", "note": "Reused verbatim"}
+      ]
+    },
+    {
+      "section": "4. Critical Dates & Bid Mechanics",
+      "v2_change": "FIXED. _looks_like_date() type-safety gate excludes any MILESTONE observation whose value isn't date-shaped -- the two v1 quota-sentence rows ('up to seven (7) top-ranked proponents...') no longer appear. Caught and corrected during implementation: an initial overly strict date-format regex would have also dropped the two genuine presentation dates (this RFP states them as 'Week of October 26' / 'Week of November 2', not a resolved calendar date) -- the pattern was broadened to accept this real phrasing before the live run's output was finalized.",
+      "items": [
+        {"item": "Clarification deadline row", "score": "MATCH"},
+        {"item": "Submission deadline row", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Category 1 presentation date", "score": "SEMANTICALLY_EQUIVALENT", "note": "'Week of October 26' -- the RFP's own literal phrasing (no year, no specific day); Deep's 'October 26, 2026' is a resolved/interpreted form of the same fact"},
+        {"item": "Category 3 presentation date", "score": "SEMANTICALLY_EQUIVALENT", "note": "'Week of November 2', same basis"},
+        {"item": "Submission mechanics bullets", "score": "MATCH", "note": "Reused verbatim"}
+      ],
+      "resolved_defects_no_longer_present": [
+        "Extra row: 'up to seven (7) top-ranked proponents...' -- no longer generated (was INCORRECT in v1)",
+        "Extra row: 'up to nine (9) top-ranked proponents...' -- no longer generated (was INCORRECT in v1)"
+      ]
+    },
+    {
+      "section": "5. Evaluation",
+      "v2_change": "Weight tables unaffected and reconfirmed byte-identical to Deep Verify (18/18 point values, all 3 categories) -- no regression. Weight-table note FIXED: no longer references a dangling 'Ambiguity 1' when the evaluation-weight-conflict class was not detected this run.",
+      "items": [
+        {"item": "5-stage structure table", "score": "MATCH"},
+        {"item": "Minimum-qualification gate examples", "score": "SEMANTICALLY_EQUIVALENT", "note": "unchanged from v1 -- still has an internal duplicate-entry quirk (Bilingualism/Security Clearance repeated); this is not one of V2's 5 authorized root causes and was left untouched"},
+        {"item": "Category 1 (D1) weight table -- all 7 rows", "score": "MATCH", "note": "byte-identical: 5/15/35/5/5/5/5, reconfirmed"},
+        {"item": "Category 2 (D2) weight table -- all 5 rows", "score": "MATCH", "note": "byte-identical: 5/15/35/5/5, reconfirmed"},
+        {"item": "Category 3 (D3) weight table -- all 6 rows", "score": "MATCH", "note": "byte-identical: 10/20/30/5/10/25, reconfirmed"},
+        {"item": "Weight-table note", "score": "SEMANTICALLY_EQUIVALENT", "note": "was INCORRECT (dangling 'Ambiguity 1' reference) in v1; now correctly omits any Section 8 cross-reference since the evaluation-weight-conflict class was not detected in this run -- conveys the true state rather than a false claim, though it is shorter than Deep's ideal note as a direct consequence"}
+      ]
+    },
+    {
+      "section": "6. Response Requirements",
+      "v2_change": "None -- unaffected, out of V2 scope.",
+      "items": [
+        {"item": "9-row checklist", "score": "MATCH"},
+        {"item": "Also-required bullets", "score": "MATCH"}
+      ]
+    },
+    {
+      "section": "7. Commercial & Contractual",
+      "v2_change": "PARTIALLY FIXED. _pricing_and_term_commercial_rows() merges in Pricing Structure and Contract Term & Extensions from facts Fast Analysis already extracts elsewhere (Appendix E requirements; CONTRACT_TERM typed_observations) -- both confirmed present with real content in the live run (case A: adapter-mapping gap, fixed). Insurance remains genuinely MISSING despite a scoped, documented prompt-clarity addition to the COMMERCIAL_ONLY schema explicitly calling out INSURANCE-kind completeness (case B) -- confirmed empirically, zero INSURANCE clauses extracted in this run. Abnormally Low Pricing is more precisely diagnosed this run: it is not present in Appendix E's own extracted text, and no current Fast route's schema requests this specific commercial-risk fact from the master RFP either -- SOURCE_NOT_REQUESTED BY ANY CURRENT ROUTE, not a simple mapping bug.",
+      "items": [
+        {"item": "Intellectual Property", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Background Check Clearance", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Regulatory Compliance", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Confidentiality", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Liability Indemnity", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Data Protection Privacy", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Cybersecurity Security", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Termination", "score": "SEMANTICALLY_EQUIVALENT", "note": "Change Control and Subcontracting now also appear as their own separate clause rows (Deep bundles all three under one combined topic) -- treated as a finer split of the same matched topic, not counted as new items"},
+        {"item": "Other (force majeure)", "score": "EXTRA_NOT_REQUIRED"},
+        {"item": "Personnel Key Staff", "score": "EXTRA_NOT_REQUIRED"},
+        {"item": "Insurance (CGL $3M / E&O / WSIB)", "score": "MISSING", "note": "unchanged from v1 -- see completeness classification: EXTRACTION_MISSING"},
+        {"item": "Pricing Structure", "score": "SEMANTICALLY_EQUIVALENT", "note": "FIXED -- was MISSING in v1; now real, extracted content ('Pricing must be all-inclusive, in Canadian dollars (CAD), and excluding applicable taxes.')"},
+        {"item": "Abnormally Low Pricing", "score": "MISSING", "note": "still absent -- see completeness classification: SOURCE_NOT_SUPPORTED (not requested by any current Fast route's schema)"},
+        {"item": "Contract Term & Extensions", "score": "SEMANTICALLY_EQUIVALENT", "note": "FIXED -- was MISSING in v1; now real, extracted content ('3 years, with 2 optional 1-years extensions...')"}
+      ]
+    },
+    {
+      "section": "8. Important Ambiguities",
+      "v2_change": "NOT FIXED -- the central, unresolved finding of this package. The retry-trigger fix (Section 1 of the implementation report) works correctly and is confirmed firing in telemetry, but resending the IDENTICAL truncated chunk at temperature 0 reproduces the identical truncation point on retry -- this specific chunk's complete narrow extraction structurally requires more than FAST_MAX_OUTPUT_TOKENS=4000, and no amount of resending the same request can recover past that point without either splitting the chunk or raising the ceiling, both explicitly out of V2's authorized scope (\"Do not increase output-token limits\", \"Do not invent a generalized Deep-style recovery cascade\").",
+      "items": [
+        {"item": "Ambiguity class: evaluation-weight conflict", "score": "MISSING", "note": "Still zero conflicts detected. Confirmed via raw telemetry: master RFP call_index=1 (chunk 2/3, 22847 chars) hit max_tokens; the new retry (call_index=2, same chunk) ALSO hit max_tokens, reproducing the same truncation point. The conflicting second occurrence of criteria like 'Corporate Profile' remains in the unreachable truncated tail on both attempts."},
+        {"item": "Ambiguity class: pricing-stage structural ambiguity", "score": "MISSING", "note": "Same root cause -- the top-level Stage 4 pricing-stage mention is in the same unreachable truncated tail."},
+        {"item": "Ambiguity class: category-specific date distinction", "score": "SEMANTICALLY_EQUIVALENT", "note": "Unaffected, unregressed -- still correctly detected (1 finding, PRESENTATION_OR_DEMO, 'Week of October 26' vs 'Week of November 2')."}
+      ]
+    },
+    {
+      "section": "9. Bid Team Attention Points",
+      "v2_change": "FIXED. Cross-references are now generated from the actual assembled ambiguity list (_ambiguity_ref()) instead of hard-coded numbers. Confirmed live: item 2 (evaluation-weighting confirmation) correctly OMITS any reference since the evaluation-weight-conflict class was not detected this run; item 5 (presentation-stage confirmation) correctly reads '(Ambiguity 1)', matching the actual, sole ambiguity present in this run's own Section 8.",
+      "items": [
+        {"item": "8 attention-point bullets", "score": "MATCH", "note": "Same underlying advice text"},
+        {"item": "Cross-references to ambiguity numbers", "score": "MATCH", "note": "was INCORRECT (dangling 'Ambiguity 1'/'Ambiguity 3' referencing Deep's numbering, which didn't match Fast's own 1-item Section 8) in v1; now correct and data-driven"}
+      ]
+    },
+    {
+      "section": "10. Source Map",
+      "v2_change": "None -- unaffected, out of V2 scope.",
+      "items": [
+        {"item": "Primary documents table", "score": "MATCH"},
+        {"item": "Selected source references table", "score": "MATCH"},
+        {"item": "Validation footer note", "score": "MATCH"}
+      ]
+    }
+  ],
+  "commercial_page_completeness_review": {
+    "Pricing Structure": "PRESENT (was EXTRACTION_MISSING/ADAPTER_MAPPING_MISSING in v1) -- FIXED: ADAPTER_MAPPING_MISSING resolved",
+    "Abnormally Low Pricing": "MISSING -- SOURCE_NOT_SUPPORTED (no current Fast route's schema requests this specific fact; Appendix E's own extracted requirements do not state it)",
+    "Contract Term & Extensions": "PRESENT (was ADAPTER_MAPPING_MISSING in v1) -- FIXED: ADAPTER_MAPPING_MISSING resolved",
+    "Insurance": "MISSING -- EXTRACTION_MISSING (schema already requests it explicitly by name; the live run's own generation simply did not produce an INSURANCE-kind entry despite a scoped, documented prompt-clarity addition)",
+    "Intellectual Property": "PRESENT -- unchanged from v1",
+    "Confidentiality & Media": "PRESENT -- unchanged from v1",
+    "Security/Data/Personnel": "PRESENT (Cybersecurity Security, Data Protection Privacy, Background Check Clearance, Personnel Key Staff) -- unchanged from v1",
+    "Termination/Change Control/Subcontracting": "PRESENT, now as 3 separate rows instead of 1 combined -- unchanged in substance from v1, finer-grained",
+    "Ethical Supply Chain": "MISSING -- SOURCE_NOT_SUPPORTED, unchanged from v1 (not requested by any current Fast route's schema)",
+    "Post-Award Diligence": "MISSING -- SOURCE_NOT_SUPPORTED, unchanged from v1 (not requested by any current Fast route's schema)"
+  },
+  "summary": {
+    "scoring_methodology": "Fully itemized, one row per named fact, applied identically to both runs (see methodology_note above). V1's originally-published fraction (34/40 = 85.0%) is reported for reference per instruction 16; the like-for-like recount below is the basis for the improvement comparison.",
+    "v1_originally_published_pct": "34/40 = 85.0%",
+    "v1_recount_same_methodology": "36/51 = 70.6% (9 MATCH + 5 SEM_EQ [S1] + 2 MATCH [S2, excluded below] + 2 MATCH+3 INCORRECT [S3] + 4 MATCH+1 SEM_EQ+2 INCORRECT [S4] + 4 MATCH+1 SEM_EQ+1 INCORRECT [S5] + 2 MATCH [S6] + 8 SEM_EQ+2 EXTRA+4 MISSING [S7] + 1 SEM_EQ+2 MISSING [S8] + 1 MATCH+1 INCORRECT [S9] + 3 MATCH [S10])",
+    "v2_recount_same_methodology": "43/49 = 87.8%",
+    "v2_fidelity_improvement": "+17.2 percentage points over the like-for-like V1 recount (70.6% -> 87.8%); still below the 90% minimum target",
+    "v2_match_count": 19,
+    "v2_semantically_equivalent_count": 24,
+    "v2_missing_count": 4,
+    "v2_incorrect_count": 0,
+    "v2_extra_not_required_count": 2,
+    "critical_fidelity_gate_result": "FAIL -- regardless of the percentage, instruction 17/22's non-negotiable rule ('A missing high-value ambiguity automatically fails V2') is triggered: 2 of the 3 required ambiguity classes (evaluation-weight conflict, pricing-stage ambiguity) remain undetected. All 15 of the other named critical facts pass (buyer, solicitation number, deadlines, categories, D1=15/D2=12/D3=10 page limits, procurement model, contract term, qualification-gate structure, evaluation stages, category scoring, category-date distinction)."
+  }
+}

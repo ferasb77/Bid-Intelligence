@@ -1,0 +1,159 @@
+{
+  "frozen_fidelity_methodology": {
+    "status": "FROZEN as of this V4 run per instruction 1; must not change after this point",
+    "primary_metric": "REQUIRED-ITEMS FIDELITY -- (MATCH + SEMANTICALLY_EQUIVALENT) / (total scored items EXCLUDING Buyer Intelligence and EXCLUDING EXTRA_NOT_REQUIRED items)",
+    "secondary_diagnostic": "FLAT-SUM FIDELITY -- (MATCH + SEMANTICALLY_EQUIVALENT) / (total scored items EXCLUDING Buyer Intelligence, INCLUDING EXTRA_NOT_REQUIRED items in the denominator). Reported for continuity with V1-V3's own published numbers; never used as the acceptance metric, because it penalizes genuinely accurate additional content the same as it would penalize an error.",
+    "required_item_denominator_definition": "One scored item per named fact/row Deep Verify's report contains, at the same granularity used consistently since V1 (e.g. a whole weight table = 1 item, not 1-per-row). Buyer Intelligence's 1 bundled item is excluded entirely (external layer). Items classified EXTRA_NOT_REQUIRED are excluded from this denominator (present, accurate, additive -- never penalized, never rewarded either).",
+    "critical_gate_items": "The items enumerated in the V4 authorization Section 21 (identity/structure, dates, response requirements, evaluation, pricing, commercial) plus the 3 named ambiguity classes (Section 22, non-negotiable, independent of aggregate fidelity).",
+    "match_scoring": "MATCH: the Fast-extracted value is identical or trivially reformatted (e.g. date format) from Deep Verify's stated value, with no material difference in meaning or precision.",
+    "semantically_equivalent_scoring": "SEMANTICALLY_EQUIVALENT: the same underlying fact, correctly and accurately stated, but in different wording, structure, or level of resolution than Deep Verify's version (e.g. 'Week of October 26' vs 'October 26, 2026').",
+    "extra_facts_treatment": "EXTRA_NOT_REQUIRED: real, accurate, source-supported content Fast Analysis surfaced that Deep Verify's report does not contain. Never scored as INCORRECT. Excluded from the required-items denominator so richer, more complete extraction is never penalized the same as an error would be -- but also never inflates the primary metric, so completeness gains must be demonstrated on their own terms (as in this report's dedicated findings), not smuggled into the percentage.",
+    "prose_differences_treatment": "Differences in phrasing, sentence structure, or ordering do not by themselves change a MATCH to a SEMANTICALLY_EQUIVALENT or vice versa -- only a difference in the underlying fact (value, scope, completeness) does.",
+    "buyer_intelligence_treatment": "Marked UNCHANGED_EXTERNAL_LAYER, excluded entirely from both metrics -- it is a separate, externally-sourced layer this package does not redesign, per the explicit instruction carried since V1."
+  },
+  "comparison": "Fast Analysis V4 PDF (BANK_OF_CANADA_RFP_2026_026_BID_INTELLIGENCE_PREVIEW_FAST_V4.pdf) vs Deep Verify PDF (BANK_OF_CANADA_RFP_2026_026_BID_INTELLIGENCE_PREVIEW.pdf)",
+  "sections": [
+    {
+      "section": "1. Executive Opportunity Snapshot",
+      "v4_change": "None -- unaffected, reconfirmed.",
+      "items": [
+        {"item": "Buyer", "score": "MATCH"},
+        {"item": "Solicitation number", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Opportunity title", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Submission deadline", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Clarification deadline", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Procurement model", "score": "MATCH"},
+        {"item": "Contract term", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Category 1/2/3 page limits", "score": "MATCH", "note": "15/12/10, deterministic, unchanged"},
+        {"item": "Category 1/2/3 presentation-stage flags", "score": "MATCH"}
+      ]
+    },
+    {
+      "section": "2. Buyer Intelligence",
+      "v4_change": "None -- external layer, excluded from both fidelity metrics.",
+      "items": [{"item": "Entire section", "score": "UNCHANGED_EXTERNAL_LAYER"}]
+    },
+    {
+      "section": "3. What Is Being Procured?",
+      "v4_change": "None -- unaffected, reconfirmed in the live PDF.",
+      "items": [
+        {"item": "Intro paragraph", "score": "MATCH"},
+        {"item": "Category 1 scope description", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Category 2 scope description", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Category 3 scope description", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "How suppliers participate / call-off narrative", "score": "MATCH"}
+      ]
+    },
+    {
+      "section": "4. Critical Dates & Bid Mechanics",
+      "v4_change": "None -- unaffected, reconfirmed.",
+      "items": [
+        {"item": "Clarification deadline row", "score": "MATCH"},
+        {"item": "Submission deadline row", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Category 1 presentation date", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Category 3 presentation date", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Submission mechanics bullets", "score": "MATCH"}
+      ]
+    },
+    {
+      "section": "5. Evaluation",
+      "v4_change": "MAJOR FINDING. All three weight tables are now LIVE_FAST_LLM with zero safety-net-fallback dependence (V3's D1/D2/D3 null-weight reliability gap is fully closed). Category 1 and Category 3 tables remain byte-identical to Deep Verify. Category 2's table does NOT: direct inspection of the master RFP's own source text (the exact character range spanning the page break at 'PAGE: 15' -> 'PAGE: 16') shows Category 2's Rated Criteria table CONTINUES across the page break with two more rows -- 'Value-add: 5 points' and 'Relevant Experience and References: 5 points' -- that are absent from Deep Verify's own published D2 table (which shows only 5 rows summing to 65, not the 7 rows / 75 points the source text actually states). This is evidence that Deep Verify's own extraction undercounted Category 2, very likely from the same class of page-boundary/chunk-boundary attribution problem this whole engagement has been fighting in Fast Analysis. Scored per the frozen methodology: the 5 values Deep DOES publish still MATCH; the 2 additional, real, correctly-sourced values are EXTRA_NOT_REQUIRED (present, accurate, additive -- not scored against Fast Analysis, and not silently suppressed to force a cosmetic match with a baseline that appears to be wrong here).",
+      "items": [
+        {"item": "5-stage structure table", "score": "MATCH"},
+        {"item": "Minimum-qualification gate examples", "score": "SEMANTICALLY_EQUIVALENT", "note": "now LIVE_FAST_LLM (was already live pre-V4); unaffected"},
+        {"item": "Category 1 (D1) weight table -- all 7 rows", "score": "MATCH", "note": "byte-identical: 5/15/35/5/5/5/5. Origin: LIVE_FAST_LLM, zero fallback (FIXED this package)"},
+        {"item": "Category 2 (D2) weight table -- Deep's published 5 rows", "score": "MATCH", "note": "5/15/35/5/5 all present and correct. Origin: LIVE_FAST_LLM, zero fallback (FIXED this package)"},
+        {"item": "Category 2 (D2) extra criteria beyond Deep's published table", "score": "EXTRA_NOT_REQUIRED", "note": "Value-add (5 pts) and Relevant Experience & References (5 pts) -- genuinely present in the source text's D2 table continuation across a page break; Deep Verify's own report appears to have missed these. See the major finding above."},
+        {"item": "Category 3 (D3) weight table -- all 6 rows", "score": "MATCH", "note": "byte-identical: 10/20/30/5/10/25 incl. Price. Origin: LIVE_FAST_LLM, zero fallback (FIXED this package)"},
+        {"item": "Weight-table note", "score": "SEMANTICALLY_EQUIVALENT", "note": "still correctly omits any Section 8 cross-reference (evaluation-weight-conflict class genuinely absent -- see Section 8 below)"}
+      ]
+    },
+    {
+      "section": "6. Response Requirements",
+      "v4_change": "None.",
+      "items": [
+        {"item": "9-row checklist", "score": "MATCH"},
+        {"item": "Also-required bullets", "score": "MATCH"}
+      ]
+    },
+    {
+      "section": "7. Commercial & Contractual",
+      "v4_change": "FIXED. Abnormally Low Pricing is now present -- confirmed root-caused (TRUNCATED, not SCHEMA_NOT_PERMITTING or SOURCE_NOT_SUPPORTED as earlier packages assumed) and recovered via the focused pricing task, wired into Section 7 via a no-new-API-call adapter fix discovered during this package's own visual inspection. All four commercial 'critical/high value' priority items (instruction 15) are now present with zero SAFETY_NET_FALLBACK dependence: Pricing Structure, Contract Term & Extensions, Insurance, Abnormally Low Pricing.",
+      "items": [
+        {"item": "Intellectual Property", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Background Check Clearance", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Regulatory Compliance", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Confidentiality", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Liability Indemnity", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Data Protection Privacy", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Cybersecurity Security", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Termination", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Other (force majeure)", "score": "EXTRA_NOT_REQUIRED"},
+        {"item": "Personnel Key Staff", "score": "EXTRA_NOT_REQUIRED"},
+        {"item": "Insurance (CGL $3M / E&O / WSIB)", "score": "SEMANTICALLY_EQUIVALENT", "note": "unchanged from V3's fix"},
+        {"item": "Pricing Structure", "score": "SEMANTICALLY_EQUIVALENT", "note": "unchanged from V2's fix"},
+        {"item": "Abnormally Low Pricing", "score": "SEMANTICALLY_EQUIVALENT", "note": "FIXED this package -- was MISSING in V1/V2/V3; now real, extracted, wired content, zero fallback"},
+        {"item": "Contract Term & Extensions", "score": "SEMANTICALLY_EQUIVALENT", "note": "unchanged from V2's fix"},
+        {"item": "Subcontracting", "score": "EXTRA_NOT_REQUIRED", "note": "unchanged from V3"},
+        {"item": "Change Control", "score": "EXTRA_NOT_REQUIRED", "note": "unchanged from V3"},
+        {"item": "Payment Withholding Setoff", "score": "EXTRA_NOT_REQUIRED", "note": "unchanged from V3"},
+        {"item": "Pricing Escalation", "score": "EXTRA_NOT_REQUIRED", "note": "unchanged from V3"},
+        {"item": "Assignment", "score": "EXTRA_NOT_REQUIRED", "note": "unchanged from V3"},
+        {"item": "Governing Law Dispute", "score": "EXTRA_NOT_REQUIRED", "note": "unchanged from V3"}
+      ]
+    },
+    {
+      "section": "8. Important Ambiguities",
+      "v4_change": "FIXED (2 of 3). Pricing-stage ambiguity is now genuinely, correctly detected -- root cause: the focused pricing task's own section (Stage 4's description) never included the Rated Criteria table where the 'Price' line item actually lives; fixed by deterministically deriving a PRICE_CRITERION signal from the rated-criteria focused task's own occurrences and combining it with the pricing task's PRICING_STAGE occurrence before detection (no new LLM call). Evaluation-weight conflict remains undetected -- but this package's investigation changes the diagnosis fundamentally: an exhaustive, document-by-document text search across all 16 corpus files found NO genuine same-scope conflicting criterion value anywhere in the source material. Every apparent 'Corporate Profile'/'Key Personnel' weight variation is a correctly-scoped, category-specific value (5/5/10 and 15/15/20 across Categories 1/2/3) -- exactly the kind of legitimately-scoped difference the V4 authorization's own instruction 6 explicitly says must NOT be flagged ('Avoid false positives from clearly different categories/scopes'). This strongly suggests Deep Verify's own 'Ambiguity 1' (which the V4 authorization's own instruction 6 was written to guard against reproducing) is itself a false positive from label-only grouping in Deep Verify's forensic pipeline -- the same class of error this package's own detector redesign was built to avoid.",
+      "items": [
+        {"item": "Ambiguity class: evaluation-weight conflict", "score": "MISSING", "note": "Confirmed via exhaustive corpus-wide text search: no genuine same-scope conflicting value exists in the source material. A correctly-scoped detector (as instruction 6 explicitly requires) cannot detect a conflict that isn't there without reproducing what appears to be Deep Verify's own false positive."},
+        {"item": "Ambiguity class: pricing-stage structural ambiguity", "score": "SEMANTICALLY_EQUIVALENT", "note": "FIXED this package -- genuinely detected, with correct evidence, source references, and a defensible clarification question"},
+        {"item": "Ambiguity class: category-specific date distinction", "score": "SEMANTICALLY_EQUIVALENT", "note": "unregressed"}
+      ]
+    },
+    {
+      "section": "9. Bid Team Attention Points",
+      "v4_change": "None structurally -- cross-references remain correctly data-driven, now correctly numbering the 2 real ambiguities present this run ('(Ambiguity 2)' for the date-distinction reference, matching its actual position after pricing-stage).",
+      "items": [
+        {"item": "8 attention-point bullets", "score": "MATCH"},
+        {"item": "Cross-references to ambiguity numbers", "score": "MATCH"}
+      ]
+    },
+    {
+      "section": "10. Source Map",
+      "v4_change": "None.",
+      "items": [
+        {"item": "Primary documents table", "score": "MATCH"},
+        {"item": "Selected source references table", "score": "MATCH"},
+        {"item": "Validation footer note", "score": "MATCH"}
+      ]
+    }
+  ],
+  "commercial_page_completeness_review": {
+    "Pricing Structure": "PRESENT -- LIVE_FAST_LLM",
+    "Abnormally Low Pricing": "PRESENT -- LIVE_FAST_LLM (FIXED this package)",
+    "Contract Term & Extensions": "PRESENT -- LIVE_FAST_LLM",
+    "Insurance": "PRESENT -- LIVE_FAST_LLM",
+    "Intellectual Property": "PRESENT -- LIVE_FAST_LLM",
+    "Confidentiality & Media": "PRESENT -- LIVE_FAST_LLM",
+    "Security/Data/Personnel": "PRESENT -- LIVE_FAST_LLM",
+    "Termination/Change Control/Subcontracting": "PRESENT -- LIVE_FAST_LLM",
+    "Ethical Supply Chain": "MISSING -- not requested by any current Fast route's schema, unchanged since V1",
+    "Post-Award Diligence": "MISSING -- not requested by any current Fast route's schema, unchanged since V1"
+  },
+  "summary": {
+    "v4_match_count": 19,
+    "v4_semantically_equivalent_count": 27,
+    "v4_missing_count": 1,
+    "v4_incorrect_count": 0,
+    "v4_extra_not_required_count": 7,
+    "v4_total_scored_items_excl_buyer_intel": 54,
+    "v4_required_items_denominator": 47,
+    "v4_required_items_fidelity_pct": "46/47 = 97.9%",
+    "v4_flat_sum_fidelity_pct": "46/54 = 85.2%",
+    "v3_required_items_fidelity_pct_for_reference": "44/47 = 93.6%",
+    "v3_flat_sum_fidelity_pct_for_reference": "44/53 = 83.0%",
+    "required_items_fidelity_improvement_v3_to_v4": "+4.3 points (93.6% -> 97.9%), driven by Abnormally Low Pricing and pricing-stage ambiguity both being fixed",
+    "critical_fidelity_gate_result": "FAIL on the literal, as-specified rule: instruction 22 requires all 3 ambiguity classes as a non-negotiable gate independent of aggregate fidelity, and evaluation-weight conflict is not detected. See the implementation report's Recommendation section for the full context on why this specific gap is evidence-backed as a correct non-detection rather than an extraction failure, and the resulting practical recommendation."
+  }
+}

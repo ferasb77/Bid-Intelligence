@@ -9,11 +9,11 @@ from database import (init_db, get_all_bids, get_bid, create_bid, update_bid, de
                       get_document_versions, create_expected_document,
                       get_outline, upsert_section, delete_section,
                       get_readiness, get_bid_brief, upsert_bid_brief)
-from config import get_api_key, api_key_configured
+from config import api_key_configured
 from pages_extra import (page_content_library, page_proposal_analyzer,
     page_team_roster, page_clarifications, page_section_drafter,
     page_submission_assembler, page_exec_dashboard)
-from pages.stage_understand import page_understand
+from pages.stage_understand import page_understand, _render_fast_analysis_panel
 from pages.stage_decide import page_decide
 from pages.stage_build import page_build
 from pages.stage_check import page_check
@@ -405,6 +405,21 @@ def _render_extraction_review():
         st.rerun()
 
 # ═════════════════════════════════════════════════════════════════════════════
+# FAST ANALYSIS PANEL — Product Integration Phase 1 / Phase 2 (progressive UX)
+# ═════════════════════════════════════════════════════════════════════════════
+# Relocated to pages/stage_understand.py (Phase 3 commissioning fix): this
+# whole panel (_render_fast_analysis_panel, _start_fast_analysis, the
+# polling fragment, the milestone checklist) was wired to page_bid_overview
+# below, but no route in this file's router (see the bottom of this file)
+# ever calls page_bid_overview -- "stage_understand"/"bid_overview" both
+# resolve to page_understand(). The panel was therefore unreachable through
+# any real user path since Phase 1. Moving it into stage_understand.py,
+# where it is actually invoked, is the smallest fix that makes "Analyze
+# Opportunity" reachable in the live product. Imported below for
+# page_bid_overview's own (still otherwise-unreachable) reference to it.
+
+
+# ═════════════════════════════════════════════════════════════════════════════
 # PAGE: BID OVERVIEW
 # ═════════════════════════════════════════════════════════════════════════════
 def page_bid_overview(bid_id):
@@ -468,6 +483,9 @@ def page_bid_overview(bid_id):
             st.session_state[_upload_key] = True
             st.success(f"Uploaded: {up.name}")
             st.rerun()
+
+    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+    _render_fast_analysis_panel(bid_id, rfp_docs)
 
     if bid.get("notes"):
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)

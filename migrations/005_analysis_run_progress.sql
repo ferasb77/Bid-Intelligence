@@ -1,0 +1,44 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Migration 005: Analysis run progress — Product Integration Phase 2
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Additive only. Does NOT modify migration 004 (already applied to the live
+-- Bid-Intelligence Supabase project) or any earlier migration. Does not
+-- touch analysis_results, bid_briefs, bid_decisions, or firm_profiles, and
+-- does not change RLS (analysis_runs already has RLS enabled with no
+-- policies, per migration 004 -- a new column needs no new policy).
+--
+-- Per this repo's existing convention (migrations 001-004), this file is
+-- NOT auto-applied by any code path and is not executed as part of this
+-- authorization. Apply it manually via the Supabase SQL editor / dashboard,
+-- the same way migration 004 was applied, after separate review.
+--
+-- Adds one nullable-by-default JSONB column to analysis_runs: durable,
+-- application-facing progress for a run that is still QUEUED / PREPARING /
+-- ANALYZING / ASSEMBLING, so progress survives a page refresh, navigating
+-- away and back, or a browser reconnect -- it must not exist only in the
+-- background thread's memory or in Streamlit session state.
+--
+-- Shape written by analysis_service.py's _ProgressTracker:
+--   {
+--     "milestones": [
+--       {"milestone": "CORPUS_PREPARED", "reached_at": "<ISO 8601 UTC>"},
+--       ...
+--     ],
+--     "early_facts": {
+--       "title": "...", "buyer": "...", "file_number": "...",
+--       "submission_deadline": "...", "clarification_deadline": "...",
+--       "procurement_mechanic": "..."
+--     }
+--   }
+--
+-- Every milestone entry corresponds to a real Fast Analysis task-completion
+-- event (see fast_analysis.py's run_fast_analysis_corpus on_task_done hook
+-- and analysis_service.py's _ProgressTracker) -- never a fake, elapsed-time
+-- estimate. early_facts contains only values read directly from the
+-- engine's own extracted doc_metadata / typed_observations for the
+-- already-completed identity task -- never raw/unvalidated LLM output, and
+-- never a value invented before its source task has actually completed.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+alter table analysis_runs
+    add column if not exists progress jsonb not null default '{}'::jsonb;

@@ -40,6 +40,13 @@ uploads/
 *.log
 tests/fixtures/local/
 
+# Commissioning/evaluation evidence and generated report artifacts --
+# large, regenerable, run-specific output, not implementation (release
+# hygiene, commissioned baseline freeze).
+evaluation/
+output/
+tmp/
+
 # IDE files
 .vscode/
 .idea/

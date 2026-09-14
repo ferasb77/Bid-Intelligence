@@ -1,0 +1,36 @@
+{
+  "critical_gate_snapshot_values": {
+    "Buyer": "Bank of Canada",
+    "Contract Term": "3 years, with 2 optional 1-years extensions (subject to Bank satisfaction and mutual agreement)",
+    "Procurement Model": "Multi-vendor call-off — the Bank may qualify more than one supplier and issue individual engagements as needs arise, rather than a single fixed-scope award",
+    "Solicitation Number": "2026-026"
+  },
+  "deterministic_fast_extraction_count": 3,
+  "fact_origins": {
+    "AMBIGUITY.category_date_distinction": "LIVE_FAST_LLM",
+    "AMBIGUITY.evaluation_weight_conflict": "MISSING",
+    "AMBIGUITY.pricing_stage_ambiguity": "LIVE_FAST_LLM",
+    "BUYER_INTELLIGENCE": "BUYER_INTELLIGENCE_EXTERNAL_LAYER",
+    "COMMERCIAL_POINTS": "LIVE_FAST_LLM",
+    "COMMERCIAL_POINTS.Abnormally Low Pricing": "LIVE_FAST_LLM",
+    "COMMERCIAL_POINTS.Contract Term & Extensions": "LIVE_FAST_LLM",
+    "COMMERCIAL_POINTS.Insurance": "LIVE_FAST_LLM",
+    "COMMERCIAL_POINTS.Pricing Structure": "LIVE_FAST_LLM",
+    "EVAL_WEIGHTS.Category 1": "LIVE_FAST_LLM",
+    "EVAL_WEIGHTS.Category 2": "LIVE_FAST_LLM",
+    "EVAL_WEIGHTS.Category 3": "LIVE_FAST_LLM",
+    "GATE_EXAMPLES": "LIVE_FAST_LLM",
+    "PAGE_LIMIT.Category 1": "DETERMINISTIC_FAST_EXTRACTION",
+    "PAGE_LIMIT.Category 2": "DETERMINISTIC_FAST_EXTRACTION",
+    "PAGE_LIMIT.Category 3": "DETERMINISTIC_FAST_EXTRACTION",
+    "SERVICE_CATEGORY_DESCRIPTION.Category 1": "LIVE_FAST_LLM",
+    "SERVICE_CATEGORY_DESCRIPTION.Category 2": "LIVE_FAST_LLM",
+    "SERVICE_CATEGORY_DESCRIPTION.Category 3": "LIVE_FAST_LLM"
+  },
+  "live_fast_llm_count": 14,
+  "missing_count": 1,
+  "missing_no_fallback_count": 0,
+  "note": "Final, post-fix regeneration. Three post-run, no-new-API-call pipeline fixes were applied after the live run, discovered during visual inspection and cross-checking: (1) category-scope carry-forward for continuation rows (Price/Presentations/Total after a page break) plus a numeric-weight filter for EVAL_WEIGHTS; (2) Abnormally Low Pricing wired from pricing_occurrences into Section 7 (it was successfully extracted but never surfaced); (3) a PRICE_CRITERION signal deterministically derived from evaluation_occurrences and merged with pricing_occurrences before ambiguity detection, since the pricing-focused task's own section never includes the rated-criteria table. All three are adapter/pipeline wiring fixes over already-live-collected data -- zero new API calls. See FAST_ANALYSIS_V4_IMPLEMENTATION_REPORT.md.",
+  "run_id": "fastanalysis-v4-boc-2026-026-20260914T130015Z-e0720d",
+  "safety_net_fallback_count": 0
+}

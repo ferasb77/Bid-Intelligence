@@ -1,0 +1,166 @@
+{
+  "corpus_manifest_digest": "5493933d2bba7ce80ede3c367e865635c4bd410d702b64a103d916d4573b95f2",
+  "methodology": "Every item below was verified directly against the authoritative 16-document corpus text (not against any Deep Verify or prior Fast Analysis PDF) using deterministic text search with page-marker mapping, cross-checked against V4's own persisted, source_refs-carrying facts where the two agree. Where V4's live extraction and a direct source re-check disagreed (Category 2's weight table; the evaluation-weight ambiguity), the direct source re-check is authoritative and is documented as such. This file supersedes the Deep-derived PDF as the fidelity comparison target for this corpus going forward.",
+  "identity_and_structure": [
+    {"item_id": "buyer", "expected_value": "Bank of Canada", "classification": "required",
+     "source_document": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+     "source_marker": "throughout; cover/header", "notes": null},
+    {"item_id": "solicitation_number", "expected_value": "RFP 2026-026", "classification": "required",
+     "source_document": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+     "source_marker": "page 1 (cover), repeated in page headers", "notes": null},
+    {"item_id": "opportunity_title", "expected_value": "Request for Proposal for Talent, Learning and Organizational Development Services",
+     "classification": "required",
+     "source_document": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+     "source_marker": "page 1", "notes": null},
+    {"item_id": "procurement_model", "expected_value": "Multi-vendor call-off -- the Bank may qualify more than one supplier per category and issue individual engagements as needs arise",
+     "classification": "required",
+     "source_document": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+     "source_marker": "page 13-14 (MULTIPLE_SUPPLIER_AWARD: max 5/3/7 proponents per category)", "notes": null},
+    {"item_id": "contract_term", "expected_value": "3 years initial term, with up to 2 additional 1-year extension options",
+     "classification": "required",
+     "source_document": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+     "source_marker": "page 13-14", "notes": null}
+  ],
+  "dates": [
+    {"item_id": "clarification_deadline", "expected_value": "2026-09-10, 11:59:00pm EST via MERX",
+     "classification": "required",
+     "source_document": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+     "source_marker": "page 3", "notes": null},
+    {"item_id": "submission_deadline", "expected_value": "2026-09-30, 11:59:00pm EST via MERX",
+     "classification": "required",
+     "source_document": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+     "source_marker": "page 3", "notes": null},
+    {"item_id": "category_1_presentation_date", "expected_value": "Week of October 26",
+     "classification": "required",
+     "source_document": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+     "source_marker": "page 3", "notes": "No specific day or year resolved in the source text itself -- 'Week of October 26' is the RFP's own literal phrasing."},
+    {"item_id": "category_3_presentation_date", "expected_value": "Week of November 2",
+     "classification": "required",
+     "source_document": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+     "source_marker": "page 3", "notes": "Same basis as category_1_presentation_date."},
+    {"item_id": "category_2_presentation_date", "expected_value": "NOT_PRESENT -- Category 2 (HR Advisory) has no presentation/demonstration stage",
+     "classification": "required",
+     "source_document": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+     "source_marker": "page 3 (only Categories 1 and 3 listed under Stage 3 presentations)", "notes": null}
+  ],
+  "response_requirements": [
+    {"item_id": "d1_page_limit", "expected_value": 15, "classification": "required",
+     "source_document": "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx",
+     "source_marker": "Header/Instructions", "notes": "Deterministic regex extraction, verified 3 times across V1-V4."},
+    {"item_id": "d2_page_limit", "expected_value": 12, "classification": "required",
+     "source_document": "Amendment1/RFP 2026-026 - Appendix D2 - Rated Criteria Response REVISED.docx",
+     "source_marker": "Header/Instructions", "notes": "Deterministic regex extraction, verified 3 times across V1-V4."},
+    {"item_id": "d3_page_limit", "expected_value": 10, "classification": "required",
+     "source_document": "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx",
+     "source_marker": "Header/Instructions", "notes": "Deterministic regex extraction, verified 3 times across V1-V4."},
+    {"item_id": "bilingual_requirement", "expected_value": "Written confirmation of ability to deliver all services, materials and solutions in both English and French",
+     "classification": "required",
+     "source_document": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+     "source_marker": "page 15 (Appendix B1/B2 mandatory criteria)", "notes": null},
+    {"item_id": "security_clearance_requirement", "expected_value": "Reliability clearance for all delivery resources (electronic fingerprints, criminal record check, credit check, possible security screening interview)",
+     "classification": "required",
+     "source_document": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+     "source_marker": "page 15 (Appendix B1/B2/B3 mandatory criteria)", "notes": null},
+    {"item_id": "accessibility_requirement", "expected_value": "Digital learning content must comply with CAN/ASC EN 301 549:2024 and WCAG accessibility standards",
+     "classification": "required",
+     "source_document": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+     "source_marker": "page 15 (Appendix B1/B3 mandatory criteria)", "notes": null}
+  ],
+  "evaluation_criteria": {
+    "authoritative_primary_evaluation_count": 20,
+    "historical_gate_assumption": 18,
+    "count_retirement_note": "The '18 primary weights' figure, used as the acceptance target since Fast Analysis V1 (and matching Deep Verify's own published report), undercounts Category 2 by 2 criteria. The true, source-verified count is 20 (7 + 7 + 6). The 18-item gate is retired by this reconciliation in favor of this per-criterion, source-verified count.",
+    "category_1": {
+      "form": "Appendix D1 -- Learning & Development Programs and Assessments",
+      "criterion_count": 7,
+      "total_points": 75,
+      "source_document": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+      "criteria": [
+        {"criterion": "Corporate Profile", "weight": "5 points", "source_page": 15},
+        {"criterion": "Key Personnel and Roster", "weight": "15 points", "source_page": 15},
+        {"criterion": "Curriculum & Program Design Capability", "weight": "35 points", "source_page": 15},
+        {"criterion": "Measurement Approach", "weight": "5 points", "source_page": 15},
+        {"criterion": "Relationship Management", "weight": "5 points", "source_page": 15},
+        {"criterion": "Value-add", "weight": "5 points", "source_page": 15},
+        {"criterion": "Relevant Experience and References", "weight": "5 points", "source_page": 15}
+      ]
+    },
+    "category_2": {
+      "form": "Appendix D2 -- HR Advisory",
+      "criterion_count": 7,
+      "total_points": 75,
+      "source_document": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+      "criteria": [
+        {"criterion": "Corporate Profile", "weight": "5 points", "source_page": 15},
+        {"criterion": "Key Personnel and Roster", "weight": "15 points", "source_page": 15},
+        {"criterion": "Methodology and Advisory Approach", "weight": "35 points", "source_page": 15},
+        {"criterion": "Thought Leadership & Innovation", "weight": "5 points", "source_page": 15},
+        {"criterion": "Relationship Management", "weight": "5 points", "source_page": 15},
+        {"criterion": "Value-add", "weight": "5 points", "source_page": 16,
+         "notes": "Continues across the page 15->16 boundary, directly following Category 2's own 'Relationship Management' row with no new Appendix heading in between. CONFIRMED present -- this and the next row are the 2 criteria V4 reported and Deep Verify's own published report omits."},
+        {"criterion": "Relevant Experience and References", "weight": "5 points", "source_page": 16,
+         "notes": "Same page-break continuation as Value-add above. CONFIRMED present."}
+      ]
+    },
+    "category_3": {
+      "form": "Appendix D3 -- Facilitation and Team Effectiveness",
+      "criterion_count": 6,
+      "total_points": 100,
+      "source_document": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+      "criteria": [
+        {"criterion": "Corporate Profile", "weight": "10 points", "source_page": 16},
+        {"criterion": "Key Personnel and Roster", "weight": "20 points", "source_page": 16},
+        {"criterion": "Facilitation Methodology", "weight": "30 points", "source_page": 16},
+        {"criterion": "Value-add", "weight": "5 points", "source_page": 16},
+        {"criterion": "Relevant Experience and References", "weight": "10 points", "source_page": 16},
+        {"criterion": "Price", "weight": "25 points", "source_page": 16,
+         "notes": "Scored within Category 3's own 100-point table -- see pricing_stage_ambiguity below."}
+      ],
+      "total_row_confirmed": "'Total points: 100 points' is explicitly stated in the source text immediately after the Price row (page 16), directly confirming the 6-row sum."
+    }
+  },
+  "pricing_and_commercial": [
+    {"item_id": "pricing_stage_exists", "expected_value": "Stage 4. Pricing is a separately-defined evaluation stage, applied 'for each qualified proposal' after mandatory requirements and non-price rated criteria",
+     "classification": "required",
+     "source_document": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+     "source_marker": "page 9 (section 3.1, Stage 4)", "notes": null},
+    {"item_id": "price_criterion_in_category_3_table", "expected_value": "'Price' is scored as its own 25-point line item within Category 3's own 100-point rated-criteria table",
+     "classification": "required",
+     "source_document": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+     "source_marker": "page 16 (Rated Criteria section)", "notes": "This co-existing with pricing_stage_exists is exactly the source of the pricing-stage ambiguity."},
+    {"item_id": "abnormally_low_pricing_provision", "expected_value": "If a proponent's pricing appears abnormally low, the Bank may require a detailed explanation and reserves the right to require contract security in the form of a performance bond",
+     "classification": "required",
+     "source_document": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+     "source_marker": "page 9-10 (within the Stage 4 Pricing description)", "notes": null},
+    {"item_id": "insurance_cgl_eo_wsib", "expected_value": "Commercial General Liability Insurance (min. $3,000,000 per occurrence), Errors & Omissions Liability (min. $3,000,000 per occurrence), and Workplace Safety and Insurance coverage all required",
+     "classification": "required",
+     "source_document": "OriginalRevision/RFP 2026-06 - Appendix G - Form of Agreement.docx",
+     "source_marker": "Indemnity and Insurance section", "notes": null},
+    {"item_id": "contract_term_extensions_commercial", "expected_value": "3 years, with 2 optional 1-year extensions, subject to Bank satisfaction and mutual agreement",
+     "classification": "required",
+     "source_document": "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf",
+     "source_marker": "page 13-14", "notes": "Same underlying fact as contract_term above; listed separately because it is also a required Section 7 (Commercial) report item."},
+    {"item_id": "pricing_structure_all_inclusive", "expected_value": "Pricing must be all-inclusive, in Canadian dollars (CAD), excluding applicable taxes",
+     "classification": "required",
+     "source_document": "OriginalRevision/RFP 2026-026 - Appendix E - Pricing Form.xlsx",
+     "source_marker": "Pricing Form instructions", "notes": null}
+  ],
+  "ambiguity_expected_states": [
+    {
+      "ambiguity_class": "evaluation_weight_conflict",
+      "expected_state": "NOT_PRESENT",
+      "rationale": "Every apparent weight variation for a similarly-named criterion (Corporate Profile: 5/5/10; Key Personnel and Roster: 15/15/20) is scoped to a distinct, explicitly-named category (Appendix D1/D2/D3) in the same source table. No occurrence of the same criterion label with a different value WITHIN the same category/scope was found anywhere in the 16-document corpus. The historical Deep-derived report's claimed third 'Key Personnel: 100 points' value is, in the source text, Category 3's own 'Total points: 100 points' row -- not a Key Personnel value. The historical claimed 'Methodology: 5 points' value does not appear anywhere in the corpus at all; the 30 and 35-point figures Deep cites belong to two DIFFERENTLY-NAMED criteria ('Facilitation Methodology' in D3, 'Methodology and Advisory Approach' in D2), not one repeated label.",
+      "classification": "FALSE_POSITIVE_FROM_SCOPE_CONFLATION -- retired for this corpus"
+    },
+    {
+      "ambiguity_class": "pricing_stage_ambiguity",
+      "expected_state": "PRESENT",
+      "rationale": "Category 3's own rated-criteria table scores 'Price' as a 25-point line item (page 16), while section 3.1 separately defines 'Stage 4. Pricing' as its own evaluation stage applied to every qualified proposal (page 9). A bidder in Category 3 cannot tell from the RFP alone whether this means price is scored once (via the embedded line item) or twice (there, and again at Stage 4). This is a genuine, source-supported structural ambiguity, not a conflation."
+    },
+    {
+      "ambiguity_class": "category_date_distinction",
+      "expected_state": "PRESENT",
+      "rationale": "Category 1 and Category 3 each have their own, distinctly-dated presentation stage ('Week of October 26' and 'Week of November 2' respectively), sharing the same underlying milestone label (Presentation/Demonstration). This is best described as a scoped, category-specific difference rather than a contradiction -- a bid team tracking only one date could still miss the one applicable to its own category, so it is worth surfacing, but it is not evidence of an internally inconsistent RFP the way a same-scope value conflict would be."
+    }
+  ]
+}

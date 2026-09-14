@@ -25,6 +25,7 @@ Part 2: Mocked Stage A Orchestration tests:
 """
 import unittest
 import json
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from extractor import (
@@ -438,6 +439,214 @@ class TestMockedStageAOrchestration(unittest.TestCase):
         # Date under-coverage resolved
         self.assertEqual(facts["_extraction_diagnostic"]["status"], "VERIFIED_ADEQUATE")
 
+
+class TestStageATelemetryCapture(unittest.TestCase):
+    """Additive, behaviorally-inert diagnostic telemetry (latency/token usage)
+    for Stage A -- mirrors the same pattern already established and tested
+    for Stage D's response checkpoint (tests/test_stage_d_projection.py:
+    test_response_checkpoint_captures_token_usage_without_changing_result /
+    test_response_checkpoint_tolerates_missing_usage_attribute)."""
+
+    def test_telemetry_capture_does_not_change_returned_result(self):
+        text = "[[SOURCE: doc.pdf | PAGE: 1]]\n" + ("Section text. " * 50)
+        usage = SimpleNamespace(input_tokens=4321, output_tokens=99)
+
+        def make_client():
+            client = MagicMock()
+            client.messages.create.return_value = SimpleNamespace(
+                content=[SimpleNamespace(text=json.dumps({"requirements": []}))],
+                stop_reason="end_turn", usage=usage)
+            return client
+
+        with patch("extractor.get_anthropic_client", return_value=make_client()):
+            baseline = extract_document_facts(text, "doc.pdf", "test_key")
+        telemetry = []
+        with patch("extractor.get_anthropic_client", return_value=make_client()):
+            instrumented = extract_document_facts(text, "doc.pdf", "test_key", telemetry=telemetry)
+
+        self.assertEqual(baseline, instrumented)
+        self.assertGreaterEqual(len(telemetry), 1)
+        record = telemetry[0]
+        self.assertEqual(record["filename"], "doc.pdf")
+        self.assertEqual(record["input_tokens"], 4321)
+        self.assertEqual(record["output_tokens"], 99)
+        self.assertEqual(record["stop_reason"], "end_turn")
+        self.assertIsInstance(record["latency_seconds"], float)
+        self.assertGreaterEqual(record["latency_seconds"], 0.0)
+
+    def test_telemetry_tolerates_missing_usage_attribute(self):
+        text = "[[SOURCE: doc.pdf | PAGE: 1]]\n" + ("Section text. " * 50)
+        client = MagicMock()
+        # SimpleNamespace without a `usage` attribute at all -- unlike a bare
+        # MagicMock (which auto-creates any attribute access), this proves
+        # getattr(..., "usage", None) genuinely degrades to None rather than
+        # coincidentally succeeding against a mock's auto-attribute.
+        client.messages.create.return_value = SimpleNamespace(
+            content=[SimpleNamespace(text=json.dumps({"requirements": []}))],
+            stop_reason="end_turn")
+        telemetry = []
+        with patch("extractor.get_anthropic_client", return_value=client):
+            extract_document_facts(text, "doc.pdf", "test_key", telemetry=telemetry)
+
+        self.assertGreaterEqual(len(telemetry), 1)
+        self.assertIsNone(telemetry[0]["input_tokens"])
+        self.assertIsNone(telemetry[0]["output_tokens"])
+
+    def test_telemetry_default_none_is_a_complete_no_op(self):
+        """Every existing caller passes no `telemetry` argument; confirm the
+        default produces no new attribute, no side effect, and no change to
+        _extract_chunk_facts' own behavior beyond the pre-existing return
+        value."""
+        text = "[[SOURCE: doc.pdf | PAGE: 1]]\n" + ("Section text. " * 50)
+        client = MagicMock()
+        client.messages.create.return_value = SimpleNamespace(
+            content=[SimpleNamespace(text=json.dumps({"requirements": []}))],
+            stop_reason="end_turn", usage=SimpleNamespace(input_tokens=1, output_tokens=1))
+        with patch("extractor.get_anthropic_client", return_value=client):
+            facts = extract_document_facts(text, "doc.pdf", "test_key")
+        self.assertNotIn("_telemetry", facts)
+
+    def test_telemetry_captures_call_identity_and_request_shape(self):
+        """Every field the live-telemetry acquisition task requires per call
+        (beyond latency/tokens/stop_reason, already covered above): model,
+        temperature, request size, parsed source characters, call index,
+        call kind, parse status, wall-clock start/end timestamps."""
+        text = "[[SOURCE: doc.pdf | PAGE: 1]]\n" + ("Section text. " * 50)
+        client = MagicMock()
+        client.messages.create.return_value = SimpleNamespace(
+            content=[SimpleNamespace(text=json.dumps({"requirements": []}))],
+            stop_reason="end_turn", usage=SimpleNamespace(input_tokens=10, output_tokens=5))
+        telemetry = []
+        with patch("extractor.get_anthropic_client", return_value=client):
+            extract_document_facts(text, "doc.pdf", "test_key", telemetry=telemetry)
+
+        self.assertGreaterEqual(len(telemetry), 1)
+        record = telemetry[0]
+        self.assertEqual(record["model"], "claude-haiku-4-5-20251001")
+        self.assertEqual(record["temperature"], 0.0)
+        self.assertEqual(record["call_index"], 0)
+        self.assertEqual(record["call_kind"], "initial")
+        self.assertEqual(record["chunk_chars"], len(text))
+        self.assertGreater(record["request_bytes"], record["chunk_chars"])
+        self.assertEqual(record["parse_status"], "COMPLETE")
+        self.assertIsNone(record["error"])
+        # ISO 8601 timestamps must parse and end must not precede start.
+        from datetime import datetime as _dt
+        started = _dt.fromisoformat(record["call_started_at"])
+        ended = _dt.fromisoformat(record["call_ended_at"])
+        self.assertLessEqual(started, ended)
+
+    def test_telemetry_call_index_is_monotonic_across_multiple_calls(self):
+        """A shared telemetry list threaded across an entire run must let
+        every call be correlated to its position in that run -- call_index
+        must equal the record's own position in the list, in order, with no
+        gaps or repeats, even across a document's recovery cascade."""
+        page1 = "[[SOURCE: doc.pdf | PAGE: 1]]\n" + ("Section 1 text. " * 300)
+        page2 = "[[SOURCE: doc.pdf | PAGE: 2]]\n" + ("Section 2 text. " * 300)
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = SimpleNamespace(
+            content=[SimpleNamespace(text=json.dumps({"requirements": []}))],
+            stop_reason="end_turn", usage=SimpleNamespace(input_tokens=1, output_tokens=1))
+        telemetry = []
+        with patch("extractor.get_anthropic_client", return_value=mock_client), \
+             patch("extractor._STAGE_A_MAX_CHUNK_CHARS", 3000):
+            extract_document_facts(f"{page1}\n{page2}", "doc.pdf", "test_key", telemetry=telemetry)
+        self.assertGreaterEqual(len(telemetry), 2)
+        for position, record in enumerate(telemetry):
+            self.assertEqual(record["call_index"], position)
+
+    def test_telemetry_labels_recovery_subchunk_calls_distinctly_from_initial(self):
+        """A RECOVERED_TRUNCATED chunk's own sub-chunk recovery calls must be
+        labeled call_kind="recovery_subchunk_truncated", distinguishable in
+        the telemetry stream from the initial call that triggered them."""
+        text = (
+            "[[SOURCE: doc.pdf | PAGE: 1]]\n"
+            "The contractor shall deliver goods. All suppliers must be registered.\n"
+        )
+        mock_client = MagicMock()
+        call_count = [0]
+
+        def side_effect(*args, **kwargs):
+            call_count[0] += 1
+            resp = MagicMock()
+            resp.usage = SimpleNamespace(input_tokens=1, output_tokens=1)
+            resp.stop_reason = "end_turn"
+            if call_count[0] == 1:
+                resp.content = [MagicMock(text='{"requirements": [{"req_id": "M1"')]  # truncated
+            else:
+                resp.content = [MagicMock(text=json.dumps({"requirements": [{"req_id": "M1", "category": "Mandatory"}]}))]
+            return resp
+
+        mock_client.messages.create.side_effect = side_effect
+        telemetry = []
+        with patch("extractor.get_anthropic_client", return_value=mock_client):
+            extract_document_facts(text, "doc.pdf", "test_key", telemetry=telemetry)
+
+        kinds = [record["call_kind"] for record in telemetry]
+        self.assertIn("initial", kinds)
+        self.assertIn("recovery_subchunk_truncated", kinds)
+
+    def test_telemetry_records_exception_and_reraises_unchanged(self):
+        """An API exception must be recorded into telemetry (error populated,
+        token/stop_reason fields null) and then re-raised unchanged -- the
+        instrumentation must never swallow or transform a real failure."""
+        client = MagicMock()
+        client.messages.create.side_effect = RuntimeError("simulated provider outage")
+        telemetry = []
+        with patch("extractor.get_anthropic_client", return_value=client):
+            with self.assertRaises(RuntimeError):
+                extract_document_facts("[[SOURCE: doc.pdf | PAGE: 1]]\nSome text.",
+                                       "doc.pdf", "test_key", telemetry=telemetry)
+        self.assertEqual(len(telemetry), 1)
+        self.assertIn("simulated provider outage", telemetry[0]["error"])
+        self.assertIsNone(telemetry[0]["input_tokens"])
+        self.assertIsNone(telemetry[0]["output_tokens"])
+        self.assertIsNone(telemetry[0]["parse_status"])
+
+    def test_telemetry_captures_record_counts_by_family(self):
+        """Recovery-Path Optimization Package 2: each call's own raw parsed
+        output must additively report a deterministic (no LLM) record count
+        per list-valued family, computed the same way document-level
+        record_counts_by_family is computed downstream -- needed to quantify
+        per-call productive vs. wasted output without re-running the model."""
+        text = "[[SOURCE: doc.pdf | PAGE: 1]]\n" + ("Section text. " * 50)
+        client = MagicMock()
+        client.messages.create.return_value = SimpleNamespace(
+            content=[SimpleNamespace(text=json.dumps({
+                "requirements": [{"req_id": "M1"}, {"req_id": "M2"}],
+                "dates": [{"milestone": "Close", "date": "2026-01-01"}],
+                "evaluation_criteria": [],
+            }))],
+            stop_reason="end_turn", usage=SimpleNamespace(input_tokens=10, output_tokens=5))
+        telemetry = []
+        with patch("extractor.get_anthropic_client", return_value=client):
+            extract_document_facts(text, "doc.pdf", "test_key", telemetry=telemetry)
+
+        self.assertGreaterEqual(len(telemetry), 1)
+        record_counts = telemetry[0]["record_counts"]
+        self.assertEqual(record_counts["requirements"], 2)
+        self.assertEqual(record_counts["dates"], 1)
+        self.assertEqual(record_counts["evaluation_criteria"], 0)
+
+    def test_call_uses_configured_max_output_tokens(self):
+        """Recovery-Path Optimization Package 2 tested raising this ceiling
+        (see extractor.py's comment on _STAGE_A_MAX_OUTPUT_TOKENS for why the
+        candidate was rejected and the value reverted to 8000). Every call
+        site (initial and every recovery kind) must still request the
+        module's single configured constant, not a hardcoded literal, so a
+        future retest is a one-constant change with no risk of a missed
+        call site."""
+        from extractor import _STAGE_A_MAX_OUTPUT_TOKENS
+        self.assertEqual(_STAGE_A_MAX_OUTPUT_TOKENS, 8000)
+        text = "[[SOURCE: doc.pdf | PAGE: 1]]\n" + ("Section text. " * 50)
+        client = MagicMock()
+        client.messages.create.return_value = SimpleNamespace(
+            content=[SimpleNamespace(text=json.dumps({"requirements": []}))],
+            stop_reason="end_turn", usage=SimpleNamespace(input_tokens=1, output_tokens=1))
+        with patch("extractor.get_anthropic_client", return_value=client):
+            extract_document_facts(text, "doc.pdf", "test_key")
+        _, kwargs = client.messages.create.call_args
+        self.assertEqual(kwargs["max_tokens"], _STAGE_A_MAX_OUTPUT_TOKENS)
 
 
 class TestTruncatedExtractionSafetyPass(unittest.TestCase):

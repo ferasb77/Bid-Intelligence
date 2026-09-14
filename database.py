@@ -65,9 +65,17 @@ def create_bid(data):
     return int(row["id"]) if row else None
 
 def update_bid(bid_id, data):
-    clean = {k: data.get(k) for k in
-             ["title","client","file_number","stage","sensitivity","owner",
-              "value_cad","submission_deadline","clarification_deadline","notes"]}
+    """Partial update: only writes keys the caller actually included in
+    `data`. A key that's absent is left untouched on the row; a key that's
+    present with value None is written as NULL -- several call sites (the
+    Edit Bid form, in particular) rely on that explicit-None-means-clear
+    semantic for value_cad/submission_deadline/clarification_deadline, so
+    presence (not truthiness) is what decides inclusion here."""
+    keys = ["title","client","file_number","stage","sensitivity","owner",
+            "value_cad","submission_deadline","clarification_deadline","notes"]
+    clean = {k: data[k] for k in keys if k in data}
+    if not clean:
+        return
     get_client().table("bids").update(clean).eq("id", bid_id).execute()
 
 def delete_bid(bid_id):
@@ -567,6 +575,115 @@ def get_firm_profile() -> dict:
     except Exception:
         pass
     return DEFAULT_FIRM_PROFILE.copy()
+
+
+# ── Analysis Runs (Fast Analysis / Deep Verify integration) ──────────────────
+def create_analysis_run(bid_id: int, analysis_mode: str, engine_version: str,
+                        corpus_document_ids: list, corpus_digest: str | None = None,
+                        created_by: str | None = None) -> dict | None:
+    """Create a new analysis_runs row in QUEUED status. Relies on the
+    partial unique index idx_analysis_runs_one_active for the durable,
+    race-safe duplicate-start guard -- if a non-terminal run already exists
+    for this (bid_id, analysis_mode), the insert raises and this returns
+    None; callers must check for that before assuming a new run started."""
+    sb = get_client()
+    try:
+        row = _one(sb.table("analysis_runs").insert({
+            "bid_id": bid_id, "analysis_mode": analysis_mode,
+            "engine_version": engine_version, "status": "QUEUED",
+            "corpus_document_ids": corpus_document_ids or [],
+            "corpus_digest": corpus_digest, "created_by": created_by,
+        }).execute())
+        return row
+    except Exception as e:
+        err = str(e).lower()
+        if "duplicate" in err or "unique" in err or "idx_analysis_runs_one_active" in err:
+            return None
+        raise
+
+
+def get_active_analysis_run(bid_id: int, analysis_mode: str) -> dict | None:
+    """Return the current non-terminal run for (bid_id, analysis_mode), if
+    any -- mirrors the partial unique index's own definition of 'active'."""
+    sb = get_client()
+    rows = _rows(sb.table("analysis_runs").select("*")
+                 .eq("bid_id", bid_id).eq("analysis_mode", analysis_mode)
+                 .not_.in_("status", ["COMPLETE", "FAILED"])
+                 .order("created_at", desc=True).limit(1).execute())
+    return rows[0] if rows else None
+
+
+def get_analysis_run(run_id: int) -> dict | None:
+    return _one(get_client().table("analysis_runs").select("*").eq("id", run_id).execute())
+
+
+def get_latest_analysis_run(bid_id: int, analysis_mode: str | None = None) -> dict | None:
+    """Most recent run for a bid, optionally filtered to one mode -- COMPLETE,
+    FAILED, or in-progress, whichever was created last."""
+    sb = get_client()
+    q = sb.table("analysis_runs").select("*").eq("bid_id", bid_id)
+    if analysis_mode:
+        q = q.eq("analysis_mode", analysis_mode)
+    rows = _rows(q.order("created_at", desc=True).limit(1).execute())
+    return rows[0] if rows else None
+
+
+def list_analysis_runs(bid_id: int) -> list:
+    return _rows(get_client().table("analysis_runs").select("*")
+                .eq("bid_id", bid_id).order("created_at", desc=True).execute())
+
+
+def update_analysis_run(run_id: int, data: dict) -> None:
+    """Update lifecycle/status fields. Callers pass only the fields they
+    intend to change (e.g. {"status": "ANALYZING", "started_at": ...})."""
+    keys = ["status", "started_at", "completed_at", "failed_at", "failure_reason",
+            "failure_detail", "telemetry", "report_storage_path", "corpus_digest",
+            "progress"]
+    clean = {k: data[k] for k in keys if k in data}
+    if not clean:
+        return
+    get_client().table("analysis_runs").update(clean).eq("id", run_id).execute()
+
+
+def create_analysis_result(run_id: int, bid_id: int, structured_intelligence: dict,
+                           fact_origins: dict | None = None,
+                           report_content_snapshot: dict | None = None) -> dict | None:
+    return _one(get_client().table("analysis_results").insert({
+        "run_id": run_id, "bid_id": bid_id,
+        "structured_intelligence": structured_intelligence,
+        "fact_origins": fact_origins or {},
+        "report_content_snapshot": report_content_snapshot,
+    }).execute())
+
+
+def get_analysis_result(run_id: int) -> dict | None:
+    return _one(get_client().table("analysis_results").select("*").eq("run_id", run_id).execute())
+
+
+def upload_analysis_report(bid_id: int, run_id: int, pdf_bytes: bytes) -> str:
+    """Upload a rendered analysis-run report PDF to the same Storage bucket
+    and convention as `save_upload` uses for source documents. Returns the
+    storage_path to persist on the analysis_runs row."""
+    sb = get_client()
+    storage_path = f"{bid_id}/analysis_reports/{run_id}.pdf"
+    sb.storage.from_(BUCKET).upload(
+        storage_path, pdf_bytes,
+        file_options={"content-type": "application/pdf", "upsert": "true"})
+    return storage_path
+
+
+def get_latest_analysis_result(bid_id: int, analysis_mode: str = "FAST") -> dict | None:
+    """Convenience: the structured result of the most recent COMPLETE run
+    for a bid+mode, or None if no run has ever completed."""
+    sb = get_client()
+    runs = _rows(sb.table("analysis_runs").select("id")
+                .eq("bid_id", bid_id).eq("analysis_mode", analysis_mode)
+                .eq("status", "COMPLETE")
+                .order("completed_at", desc=True).limit(1).execute())
+    if not runs:
+        return None
+    return get_analysis_result(runs[0]["id"])
+
 
 def save_firm_profile(data: dict) -> None:
     """Save or update the global bidding firm profile."""

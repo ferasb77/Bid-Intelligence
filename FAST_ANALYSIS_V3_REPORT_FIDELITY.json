@@ -1,0 +1,165 @@
+{
+  "comparison": "Fast Analysis V3 PDF (BANK_OF_CANADA_RFP_2026_026_BID_INTELLIGENCE_PREVIEW_FAST_V3.pdf) vs Deep Verify PDF (BANK_OF_CANADA_RFP_2026_026_BID_INTELLIGENCE_PREVIEW.pdf), using the identical per-item classification methodology V1/V2 used",
+  "methodology_note": "Same fully-itemized convention as V2 (flat sum: total_scored_items = match+sem_eq+missing+incorrect+extra, percentage = (match+sem_eq)/total_scored_items, extras INCLUDED in the denominator). V3 genuinely surfaced 4 new, accurate commercial-clause rows Deep Verify's report never had (Payment Withholding/Setoff, Pricing Escalation, Assignment, Governing Law & Dispute) -- under this flat-sum convention, each additional accurate-but-extra row counts AGAINST the percentage, producing a counterintuitive result (the score goes DOWN even though real content went up). Per instruction 13 ('do not alter denominators ... to achieve 90%'), this report does not suppress or reweight that -- both the flat-sum number and a required-items-only number (denominator excludes EXTRA_NOT_REQUIRED entirely) are reported below, fully labeled, so the artifact of this specific convention is visible rather than hidden.",
+  "sections": [
+    {
+      "section": "1. Executive Opportunity Snapshot",
+      "v3_change": "None -- unaffected, reconfirmed unchanged in this run.",
+      "items": [
+        {"item": "Buyer", "score": "MATCH"},
+        {"item": "Solicitation number", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Opportunity title", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Submission deadline", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Clarification deadline", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Procurement model", "score": "MATCH"},
+        {"item": "Contract term", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Category 1/2/3 page limits", "score": "MATCH", "note": "15/12/10, unchanged, deterministic"},
+        {"item": "Category 1/2/3 presentation-stage flags", "score": "MATCH"}
+      ]
+    },
+    {
+      "section": "2. Buyer Intelligence",
+      "v3_change": "None -- external layer, excluded from the procurement fidelity percentage.",
+      "items": [{"item": "Entire section", "score": "UNCHANGED_EXTERNAL_LAYER"}]
+    },
+    {
+      "section": "3. What Is Being Procured?",
+      "v3_change": "None -- V2's exclusive-category-match fix reconfirmed working in this run's own live output.",
+      "items": [
+        {"item": "Intro paragraph", "score": "MATCH"},
+        {"item": "Category 1 scope description", "score": "SEMANTICALLY_EQUIVALENT", "note": "distinct, correct content, reconfirmed this run"},
+        {"item": "Category 2 scope description", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Category 3 scope description", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "How suppliers participate / call-off narrative", "score": "MATCH"}
+      ]
+    },
+    {
+      "section": "4. Critical Dates & Bid Mechanics",
+      "v3_change": "None -- V2's date type-safety gate reconfirmed working: exactly 4 correct rows, no contamination, in this run's live output.",
+      "items": [
+        {"item": "Clarification deadline row", "score": "MATCH"},
+        {"item": "Submission deadline row", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Category 1 presentation date", "score": "SEMANTICALLY_EQUIVALENT", "note": "'Week of October 26' -- RFP's own phrasing"},
+        {"item": "Category 3 presentation date", "score": "SEMANTICALLY_EQUIVALENT", "note": "'Week of November 2'"},
+        {"item": "Submission mechanics bullets", "score": "MATCH"}
+      ]
+    },
+    {
+      "section": "5. Evaluation",
+      "v3_change": "Weight tables MATCH and are reconfirmed rendering correctly -- but see the IMPORTANT CAVEAT below: this run's own live extraction for D1/D2/D3 (and the B1-3/C1-3 batch call) returned every weight value as null, an extraction-quality regression unrelated to any V3 code change (V3 did not touch the EVAL_ONLY route/schema/routing at all). The existing all-or-nothing safety-net fallback (already present since v1) correctly substituted the validated Deep Verify weight tables when Fast's own extraction came back empty across all 3 categories, so the rendered PDF is still fully correct -- but this specific run's OWN live extraction did not in fact produce these values.",
+      "items": [
+        {"item": "5-stage structure table", "score": "MATCH"},
+        {"item": "Minimum-qualification gate examples", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Category 1 (D1) weight table -- all 7 rows", "score": "MATCH", "note": "correct in the rendered PDF via the safety-net fallback (see caveat above); this run's own extraction returned null weights for all D1 rows"},
+        {"item": "Category 2 (D2) weight table -- all 5 rows", "score": "MATCH", "note": "same caveat"},
+        {"item": "Category 3 (D3) weight table -- all 6 rows", "score": "MATCH", "note": "same caveat"},
+        {"item": "Weight-table note", "score": "SEMANTICALLY_EQUIVALENT", "note": "correctly omits a dangling reference, unchanged from V2's fix"}
+      ]
+    },
+    {
+      "section": "6. Response Requirements",
+      "v3_change": "None.",
+      "items": [
+        {"item": "9-row checklist", "score": "MATCH"},
+        {"item": "Also-required bullets", "score": "MATCH"}
+      ]
+    },
+    {
+      "section": "7. Commercial & Contractual",
+      "v3_change": "FIXED (partially): Insurance is now present, confirmed live -- 5 genuine INSURANCE-kind clauses were extracted this run, including the exact material $3,000,000 CGL and E&O figures the original audit named as a required 'material commercial point' (the rendered row happens to show a different one of the 5 real Insurance entries, since the adapter's clauses_by_kind takes only the FIRST entry per kind -- all 5 are present in the raw data either way). Root cause confirmed empirically (see implementation report S 'Insurance investigation'): the Insurance clause text was always present in Appendix G's routed text but sat inside a chunk that truncated -- classified TRUNCATED, not a schema or model-omission problem. V2's ineffective prompt-clarity addition (which never fixed this) was reverted; the split-recovery mechanism fixed it organically. Abnormally Low Pricing remains MISSING: confirmed via source investigation to live in the master RFP's own truncating chunk (same chunk as the still-unresolved ambiguity gap) and the requirements-topic schema was widened to request it, but this run's bounded one-level split still did not surface it (see S 8 below) -- classified TRUNCATED + the schema fix is in place but unproven this run.",
+      "items": [
+        {"item": "Intellectual Property", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Background Check Clearance", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Regulatory Compliance", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Confidentiality", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Liability Indemnity", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Data Protection Privacy", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Cybersecurity Security", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Termination", "score": "SEMANTICALLY_EQUIVALENT"},
+        {"item": "Other (force majeure)", "score": "EXTRA_NOT_REQUIRED"},
+        {"item": "Personnel Key Staff", "score": "EXTRA_NOT_REQUIRED"},
+        {"item": "Insurance (CGL $3M / E&O / WSIB)", "score": "SEMANTICALLY_EQUIVALENT", "note": "FIXED -- was MISSING in V1/V2; now real, correct, source-supported content, organically recovered by split-on-truncation recovery"},
+        {"item": "Pricing Structure", "score": "SEMANTICALLY_EQUIVALENT", "note": "unchanged from V2's fix"},
+        {"item": "Abnormally Low Pricing", "score": "MISSING", "note": "still absent -- root cause reclassified this package from SOURCE_NOT_SUPPORTED to TRUNCATED; the requirements-topic schema was widened to request it, but the truncating chunk's bounded one-level split still didn't reach it in this run's output ordering"},
+        {"item": "Contract Term & Extensions", "score": "SEMANTICALLY_EQUIVALENT", "note": "unchanged from V2's fix"},
+        {"item": "Subcontracting", "score": "EXTRA_NOT_REQUIRED", "note": "new this run -- real, accurate, additional content not in Deep's 10-topic list"},
+        {"item": "Change Control", "score": "EXTRA_NOT_REQUIRED", "note": "new this run"},
+        {"item": "Payment Withholding Setoff", "score": "EXTRA_NOT_REQUIRED", "note": "new this run -- genuine content the split-recovery mechanism additionally surfaced from Appendix G"},
+        {"item": "Pricing Escalation", "score": "EXTRA_NOT_REQUIRED", "note": "new this run"},
+        {"item": "Assignment", "score": "EXTRA_NOT_REQUIRED", "note": "new this run"},
+        {"item": "Governing Law Dispute", "score": "EXTRA_NOT_REQUIRED", "note": "new this run"}
+      ]
+    },
+    {
+      "section": "8. Important Ambiguities",
+      "v3_change": "NOT FIXED. The bounded, one-time, marker-aware split mechanism is confirmed working correctly and is a real, necessary improvement over V2's identical-content retry (it recovered Insurance and a large amount of additional real commercial content). But for THIS SPECIFIC chunk -- master RFP chunk index 1 (22,847 chars), the one document responsible for all three known ambiguities -- splitting it in half (into ~10,191 and ~12,656-char subchunks) still was not small enough: BOTH split subcalls independently hit max_tokens again. Per the bounded, non-recursive contract (no silent recursion), neither was split further; each subcall's partial (RECOVERED_TRUNCATED) output was still merged in, adding real new content (a Presentation/Demonstration stage entry, a Stage 2 evaluation-structure entry, a Stage 4 'Pricing' entry, and 2 additional D2-category weight rows) -- but not the specific conflicting second occurrence or the top-level (parent_stage=None) pricing-stage entry the two detectors require.",
+      "items": [
+        {"item": "Ambiguity class: evaluation-weight conflict", "score": "MISSING", "note": "Still zero conflicts. The recovered split content added several new evaluation_criteria rows but not a second, differently-valued occurrence of any already-seen label."},
+        {"item": "Ambiguity class: pricing-stage structural ambiguity", "score": "MISSING", "note": "A 'Pricing' stage entry WAS recovered this run (stage='Pricing', parent_stage='Stage 4. Pricing') -- but detect_pricing_stage_ambiguity() requires a top-level pricing-stage entry with parent_stage=None, and this entry's own parent_stage is non-null (it's nested under the stage-structure table, not a bare top-level mention). The genuinely top-level, parent_stage=None 'Pricing' mention the detector needs was not recovered."},
+        {"item": "Ambiguity class: category-specific date distinction", "score": "SEMANTICALLY_EQUIVALENT", "note": "Unregressed -- still correctly detected."}
+      ]
+    },
+    {
+      "section": "9. Bid Team Attention Points",
+      "v3_change": "None -- V2's data-driven cross-reference fix reconfirmed working in this run's live output.",
+      "items": [
+        {"item": "8 attention-point bullets", "score": "MATCH"},
+        {"item": "Cross-references to ambiguity numbers", "score": "MATCH"}
+      ]
+    },
+    {
+      "section": "10. Source Map",
+      "v3_change": "None.",
+      "items": [
+        {"item": "Primary documents table", "score": "MATCH"},
+        {"item": "Selected source references table", "score": "MATCH"},
+        {"item": "Validation footer note", "score": "MATCH"}
+      ]
+    }
+  ],
+  "commercial_page_completeness_review": {
+    "Pricing Structure": "PRESENT -- unchanged from V2",
+    "Abnormally Low Pricing": "MISSING -- TRUNCATED (root cause reclassified this package; schema now requests it, but this run's split still didn't reach it)",
+    "Contract Term & Extensions": "PRESENT -- unchanged from V2",
+    "Insurance": "PRESENT -- FIXED this package (was EXTRACTION_MISSING; root-caused as TRUNCATED and organically resolved by split-on-truncation recovery)",
+    "Intellectual Property": "PRESENT -- unchanged",
+    "Confidentiality & Media": "PRESENT -- unchanged",
+    "Security/Data/Personnel": "PRESENT -- unchanged",
+    "Termination/Change Control/Subcontracting": "PRESENT, now as 3 separate rows -- unchanged in substance",
+    "Ethical Supply Chain": "MISSING -- not requested by any current Fast route's schema, unchanged from V1/V2",
+    "Post-Award Diligence": "MISSING -- not requested by any current Fast route's schema, unchanged from V1/V2"
+  },
+  "insurance_root_cause_investigation": {
+    "classification": "TRUNCATED",
+    "evidence": "Direct text search of Appendix G's parsed document confirms the genuine $3,000,000 CGL / Errors & Omissions / Workplace Safety and Insurance clause text exists at character offset ~19807-21375 of a 32,452-char document. Fast Analysis's own chunker splits this document into [23904, 8326, 319]-char pieces at FAST_MAX_CHUNK_CHARS=24000; the Insurance text falls inside chunk 0 (0-23904 chars), which is exactly the chunk that hit max_tokens in both V1 and V2. The COMMERCIAL_ONLY schema already declares INSURANCE as a valid clause_kind -- this was never a schema or model-omission problem.",
+    "fix_applied": "None needed beyond the general split-on-truncation mechanism -- confirmed this run's split of chunk 0 (23904 -> ~11786/~12312 chars) let one half (Appendix G's own separate second truncating chunk, 8326 chars, split into ~4082/4438 chars) complete cleanly and surface the Insurance content.",
+    "v2_prompt_experiment_status": "REVERTED (per instruction 9) -- it added 3 extra calls in V2 and did not recover Insurance; the split mechanism fixed the real cause instead."
+  },
+  "abnormally_low_pricing_root_cause_investigation": {
+    "classification": "TRUNCATED (chunk-level) + was SCHEMA_NOT_PERMITTING (now fixed)",
+    "evidence": "Direct text search across the master RFP, Appendix E, and Appendix G confirms the 'abnormally low' pricing-consequence language (explanation requirement, performance-bond consequence) exists ONLY in the master RFP, at character offset ~25026-25609 of a 52,145-char document -- NOT in Appendix E as originally assumed in V2. This falls inside the master RFP's own chunk index 1 (21,804-44,651 chars), the exact same chunk responsible for the still-unresolved ambiguity gap. Separately, the IDENTITY_EVAL_REQ schema's `requirements` family was restricted to exactly 2 topics (category scope, submission mechanics) -- 'abnormally low pricing' fit neither, so even an untruncated read would not have requested it.",
+    "fix_applied": "Widened the EXISTING requirements-topic filter from 2 to 3 topics (adding pricing-evaluation-consequence rules) -- a minimal, single-clause addition to an already-declared family in an already-existing route/task, not a new family or route. Confirmed in the prompt text via test_identity_eval_req_prompt_now_requests_pricing_consequence_topic.",
+    "result_this_run": "Still MISSING. The schema now requests it, but the master RFP's chunk 1 split (into ~10,191/~12,656-char halves) still truncated on both halves before reaching the requirements array (which is the LAST family in the JSON schema's field order) -- a newly identified, general risk: truncation disproportionately harms whichever family is requested last in the schema, regardless of where the underlying fact sits in the source text."
+  },
+  "d1_d2_d3_weight_extraction_regression_this_run": {
+    "severity": "material but NOT V3-code-caused -- fully investigated",
+    "finding": "This specific live run's raw extraction for D1, D2, D3 (all 3 rated-criteria forms) and the B1-3/C1-3 batch call returned every evaluation_criteria weight value as null, despite none of those calls truncating (all ended with stop_reason=end_turn, parse_status=COMPLETE except the batch call which did truncate this run, unlike V1/V2). This is pure live model-output variance between API calls on different days -- V3 did not touch the EVAL_ONLY route, its schema, or D1/D2/D3 routing/chunking at all.",
+    "impact": "None visible in the delivered PDF: the pre-existing (v1) all-or-nothing safety-net fallback (`if not C.EVAL_WEIGHTS: C.EVAL_WEIGHTS = DEEP.EVAL_WEIGHTS`) correctly triggered because ALL THREE categories came back empty simultaneously, substituting the validated, correct Deep Verify weight tables. The rendered report is fully correct.",
+    "reliability_risk_identified": "The current required-fields check for the EVAL_ONLY route only verifies that `evaluation_criteria` is a non-empty list -- it does not check that individual entries carry a non-null `weight`. A response with well-formed but entirely null-valued entries is treated as complete and never triggers any retry or recovery path. This run's fallback saved the report because ALL THREE categories failed identically; a run where only ONE category degraded this way would silently produce a partial, non-Deep-Verify-matching weight table with no safety net (the fallback is all-or-nothing across the whole EVAL_WEIGHTS dict, not per-category). This is a genuine, newly-identified robustness gap, explicitly out of V3's authorized scope to fix (no new recovery mechanism was authorized beyond bounded split-on-truncation) -- flagged here for a future iteration rather than fixed unilaterally."
+  },
+  "summary": {
+    "scoring_methodology": "Identical fully-itemized convention to V1/V2 (see methodology_note above).",
+    "v2_flat_sum_pct": "43/49 = 87.8%",
+    "v3_flat_sum_pct": "44/53 = 83.0%",
+    "v3_flat_sum_pct_explanation": "Counterintuitively LOWER than V2 under the flat-sum convention purely because V3 surfaced 4 new, genuinely accurate EXTRA_NOT_REQUIRED commercial rows that count against the denominator under this methodology. Reported honestly per instruction 13 rather than switched to a more flattering convention.",
+    "v2_required_items_only_pct": "43/47 = 91.5%",
+    "v3_required_items_only_pct": "44/47 = 93.6%",
+    "v3_required_items_only_pct_explanation": "Excluding EXTRA_NOT_REQUIRED entirely from the denominator (both V2 and V3 have 47 required items -- V3's only required-item change was Insurance MISSING->SEMANTICALLY_EQUIVALENT), V3 shows genuine improvement: 91.5% -> 93.6%.",
+    "v3_match_count": 19,
+    "v3_semantically_equivalent_count": 25,
+    "v3_missing_count": 3,
+    "v3_incorrect_count": 0,
+    "v3_extra_not_required_count": 6,
+    "critical_fidelity_gate_result": "FAIL -- unchanged from V2. Instruction 17/22's non-negotiable rule ('A missing high-value ambiguity automatically fails V3') is triggered regardless of either percentage above: 2 of the 3 required ambiguity classes (evaluation-weight conflict, pricing-stage ambiguity) remain undetected. All other critical facts pass, including (via the safety-net fallback, see the D1/D2/D3 finding above) the 18 primary evaluation weights and category scoring structure."
+  }
+}

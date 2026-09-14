@@ -1,0 +1,106 @@
+{
+  "ambiguities_detected": {
+    "category_date_distinctions": 1,
+    "evaluation_weight_conflicts": 0,
+    "pricing_stage_ambiguity": 1
+  },
+  "corpus_manifest_digest": "5493933d2bba7ce80ede3c367e865635c4bd410d702b64a103d916d4573b95f2",
+  "corpus_parsing_seconds": 1.084674,
+  "deep_concurrency2_baseline_seconds": 1227.524433,
+  "deep_serial_baseline_seconds": 2213.868837,
+  "deterministic_extraction_seconds": 0.000122,
+  "documents_batched": [
+    "OriginalRevision/RFP 2026-026 - Appendix B1 - Mandatory criteria.xlsx",
+    "OriginalRevision/RFP 2026-026 - Appendix B2 - Mandatory criteria.xlsx",
+    "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx",
+    "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx",
+    "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx",
+    "OriginalRevision/RFP 2026-026 - Appendix C3 - Minimum qualification requirement.xlsx"
+  ],
+  "documents_by_route": {
+    "COMMERCIAL_ONLY": [
+      "OriginalRevision/RFP 2026-06 - Appendix G - Form of Agreement.docx"
+    ],
+    "CONTRACT_NARROW": [
+      "OriginalRevision/RFP 2026-026 - Appendix E - Pricing Form.xlsx"
+    ],
+    "EVAL_ONLY": [
+      "Amendment1/RFP 2026-026 - Appendix D2 - Rated Criteria Response REVISED.docx",
+      "OriginalRevision/RFP 2026-026 - Appendix B1 - Mandatory criteria.xlsx",
+      "OriginalRevision/RFP 2026-026 - Appendix B2 - Mandatory criteria.xlsx",
+      "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx",
+      "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx",
+      "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx",
+      "OriginalRevision/RFP 2026-026 - Appendix C3 - Minimum qualification requirement.xlsx",
+      "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx",
+      "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+    ],
+    "IDENTITY_EVAL_REQ": [
+      "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+    ],
+    "SKIP": [
+      "abstract.pdf",
+      "OriginalRevision/DP 2026-026 - Annexe F - Questionnaire ESG.xlsx",
+      "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx",
+      "OriginalRevision/RFP 2026-026 - Appendix D2 - Rated Criteria Response Form.docx"
+    ]
+  },
+  "documents_skipped": [
+    "abstract.pdf",
+    "OriginalRevision/DP 2026-026 - Annexe F - Questionnaire ESG.xlsx",
+    "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx",
+    "OriginalRevision/RFP 2026-026 - Appendix D2 - Rated Criteria Response Form.docx"
+  ],
+  "documents_skipped_count": 4,
+  "documents_total": 16,
+  "evaluation_occurrences_count": 21,
+  "fast_analysis_wall_seconds": 201.262512,
+  "focused_sections_found": {
+    "pricing_stage": [
+      "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+    ],
+    "rated_criteria": [
+      "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+    ]
+  },
+  "note_post_run_fixes": "Two post-run, no-new-API-call adapter/pipeline fixes applied after live run: (1) category-scope carry-forward + numeric-weight filter for EVAL_WEIGHTS, (2) Abnormally Low Pricing wired from pricing_occurrences into Section 7, (3) PRICE_CRITERION derived deterministically from evaluation_occurrences and combined with pricing_occurrences before ambiguity detection. See FAST_ANALYSIS_V4_IMPLEMENTATION_REPORT.md.",
+  "page_limits_deterministic": {
+    "Amendment1/RFP 2026-026 - Appendix D2 - Rated Criteria Response REVISED.docx": 12,
+    "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx": 15,
+    "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx": 10
+  },
+  "pricing_occurrences_count": 3,
+  "recovery_or_retry_calls": 12,
+  "report_assembly_seconds": 0.109353,
+  "run_classification": "NON_AUTHORITATIVE_TELEMETRY_RUN",
+  "run_id": "fastanalysis-v4-boc-2026-026-20260914T130015Z-e0720d",
+  "speedup_vs_deep_concurrency2": 6.099,
+  "speedup_vs_deep_serial": 11.0,
+  "speedup_vs_v1": 0.534,
+  "speedup_vs_v2": 0.902,
+  "speedup_vs_v3": 0.973,
+  "total_calls": 23,
+  "total_commercial_clauses_records": 85,
+  "total_evaluation_criteria_records": 66,
+  "total_input_tokens": 56673,
+  "total_output_tokens": 51875,
+  "total_records": 212,
+  "total_requirements_records": 24,
+  "total_typed_observations_records": 37,
+  "total_wall_seconds": 202.347186,
+  "v1_input_tokens": 37438,
+  "v1_output_tokens": 27418,
+  "v1_recovery_calls": 1,
+  "v1_total_calls": 12,
+  "v1_wall_seconds": 107.542508,
+  "v2_input_tokens": 52504,
+  "v2_output_tokens": 39597,
+  "v2_recovery_calls": 4,
+  "v2_total_calls": 15,
+  "v2_wall_seconds": 181.477815,
+  "v3_input_tokens": 54700,
+  "v3_output_tokens": 46923,
+  "v3_recovery_calls": 10,
+  "v3_total_calls": 21,
+  "v3_wall_seconds": 195.851955
+}

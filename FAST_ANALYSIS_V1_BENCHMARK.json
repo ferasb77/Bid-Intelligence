@@ -1,0 +1,89 @@
+{
+  "ambiguities_detected": {
+    "category_date_distinctions": 1,
+    "evaluation_weight_conflicts": 0,
+    "pricing_stage_ambiguity": 0
+  },
+  "call_reduction_pct": 77.8,
+  "classification": "Target achieved (61-120s)",
+  "corpus_manifest_digest": "5493933d2bba7ce80ede3c367e865635c4bd410d702b64a103d916d4573b95f2",
+  "corpus_parsing_seconds": 1.116375,
+  "deep_concurrency2_baseline_seconds": 1227.524433,
+  "deep_serial_baseline_seconds": 2213.868837,
+  "deep_stage_a_calls": 54,
+  "deep_stage_a_input_tokens": 279835,
+  "deep_stage_a_output_tokens": 306629,
+  "deep_stage_a_recovery_calls": 30,
+  "deep_stage_a_total_records_approx": 899,
+  "deterministic_extraction_seconds": 7.8e-05,
+  "documents_batched": [
+    "OriginalRevision/RFP 2026-026 - Appendix B1 - Mandatory criteria.xlsx",
+    "OriginalRevision/RFP 2026-026 - Appendix B2 - Mandatory criteria.xlsx",
+    "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx",
+    "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx",
+    "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx",
+    "OriginalRevision/RFP 2026-026 - Appendix C3 - Minimum qualification requirement.xlsx"
+  ],
+  "documents_by_route": {
+    "COMMERCIAL_ONLY": [
+      "OriginalRevision/RFP 2026-06 - Appendix G - Form of Agreement.docx"
+    ],
+    "CONTRACT_NARROW": [
+      "OriginalRevision/RFP 2026-026 - Appendix E - Pricing Form.xlsx"
+    ],
+    "EVAL_ONLY": [
+      "Amendment1/RFP 2026-026 - Appendix D2 - Rated Criteria Response REVISED.docx",
+      "OriginalRevision/RFP 2026-026 - Appendix B1 - Mandatory criteria.xlsx",
+      "OriginalRevision/RFP 2026-026 - Appendix B2 - Mandatory criteria.xlsx",
+      "OriginalRevision/RFP 2026-026 - Appendix B3 - Mandatory criteria.xlsx",
+      "OriginalRevision/RFP 2026-026 - Appendix C1 - Minimum qualification requirements.xlsx",
+      "OriginalRevision/RFP 2026-026 - Appendix C2 - Minimum qualification requirements.xlsx",
+      "OriginalRevision/RFP 2026-026 - Appendix C3 - Minimum qualification requirement.xlsx",
+      "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx",
+      "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx"
+    ],
+    "IDENTITY_EVAL_REQ": [
+      "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
+    ],
+    "SKIP": [
+      "abstract.pdf",
+      "OriginalRevision/DP 2026-026 - Annexe F - Questionnaire ESG.xlsx",
+      "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx",
+      "OriginalRevision/RFP 2026-026 - Appendix D2 - Rated Criteria Response Form.docx"
+    ]
+  },
+  "documents_skipped": [
+    "abstract.pdf",
+    "OriginalRevision/DP 2026-026 - Annexe F - Questionnaire ESG.xlsx",
+    "OriginalRevision/RFP 2026-026 - Appendix A - Submission Form.docx",
+    "OriginalRevision/RFP 2026-026 - Appendix D2 - Rated Criteria Response Form.docx"
+  ],
+  "documents_skipped_count": 4,
+  "documents_total": 16,
+  "fast_analysis_wall_seconds": 107.542508,
+  "input_token_reduction_pct": 86.6,
+  "output_token_reduction_pct": 91.1,
+  "page_limits_deterministic": {
+    "Amendment1/RFP 2026-026 - Appendix D2 - Rated Criteria Response REVISED.docx": 12,
+    "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx": 15,
+    "OriginalRevision/RFP 2026-026 - Appendix D3 - Rated Criteria Response Form.docx": 10
+  },
+  "record_reduction_pct": 86.3,
+  "recovery_call_reduction_pct": 96.7,
+  "recovery_or_retry_calls": 1,
+  "report_assembly_seconds": 0.111248,
+  "run_classification": "NON_AUTHORITATIVE_TELEMETRY_RUN",
+  "run_id": "fastanalysis-v1-boc-2026-026-20260913T094132Z-5de413",
+  "speedup_vs_deep_concurrency2": 11.414,
+  "speedup_vs_deep_serial": 20.586,
+  "total_calls": 12,
+  "total_commercial_clauses_records": 34,
+  "total_evaluation_criteria_records": 43,
+  "total_input_tokens": 37438,
+  "total_output_tokens": 27418,
+  "total_records": 123,
+  "total_requirements_records": 21,
+  "total_typed_observations_records": 25,
+  "total_wall_seconds": 108.658883,
+  "wall_time_reduction_pct_vs_concurrency2": 91.2
+}

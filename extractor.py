@@ -16,8 +16,10 @@ import os
 import re
 import csv
 import json
+import time
 import zipfile
 import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 import anthropic
 from config import get_anthropic_client
 from requirement_semantics import (
@@ -2326,6 +2328,20 @@ def _safe_parse_json(raw: str) -> dict:
 # ── STAGE A CHUNKING, AGGREGATION & COVERAGE GUARD ───────────────────────────
 
 _STAGE_A_MAX_CHUNK_CHARS = 12000
+
+# Stage A Recovery-Path Optimization Package 2 tested raising this from 8000 to
+# 16000 (five-document live pilot, run
+# stagea-pilot-recovery-opt2-boc-2026-026-20260913T001428Z-2dfb0d). The pilot
+# DID cut recovery calls (~70%) and input tokens (~45%) as hypothesized, but a
+# direct content comparison against the control run found a real, one-directional
+# extraction-completeness regression -- e.g. Appendix D1 kept its 11 top-level
+# requirement headings verbatim but lost 20+ distinct, substantively different
+# sub-requirements (stakeholder engagement approach, escalation process, learning
+# outcome measurement methods, etc.) with no duplicate/near-duplicate explanation,
+# propagating to a 427->264 (-38%) Stage B requirements-family drop in the shadow
+# run. The candidate was rejected on this evidence and the ceiling was reverted
+# to its accepted value; see BANK_OF_CANADA_STAGE_A_RECOVERY_OPTIMIZATION_REPORT.md.
+_STAGE_A_MAX_OUTPUT_TOKENS = 8000
 _STAGE_A_MARKER_SPLIT_RE = re.compile(r'(\[\[SOURCE:[^\]]+\]\])', re.IGNORECASE)
 
 # General procurement-language signal patterns for coverage auditing
@@ -2785,27 +2801,75 @@ def inspect_stage_a_coverage(doc_text: str, facts: dict, min_signal_count: int =
 
 
 def _extract_chunk_facts(chunk_text: str, filename: str, api_key: str, client=None, *,
-                         fail_on_first_error=False) -> dict:
-    """Run Stage A fact extraction on a single chunk with temperature=0."""
+                         fail_on_first_error=False, telemetry: list | None = None,
+                         call_kind: str = "initial") -> dict:
+    """Run Stage A fact extraction on a single chunk with temperature=0.
+
+    `telemetry`, if supplied, is a plain list that receives one additive,
+    behaviorally-inert diagnostic record per call -- never read back by
+    this function, never part of the returned `data`, and a complete no-op
+    for every existing caller that does not pass it (default None). Mirrors
+    the same additive, caller-owned diagnostic pattern already used for
+    Stage D's response checkpoint (`_synthesize_projected_bid_brief`),
+    which established that capturing `response.usage` this way cannot
+    alter a call's result. `call_kind` labels which of
+    `extract_document_facts`'s call sites this invocation came from
+    ("initial", "recovery_subchunk_truncated", "recovery_subchunk_failed",
+    "coverage_guard_recovery") -- purely descriptive, never read by this
+    function's own logic.
+
+    On an API exception, the failure is recorded into `telemetry` (with
+    `error` populated and `input_tokens`/`output_tokens`/`stop_reason`
+    left null, since no response was received) and then re-raised
+    unchanged -- telemetry capture never swallows or alters an error.
+    """
     if client is None:
         client = get_anthropic_client(api_key=api_key)
     model = "claude-haiku-4-5-20251001"
+    temperature = 0.0
 
-    content = [
-        {
-            "type": "text",
-            "text": STAGE_A_FACT_EXTRACTION_PROMPT + f"\n\nDOCUMENT TO PROCESS ({filename}):\n" + chunk_text
-        }
-    ]
+    request_text = STAGE_A_FACT_EXTRACTION_PROMPT + f"\n\nDOCUMENT TO PROCESS ({filename}):\n" + chunk_text
+    content = [{"type": "text", "text": request_text}]
 
-    response = client.messages.create(
-        model=model,
-        max_tokens=8000,
-        temperature=0.0,
-        messages=[{"role": "user", "content": content}],
-    )
+    call_index = len(telemetry) if telemetry is not None else None
+    started_at = datetime.now(timezone.utc) if telemetry is not None else None
+    _telemetry_started = time.monotonic() if telemetry is not None else None
+    try:
+        response = client.messages.create(
+            model=model,
+            max_tokens=_STAGE_A_MAX_OUTPUT_TOKENS,
+            temperature=temperature,
+            messages=[{"role": "user", "content": content}],
+        )
+    except Exception as exc:
+        if telemetry is not None:
+            telemetry.append({
+                "call_index": call_index, "call_kind": call_kind, "filename": filename,
+                "model": model, "temperature": temperature,
+                "request_bytes": len(request_text.encode("utf-8")), "chunk_chars": len(chunk_text),
+                "call_started_at": started_at.isoformat(), "call_ended_at": datetime.now(timezone.utc).isoformat(),
+                "latency_seconds": round(time.monotonic() - _telemetry_started, 6),
+                "input_tokens": None, "output_tokens": None, "stop_reason": None,
+                "parse_status": None, "error": f"{type(exc).__name__}: {exc}",
+            })
+        raise
+    if telemetry is not None:
+        usage = getattr(response, "usage", None)
+        telemetry.append({
+            "call_index": call_index, "call_kind": call_kind, "filename": filename,
+            "model": model, "temperature": temperature,
+            "request_bytes": len(request_text.encode("utf-8")), "chunk_chars": len(chunk_text),
+            "call_started_at": started_at.isoformat(), "call_ended_at": datetime.now(timezone.utc).isoformat(),
+            "latency_seconds": round(time.monotonic() - _telemetry_started, 6),
+            "input_tokens": getattr(usage, "input_tokens", None),
+            "output_tokens": getattr(usage, "output_tokens", None),
+            "stop_reason": getattr(response, "stop_reason", None),
+            "parse_status": None, "error": None,
+        })
 
     data, parse_status = _safe_parse_json_with_status(response.content[0].text)
+    if telemetry is not None:
+        telemetry[call_index]["parse_status"] = parse_status
     if fail_on_first_error and (parse_status != "COMPLETE" or not isinstance(data, dict)):
         raise ValueError(f"Stage A incomplete provider JSON: {parse_status}")
     if not isinstance(data, dict):
@@ -2827,17 +2891,32 @@ def _extract_chunk_facts(chunk_text: str, filename: str, api_key: str, client=No
     for cr in data.get("contract_risks", []):
         cr.setdefault("source_doc", filename)
 
+    if telemetry is not None:
+        # Additive, deterministic (no LLM) per-call record-count breakdown --
+        # this call's own raw JSON output, before cross-call aggregation/dedup.
+        # Never read back by this function; purely for recovery-forensics analysis.
+        telemetry[call_index]["record_counts"] = {
+            k: len(v) for k, v in data.items() if isinstance(v, list) and not k.startswith("_")
+        }
+
     return data
 
 
 # ── STAGE A: DOCUMENT FACT EXTRACTION ─────────────────────────────────────────
 
 def extract_document_facts(doc_text: str, filename: str, api_key: str, *,
-                           fail_on_first_error=False) -> dict:
+                           fail_on_first_error=False, telemetry: list | None = None) -> dict:
     """
     STAGE A: Process document to extract factual procurement data ONLY.
     Uses deterministic marker-aware chunking, conservative aggregation,
     and a coverage guard with bounded recovery.
+
+    `telemetry`, if supplied, is a plain list passed straight through to
+    every `_extract_chunk_facts` call this function makes (including its
+    own bounded recovery/coverage-guard cascade); see that function's
+    docstring. Default None is a complete no-op -- no existing caller or
+    test passes this, so this parameter alone changes nothing about any
+    existing invocation.
     """
     client = get_anthropic_client(api_key=api_key)
     chunks = chunk_document_text(doc_text, max_chunk_chars=_STAGE_A_MAX_CHUNK_CHARS)
@@ -2847,8 +2926,8 @@ def extract_document_facts(doc_text: str, filename: str, api_key: str, *,
     has_parse_failure = False
 
     for chunk in chunks:
-        res = (_extract_chunk_facts(chunk, filename, api_key, client=client, fail_on_first_error=True)
-               if fail_on_first_error else _extract_chunk_facts(chunk, filename, api_key, client=client))
+        res = (_extract_chunk_facts(chunk, filename, api_key, client=client, fail_on_first_error=True, telemetry=telemetry)
+               if fail_on_first_error else _extract_chunk_facts(chunk, filename, api_key, client=client, telemetry=telemetry))
         pstatus = res.get("_parse_status")
         if pstatus == "RECOVERED_TRUNCATED":
             target_size = max(500, len(chunk) // 2) if len(chunk) > 1000 else len(chunk)
@@ -2861,7 +2940,8 @@ def extract_document_facts(doc_text: str, filename: str, api_key: str, *,
             sub_results = []
             sub_all_complete = True
             for sc in retry_subchunks:
-                sres = _extract_chunk_facts(sc, filename, api_key, client=client)
+                sres = _extract_chunk_facts(sc, filename, api_key, client=client, telemetry=telemetry,
+                                            call_kind="recovery_subchunk_truncated")
                 if sres.get("_parse_status") != "COMPLETE":
                     sub_all_complete = False
                 sub_results.append(sres)
@@ -2884,7 +2964,8 @@ def extract_document_facts(doc_text: str, filename: str, api_key: str, *,
             sub_results = []
             sub_all_complete = True
             for sc in retry_subchunks:
-                sres = _extract_chunk_facts(sc, filename, api_key, client=client)
+                sres = _extract_chunk_facts(sc, filename, api_key, client=client, telemetry=telemetry,
+                                            call_kind="recovery_subchunk_failed")
                 if sres.get("_parse_status") != "COMPLETE":
                     sub_all_complete = False
                 sub_results.append(sres)
@@ -2914,7 +2995,8 @@ def extract_document_facts(doc_text: str, filename: str, api_key: str, *,
         if len(smaller_chunks) > len(chunks):
             retry_results = []
             for schunk in smaller_chunks:
-                rres = _extract_chunk_facts(schunk, filename, api_key, client=client)
+                rres = _extract_chunk_facts(schunk, filename, api_key, client=client, telemetry=telemetry,
+                                            call_kind="coverage_guard_recovery")
                 if rres.get("_parse_status") == "RECOVERED_TRUNCATED":
                     has_recovered_truncation = True
                 elif rres.get("_parse_status") == "FAILED":
