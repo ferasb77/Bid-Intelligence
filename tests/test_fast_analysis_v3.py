@@ -27,7 +27,7 @@ from fast_analysis import (
     detect_evaluation_weight_conflicts, detect_pricing_stage_ambiguity,
     detect_category_date_distinctions,
 )
-from scripts.fast_analysis_report_adapter import _weight_rows, build_fast_report_content
+from scripts.fast_analysis_report_adapter import _weight_rows_for_category, build_fast_report_content
 from fast_analysis import FastAnalysisResult
 
 MASTER_RFP_FILE = "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
@@ -255,32 +255,42 @@ class TestAmbiguityDetectionAfterSplitRecovery(unittest.TestCase):
 class Test18PrimaryEvaluationWeightsUnregressed(unittest.TestCase):
     """7. All 18 known primary category weight values must remain
     extractable and correctly attributed, regardless of split recovery
-    happening elsewhere in the same document."""
+    happening elsewhere in the same document.
+
+    Phase 5 generalization: the adapter's per-category weight lookup
+    (`_weight_rows_for_category`) no longer groups by a hardcoded D1/D2/D3
+    filename -- it groups by the criterion's own `parent_stage` text (the
+    general evaluation_criteria family's fallback path, exercised here
+    because these 18 rows carry no evaluation_occurrences data). This is
+    the same 18-value non-regression check as before, just keyed the way
+    Bank of Canada's real corpus is actually grouped now."""
 
     def test_all_18_known_weight_values_present_and_correctly_scoped(self):
         evaluation_criteria = [
-            {"source_doc": D1_DOC, "stage": "Corporate Profile", "weight": "5 pts"},
-            {"source_doc": D1_DOC, "stage": "Key Personnel & Roster", "weight": "15 pts"},
-            {"source_doc": D1_DOC, "stage": "Curriculum & Program Design", "weight": "35 pts"},
-            {"source_doc": D1_DOC, "stage": "Measurement Approach", "weight": "5 pts"},
-            {"source_doc": D1_DOC, "stage": "Relationship Management", "weight": "5 pts"},
-            {"source_doc": D1_DOC, "stage": "Value-add", "weight": "5 pts"},
-            {"source_doc": D1_DOC, "stage": "Relevant Experience & References", "weight": "5 pts"},
-            {"source_doc": D2_DOC, "stage": "Corporate Profile", "weight": "5 pts"},
-            {"source_doc": D2_DOC, "stage": "Key Personnel & Roster", "weight": "15 pts"},
-            {"source_doc": D2_DOC, "stage": "Methodology & Advisory Approach", "weight": "35 pts"},
-            {"source_doc": D2_DOC, "stage": "Thought Leadership & Innovation", "weight": "5 pts"},
-            {"source_doc": D2_DOC, "stage": "Relationship Management", "weight": "5 pts"},
-            {"source_doc": D3_DOC, "stage": "Corporate Profile", "weight": "10 pts"},
-            {"source_doc": D3_DOC, "stage": "Key Personnel & Roster", "weight": "20 pts"},
-            {"source_doc": D3_DOC, "stage": "Facilitation Methodology", "weight": "30 pts"},
-            {"source_doc": D3_DOC, "stage": "Value-add", "weight": "5 pts"},
-            {"source_doc": D3_DOC, "stage": "Relevant Experience & References", "weight": "10 pts"},
-            {"source_doc": D3_DOC, "stage": "Price", "weight": "25 pts"},
+            {"parent_stage": "Category 1", "stage": "Corporate Profile", "weight": "5 pts"},
+            {"parent_stage": "Category 1", "stage": "Key Personnel & Roster", "weight": "15 pts"},
+            {"parent_stage": "Category 1", "stage": "Curriculum & Program Design", "weight": "35 pts"},
+            {"parent_stage": "Category 1", "stage": "Measurement Approach", "weight": "5 pts"},
+            {"parent_stage": "Category 1", "stage": "Relationship Management", "weight": "5 pts"},
+            {"parent_stage": "Category 1", "stage": "Value-add", "weight": "5 pts"},
+            {"parent_stage": "Category 1", "stage": "Relevant Experience & References", "weight": "5 pts"},
+            {"parent_stage": "Category 2", "stage": "Corporate Profile", "weight": "5 pts"},
+            {"parent_stage": "Category 2", "stage": "Key Personnel & Roster", "weight": "15 pts"},
+            {"parent_stage": "Category 2", "stage": "Methodology & Advisory Approach", "weight": "35 pts"},
+            {"parent_stage": "Category 2", "stage": "Thought Leadership & Innovation", "weight": "5 pts"},
+            {"parent_stage": "Category 2", "stage": "Relationship Management", "weight": "5 pts"},
+            {"parent_stage": "Category 3", "stage": "Corporate Profile", "weight": "10 pts"},
+            {"parent_stage": "Category 3", "stage": "Key Personnel & Roster", "weight": "20 pts"},
+            {"parent_stage": "Category 3", "stage": "Facilitation Methodology", "weight": "30 pts"},
+            {"parent_stage": "Category 3", "stage": "Value-add", "weight": "5 pts"},
+            {"parent_stage": "Category 3", "stage": "Relevant Experience & References", "weight": "10 pts"},
+            {"parent_stage": "Category 3", "stage": "Price", "weight": "25 pts"},
         ]
-        d1_rows = _weight_rows(evaluation_criteria, D1_DOC)
-        d2_rows = _weight_rows(evaluation_criteria, D2_DOC)
-        d3_rows = _weight_rows(evaluation_criteria, D3_DOC)
+        result = FastAnalysisResult()
+        result.evaluation_criteria = evaluation_criteria
+        d1_rows = _weight_rows_for_category(result, "Category 1")
+        d2_rows = _weight_rows_for_category(result, "Category 2")
+        d3_rows = _weight_rows_for_category(result, "Category 3")
         self.assertEqual(len(d1_rows), 7)
         self.assertEqual(len(d2_rows), 5)
         self.assertEqual(len(d3_rows), 6)

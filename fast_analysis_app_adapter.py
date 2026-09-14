@@ -116,6 +116,22 @@ def build_opportunity_intelligence(result: FastAnalysisResult) -> dict:
                   "weight", "source_doc", "source_refs")}
                 for occ in result.pricing_occurrences
             ],
+            # Phase 5 live CDA-AMC acceptance validation (commercial_supplement
+            # provenance check): COMMERCIAL_POINTS collapses commercial_clauses
+            # into plain (topic, detail) pairs for the frozen PDF table shape,
+            # which drops each clause's own source_doc/source_refs -- the
+            # engine extracts and merges them (fast_analysis.py's
+            # c.setdefault("source_doc", name)), but nothing surfaced them for
+            # "View Source" the way raw_pricing_occurrences already does.
+            # Exposed here, additively, so the newly-live commercial_supplement
+            # facts (e.g. a liability-insurance clause) carry real, checkable
+            # provenance through to the UI -- same pattern already established
+            # for pricing occurrences, no PDF/table-shape change.
+            "raw_commercial_clauses": [
+                {k: c.get(k) for k in
+                 ("clause_kind", "topic", "source_fact", "source_doc", "source_refs")}
+                for c in result.commercial_clauses
+            ],
         },
         "ambiguities": [
             {
@@ -135,7 +151,13 @@ def build_opportunity_intelligence(result: FastAnalysisResult) -> dict:
             ],
             "validation_note": content.VALIDATION_FOOTER_NOTE,
         },
-        "buyer_intelligence": {
+        # Phase 5: Buyer Intelligence (an external, hand-curated layer with
+        # real content for only one buyer today) is only present when the
+        # report adapter actually matched the current procurement's buyer
+        # to that coverage -- for any other buyer this is None, so the
+        # UNDERSTAND page and the PDF agree (neither shows it) rather than
+        # this contract carrying another buyer's real content regardless.
+        "buyer_intelligence": ({
             "intro": content.BUYER_INTEL_INTRO,
             "verified_facts": [
                 {"topic": f[0], "detail": f[1], "source": f[2]}
@@ -151,7 +173,7 @@ def build_opportunity_intelligence(result: FastAnalysisResult) -> dict:
             "bid_team_panel_title": content.BID_TEAM_PANEL_TITLE,
             "bid_team_panel_items": content.BID_TEAM_PANEL_ITEMS,
             "sources_note": content.BUYER_INTEL_SOURCES_NOTE,
-        },
+        } if getattr(content, "BUYER_INTEL_AVAILABLE", False) else None),
         # Origin metadata is carried at the top level too (instruction 13:
         # "do not throw the information away") in addition to being
         # persisted separately on analysis_results.fact_origins.

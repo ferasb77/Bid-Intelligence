@@ -77,6 +77,20 @@ class TestOpportunityIntelligenceContract(unittest.TestCase):
         self.assertIn("source_refs", raw[0])
         self.assertEqual(raw[0]["source_refs"][0]["page"], 15)
 
+    def test_commercial_clauses_retain_source_refs_for_view_source(self):
+        """Phase 5 live CDA-AMC acceptance validation: COMMERCIAL_POINTS
+        collapses clauses to plain (topic, detail) pairs for the frozen PDF
+        table, dropping provenance -- raw_commercial_clauses restores it,
+        the same way raw_pricing_occurrences already does for pricing
+        facts, so a newly-extracted commercial fact (e.g. via the
+        commercial_supplement engine path) can show real source
+        provenance through the UI's View Source expander."""
+        oi = build_opportunity_intelligence(_sample_result())
+        raw = oi["pricing_and_commercial"]["raw_commercial_clauses"]
+        self.assertEqual(len(raw), 1)
+        self.assertEqual(raw[0]["clause_kind"], "INSURANCE")
+        self.assertEqual(raw[0]["source_doc"], "AppendixG.docx")
+
     def test_dates_and_mechanics_raw_date_observations_retain_source_refs(self):
         """Phase 3 commissioning fix: date facts (like evaluation and
         pricing facts) must retain source_refs for the UI's 'View Source'
@@ -103,9 +117,14 @@ class TestOpportunityIntelligenceContract(unittest.TestCase):
         self.assertEqual(oi["dates_and_mechanics"]["raw_date_observations"], [])
 
     def test_fact_origins_carried_into_contract(self):
-        """Instruction 13: fact-origin metadata is not thrown away."""
+        """Instruction 13: fact-origin metadata is not thrown away.
+
+        Phase 5 live acceptance validation tightened category discovery to
+        require >=2 criteria per scope group -- _sample_result()'s single
+        "Appendix D1" occurrence no longer substantiates a real category on
+        its own, so this correctly lands under the flat-table key."""
         oi = build_opportunity_intelligence(_sample_result())
-        self.assertIn("EVAL_WEIGHTS.Category 1", oi["fact_origins"])
+        self.assertIn("EVAL_WEIGHTS.flat", oi["fact_origins"])
 
     def test_empty_result_still_produces_a_valid_contract(self):
         """An analysis with nothing extracted must not crash the adapter --

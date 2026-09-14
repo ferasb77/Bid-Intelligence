@@ -153,8 +153,13 @@ def _compute_eval_tasks_total(documents: list[tuple[str, str]]) -> int:
 
 
 def _compute_commercial_tasks_total(documents: list[tuple[str, str]]) -> int:
-    """How many real task-completion events COMMERCIAL_READY must wait for."""
-    return sum(1 for name, _ in documents if route_document(name) == ROUTE_COMMERCIAL_ONLY)
+    """How many real task-completion events COMMERCIAL_READY must wait for.
+    Phase 5: also counts the additive 'commercial_supplement' task
+    run_fast_analysis_corpus now dispatches for every ROUTE_IDENTITY_EVAL_REQ
+    document (see fast_analysis.py step 2c) -- mirrors that same,
+    unmodified, public routing logic, not a guess."""
+    return sum(1 for name, _ in documents
+              if route_document(name) in (ROUTE_COMMERCIAL_ONLY, ROUTE_IDENTITY_EVAL_REQ))
 
 
 class _ProgressTracker:
@@ -192,6 +197,7 @@ class _ProgressTracker:
         self._eval_tasks_total = _compute_eval_tasks_total(documents)
         self._eval_tasks_done = 0
         self._commercial_tasks_total = _compute_commercial_tasks_total(documents)
+        self._commercial_tasks_done = 0
 
     def mark(self, milestone: str) -> None:
         """Hardening pass: wrapped here, at the single choke point every
@@ -243,6 +249,17 @@ class _ProgressTracker:
         if self._eval_tasks_total and self._eval_tasks_done >= self._eval_tasks_total:
             self.mark(MILESTONE_EVALUATION_READY)
 
+    def _commercial_task_done(self) -> None:
+        """Phase 5: COMMERCIAL_READY is now a counter, not a single-completion
+        trigger -- a corpus can have more than one commercial-contributing
+        task (a dedicated ROUTE_COMMERCIAL_ONLY document, the additive
+        'commercial_supplement' pass on ROUTE_IDENTITY_EVAL_REQ documents,
+        or both), so it must wait for all of them, exactly like
+        _eval_task_done already does for evaluation."""
+        self._commercial_tasks_done += 1
+        if self._commercial_tasks_total and self._commercial_tasks_done >= self._commercial_tasks_total:
+            self.mark(MILESTONE_COMMERCIAL_READY)
+
     def mark_vacuous_milestones(self) -> None:
         """Called once, right after CORPUS_PREPARED: a milestone whose
         required task count is genuinely zero for this corpus (e.g. no
@@ -265,6 +282,10 @@ class _ProgressTracker:
             name, section_kind, _ = payload
             if section_kind == "rated_criteria":
                 self._eval_task_done()
+            return
+
+        if kind == "commercial_supplement":
+            self._commercial_task_done()
             return
 
         if kind == "batch":
@@ -303,7 +324,7 @@ class _ProgressTracker:
         elif route == ROUTE_EVAL_ONLY:
             self._eval_task_done()
         elif route == ROUTE_COMMERCIAL_ONLY:
-            self.mark(MILESTONE_COMMERCIAL_READY)
+            self._commercial_task_done()
 
 
 class _NullProgressTracker:

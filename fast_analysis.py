@@ -1018,6 +1018,32 @@ def run_fast_analysis_corpus(documents: list[tuple[str, str]], api_key: str,
     for job in focused_jobs:
         tasks.append(("focused", job))
 
+    # 2c. Phase 5 generalization correction (audit-neutral, additive-only):
+    # a document routed to ROUTE_IDENTITY_EVAL_REQ is explicitly instructed
+    # NOT to extract commercial_clauses (_IDENTITY_EVAL_REQ_SCHEMA's own
+    # "do not extract commercial clauses" line) -- correct and deliberate
+    # when that route's document is Bank of Canada's own master RFP, whose
+    # commercial clauses live entirely in a separate ROUTE_COMMERCIAL_ONLY
+    # document (Appendix G). For a corpus with no DOCUMENT_ROUTING match at
+    # all, EVERY document -- including whichever one happens to bundle its
+    # own commercial/contractual terms alongside its identity and
+    # evaluation content -- is routed to ROUTE_IDENTITY_EVAL_REQ, so those
+    # commercial facts were never requested by any schema and never
+    # extracted (confirmed live, Product Integration Phase 4). This adds
+    # exactly one additional, UNMODIFIED ROUTE_COMMERCIAL_ONLY pass
+    # (same schema, same extract_fast_document machinery, same chunking/
+    # recovery) per ROUTE_IDENTITY_EVAL_REQ-routed document, purely
+    # additive: it does not change that document's existing
+    # ROUTE_IDENTITY_EVAL_REQ call in any way (same prompt, same schema,
+    # same output), so a corpus with a real, dedicated ROUTE_COMMERCIAL_ONLY
+    # document (Bank of Canada's own) is unaffected in everything this
+    # extra pass does not itself add. Procurement-agnostic: applies to any
+    # corpus with an ROUTE_IDENTITY_EVAL_REQ-routed document, not a
+    # buyer-specific branch.
+    for name, _ in documents:
+        if route_document(name) == ROUTE_IDENTITY_EVAL_REQ:
+            tasks.append(("commercial_supplement", [name]))
+
     # 3. Dispatch, bounded concurrency.
     telemetry_lock = threading.Lock()
 
@@ -1033,6 +1059,12 @@ def run_fast_analysis_corpus(documents: list[tuple[str, str]], api_key: str,
             occurrences = run_focused_task(section_kind, name, section_text, api_key,
                                            client=client, telemetry=local_telemetry)
             return kind, payload, occurrences, local_telemetry
+        if kind == "commercial_supplement":
+            name = payload[0]
+            data = extract_fast_document(name, texts_by_name[name], api_key,
+                                         route=ROUTE_COMMERCIAL_ONLY,
+                                         client=client, telemetry=local_telemetry)
+            return kind, payload, {name: data}, local_telemetry
         name = payload[0]
         route = route_document(name)
         data = extract_fast_document(name, texts_by_name[name], api_key, route=route,
@@ -1054,6 +1086,24 @@ def run_fast_analysis_corpus(documents: list[tuple[str, str]], api_key: str,
                     occ = dict(occ)
                     occ.setdefault("source_doc", name)
                     target_list.append(occ)
+                if on_task_done is not None:
+                    on_task_done(kind, payload, task_result)
+                continue
+
+            if kind == "commercial_supplement":
+                # Additive only: merges into result.commercial_clauses,
+                # exactly like a ROUTE_COMMERCIAL_ONLY document's own single
+                # task already does below -- never touches doc_metadata,
+                # typed_observations, evaluation_criteria, or requirements,
+                # so it cannot alter or duplicate anything this document's
+                # own (unmodified) ROUTE_IDENTITY_EVAL_REQ task already
+                # contributed.
+                name = payload[0]
+                data = task_result.get(name, {})
+                for c in data.get("commercial_clauses", []):
+                    c = dict(c)
+                    c.setdefault("source_doc", name)
+                    result.commercial_clauses.append(c)
                 if on_task_done is not None:
                     on_task_done(kind, payload, task_result)
                 continue

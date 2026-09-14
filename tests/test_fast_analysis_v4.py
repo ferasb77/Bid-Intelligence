@@ -29,7 +29,7 @@ from fast_analysis import (
     FastAnalysisResult,
 )
 from scripts.fast_analysis_report_adapter import (
-    _classify_category_scope, _occurrence_weight_rows, build_fast_report_content,
+    _discover_evaluation_categories, _weight_rows_for_category, build_fast_report_content,
 )
 
 MASTER_RFP_FILE = "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
@@ -329,20 +329,99 @@ class TestFocusedPricingExtraction(unittest.TestCase):
 
 
 class TestCategoryScopeClassification(unittest.TestCase):
-    """Supports the D1/D2/D3 weight-reliability fix (10/11)."""
+    """Supports the D1/D2/D3 weight-reliability fix (10/11).
 
-    def test_classifies_d1_d2_d3_by_keyword(self):
-        self.assertEqual(_classify_category_scope("Appendix D1 - Learning & Development Programs"), 1)
-        self.assertEqual(_classify_category_scope("Appendix D2 - HR Advisory"), 2)
-        self.assertEqual(_classify_category_scope("Appendix D3 - Facilitation and Team Effectiveness"), 3)
+    Phase 5 generalization: the old `_classify_category_scope` mapped
+    raw scope text onto a hardcoded 1/2/3 Bank-of-Canada category number --
+    a corpus-specific classifier that cannot work for a buyer with
+    differently-named or differently-numbered categories. It is replaced by
+    `_discover_evaluation_categories`, which preserves whatever raw label
+    text a corpus's own occurrences actually use, however many there are.
 
-    def test_classifies_by_category_number_phrasing(self):
-        self.assertEqual(_classify_category_scope("Category 1"), 1)
-        self.assertEqual(_classify_category_scope("category 2 rated table"), 2)
+    Live CDA-AMC acceptance validation (Phase 5 final acceptance run) found
+    that a real corpus's category_scope/parent_stage text is not reliably
+    limited to genuine category/lot names -- against CDA-AMC's real,
+    single-scope RFSO the live model populated these fields with several
+    distinct but mostly single-criterion section/stage labels ("Stage II",
+    "Appendix A Criteria"), which the original, permissive "any non-empty
+    scope counts" rule fabricated into a false "7 Categories" structure.
+    `_discover_evaluation_categories` now requires at least
+    `_MIN_QUALIFYING_CATEGORIES` groups, each substantiated by at least
+    `_MIN_ROWS_PER_CATEGORY` criteria, before concluding category/lot
+    structure exists at all -- fixtures below use realistic multi-criterion
+    groups so they still exercise genuine discovery/dedup under this rule."""
 
-    def test_unrecognized_scope_returns_none(self):
-        self.assertIsNone(_classify_category_scope("Some unrelated heading"))
-        self.assertIsNone(_classify_category_scope(None))
+    def test_discovers_distinct_raw_category_labels_in_first_seen_order(self):
+        result = FastAnalysisResult()
+        result.evaluation_occurrences = [
+            {"criterion_label": "Corporate Profile", "weight": "5 points",
+             "category_scope": "Appendix D1 - Learning & Development Programs"},
+            {"criterion_label": "Key Personnel", "weight": "15 points",
+             "category_scope": "Appendix D1 - Learning & Development Programs"},
+            {"criterion_label": "Corporate Profile", "weight": "5 points",
+             "category_scope": "Appendix D2 - HR Advisory"},
+            {"criterion_label": "Key Personnel", "weight": "15 points",
+             "category_scope": "Appendix D2 - HR Advisory"},
+            {"criterion_label": "Corporate Profile", "weight": "10 points",
+             "category_scope": "Appendix D3 - Facilitation and Team Effectiveness"},
+            {"criterion_label": "Key Personnel", "weight": "20 points",
+             "category_scope": "Appendix D3 - Facilitation and Team Effectiveness"},
+        ]
+        self.assertEqual(_discover_evaluation_categories(result), [
+            "Appendix D1 - Learning & Development Programs",
+            "Appendix D2 - HR Advisory",
+            "Appendix D3 - Facilitation and Team Effectiveness",
+        ])
+
+    def test_case_insensitive_dedup_keeps_first_seen_spelling(self):
+        result = FastAnalysisResult()
+        result.evaluation_occurrences = [
+            {"criterion_label": "A", "weight": "5 points", "category_scope": "Category 1"},
+            {"criterion_label": "B", "weight": "5 points", "category_scope": "category 1"},
+            {"criterion_label": "C", "weight": "5 points", "category_scope": "Category 2"},
+            {"criterion_label": "D", "weight": "5 points", "category_scope": "Category 2"},
+        ]
+        self.assertEqual(_discover_evaluation_categories(result), ["Category 1", "Category 2"])
+
+    def test_single_criterion_scope_labels_do_not_count_as_categories(self):
+        """The exact live CDA-AMC finding: several distinct scope labels,
+        each naming only one criterion, must not be treated as a real
+        category/lot structure -- correctly flat (empty list) instead."""
+        result = FastAnalysisResult()
+        result.evaluation_occurrences = [
+            {"criterion_label": "Rated Elements", "weight": "80 points", "category_scope": "Stage II"},
+            {"criterion_label": "Pricing", "weight": "20 points", "category_scope": "Stage III"},
+            {"criterion_label": "Fees", "weight": "20%", "category_scope": "Financial Proposal"},
+        ]
+        self.assertEqual(_discover_evaluation_categories(result), [])
+
+    def test_no_category_structure_returns_empty_list(self):
+        result = FastAnalysisResult()
+        result.evaluation_occurrences = [
+            {"criterion_label": "A", "weight": "5 points", "category_scope": None},
+        ]
+        self.assertEqual(_discover_evaluation_categories(result), [])
+        self.assertEqual(_discover_evaluation_categories(FastAnalysisResult()), [])
+
+    def test_discovery_render_divergence_group_does_not_become_a_category(self):
+        """The exact final live CDA-AMC commissioning finding (run_id=4):
+        a scope group can carry >=2 RAW occurrences yet only 1 SUBSTANTIVE
+        one (numeric weight, not a pass/fail or "Total" line) -- discovery
+        and rendering must use the identical predicate
+        (_is_substantive_evaluation_row) so such a group can never pass
+        discovery while collapsing to a single row at render time."""
+        result = FastAnalysisResult()
+        result.evaluation_occurrences = [
+            {"criterion_label": "Mandatory Requirements", "weight": None,
+             "category_scope": "Weak Group"},
+            {"criterion_label": "Stage I Gate", "weight": "Yes",
+             "category_scope": "Weak Group"},
+            {"criterion_label": "Total points", "weight": "100 points",
+             "category_scope": "Weak Group"},
+            {"criterion_label": "Real Criterion", "weight": "50%",
+             "category_scope": "Weak Group"},
+        ]
+        self.assertEqual(_discover_evaluation_categories(result), [])
 
 
 class TestAll18PrimaryWeightsLive(unittest.TestCase):
@@ -371,9 +450,11 @@ class TestAll18PrimaryWeightsLive(unittest.TestCase):
             {"criterion_label": "Price", "weight": "25 points", "category_scope": "Appendix D3"},
             {"criterion_label": "Total points", "weight": "100 points", "category_scope": "Appendix D3"},
         ]
-        d1 = _occurrence_weight_rows(occurrences, 1)
-        d2 = _occurrence_weight_rows(occurrences, 2)
-        d3 = _occurrence_weight_rows(occurrences, 3)
+        result = FastAnalysisResult()
+        result.evaluation_occurrences = occurrences
+        d1 = _weight_rows_for_category(result, "Appendix D1")
+        d2 = _weight_rows_for_category(result, "Appendix D2")
+        d3 = _weight_rows_for_category(result, "Appendix D3")
         self.assertEqual(len(d1), 7)
         self.assertEqual(len(d2), 5)
         self.assertEqual(len(d3), 6, "6 rows, 'Total points' excluded")
@@ -383,34 +464,73 @@ class TestAll18PrimaryWeightsLive(unittest.TestCase):
         self.assertEqual(sum(int(w.split()[0]) for _, w in d3), 100)
 
     def test_report_content_marks_live_origin_when_occurrences_present(self):
+        """A single occurrence for one scope label is not (post-live-
+        validation) enough to substantiate a real category -- it correctly
+        renders as the flat table, not a fabricated "Category" of one."""
         result = FastAnalysisResult()
         result.evaluation_occurrences = [
             {"criterion_label": "Corporate Profile", "weight": "5 points", "category_scope": "Appendix D1"},
         ]
         content = build_fast_report_content(result)
-        self.assertEqual(content.FACT_ORIGINS["EVAL_WEIGHTS.Category 1"], "LIVE_FAST_LLM")
+        self.assertEqual(content.FACT_ORIGINS["EVAL_WEIGHTS.flat"], "LIVE_FAST_LLM")
+        self.assertIn("Rated Criteria", content.EVAL_WEIGHTS)
 
-    def test_report_content_marks_safety_net_fallback_when_nothing_extracted(self):
+    def test_report_content_marks_live_origin_per_category_when_substantiated(self):
+        result = FastAnalysisResult()
+        result.evaluation_occurrences = [
+            {"criterion_label": "Corporate Profile", "weight": "5 points", "category_scope": "Appendix D1"},
+            {"criterion_label": "Key Personnel", "weight": "15 points", "category_scope": "Appendix D1"},
+            {"criterion_label": "Corporate Profile", "weight": "5 points", "category_scope": "Appendix D2"},
+            {"criterion_label": "Key Personnel", "weight": "15 points", "category_scope": "Appendix D2"},
+        ]
+        content = build_fast_report_content(result)
+        self.assertEqual(content.FACT_ORIGINS["EVAL_WEIGHTS.Appendix D1"], "LIVE_FAST_LLM")
+        self.assertEqual(content.FACT_ORIGINS["EVAL_WEIGHTS.Appendix D2"], "LIVE_FAST_LLM")
+
+    def test_report_content_marks_missing_no_fallback_when_nothing_extracted(self):
+        """Phase 5: an empty FastAnalysisResult has no evaluation data at
+        all, so no categories are discovered -- the report falls to the
+        single flat-table path (EVAL_WEIGHTS.flat), and since even that is
+        empty, no EVAL_WEIGHTS entry is produced and no other corpus's
+        content is substituted (MISSING_NO_FALLBACK, never
+        SAFETY_NET_FALLBACK -- that origin no longer exists post-Phase 5)."""
         content = build_fast_report_content(FastAnalysisResult())
-        self.assertEqual(content.FACT_ORIGINS["EVAL_WEIGHTS.Category 1"], "SAFETY_NET_FALLBACK")
-        self.assertEqual(content.FACT_ORIGINS["EVAL_WEIGHTS.Category 2"], "SAFETY_NET_FALLBACK")
-        self.assertEqual(content.FACT_ORIGINS["EVAL_WEIGHTS.Category 3"], "SAFETY_NET_FALLBACK")
+        self.assertEqual(content.EVAL_WEIGHTS, {})
+        self.assertEqual(content.FACT_ORIGINS["EVAL_WEIGHTS.flat"], "MISSING_NO_FALLBACK")
 
 
 class TestFactOriginMetadata(unittest.TestCase):
-    """12/26. Fact-origin metadata present for critical report items."""
+    """12/26. Fact-origin metadata present for critical report items.
 
-    def test_buyer_intelligence_always_external_layer(self):
+    Phase 5: Buyer Intelligence is no longer unconditionally
+    "BUYER_INTELLIGENCE_EXTERNAL_LAYER" for every corpus -- that was
+    precisely the cross-corpus leakage risk the phase was authorized to fix
+    (a non-Bank-of-Canada corpus must never be shown as if this external,
+    Bank-of-Canada-only layer were about it). It is only that origin when
+    the current procurement's own extracted buyer name actually matches;
+    otherwise MISSING_NO_FALLBACK. (PAGE_LIMIT.* origin tracking was
+    removed entirely -- it depended on a hardcoded per-category filename
+    map that has no generic equivalent; page limits are no longer a
+    separate report field.)"""
+
+    def test_buyer_intelligence_missing_when_buyer_unknown(self):
         content = build_fast_report_content(FastAnalysisResult())
-        self.assertEqual(content.FACT_ORIGINS["BUYER_INTELLIGENCE"], "BUYER_INTELLIGENCE_EXTERNAL_LAYER")
+        self.assertEqual(content.FACT_ORIGINS["BUYER_INTELLIGENCE"], "MISSING_NO_FALLBACK")
+        self.assertFalse(content.BUYER_INTEL_AVAILABLE)
 
-    def test_page_limit_origin_deterministic_when_present(self):
+    def test_buyer_intelligence_external_layer_when_buyer_matches_bank_of_canada(self):
         result = FastAnalysisResult()
-        result.page_limits = {
-            "OriginalRevision/RFP 2026-026 - Appendix D1 - Rated criteria response form.docx": 15,
-        }
+        result.doc_metadata_by_doc = {"x": {"client": "Bank of Canada"}}
         content = build_fast_report_content(result)
-        self.assertEqual(content.FACT_ORIGINS["PAGE_LIMIT.Category 1"], "DETERMINISTIC_FAST_EXTRACTION")
+        self.assertEqual(content.FACT_ORIGINS["BUYER_INTELLIGENCE"], "BUYER_INTELLIGENCE_EXTERNAL_LAYER")
+        self.assertTrue(content.BUYER_INTEL_AVAILABLE)
+
+    def test_buyer_intelligence_missing_for_a_different_real_buyer(self):
+        result = FastAnalysisResult()
+        result.doc_metadata_by_doc = {"x": {"client": "Canada's Drug Agency"}}
+        content = build_fast_report_content(result)
+        self.assertEqual(content.FACT_ORIGINS["BUYER_INTELLIGENCE"], "MISSING_NO_FALLBACK")
+        self.assertFalse(content.BUYER_INTEL_AVAILABLE)
 
 
 class TestV1ThroughV3RegressionCoverage(unittest.TestCase):

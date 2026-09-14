@@ -1,0 +1,105 @@
+{
+  "corpus_identity": {
+    "buyer": "Canada's Drug Agency (CDA-AMC)",
+    "procurement_title": "Coaching Services",
+    "procurement_type": "Request for Standing Offers (RFSO)",
+    "file_reference_number": "C-262700410",
+    "number_of_files": 5,
+    "approximate_corpus_size_bytes": 1360865,
+    "file_names_as_uploaded": [
+      "C-262700410 CDA-AMC Coaching Services RFSO Main Document FINAL(PDF) (1).pdf",
+      "C-262700410 CDA-AMC Coaching Services RFSO Bulletin #02 Final(PDF).pdf",
+      "C-262700410 CDA-AMC Coaching Services RFSO Bulletin #03 Final(PDF).pdf",
+      "C-262700410 CDA-AMC Coaching Services RFSO Bulletin #04 Final(PDF).pdf",
+      "C-262700410 CDA-AMC Coaching Services RFSO Bulletin #05 Final(PDF).pdf"
+    ],
+    "file_formats": ["PDF"],
+    "note_on_filenames": "All 5 files use flat filenames (no subdirectories), a 'File# + descriptive title + Bulletin #N' convention -- structurally different from the Bank of Canada corpus's 'RFP <num> - Appendix <letter> - <description>' + OriginalRevision/Amendment1 subdirectory convention. A genuine, pre-existing real-world quirk: the two earliest bulletins' FILENAMES (#02, #03) are one number ahead of their INTERNAL document text ('Bulletin #01', 'Bulletin #02') -- Bulletin #04/#05 filenames match their internal numbering exactly. This was not manually corrected; it is exactly the kind of filename/identity inconsistency Phase 4 is meant to probe.",
+    "extraction_method": "Deterministic only (extractor.extract_document_with_metadata, PDF text extraction with page markers) -- zero LLM calls used to build this checklist."
+  },
+
+  "dates": {
+    "rfso_issued": "2026-06-25",
+    "intent_to_bid_deadline": "2026-07-09",
+    "clarification_enquiry_deadline": "14:00 Ottawa Local Time, 2026-07-23",
+    "response_to_enquiries": "2 business days after enquiry deadline",
+    "bulletin_issuance_deadline": "2026-07-28",
+    "submission_deadline": "14:00 Ottawa Local Time, 2026-08-06",
+    "optional_video_presentation_window": "Week of 2026-08-31",
+    "notification_of_outcome": "2026-09-24",
+    "work_commencement": "2026-10-01",
+    "work_completion_soa_end": "2029-09-30",
+    "note": "All dates and times are explicitly stated in Table 1 (Main Document, page 5). No conflicting dates were found anywhere across the main document or the 4 bulletins."
+  },
+
+  "procurement_category_structure": {
+    "has_scored_service_categories_like_bank_of_canada": false,
+    "note": "Materially different structure from Bank of Canada: there is exactly ONE scope (Coaching Services), not multiple separately-scored categories/appendices. The RFSO instead defines 3 non-scored 'coaching groups' by seniority tier, used only to describe demand volume, not as separate evaluation tracks:",
+    "coaching_groups": [
+      {"group": 1, "label": "Executive-level coaching", "engagement_length": "12-month engagement, 24 coaching hours"},
+      {"group": 2, "label": "Select leaders seeking development opportunities", "engagement_length": "6-month engagement, 12 coaching hours"},
+      {"group": 3, "label": "New leaders (promoted/hired into role)", "engagement_length": "3-month engagement, 6 coaching hours"}
+    ],
+    "expected_standing_offer_awards": "More than 1, approximately 4 to 7 vendors (per Bulletin #01/filename 'Bulletin #02', Q#02)"
+  },
+
+  "mandatory_qualification_requirements": [
+    {"item": "Submission Form (Supplement A)", "basis": "Stage I, pass/fail (Yes/No)"},
+    {"item": "Schedule A to Appendix A -- Artificial Intelligence Disclosure", "basis": "Stage I, pass/fail (Yes/No)"},
+    {"item": "Technical Proposal, as a separate document", "basis": "Stage I, pass/fail (Yes/No)"},
+    {"item": "Financial Proposal, as a separate document", "basis": "Stage I, pass/fail (Yes/No)"},
+    {"item": "Liability Insurance of $2,000,000", "basis": "Appendix A Criterion 1 -- listed as 'Mandatory / 0% (yes/no)', i.e. gate-like scoring despite appearing inside the rated-criteria table"},
+    {"item": "Errors and Omissions (E&O) Insurance of $2,000,000", "basis": "Appendix A Criterion 2 -- same 'Mandatory / 0% (yes/no)' treatment"}
+  ],
+
+  "evaluation_criteria": {
+    "authoritative_structure": "3 stages: Stage I Mandatory Requirements (Yes/No, must pass to proceed), Stage II Rated Elements (80 of 100 points, 75% minimum to pass), Stage III Pricing (20 of 100 points, no minimum stated). Total = 100 points.",
+    "total_scored_criteria_count": 10,
+    "stage_ii_rated_technical_criteria": [
+      {"criterion": "Liability Insurance", "weight": "Mandatory, 0% (yes/no)"},
+      {"criterion": "Errors and Omissions (E&O) Insurance", "weight": "Mandatory, 0% (yes/no)"},
+      {"criterion": "Not-for-profit sector familiarity", "weight": "5%"},
+      {"criterion": "Health care sector familiarity", "weight": "5%"},
+      {"criterion": "Experience and qualifications of bidder's team and ability to meet required time frame schedules", "weight": "40%"},
+      {"criterion": "AI and/or Non-AI Methodology Use, and Safeguards", "weight": "10%"},
+      {"criterion": "Commitment to Reconciliation", "weight": "3%"},
+      {"criterion": "Commitment to Inclusion, Equity, Diversity and Accessibility (IDEA)", "weight": "3%"},
+      {"criterion": "Environmental, Social and Governance (ESG)", "weight": "4%"},
+      {"criterion": "References", "weight": "10 (source text omits the '%' sign present on every other row; sums consistently with the other 7 non-mandatory rows to 80% if treated as 10%)"}
+    ],
+    "stage_iii_pricing_criteria": [
+      {"criterion": "Fees", "weight": "20%"}
+    ],
+    "weight_sum_check": "5+5+40+10+3+3+4+10 = 80 (matches Stage II's stated 80-point total exactly) + Fees 20 = 100 (matches the stated grand total). Internally consistent -- no weight conflicts found anywhere in the main document or any bulletin.",
+    "note_on_source_wording": "Points/percentages are explicitly marked in the source itself as 'for illustrative purposes only and should be adjusted to reflect actual figures based on the Business Unit recommendation' (Main Document, Section 3.1) -- a genuine, source-stated caveat, not an ambiguity."
+  },
+
+  "response_requirements": [
+    "Technical Proposal and Financial Proposal submitted as 2 separate documents, in searchable PDF format, in one email",
+    "Submission Form (Supplement A) -- Word + PDF versions provided by CDA-AMC",
+    "Schedule A to Appendix A -- Artificial Intelligence Disclosure -- Word + PDF versions provided",
+    "Financial Proposal completed per Appendix B (Word + PDF versions provided)",
+    "Maximum email size 20MB inclusive of all attachments",
+    "Proposals submitted via email to contracts@cda-amc.ca, or upload via MERX",
+    "Proposal validity: 120 calendar days after the submission due date"
+  ],
+
+  "commercial_and_contractual": {
+    "instrument_type": "Standing Offer Agreement (SOA) with individual Call-ups -- no guaranteed volume of work",
+    "period_of_standing_offer": "2026-10-01 to 2029-09-30",
+    "payment_terms": "All properly submitted invoices paid 30 calendar days after receipt",
+    "language_of_work": "English (CDA-AMC responsible for any required translation)",
+    "location_of_work": "Virtual video platform, contractor's facilities in Canada",
+    "liability_insurance": "$2,000,000 required",
+    "eo_insurance": "$2,000,000 required",
+    "ai_policy": "AI use generally restricted; must be disclosed via Schedule A if used; CDA-AMC reserves right to review/restrict/prohibit any proposed AI use",
+    "pricing_mechanics": "Two mutually available pricing options (AI-enabled vs Non-AI deliverables), each with its own Fixed Price / Other Expenses / Maximum Price (Subtotal + HST) tables (Appendix B Parts C/D/E, 1 and 2 respectively); separate Part F hourly rates reserved for change orders only, per Bulletin #05 (filename) Q#06 clarification -- not for standard coaching package pricing",
+    "not_for_profit_discount": "CDA-AMC self-identifies as a not-for-profit corporation and asks bidders whether a discount applies (Appendix B Section 1)",
+    "conflict_of_interest": "Declaration required in Submission Form"
+  },
+
+  "material_ambiguities_visible_from_source": {
+    "note": "Unlike the Bank of Canada corpus, no genuine structural ambiguity of the 3 classes Fast Analysis V4's detectors target was found in this corpus after a full read of the main document and all 4 bulletins: no criterion label repeats with a conflicting weight in the same scope (evaluation_weight_conflict N/A -- each of the 10 criteria appears exactly once); no 'Price' line item is embedded inside a separately-scored technical/category table alongside a separate pricing stage (pricing_stage_ambiguity N/A -- pricing is always exclusively Stage III, never embedded elsewhere); there is no category structure at all, so no category-scoped date distinction is possible (category_date_distinction N/A -- the only per-group information is coaching-hours volume, not distinct dates). It is a correct, source-supported outcome for Fast Analysis to report all three ambiguity classes as NOT_PRESENT for this corpus -- this is itself a meaningful generalization check (the detectors must not manufacture a false positive just because they're being run on unfamiliar text).",
+    "minor_source_inconsistency_not_rising_to_ambiguity": "The 'References' criterion (Appendix A, row 10) states its weight as a bare '10' while all 9 other Stage II/III rows use an explicit '%' sign. This is a formatting inconsistency in the source PDF itself, not a scoring conflict -- the total (80%% Stage II + 20%% Stage III = 100%%) is only internally consistent if '10' is read as '10%%', which every surrounding row's pattern and the stage-level point total both support."
+  }
+}

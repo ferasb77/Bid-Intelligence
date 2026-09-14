@@ -30,11 +30,10 @@ from fast_analysis import (
     extract_page_limit_deterministic, FastAnalysisResult,
 )
 from scripts.fast_analysis_report_adapter import (
-    _category_requirements, _looks_like_date, _presentation_dates,
+    _service_category_rows, _discover_evaluation_categories, _looks_like_date, _presentation_dates,
     _pricing_and_term_commercial_rows, _build_ambiguities, _ambiguity_ref,
     build_fast_report_content, _AMBIGUITY_TYPE_EVAL_WEIGHT,
     _AMBIGUITY_TYPE_PRICING_STAGE, _AMBIGUITY_TYPE_CATEGORY_DATE,
-    APPENDIX_E,
 )
 
 MASTER_RFP_FILE = "RFP 2026-026 - Talent, Learning and Organizational Development Services.pdf"
@@ -49,50 +48,70 @@ def _fake_response(payload_dict, stop_reason="end_turn", input_tokens=100, outpu
 
 
 class TestCategoryDescriptionScoping(unittest.TestCase):
-    """6. Three category inputs produce three distinct, correctly
-    associated descriptions; the v1 cross-category-boilerplate defect is
-    excluded from all categories rather than tagged to all of them."""
+    """6. Multiple discovered categories produce distinct, correctly
+    associated descriptions.
+
+    Phase 5 generalization: `_category_requirements` assumed exactly three
+    hardcoded Bank-of-Canada categories (1/2/3) matched by a regex over
+    "Category N" phrasing. It is replaced by `_service_category_rows`,
+    which matches against whatever category labels
+    `_discover_evaluation_categories` actually found for THIS corpus (via
+    the focused rated-criteria task's own category_scope text) -- however
+    many there are, under whatever names the corpus itself uses."""
 
     def test_exclusive_single_category_matches_route_correctly(self):
+        categories = ["Category 1", "Category 2", "Category 3"]
         requirements = [
             {"description": "Category 1 covers leadership and management development programs."},
             {"description": "Category 2 covers strategic HR consulting and workforce planning."},
             {"description": "Category 3 covers facilitation and team-effectiveness sessions."},
         ]
-        by_cat = _category_requirements(requirements)
-        self.assertEqual(by_cat[1], [requirements[0]["description"]])
-        self.assertEqual(by_cat[2], [requirements[1]["description"]])
-        self.assertEqual(by_cat[3], [requirements[2]["description"]])
-        self.assertNotEqual(by_cat[1], by_cat[2])
-        self.assertNotEqual(by_cat[2], by_cat[3])
+        result = FastAnalysisResult()
+        result.requirements = requirements
+        rows = _service_category_rows(result, categories)
+        self.assertEqual(rows[0][2], requirements[0]["description"])
+        self.assertEqual(rows[1][2], requirements[1]["description"])
+        self.assertEqual(rows[2][2], requirements[2]["description"])
+        self.assertNotEqual(rows[0][2], rows[1][2])
+        self.assertNotEqual(rows[1][2], rows[2][2])
 
-    def test_cross_category_boilerplate_sentence_is_excluded_from_all_categories(self):
-        requirements = [
-            {"description": "Proponents may submit a proposal for one or more of the service "
-                            "categories: Category 1, Category 2, Category 3."},
-        ]
-        by_cat = _category_requirements(requirements)
-        self.assertEqual(by_cat[1], [])
-        self.assertEqual(by_cat[2], [])
-        self.assertEqual(by_cat[3], [])
+    def test_category_with_no_matching_requirement_text_is_honestly_not_extracted(self):
+        """Phase 5 instruction 4: a category with nothing genuinely matched
+        must show the honest not-extracted marker, never another
+        category's (or another corpus's) description substituted in."""
+        result = FastAnalysisResult()
+        result.requirements = [{"description": "Category 1 covers learning and development."}]
+        rows = _service_category_rows(result, ["Category 1", "Category 2"])
+        self.assertEqual(rows[0][2], "Category 1 covers learning and development.")
+        self.assertEqual(rows[1][2], "Not stated in the extracted data.")
 
-    def test_adapter_falls_back_to_validated_description_when_fast_extracted_nothing(self):
+    def test_report_content_has_no_service_categories_when_none_discovered(self):
+        """A flat/uncategorized corpus (e.g. CDA-AMC's single-scope RFSO)
+        must render zero SERVICE_CATEGORIES rows, not three empty or
+        substituted ones."""
         content = build_fast_report_content(FastAnalysisResult())
-        descs = [row[2] for row in content.SERVICE_CATEGORIES]
-        self.assertEqual(len(set(descs)), 3, "fallback descriptions must be distinct per category")
+        self.assertEqual(content.SERVICE_CATEGORIES, [])
 
 
 class TestCommercialMultiSourceAssembly(unittest.TestCase):
-    """7. Section 7 merges commercial_clauses with Appendix E pricing/term
-    facts already present elsewhere in Fast Analysis's own output."""
+    """7. Section 7 merges commercial_clauses with pricing/term facts
+    already present elsewhere in Fast Analysis's own output.
 
-    def test_pricing_structure_and_term_rows_derived_from_appendix_e_and_contract_term(self):
+    Phase 5: pricing-structure requirements are matched generically by
+    content across the whole corpus's requirements, no longer filtered to
+    one hardcoded Bank-of-Canada filename (APPENDIX_E) -- a pricing
+    requirement in ANY document (including one bundled into a single main
+    RFP document, as in the CDA-AMC corpus) must be picked up the same
+    way."""
+
+    def test_pricing_structure_and_term_rows_derived_from_any_document_and_contract_term(self):
         result = FastAnalysisResult()
         result.requirements = [
-            {"source_doc": APPENDIX_E, "description": "All-inclusive pricing must be provided "
-                                                       "for Years 1, 2, and 3."},
-            {"source_doc": APPENDIX_E, "description": "The Bank may require an explanation if "
-                                                       "pricing appears abnormally low."},
+            {"source_doc": "some_other_document.pdf", "description": "All-inclusive pricing must be "
+                                                                      "provided for Years 1, 2, and 3."},
+            {"source_doc": "some_other_document.pdf", "description": "The buyer may require an "
+                                                                      "explanation if pricing appears "
+                                                                      "abnormally low."},
         ]
         result.typed_observations = [
             {"family": "CONTRACT_TERM", "semantic_kind": "INITIAL_DURATION", "duration": "3",
@@ -116,8 +135,8 @@ class TestCommercialMultiSourceAssembly(unittest.TestCase):
             "source_fact": "already covered by commercial_clauses"},
         ]
         result.requirements = [
-            {"source_doc": APPENDIX_E, "description": "All-inclusive pricing must be provided "
-                                                       "for Years 1, 2, and 3."},
+            {"source_doc": "some_other_document.pdf", "description": "All-inclusive pricing must be "
+                                                                      "provided for Years 1, 2, and 3."},
         ]
         content = build_fast_report_content(result)
         pricing_rows = [row for row in content.COMMERCIAL_POINTS if row[0] == "Pricing Structure"]
@@ -195,12 +214,28 @@ class TestDynamicAmbiguityCrossReferences(unittest.TestCase):
         self.assertIsNone(_ambiguity_ref(tagged, _AMBIGUITY_TYPE_EVAL_WEIGHT))
         self.assertEqual(_ambiguity_ref(tagged, _AMBIGUITY_TYPE_CATEGORY_DATE), "Ambiguity 1")
 
-    def test_zero_present_falls_back_to_validated_content_with_correct_tags(self):
+    def test_zero_present_is_a_genuine_empty_result_not_a_boc_fallback(self):
+        """Superseded by Product Integration Phase 4 (cross-procurement
+        generalization commissioning): this test originally asserted that
+        zero detected ambiguities falls back to substituting Bank of
+        Canada's own three (real, but corpus-specific) ambiguities, on the
+        assumption that 'zero found' could only mean an extraction gap for
+        a corpus known to always have exactly these three. Phase 4's live
+        commissioning run against a materially different, real procurement
+        (Canada's Drug Agency coaching RFSO -- which genuinely has none of
+        these three ambiguity classes) proved that assumption false: the
+        old fallback showed Bank of Canada's own ambiguities as if they
+        belonged to a different buyer's procurement. A confirmed
+        NOT_PRESENT is a real, meaningful result and must never be
+        backfilled with another corpus's facts -- zero detected must yield
+        zero reported, for every corpus including Bank of Canada's own (it
+        simply never takes this path today because its real corpus always
+        has all three)."""
         ambiguities = {"evaluation_weight_conflicts": [], "pricing_stage_ambiguity": [],
                        "category_date_distinctions": []}
         tagged = _build_ambiguities(ambiguities)
-        self.assertEqual(len(tagged), 3)
-        self.assertEqual(_ambiguity_ref(tagged, _AMBIGUITY_TYPE_EVAL_WEIGHT), "Ambiguity 1")
+        self.assertEqual(tagged, [])
+        self.assertIsNone(_ambiguity_ref(tagged, _AMBIGUITY_TYPE_EVAL_WEIGHT))
 
     def test_eval_weight_note_omits_dangling_reference_when_class_absent(self):
         result = FastAnalysisResult()
@@ -219,6 +254,11 @@ class TestDynamicAmbiguityCrossReferences(unittest.TestCase):
         self.assertIn("Ambiguity 1", content.EVAL_WEIGHT_NOTE)
 
     def test_attention_points_reference_matches_actual_ambiguity_position(self):
+        """Phase 5: ATTENTION_POINTS is no longer a fixed, 8-item
+        Bank-of-Canada-specific list with two hardcoded index overrides --
+        it is generated only from conditions the current procurement's own
+        data actually supports (data-driven cross-references only, no
+        static advice list reused as a template for another corpus)."""
         result = FastAnalysisResult()
         result.ambiguities = {
             "evaluation_weight_conflicts": [],
@@ -226,10 +266,11 @@ class TestDynamicAmbiguityCrossReferences(unittest.TestCase):
             "category_date_distinctions": [{"milestone_kind": "PRESENTATION_OR_DEMO"}],
         }
         content = build_fast_report_content(result)
-        self.assertNotIn("(Ambiguity", content.ATTENTION_POINTS[1],
-                         "eval-weight class absent -> no dangling reference")
-        self.assertIn("(Ambiguity 2)", content.ATTENTION_POINTS[4],
-                      "category-date class present at position 2 (pricing=1, date=2)")
+        self.assertFalse(any("evaluation weighting" in p.lower() for p in content.ATTENTION_POINTS),
+                         "eval-weight class absent -> no eval-weight attention point at all")
+        date_points = [p for p in content.ATTENTION_POINTS if "(Ambiguity 2)" in p]
+        self.assertEqual(len(date_points), 1,
+                         "category-date class present at position 2 (pricing=1, date=2)")
 
 
 class TestUnchangedRoutingAndPageLimits(unittest.TestCase):

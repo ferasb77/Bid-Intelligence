@@ -749,6 +749,10 @@ def page_understand(bid_id: int):
             for i, occ in enumerate(raw_pricing_occ):
                 label = occ.get("raw_wording") or occ.get("semantic_kind") or "Pricing detail"
                 _source_view_expander(str(label)[:80], occ.get("source_refs"), key_suffix=f"pricing_{i}")
+            raw_commercial = _ensure_list(pricing.get("raw_commercial_clauses"))
+            for i, c in enumerate(raw_commercial):
+                label = c.get("topic") or c.get("clause_kind") or "Commercial clause"
+                _source_view_expander(str(label)[:80], c.get("source_refs"), key_suffix=f"commercial_{i}")
 
         buyer_intel = _ensure_dict(oi.get("buyer_intelligence"))
         verified_facts = _ensure_list(buyer_intel.get("verified_facts"))

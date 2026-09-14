@@ -182,7 +182,11 @@ class TestAnalysisLifecycleSuccess(unittest.TestCase):
         structured = args[2]
         self.assertIn("opportunity_snapshot", structured)
         self.assertIn("evaluation", structured)
-        self.assertIn("EVAL_WEIGHTS.Category 1", args[3] or {})  # fact_origins
+        # Phase 5 live acceptance validation tightened category discovery to
+        # require >=2 criteria per scope group -- _sample_fast_result()'s
+        # single "Appendix D1" occurrence no longer substantiates a real
+        # category on its own, so this lands under the flat-table key.
+        self.assertIn("EVAL_WEIGHTS.flat", args[3] or {})  # fact_origins
         self.assertIsNotNone(kwargs.get("report_content_snapshot"))
 
     @patch("analysis_service.db")
@@ -405,9 +409,20 @@ class TestMilestoneProgress(unittest.TestCase):
         self.assertEqual(svc._compute_eval_tasks_total(documents), 2)
 
     def test_commercial_tasks_total(self):
+        """Phase 5: a ROUTE_IDENTITY_EVAL_REQ document now also contributes
+        one commercial-contributing task of its own (the additive
+        'commercial_supplement' pass, fast_analysis.py step 2c) -- so a
+        corpus with both a generic identity-routed document AND a
+        dedicated commercial appendix has 2 commercial-contributing tasks,
+        not 1."""
         documents = [(GENERIC_RFP, "x"), (APPENDIX_G, "y")]
-        self.assertEqual(svc._compute_commercial_tasks_total(documents), 1)
-        self.assertEqual(svc._compute_commercial_tasks_total([(GENERIC_RFP, "x")]), 0)
+        self.assertEqual(svc._compute_commercial_tasks_total(documents), 2)
+        # A lone ROUTE_IDENTITY_EVAL_REQ document still contributes exactly
+        # one (its own commercial_supplement pass) -- no longer 0.
+        self.assertEqual(svc._compute_commercial_tasks_total([(GENERIC_RFP, "x")]), 1)
+        # Only a genuinely non-commercial-contributing route (no identity
+        # document, no dedicated commercial document at all) is still 0.
+        self.assertEqual(svc._compute_commercial_tasks_total([(D1_DOC, "x")]), 0)
 
     @patch("analysis_service.db")
     def test_mark_is_idempotent(self, mock_db):
@@ -481,12 +496,35 @@ class TestMilestoneProgress(unittest.TestCase):
         self.assertEqual(tracker._early_facts, {})
 
     @patch("analysis_service.db")
-    def test_commercial_task_marks_commercial_ready(self, mock_db):
+    def test_commercial_ready_only_after_every_commercial_task_completes(self, mock_db):
+        """Phase 5: COMMERCIAL_READY is a counter now (2 commercial-
+        contributing tasks for this corpus -- the dedicated APPENDIX_G
+        document and GENERIC_RFP's own additive commercial_supplement
+        pass), matching how EVALUATION_READY already worked."""
         documents = [(GENERIC_RFP, "x"), (APPENDIX_G, "y")]
         tracker = svc._ProgressTracker(run_id=1, documents=documents)
+        self.assertEqual(tracker._commercial_tasks_total, 2)
         tracker.on_task_done("single", [APPENDIX_G],
                              {APPENDIX_G: {"commercial_clauses": [{"clause_kind": "INSURANCE"}]}})
+        self.assertNotIn(svc.MILESTONE_COMMERCIAL_READY, tracker._reached)
+        tracker.on_task_done("commercial_supplement", [GENERIC_RFP],
+                             {GENERIC_RFP: {"commercial_clauses": []}})
         self.assertIn(svc.MILESTONE_COMMERCIAL_READY, tracker._reached)
+
+    @patch("analysis_service.db")
+    def test_commercial_supplement_task_merges_no_other_fields(self, mock_db):
+        """The commercial_supplement task must only ever move
+        COMMERCIAL_READY's counter -- it must never mark identity/date/
+        evaluation milestones or set early facts, even if its payload
+        happens to carry them (it shouldn't, but this guards the
+        boundary)."""
+        documents = [(GENERIC_RFP, "x")]
+        tracker = svc._ProgressTracker(run_id=1, documents=documents)
+        tracker.on_task_done("commercial_supplement", [GENERIC_RFP],
+                             {GENERIC_RFP: {"commercial_clauses": [{"clause_kind": "INSURANCE"}],
+                                            "doc_metadata": {"title": "should be ignored"}}})
+        self.assertNotIn(svc.MILESTONE_OPPORTUNITY_IDENTIFIED, tracker._reached)
+        self.assertEqual(tracker._early_facts, {})
 
     @patch("analysis_service.db")
     def test_evaluation_ready_only_after_every_eval_task_completes(self, mock_db):
@@ -523,8 +561,14 @@ class TestMilestoneProgress(unittest.TestCase):
 
     @patch("analysis_service.db")
     def test_vacuous_milestones_reached_immediately_when_no_such_documents_exist(self, mock_db):
-        documents = [(GENERIC_RFP, "x")]  # no commercial-only document in this corpus
+        """Phase 5: a ROUTE_IDENTITY_EVAL_REQ document now always
+        contributes its own commercial_supplement task, so
+        commercial_tasks_total is only genuinely 0 for a corpus with
+        neither an identity-routed nor a dedicated commercial document at
+        all (e.g. only EVAL_ONLY-routed appendices)."""
+        documents = [(D1_DOC, "x")]  # ROUTE_EVAL_ONLY only -- no identity, no commercial document
         tracker = svc._ProgressTracker(run_id=1, documents=documents)
+        self.assertEqual(tracker._commercial_tasks_total, 0)
         tracker.mark_vacuous_milestones()
         self.assertIn(svc.MILESTONE_COMMERCIAL_READY, tracker._reached)
         self.assertNotIn(svc.MILESTONE_EVALUATION_READY, tracker._reached)  # eval total > 0 here
