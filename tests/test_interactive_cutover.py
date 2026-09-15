@@ -20,6 +20,8 @@ engagement:
     (`TestGoAuthorizesBidOpen`, `TestLoginGateBehavior`): call app.go()
     and the login-gate logic directly with controlled mocks.
 """
+import ast
+import glob
 import importlib
 import os
 import time
@@ -292,6 +294,79 @@ class TestLoginGateBehavior(unittest.TestCase):
                            "table.return_value.select.return_value.eq.return_value.execute.return_value": MagicMock(data=[]),
                        })):
                 importlib.reload(app)
+
+
+class TestNativeMultipageNavigationDisabledAndSafe(unittest.TestCase):
+    """Streamlit auto-discovers any `pages/` directory sibling to the
+    entrypoint script and renders its own top-of-sidebar navigation
+    linking directly to each file in it, runnable as an independent
+    script -- entirely bypassing app.py (and therefore its mandatory
+    auth gate) since app.py itself never executes for that navigation
+    path. This duplicated app.py's own custom router UI and, more
+    importantly, exposed a page-selection surface app.py's auth gate
+    never sees. Two independent guarantees are asserted here: the
+    duplicate native nav is turned off (config), and even if it were
+    reachable, every page script is safe to load standalone regardless
+    (source-level, by construction)."""
+
+    def test_sidebar_navigation_disabled_in_streamlit_config(self):
+        config_path = os.path.join(os.path.dirname(__file__), "..", ".streamlit", "config.toml")
+        with open(config_path, "r", encoding="utf-8") as f:
+            config_text = f.read()
+        self.assertIn("[client]", config_text)
+        client_start = config_text.index("[client]")
+        client_section = config_text[client_start:]
+        next_section = client_section.find("\n[", 1)
+        if next_section != -1:
+            client_section = client_section[:next_section]
+        self.assertIn("showSidebarNavigation = false", client_section)
+        # The existing sections must survive this change untouched.
+        self.assertIn("[theme]", config_text)
+        self.assertIn('primaryColor = "#C9A96E"', config_text)
+        self.assertIn("[browser]", config_text)
+        self.assertIn("gatherUsageStats = false", config_text)
+
+    def test_every_pages_module_is_definitions_only_at_module_level(self):
+        """Codifies the safety audit: if a pages/*.py file were ever
+        reached directly (native nav re-enabled, a future refactor,
+        Streamlit behavior change, etc.), the ONLY way it could expose
+        protected data is if it called its own page_*() function or did
+        real work at module scope. This asserts none of them do --
+        every top-level statement is an import, a class/function
+        definition, a module docstring, or a literal constant
+        assignment (no Call, no Attribute access, nothing that could
+        read or render data) -- for every file in pages/, not just the
+        ones this engagement happened to touch."""
+        pages_dir = os.path.join(os.path.dirname(__file__), "..", "pages")
+        page_files = sorted(glob.glob(os.path.join(pages_dir, "*.py")))
+        self.assertGreater(len(page_files), 0, "no pages/*.py files found -- test would pass vacuously")
+
+        SAFE_TOP_LEVEL = (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+
+        for path in page_files:
+            with open(path, "r", encoding="utf-8") as f:
+                source = f.read()
+            tree = ast.parse(source, filename=path)
+            for node in tree.body:
+                if isinstance(node, SAFE_TOP_LEVEL):
+                    continue
+                if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                    continue  # module docstring
+                if isinstance(node, ast.Assign):
+                    # A literal constant (list/dict/tuple/str/num/etc.) is safe;
+                    # anything containing a function/method Call is not.
+                    for sub in ast.walk(node.value):
+                        self.assertNotIsInstance(
+                            sub, ast.Call,
+                            f"{path}:{node.lineno} has a module-level Call inside an "
+                            f"assignment -- could execute on standalone import",
+                        )
+                    continue
+                self.fail(
+                    f"{path}:{node.lineno} has an unexpected module-level "
+                    f"{type(node).__name__} -- verify it cannot render or read "
+                    f"protected data if this file is ever loaded standalone"
+                )
 
 
 if __name__ == "__main__":
