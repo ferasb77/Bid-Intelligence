@@ -449,6 +449,118 @@ class TestAuthSession(unittest.TestCase):
         self.assertNotIn("SUPABASE_SERVICE_KEY", source)
 
 
+class TestInviteCallback(unittest.TestCase):
+    """Phase 8 remediation package 3 authenticated-cutover bootstrap:
+    auth_session.handle_invite_callback() -- the token_hash-based flow a
+    Streamlit server CAN read (unlike the fragment-based #access_token
+    implicit flow, which it cannot)."""
+
+    def _mock_query_params(self, **kwargs):
+        # st.query_params supports .get()/.pop() -- a plain dict satisfies
+        # both for these tests.
+        return dict(kwargs)
+
+    @patch("auth_session.get_auth_client")
+    def test_no_callback_params_is_a_safe_no_op(self, mock_get_auth_client):
+        import streamlit as st
+        import auth_session
+        with patch.object(st, "query_params", self._mock_query_params()):
+            result = auth_session.handle_invite_callback()
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error, "no invite callback present")
+        mock_get_auth_client.assert_not_called()
+
+    @patch("auth_session.get_auth_client")
+    def test_unsupported_callback_type_rejected_without_processing(self, mock_get_auth_client):
+        import streamlit as st
+        import auth_session
+        qp = self._mock_query_params(token_hash="abc123", type="magiclink")
+        with patch.object(st, "query_params", qp):
+            result = auth_session.handle_invite_callback()
+        self.assertFalse(result.ok)
+        self.assertIn("unsupported callback type", result.error)
+        mock_get_auth_client.assert_not_called()
+        # stripped from the (mocked) query params even though rejected
+        self.assertNotIn("token_hash", qp)
+        self.assertNotIn("type", qp)
+
+    @patch("tenancy.resolve_organization_context")
+    @patch("auth_session.get_auth_client")
+    def test_successful_invite_verification_resolves_authcontext(self, mock_get_auth_client, mock_resolve):
+        import streamlit as st
+        import auth_session
+        from tenancy import AuthContext
+
+        mock_client = MagicMock()
+        mock_session = MagicMock(access_token="at-invite", refresh_token="rt-invite", expires_at=time.time() + 3600)
+        mock_user = MagicMock(id="ed5ccf11-8f6e-4975-85db-f2d1cf84660b", email="feras@enablemygrowth.com")
+        mock_client.auth.verify_otp.return_value = MagicMock(session=mock_session, user=mock_user)
+        mock_get_auth_client.return_value = mock_client
+        mock_resolve.return_value = AuthContext(
+            user_id="ed5ccf11-8f6e-4975-85db-f2d1cf84660b", email="feras@enablemygrowth.com",
+            organization_id="4326b564-8cc5-4463-9304-9a589f08cc91",
+            organization_name="Enable My Growth Internal", role="owner",
+        )
+
+        qp = self._mock_query_params(token_hash="real-token-hash-value", type="invite")
+        st.session_state.clear()
+        with patch.object(st, "query_params", qp):
+            result = auth_session.handle_invite_callback()
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.user_id, "ed5ccf11-8f6e-4975-85db-f2d1cf84660b")
+        mock_client.auth.verify_otp.assert_called_once_with(
+            {"token_hash": "real-token-hash-value", "type": "invite"}
+        )
+        stored_session = st.session_state[auth_session.SESSION_KEY]
+        self.assertEqual(stored_session["access_token"], "at-invite")
+        context = st.session_state[auth_session.AUTH_CONTEXT_KEY]
+        self.assertEqual(context.organization_id, "4326b564-8cc5-4463-9304-9a589f08cc91")
+        self.assertEqual(context.role, "owner")
+        # one-time token stripped from the URL after processing
+        self.assertNotIn("token_hash", qp)
+        self.assertNotIn("type", qp)
+
+    @patch("auth_session.get_auth_client")
+    def test_invalid_or_expired_token_fails_closed_and_strips_url(self, mock_get_auth_client):
+        import streamlit as st
+        import auth_session
+
+        mock_client = MagicMock()
+        mock_client.auth.verify_otp.side_effect = Exception("Token has expired or is invalid")
+        mock_get_auth_client.return_value = mock_client
+
+        qp = self._mock_query_params(token_hash="stale-token", type="invite")
+        with patch.object(st, "query_params", qp):
+            result = auth_session.handle_invite_callback()
+
+        self.assertFalse(result.ok)
+        self.assertIn("invalid or expired", result.error)
+        self.assertNotIn("token_hash", qp)
+        self.assertNotIn("type", qp)
+
+    def test_sign_out_clears_auth_context_too(self):
+        import streamlit as st
+        import auth_session
+        st.session_state[auth_session.SESSION_KEY] = {"access_token": "at", "user_id": "u1"}
+        st.session_state[auth_session.AUTH_CONTEXT_KEY] = object()
+        with patch("auth_session.get_auth_client") as mock_get_auth_client:
+            mock_get_auth_client.return_value = MagicMock()
+            auth_session.sign_out()
+        self.assertNotIn(auth_session.SESSION_KEY, st.session_state)
+        self.assertNotIn(auth_session.AUTH_CONTEXT_KEY, st.session_state)
+
+    def test_callback_never_logs_or_prints_raw_token_values(self):
+        source = open(
+            os.path.join(os.path.dirname(__file__), "..", "auth_session.py"), "r", encoding="utf-8"
+        ).read()
+        # No print()/logging call anywhere in the module that could echo a
+        # token/token_hash/access_token/refresh_token value.
+        self.assertNotIn("print(", source)
+        self.assertNotIn("logging.", source)
+        self.assertNotIn("logger.", source)
+
+
 class TestNoPublicSignUp(unittest.TestCase):
     """Instruction 6: no open self-registration in this package."""
 

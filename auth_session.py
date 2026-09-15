@@ -49,6 +49,8 @@ from dataclasses import dataclass
 from auth_client import get_auth_client
 
 SESSION_KEY = "bi_auth_session"
+AUTH_CONTEXT_KEY = "bi_auth_context"
+INVITE_CALLBACK_ACCEPTED_TYPES = ("invite",)
 
 
 @dataclass(frozen=True)
@@ -97,7 +99,9 @@ def sign_in(email: str, password: str) -> AuthResult:
 def sign_out() -> None:
     """Clears local session state unconditionally, even if the remote
     sign-out call fails -- a failed remote call must never leave the UI
-    looking signed-in when the user asked to sign out."""
+    looking signed-in when the user asked to sign out. Clears the resolved
+    AuthContext/organization context too -- no privileged or
+    organization-scoped data may remain reachable after logout."""
     try:
         client = get_auth_client()
         client.auth.sign_out()
@@ -105,11 +109,89 @@ def sign_out() -> None:
         pass
     import streamlit as st
     st.session_state.pop(SESSION_KEY, None)
+    st.session_state.pop(AUTH_CONTEXT_KEY, None)
 
 
 def current_session() -> dict | None:
     import streamlit as st
     return st.session_state.get(SESSION_KEY)
+
+
+def handle_invite_callback() -> AuthResult:
+    """Handles Supabase's token_hash-based invite-acceptance callback
+    (Phase 8 remediation package 3 authenticated cutover, bootstrap round).
+    Call this once, early -- before rendering any normal page content. It
+    is a safe no-op (returns ok=False, error='no invite callback present')
+    whenever the expected query parameters are absent, so it never affects
+    ordinary page loads.
+
+    Deliberately narrow for this bootstrap: only `type=invite` is accepted
+    -- a magiclink/recovery/signup/email_change token_hash is rejected
+    without being processed. This uses ONLY the anon/public auth client
+    (auth_client.get_auth_client()) to call verify_otp -- never the
+    service-role client. On success, resolves the real AuthContext via
+    tenancy.resolve_organization_context() and stores both the session and
+    the AuthContext in st.session_state. The one-time token_hash/type pair
+    is stripped from the visible URL immediately after processing --
+    success or failure -- so it can never be re-used, bookmarked, or
+    reshared from the browser's address bar or history. Never logs or
+    prints token_hash, access_token, or refresh_token anywhere."""
+    import streamlit as st
+
+    params = st.query_params
+    token_hash = params.get("token_hash")
+    otp_type = params.get("type")
+
+    if not token_hash or not otp_type:
+        return AuthResult(ok=False, error="no invite callback present")
+
+    if otp_type not in INVITE_CALLBACK_ACCEPTED_TYPES:
+        # Not the bootstrap invite flow -- reject without processing, but
+        # still strip the params so an unsupported token_hash never sits
+        # in the visible URL.
+        st.query_params.pop("token_hash", None)
+        st.query_params.pop("type", None)
+        return AuthResult(ok=False, error=f"unsupported callback type: {otp_type}")
+
+    try:
+        client = get_auth_client()
+        resp = client.auth.verify_otp({"token_hash": token_hash, "type": "invite"})
+    except Exception:
+        st.query_params.pop("token_hash", None)
+        st.query_params.pop("type", None)
+        return AuthResult(ok=False, error="invite verification failed: invalid or expired link")
+
+    # Always strip the one-time token from the visible URL immediately,
+    # regardless of outcome.
+    st.query_params.pop("token_hash", None)
+    st.query_params.pop("type", None)
+
+    session = getattr(resp, "session", None)
+    user = getattr(resp, "user", None)
+    if not session or not user:
+        return AuthResult(ok=False, error="invite verification did not return a valid session")
+
+    st.session_state[SESSION_KEY] = {
+        "access_token": session.access_token,
+        "refresh_token": session.refresh_token,
+        "user_id": user.id,
+        "email": user.email,
+        "expires_at": getattr(session, "expires_at", None),
+    }
+
+    import tenancy
+    st.session_state[AUTH_CONTEXT_KEY] = tenancy.resolve_organization_context(user.id, user.email)
+
+    return AuthResult(ok=True, user_id=user.id, email=user.email)
+
+
+def current_auth_context():
+    """The AuthContext/NoOrganizationAccess/OrganizationSelectionRequired
+    resolved by handle_invite_callback() (or, once wired, by a future
+    sign_in()-time resolution) -- None if nothing has been resolved yet
+    this session."""
+    import streamlit as st
+    return st.session_state.get(AUTH_CONTEXT_KEY)
 
 
 def restore_session() -> AuthResult:

@@ -32,6 +32,22 @@ st.set_page_config(page_title="Bid Intelligence — Enable My Growth", page_icon
 init_db()
 inject_css()
 
+# ── Phase 8 remediation package 3: invite-acceptance callback ─────────────
+# Handles Supabase's token_hash-based invite link (?token_hash=...&type=
+# invite) before any normal page content renders. A safe no-op on every
+# ordinary page load -- it only does anything when those two query
+# parameters are actually present. Authentication is NOT yet mandatory for
+# the rest of the application (the interactive cutover itself is a
+# separate, later step) -- this only completes the bootstrap invite flow
+# and resolves/stores the real AuthContext so it can be inspected.
+import auth_session as _auth_session
+_invite_result = _auth_session.handle_invite_callback()
+if _invite_result.error != "no invite callback present":
+    if _invite_result.ok:
+        st.success(f"Invitation accepted for {_invite_result.email}.")
+    else:
+        st.error(f"Invitation link could not be verified: {_invite_result.error}")
+
 # ── session defaults ──────────────────────────────────────────────────────────
 if "page" not in st.session_state:
     st.session_state.page = "dashboard"

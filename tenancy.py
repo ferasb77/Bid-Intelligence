@@ -187,3 +187,73 @@ def create_bid_for_organization(data: dict, organization_id: str) -> int | None:
     rows = sb.table("bids").insert(clean).execute().data
     row = rows[0] if rows else None
     return int(row["id"]) if row else None
+
+
+# ── Privileged-operation authorization boundary (Phase 8 remediation ────
+#    package 3, instructions 16-18) ──────────────────────────────────────
+# These functions are the application-layer authorization gate in front of
+# privileged, service-role-executed operations (starting a Fast Analysis
+# run; regenerating/retrieving a report). They exist as DEFENSE IN DEPTH,
+# independent of the migration 008 RLS policies: analysis_runs/
+# analysis_results/bid_briefs are deliberately NOT authenticated-writable
+# under RLS at all (category B, server-write-only -- see migration 008's
+# own comments), so a user-initiated request to create one of those rows
+# can *only* ever happen through this explicit check, never by a client
+# request that RLS might otherwise have permitted. The shape is always:
+#   authenticated user -> verify access to bid -> authorize operation ->
+#   privileged server/background action
+# never "user supplied bid ID -> privileged operation executes" without
+# the verification step in between (instruction 16).
+
+class AccessDeniedError(Exception):
+    """Raised when an authenticated caller's organization does not own the
+    target bid. No privileged operation may proceed past this exception --
+    every function below raises it BEFORE touching analysis_service.py or
+    any privileged write."""
+
+
+def authorize_bid_access(bid_id: int, organization_id: str) -> bool:
+    """True iff bid_id belongs to organization_id. A thin, explicit wrapper
+    around get_bid_for_organization() -- kept as its own named function so
+    the privileged-operation call sites below read as an authorization
+    check, not an incidental side effect of a data fetch."""
+    return get_bid_for_organization(bid_id, organization_id) is not None
+
+
+def require_bid_access(bid_id: int, organization_id: str) -> None:
+    """Raises AccessDeniedError, doing nothing else, if organization_id
+    does not own bid_id. Call this FIRST, before any privileged action."""
+    if not authorize_bid_access(bid_id, organization_id):
+        raise AccessDeniedError(
+            f"organization {organization_id} does not have access to bid {bid_id}"
+        )
+
+
+def start_fast_analysis_for_organization(
+    bid_id: int, organization_id: str, api_key: str, created_by: str | None = None
+) -> dict:
+    """Authorization boundary in front of analysis_service.start_fast_analysis()
+    (instruction 17). Verifies bid_id belongs to organization_id BEFORE any
+    analysis_runs row is created and before any LLM call is made -- an
+    unauthorized call raises AccessDeniedError and creates nothing,
+    starts nothing. Fast Analysis itself (analysis_service.py,
+    fast_analysis.py) is completely untouched; this function only wraps
+    its existing, frozen entry point."""
+    require_bid_access(bid_id, organization_id)
+    import analysis_service
+    return analysis_service.start_fast_analysis(bid_id, api_key, created_by=created_by)
+
+
+def get_report_for_organization(bid_id: int, run_id: int, organization_id: str) -> bytes:
+    """Authorization boundary in front of analysis_service.regenerate_report()
+    (instruction 18). Verifies the caller's organization owns bid_id, AND
+    that run_id actually belongs to bid_id (so a guessed/adjacent run_id
+    from a DIFFERENT bid the caller legitimately owns cannot be used to
+    read a run that in fact belongs to someone else's bid) -- both checks
+    happen before any report bytes are read or regenerated."""
+    require_bid_access(bid_id, organization_id)
+    run = db.get_analysis_run(run_id)
+    if not run or int(run.get("bid_id")) != int(bid_id):
+        raise AccessDeniedError(f"run {run_id} does not belong to bid {bid_id}")
+    import analysis_service
+    return analysis_service.regenerate_report(run_id)

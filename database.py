@@ -2,6 +2,17 @@
 Bid Intelligence Platform — Supabase database layer.
 Replaces SQLite. All data persists across Streamlit Cloud redeploys.
 File uploads go to Supabase Storage.
+
+Phase 8 remediation package 3: this module's client is the PRIVILEGED
+SERVICE-ROLE client -- it bypasses RLS by definition and must never be
+confused with the user-scoped, RLS-respecting client
+(auth_client.py:get_authenticated_client()). get_service_client() is the
+explicit, unambiguous name for what get_client() has always done; get_client()
+is kept as-is (same function, not a copy) so none of this module's ~60
+existing call sites need to change -- see get_service_client()'s own
+docstring and tests/test_auth_tenancy.py's TestAuthDataClientSeparation for
+the regression guard that keeps these two clients from ever sharing a
+credential.
 """
 import os
 import streamlit as st
@@ -25,6 +36,14 @@ def get_client() -> Client:
             "Supabase credentials not found. Add SUPABASE_URL and "
             "SUPABASE_SERVICE_KEY to Streamlit secrets or .env file.")
     return create_client(url, key)
+
+
+def get_service_client() -> Client:
+    """Explicit-name alias for get_client() -- the privileged, RLS-bypassing
+    service-role client. Prefer this name in any new code so privileged and
+    user-scoped access are difficult to confuse at a glance (instruction 14);
+    existing call sites are not required to migrate off get_client()."""
+    return get_client()
 
 BUCKET = "bid-documents"
 
