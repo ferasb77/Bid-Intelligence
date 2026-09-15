@@ -9,10 +9,19 @@ from database import (
     get_coaches, upsert_coach, get_clarifications, upsert_clarification, delete_clarification,
     upsert_debrief, get_debriefs, save_upload,
 )
+import auth_session
+import tenancy
 from pdf_styles import generate_clarifications_pdf
 from components.ui import (days_until,
                             days_label, PRIORITY_COLOURS)
 from config import api_key_configured
+
+
+def _current_access_token_and_org():
+    session = auth_session.current_session()
+    ctx = auth_session.current_auth_context()
+    return session["access_token"], ctx.organization_id
+
 
 LIB_CATEGORIES = [
     "Methodology", "Case Study", "Executive Summary",
@@ -32,10 +41,11 @@ DEBRIEF_OUTCOMES= ["Won", "Lost", "No Bid", "Withdrawn", "Pending", "Cancelled"]
 # CONTENT LIBRARY
 # ═══════════════════════════════════════════════════════════════════════════════
 def page_content_library(bid_id=None):
+    _token, _org_id = _current_access_token_and_org()
     st.markdown("# Content Library")
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
 
-    items = get_library_items(bid_id)
+    items = tenancy.list_library_items_for_organization(_org_id)
 
     # ── Edit panel — rendered FIRST so it stays visible after rerun ───────────
     eid = st.session_state.get("editing_lib")
@@ -59,13 +69,13 @@ def page_content_library(bid_id=None):
                 dl = c2.form_submit_button("Delete", use_container_width=True)
                 cx = c3.form_submit_button("Cancel", use_container_width=True)
             if sv:
-                upsert_library_item({"id":eid,"title":title,"category":cat,
+                tenancy.upsert_library_item_for_organization(_org_id, {"id":eid,"title":title,"category":cat,
                     "content":content,"source":src,"bid_id":item.get("bid_id"),
                     "tags":tags,"approved":1 if appr else 0,"notes":notes})
                 del st.session_state["editing_lib"]
                 st.rerun()
             if dl:
-                delete_library_item(eid)
+                tenancy.delete_library_item_for_organization(_org_id, eid)
                 del st.session_state["editing_lib"]
                 st.rerun()
             if cx:
@@ -113,7 +123,7 @@ def page_content_library(bid_id=None):
                             text = library_item_text(item)
                             vec  = embed_text(text)
                             if vec:
-                                upsert_library_item({**item,
+                                tenancy.upsert_library_item_for_organization(_org_id, {**item,
                                     "embedding": _json.dumps(vec)})
                             else:
                                 failed += 1
@@ -141,7 +151,7 @@ def page_content_library(bid_id=None):
                             text = library_item_text(item)
                             vec  = embed_text(text)
                             if vec:
-                                upsert_library_item({**item,
+                                tenancy.upsert_library_item_for_organization(_org_id, {**item,
                                     "embedding": _json.dumps(vec)})
                             else:
                                 failed += 1
@@ -203,10 +213,10 @@ def page_content_library(bid_id=None):
                     st.rerun()
                 appr_label = "✅ Approved" if item.get("approved") else "☐ Mark Approved"
                 if c2.button(appr_label, key=f"alib_{item['id']}"):
-                    upsert_library_item({**item, "approved": 0 if item.get("approved") else 1})
+                    tenancy.upsert_library_item_for_organization(_org_id, {**item, "approved": 0 if item.get("approved") else 1})
                     st.rerun()
                 if c3.button("🗑 Delete", key=f"dlib_{item['id']}"):
-                    delete_library_item(item["id"])
+                    tenancy.delete_library_item_for_organization(_org_id, item["id"])
                     st.rerun()
 
     # Edit panel now rendered at top of function
@@ -224,7 +234,7 @@ def page_content_library(bid_id=None):
             appr    = st.checkbox("Approved for reuse")
             if st.form_submit_button("Add Item", use_container_width=True):
                 if title and content:
-                    upsert_library_item({"title":title,"category":cat,"content":content,
+                    tenancy.upsert_library_item_for_organization(_org_id, {"title":title,"category":cat,"content":content,
                         "source":src,"bid_id":bid_id,"tags":tags,
                         "approved":1 if appr else 0,"notes":""})
                     st.rerun()
@@ -378,7 +388,8 @@ def page_proposal_analyzer(bid_id):
 # TEAM & RESOURCE LIBRARY
 # ═══════════════════════════════════════════════════════════════════════════════
 def page_team_roster():
-    coaches = get_coaches()
+    _token, _org_id = _current_access_token_and_org()
+    coaches = tenancy.get_coaches_authenticated(_token)
     st.markdown("# Team & Resource Library")
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
     st.markdown('<div class="info-box">Directory of key personnel, subject matter experts, and delivery resources '
@@ -460,7 +471,7 @@ def page_team_roster():
                 dl = c2.form_submit_button("Delete", use_container_width=True)
                 cx = c3.form_submit_button("Cancel", use_container_width=True)
             if sv:
-                upsert_coach({"id":eid,"name":name,"credentials":creds,
+                tenancy.upsert_coach_authenticated(_token, _org_id, {"id":eid,"name":name,"credentials":creds,
                     "icf_level":icf if icf!="—" else None,"sectors":sectors,
                     "languages":langs,"location":loc,"availability":avail,
                     "email":email,"phone":phone,"cv_summary":cv_sum,
@@ -468,8 +479,7 @@ def page_team_roster():
                 del st.session_state["editing_coach"]
                 st.rerun()
             if dl:
-                from database import delete_coach
-                delete_coach(eid)
+                tenancy.delete_coach_authenticated(_token, eid)
                 del st.session_state["editing_coach"]
                 st.rerun()
             if cx:
@@ -496,7 +506,7 @@ def page_team_roster():
             ref_con = st.text_input("Reference Contact")
             if st.form_submit_button("Add Coach", use_container_width=True):
                 if name:
-                    upsert_coach({"name":name,"credentials":creds,
+                    tenancy.upsert_coach_authenticated(_token, _org_id, {"name":name,"credentials":creds,
                         "icf_level":icf if icf!="—" else None,
                         "sectors":sectors,"languages":langs,"location":loc,
                         "availability":avail,"email":email,"phone":phone,
@@ -1714,12 +1724,10 @@ def page_debrief(bid_id):
 # EXECUTIVE DASHBOARD
 # ═══════════════════════════════════════════════════════════════════════════════
 def page_exec_dashboard():
-    from database import (get_all_bids, get_requirements, get_tasks,
-                          get_clarifications, get_debriefs, get_coaches,
-                          get_documents, get_firm_profile)
     from datetime import date
 
-    firm_prof = get_firm_profile()
+    _token, _org_id = _current_access_token_and_org()
+    firm_prof = tenancy.get_firm_profile_authenticated(_token, _org_id)
     st.markdown("# Executive Dashboard")
     st.markdown(
         f'<div style="font-size:.82rem;color:#A9A69D;margin-bottom:.5rem">'
@@ -1729,7 +1737,9 @@ def page_exec_dashboard():
         unsafe_allow_html=True)
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
 
-    bids = get_all_bids()
+    # RLS-gated bid list (migration 008, bids_select_org_member) -- NOT a
+    # second service-role listing alongside page_dashboard()/page_all_bids().
+    bids = tenancy.list_bids_authenticated(_token)
     if not bids:
         st.markdown('<div class="empty-state">No bids in the pipeline yet.</div>',
                     unsafe_allow_html=True)
@@ -1738,10 +1748,10 @@ def page_exec_dashboard():
     # ── Enrich each bid with full data ────────────────────────────────────────
     enriched = []
     for b in bids:
-        reqs  = get_requirements(b["id"])
-        tasks = get_tasks(b["id"])
-        clars = get_clarifications(b["id"])
-        debs  = get_debriefs(b["id"])
+        reqs  = tenancy.get_requirements_authenticated(_token, b["id"])
+        tasks = tenancy.get_tasks_authenticated(_token, b["id"])
+        clars = tenancy.get_clarifications_authenticated(_token, b["id"])
+        debs  = tenancy.get_debriefs_authenticated(_token, b["id"])
 
         m_total  = len([r for r in reqs if r["category"]=="Mandatory"])
         m_done   = len([r for r in reqs if r["category"]=="Mandatory" and r["status"]=="Complete"])
@@ -2053,7 +2063,7 @@ def page_exec_dashboard():
                     unsafe_allow_html=True)
 
     # ── Coach roster summary ──────────────────────────────────────────────────
-    coaches = get_coaches()
+    coaches = tenancy.get_coaches_authenticated(_token)
     if coaches:
         st.markdown("")
         st.markdown("### Coach Roster")
@@ -2086,9 +2096,7 @@ def page_exec_dashboard():
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
     if st.button("⬇ Export Executive Report (PDF)", use_container_width=False):
         try:
-            from database import get_firm_profile
-            prof = get_firm_profile()
-            comp_name = prof.get("company_name", "Enable My Growth")
+            comp_name = firm_prof.get("company_name", "Enable My Growth")
             pdf = _exec_dashboard_pdf(enriched, coaches, alerts, comp_name)
             st.download_button(
                 "⬇ Download PDF",

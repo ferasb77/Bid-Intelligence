@@ -3,19 +3,27 @@ Contextual Post-Submission Debrief
 Records procurement outcome, evaluator feedback, scores, and institutional win-loss lessons.
 """
 import streamlit as st
-from database import get_bid, get_debriefs, upsert_debrief, update_bid
+import auth_session
+import tenancy
 from components.ui import metric_card, stage_badge
 
 DEBRIEF_OUTCOMES = ["Won", "Lost", "Shortlisted", "Withdrawn", "Pending", "Cancelled"]
 
 
+def _current_access_token_and_org():
+    session = auth_session.current_session()
+    ctx = auth_session.current_auth_context()
+    return session["access_token"], ctx.organization_id
+
+
 def page_debrief(bid_id: int):
-    bid = get_bid(bid_id)
+    _token, _org_id = _current_access_token_and_org()
+    bid = tenancy.get_bid_authenticated(_token, bid_id)
     if not bid:
         st.error("Opportunity not found.")
         return
 
-    debriefs = get_debriefs(bid_id)
+    debriefs = tenancy.get_debriefs_authenticated(_token, bid_id)
 
     st.markdown('<div style="font-size:.72rem;color:#C9A96E;text-transform:uppercase;letter-spacing:.12em;font-weight:600">POST-SUBMISSION · DEBRIEF</div>', unsafe_allow_html=True)
     st.markdown(f"# Win / Loss Debrief")
@@ -94,7 +102,7 @@ def page_debrief(bid_id: int):
             c_save, c_cancel = st.columns([2, 1])
             if c_save.form_submit_button("Save Debrief Record", use_container_width=True, type="primary"):
                 total_score = (t_score + f_score) if (t_score or f_score) else None
-                upsert_debrief({
+                tenancy.upsert_debrief_authenticated(_token, {
                     "id": d.get("id"),
                     "bid_id": bid_id,
                     "outcome": outcome,
@@ -110,7 +118,7 @@ def page_debrief(bid_id: int):
                 })
                 # Update bid stage if outcome is Won or Lost
                 if outcome in ("Won", "Lost") and bid.get("stage") != outcome:
-                    update_bid(bid_id, {**bid, "stage": outcome})
+                    tenancy.update_bid_authenticated(_token, bid_id, {**bid, "stage": outcome})
                 st.session_state.pop("editing_debrief", None)
                 st.success("Debrief record saved.")
                 st.rerun()

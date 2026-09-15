@@ -13,15 +13,25 @@ BID_INTELLIGENCE_PRODUCT_INTEGRATION_PHASE3_COMMISSIONING_REPORT.md.
 A fragment's body does not execute outside a real Streamlit script run
 context, so the plain function it wraps (_render_active_run_progress) is
 what's actually tested; the fragment itself is a thin, untested
-pass-through. No live API calls; pages.stage_understand.get_latest_analysis_run
-and every Streamlit call are mocked, same pattern as
-tests/smoke/test_all_pages_runtime.py.
+pass-through. No live API calls; every Streamlit call and every read is
+mocked, same pattern as tests/smoke/test_all_pages_runtime.py.
+
+Phase 8 remediation package 3: this page's analysis-run/result/bid reads
+now go through tenancy.py's authenticated, RLS-backed functions (not the
+old direct database.py imports) -- tests patch
+pages.stage_understand.tenancy.get_latest_analysis_run_authenticated /
+get_latest_analysis_result_authenticated / get_bid_authenticated instead,
+and pages.stage_understand._current_access_token_and_org() (the small
+helper that fetches the current session's token/org for those calls) is
+patched to a fixed tuple so no real auth_session state is required.
 """
 import unittest
 from unittest.mock import patch
 
 import pages.stage_understand as understand
 import analysis_service as svc
+
+_FAKE_TOKEN_AND_ORG = ("fake-access-token", "fake-organization-id")
 
 
 class TestShouldPoll(unittest.TestCase):
@@ -116,8 +126,9 @@ class TestActiveRunProgressRendering(unittest.TestCase):
 
     @patch("streamlit.button", return_value=False)
     @patch("streamlit.markdown")
-    @patch("pages.stage_understand.get_latest_analysis_run")
-    def test_renders_progress_for_an_active_run_without_exception(self, mock_get_run, mock_markdown, mock_button):
+    @patch("pages.stage_understand.tenancy.get_latest_analysis_run_authenticated")
+    @patch("pages.stage_understand._current_access_token_and_org", return_value=_FAKE_TOKEN_AND_ORG)
+    def test_renders_progress_for_an_active_run_without_exception(self, mock_token_org, mock_get_run, mock_markdown, mock_button):
         mock_get_run.return_value = {
             "id": 5, "status": "ANALYZING", "started_at": "2026-09-14T10:00:00+00:00",
             "progress": {"milestones": [{"milestone": svc.MILESTONE_CORPUS_PREPARED, "reached_at": "x"}],
@@ -128,25 +139,28 @@ class TestActiveRunProgressRendering(unittest.TestCase):
 
     @patch("streamlit.rerun")
     @patch("streamlit.markdown")
-    @patch("pages.stage_understand.get_latest_analysis_run")
-    def test_triggers_a_full_rerun_once_the_run_becomes_complete(self, mock_get_run, mock_markdown, mock_rerun):
+    @patch("pages.stage_understand.tenancy.get_latest_analysis_run_authenticated")
+    @patch("pages.stage_understand._current_access_token_and_org", return_value=_FAKE_TOKEN_AND_ORG)
+    def test_triggers_a_full_rerun_once_the_run_becomes_complete(self, mock_token_org, mock_get_run, mock_markdown, mock_rerun):
         mock_get_run.return_value = {"id": 5, "status": "COMPLETE"}
         understand._render_active_run_progress(1)
         mock_rerun.assert_called_once()
 
     @patch("streamlit.rerun")
     @patch("streamlit.markdown")
-    @patch("pages.stage_understand.get_latest_analysis_run")
-    def test_triggers_a_full_rerun_once_the_run_becomes_failed(self, mock_get_run, mock_markdown, mock_rerun):
+    @patch("pages.stage_understand.tenancy.get_latest_analysis_run_authenticated")
+    @patch("pages.stage_understand._current_access_token_and_org", return_value=_FAKE_TOKEN_AND_ORG)
+    def test_triggers_a_full_rerun_once_the_run_becomes_failed(self, mock_token_org, mock_get_run, mock_markdown, mock_rerun):
         mock_get_run.return_value = {"id": 5, "status": "FAILED", "failure_reason": "boom"}
         understand._render_active_run_progress(1)
         mock_rerun.assert_called_once()
 
     @patch("streamlit.button", return_value=False)
     @patch("streamlit.markdown")
-    @patch("pages.stage_understand.get_latest_analysis_run")
+    @patch("pages.stage_understand.tenancy.get_latest_analysis_run_authenticated")
+    @patch("pages.stage_understand._current_access_token_and_org", return_value=_FAKE_TOKEN_AND_ORG)
     @patch("analysis_service.is_run_stuck", return_value=True)
-    def test_offers_the_stuck_run_action_when_is_run_stuck_is_true(self, mock_stuck, mock_get_run,
+    def test_offers_the_stuck_run_action_when_is_run_stuck_is_true(self, mock_stuck, mock_token_org, mock_get_run,
                                                                     mock_markdown, mock_button):
         mock_get_run.return_value = {"id": 5, "status": "ANALYZING", "started_at": "x", "progress": {}}
         understand._render_active_run_progress(1)
@@ -169,14 +183,15 @@ class TestFastAnalysisPanelReachability(unittest.TestCase):
     @patch("streamlit.button", return_value=False)
     @patch("streamlit.columns", side_effect=lambda spec, *a, **k: [unittest.mock.MagicMock()
                                                                      for _ in range(spec if isinstance(spec, int) else len(spec))])
-    @patch("pages.stage_understand.get_latest_analysis_result", return_value=None)
-    @patch("pages.stage_understand.get_latest_analysis_run", return_value=None)
-    @patch("pages.stage_understand.get_documents")
-    @patch("pages.stage_understand.get_requirements", return_value=[])
-    @patch("pages.stage_understand.get_bid_brief", return_value={})
-    @patch("pages.stage_understand.get_bid")
+    @patch("pages.stage_understand.tenancy.get_latest_analysis_result_authenticated", return_value=None)
+    @patch("pages.stage_understand.tenancy.get_latest_analysis_run_authenticated", return_value=None)
+    @patch("pages.stage_understand.tenancy.get_documents_authenticated")
+    @patch("pages.stage_understand.tenancy.get_requirements_authenticated", return_value=[])
+    @patch("pages.stage_understand.tenancy.get_bid_brief_authenticated", return_value={})
+    @patch("pages.stage_understand.tenancy.get_bid_authenticated")
+    @patch("pages.stage_understand._current_access_token_and_org", return_value=_FAKE_TOKEN_AND_ORG)
     def test_page_understand_actually_calls_the_fast_analysis_panel(
-            self, mock_get_bid, mock_get_brief, mock_get_reqs, mock_get_docs,
+            self, mock_token_org, mock_get_bid, mock_get_brief, mock_get_reqs, mock_get_docs,
             mock_get_run, mock_get_result, mock_columns, mock_button, mock_expander, mock_markdown):
         mock_get_bid.return_value = {
             "id": 1, "client": "Test Buyer", "title": "Test RFP", "stage": "Identified",

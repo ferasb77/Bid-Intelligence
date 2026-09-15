@@ -388,5 +388,150 @@ class TestClientSeparation(unittest.TestCase):
         self.assertNotIn("st.session_state", source)
 
 
+def _mock_authenticated_client_for(table_data: dict):
+    """table_data: {table_name: canned .execute().data list}. Every query
+    chain shape used by the authenticated-read functions is covered."""
+    client = MagicMock()
+
+    def table_side_effect(name):
+        m = MagicMock()
+        data = table_data.get(name, [])
+        m.select.return_value.order.return_value.execute.return_value = MagicMock(data=data)
+        m.select.return_value.eq.return_value.execute.return_value = MagicMock(data=data)
+        m.select.return_value.eq.return_value.order.return_value.execute.return_value = MagicMock(data=data)
+        return m
+
+    client.table.side_effect = table_side_effect
+    return client
+
+
+class TestAuthenticatedReads(unittest.TestCase):
+    """tenancy.py's RLS-only read functions (Phase 8 remediation package 3
+    interactive cutover): list_bids_authenticated / get_bid_authenticated /
+    get_bid_analysis_authenticated. These read through
+    auth_client.get_authenticated_client(access_token) -- no
+    organization_id argument exists anywhere in this group, unlike the
+    service-role tenant-aware primitives earlier in this file, because
+    none is needed or trusted: whatever RLS lets the token's owner see is
+    exactly what comes back."""
+
+    @patch("tenancy.auth_client.get_authenticated_client")
+    def test_list_bids_authenticated_uses_the_users_own_token(self, mock_get_authenticated_client):
+        mock_client = _mock_authenticated_client_for({
+            "bids": [{"id": 8, "title": "RFP"}],
+            "requirements": [{"id": 1, "status": "Complete"}, {"id": 2, "status": "Not Started"}],
+            "tasks": [{"id": 1, "status": "Complete"}],
+        })
+        mock_get_authenticated_client.return_value = mock_client
+
+        bids = tenancy.list_bids_authenticated("real-users-own-access-token")
+
+        mock_get_authenticated_client.assert_called_once_with("real-users-own-access-token")
+        self.assertEqual(len(bids), 1)
+        self.assertEqual(bids[0]["id"], 8)
+        # req/task rollup matches database.get_all_bids()'s own shape --
+        # page_dashboard()/page_all_bids() render this without any change.
+        self.assertEqual(bids[0]["req_count"], 2)
+        self.assertEqual(bids[0]["req_done"], 1)
+        self.assertEqual(bids[0]["task_count"], 1)
+        self.assertEqual(bids[0]["task_done"], 1)
+
+    @patch("tenancy.auth_client.get_authenticated_client")
+    def test_get_bid_authenticated_returns_row_rls_permits(self, mock_get_authenticated_client):
+        mock_client = _mock_authenticated_client_for({"bids": [{"id": 8, "title": "RFP"}]})
+        mock_get_authenticated_client.return_value = mock_client
+
+        bid = tenancy.get_bid_authenticated("token", 8)
+
+        self.assertEqual(bid["id"], 8)
+
+    @patch("tenancy.auth_client.get_authenticated_client")
+    def test_get_bid_authenticated_returns_none_when_rls_excludes_the_row(self, mock_get_authenticated_client):
+        """No organization_id filter is applied by this function at all --
+        an empty result here can only mean RLS itself excluded the row
+        (cross-tenant bid, or one that doesn't exist -- indistinguishable,
+        by design)."""
+        mock_client = _mock_authenticated_client_for({"bids": []})
+        mock_get_authenticated_client.return_value = mock_client
+
+        bid = tenancy.get_bid_authenticated("token", 999)
+
+        self.assertIsNone(bid)
+
+    @patch("tenancy.auth_client.get_authenticated_client")
+    def test_get_bid_analysis_authenticated_returns_runs_and_latest_result(self, mock_get_authenticated_client):
+        mock_client = _mock_authenticated_client_for({
+            "analysis_runs": [
+                {"id": 1, "bid_id": 8, "status": "COMPLETE", "created_at": "2026-09-01T00:00:00Z"},
+            ],
+            "analysis_results": [{"id": 1, "run_id": 1, "structured_intelligence": {}}],
+        })
+        mock_get_authenticated_client.return_value = mock_client
+
+        analysis = tenancy.get_bid_analysis_authenticated("token", 8)
+
+        self.assertEqual(len(analysis["runs"]), 1)
+        self.assertIsNotNone(analysis["latest_result"])
+
+    @patch("tenancy.auth_client.get_authenticated_client")
+    def test_get_bid_analysis_authenticated_empty_when_rls_excludes_bid(self, mock_get_authenticated_client):
+        mock_client = _mock_authenticated_client_for({"analysis_runs": [], "analysis_results": []})
+        mock_get_authenticated_client.return_value = mock_client
+
+        analysis = tenancy.get_bid_analysis_authenticated("token", 999)
+
+        self.assertEqual(analysis["runs"], [])
+        self.assertIsNone(analysis["latest_result"])
+
+
+class TestLogoutClearsAllUserScopedState(unittest.TestCase):
+    """Instruction: logout must clear auth context, organization context,
+    tokens/session state, active bid, and any user-scoped cached state --
+    tested at the app.py level (the only place 'active_bid' and the
+    Package-3 authenticated-view selection actually live)."""
+
+    def test_app_py_sign_out_handler_clears_active_bid_and_selection_state(self):
+        """app.py has three 'Sign out' entry points (the mandatory gate's
+        no-access screen, its multi-org-selection screen, and the normal
+        sidebar) -- all three share one function, _clear_all_user_scoped_
+        state(), so the full logout contract is defined exactly once. This
+        checks that shared function's own body, plus that every 'Sign out'
+        button actually calls it (not auth_session.sign_out() directly,
+        which would skip the app-level state)."""
+        source = open(
+            os.path.join(os.path.dirname(__file__), "..", "app.py"), "r", encoding="utf-8"
+        ).read()
+
+        def_start = source.index("def _clear_all_user_scoped_state():")
+        def_end = source.index("\n\n\n", def_start)
+        clear_fn_body = source[def_start:def_end]
+        self.assertIn("_auth_session.sign_out()", clear_fn_body)
+        self.assertIn('"active_bid"', clear_fn_body)
+        self.assertIn('"pkg3_selected_bid"', clear_fn_body)
+        self.assertIn('"pkg3_org_choice"', clear_fn_body)
+
+        sign_out_button_count = source.count('if st.button("Sign out"')
+        self.assertGreaterEqual(sign_out_button_count, 1, "expected at least one Sign out button")
+        clear_call_count = source.count("_clear_all_user_scoped_state()")
+        # One call inside the shared function's own definition, plus one
+        # per "Sign out" button that invokes it.
+        self.assertEqual(clear_call_count, 1 + sign_out_button_count)
+
+    def test_auth_session_sign_out_clears_session_and_context(self):
+        """Re-confirms (already tested in test_auth_tenancy.py) that
+        auth_session.sign_out() itself clears SESSION_KEY and
+        AUTH_CONTEXT_KEY -- the auth-module half of the full logout
+        contract app.py's handler completes."""
+        import streamlit as st
+        import auth_session
+        st.session_state[auth_session.SESSION_KEY] = {"access_token": "at", "user_id": "u1"}
+        st.session_state[auth_session.AUTH_CONTEXT_KEY] = object()
+        with patch("auth_session.get_auth_client") as mock_get_auth_client:
+            mock_get_auth_client.return_value = MagicMock()
+            auth_session.sign_out()
+        self.assertNotIn(auth_session.SESSION_KEY, st.session_state)
+        self.assertNotIn(auth_session.AUTH_CONTEXT_KEY, st.session_state)
+
+
 if __name__ == "__main__":
     unittest.main()

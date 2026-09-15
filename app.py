@@ -1,7 +1,7 @@
 import streamlit as st
 import base64, json, re
 from datetime import date, datetime
-from database import (init_db, get_all_bids, get_bid, create_bid, update_bid, delete_bid,
+from database import (init_db, get_bid, update_bid, delete_bid,
                       get_deliverables, upsert_deliverable, delete_deliverable,
                       get_requirements, upsert_requirement, delete_requirement,
                       get_tasks, upsert_task, delete_task,
@@ -32,21 +32,109 @@ st.set_page_config(page_title="Bid Intelligence — Enable My Growth", page_icon
 init_db()
 inject_css()
 
-# ── Phase 8 remediation package 3: invite-acceptance callback ─────────────
-# Handles Supabase's token_hash-based invite link (?token_hash=...&type=
-# invite) before any normal page content renders. A safe no-op on every
-# ordinary page load -- it only does anything when those two query
-# parameters are actually present. Authentication is NOT yet mandatory for
-# the rest of the application (the interactive cutover itself is a
-# separate, later step) -- this only completes the bootstrap invite flow
-# and resolves/stores the real AuthContext so it can be inspected.
+# ── Phase 8 remediation package 3: mandatory authentication gate ──────────
+# Nothing below this block renders for an unauthenticated caller -- no
+# Dashboard, no bid data, no sidebar navigation, nothing but a sign-in
+# screen. This is the actual "Package 3 authenticated cutover", not the
+# earlier additive diagnostic panel (removed -- its read functions are
+# reused below, but the normal Dashboard/bid-open/analysis routes now use
+# them directly, not a side panel).
 import auth_session as _auth_session
+import auth_client as _auth_client
+import tenancy as _tenancy
+from config import get_app_base_url as _get_app_base_url
+
 _invite_result = _auth_session.handle_invite_callback()
-if _invite_result.error != "no invite callback present":
-    if _invite_result.ok:
-        st.success(f"Invitation accepted for {_invite_result.email}.")
-    else:
-        st.error(f"Invitation link could not be verified: {_invite_result.error}")
+
+
+def _clear_all_user_scoped_state():
+    """The complete logout contract (instruction 7): auth session/tokens,
+    resolved AuthContext, organization selection, active bid, and every
+    Package-3 UI selection key -- nothing user-scoped survives."""
+    _auth_session.sign_out()  # clears SESSION_KEY + AUTH_CONTEXT_KEY
+    for _key in ("active_bid", "pkg3_selected_bid", "pkg3_org_choice",
+                 "pkg3_login_email", "pkg3_bid_access_denied"):
+        st.session_state.pop(_key, None)
+
+
+def _render_login_gate():
+    st.markdown(sidebar_brand_html(), unsafe_allow_html=True)
+    st.markdown("## Sign in")
+    if _invite_result.error not in ("no invite callback present",) and not _invite_result.ok:
+        st.error(f"Sign-in link could not be verified: {_invite_result.error}")
+    st.markdown(
+        '<div class="info-box">Enter your email to receive a one-time sign-in link. '
+        'No password is required, and no account is created if the email is not already registered '
+        '(self-service sign-up is not available).</div>', unsafe_allow_html=True)
+    _login_email = st.text_input("Email", key="pkg3_login_email")
+    if st.button("Send sign-in link", key="pkg3_send_magiclink", type="primary"):
+        if _login_email:
+            try:
+                _client = _auth_client.get_auth_client()
+                _opts = {"should_create_user": False}
+                _base_url = _get_app_base_url()
+                if _base_url:
+                    _opts["email_redirect_to"] = _base_url
+                _client.auth.sign_in_with_otp({"email": _login_email, "options": _opts})
+            except Exception:
+                pass  # never reveal whether the email exists
+            st.success("If that email has an account, a sign-in link has been sent. Check your inbox.")
+
+
+_session_result = _auth_session.restore_session()
+
+if not _session_result.ok:
+    _render_login_gate()
+    st.stop()
+
+_stored_session = _auth_session.current_session() or {}
+_access_token = _stored_session.get("access_token")
+if not _access_token:
+    # Defensive only -- restore_session().ok already guarantees a token is
+    # present in a real script run; this exists so a session-state
+    # inconsistency (e.g. outside a real `streamlit run` context) fails
+    # closed at the login gate rather than crashing further down.
+    _render_login_gate()
+    st.stop()
+
+_ctx = _auth_session.current_auth_context()
+if not isinstance(_ctx, (_tenancy.AuthContext, _tenancy.OrganizationSelectionRequired, _tenancy.NoOrganizationAccess)) \
+        or (isinstance(_ctx, _tenancy.AuthContext) and _ctx.user_id != _session_result.user_id):
+    _ctx = _tenancy.resolve_organization_context(_session_result.user_id, _session_result.email)
+    st.session_state[_auth_session.AUTH_CONTEXT_KEY] = _ctx
+
+if isinstance(_ctx, _tenancy.NoOrganizationAccess):
+    st.markdown(sidebar_brand_html(), unsafe_allow_html=True)
+    st.error("Your account is not a member of any organization. Contact your administrator for access.")
+    if st.button("Sign out", key="pkg3_gate_signout_noaccess"):
+        _clear_all_user_scoped_state()
+        st.rerun()
+    st.stop()
+
+if isinstance(_ctx, _tenancy.OrganizationSelectionRequired):
+    st.markdown(sidebar_brand_html(), unsafe_allow_html=True)
+    st.markdown("## Select organization")
+    st.caption("Your account belongs to more than one organization. Choose one to continue -- it is never chosen automatically.")
+    _org_names = [c["organization_name"] for c in _ctx.candidates]
+    _picked_org_name = st.selectbox("Organization", _org_names, key="pkg3_org_choice",
+                                     index=None, placeholder="Choose an organization…")
+    if _picked_org_name and st.button("Continue", key="pkg3_org_choice_confirm", type="primary"):
+        _selected = next(c for c in _ctx.candidates if c["organization_name"] == _picked_org_name)
+        st.session_state[_auth_session.AUTH_CONTEXT_KEY] = _tenancy.AuthContext(
+            user_id=_ctx.user_id, email=_session_result.email,
+            organization_id=_selected["organization_id"],
+            organization_name=_selected["organization_name"],
+            role=_selected["role"],
+        )
+        st.rerun()
+    if st.button("Sign out", key="pkg3_gate_signout_selection"):
+        _clear_all_user_scoped_state()
+        st.rerun()
+    st.stop()
+
+# _ctx is now guaranteed to be a real, resolved AuthContext -- everything
+# from here down runs only for a genuinely authenticated, tenant-resolved
+# caller.
 
 # ── session defaults ──────────────────────────────────────────────────────────
 if "page" not in st.session_state:
@@ -55,9 +143,17 @@ if "active_bid" not in st.session_state:
     st.session_state.active_bid = None
 
 def go(page, bid_id=None):
-    st.session_state.page = page
+    """The single choke point that ever sets active_bid. A bid_id that
+    fails the authenticated, RLS-backed lookup (guessed, nonexistent, or
+    belonging to a different organization) fails closed -- no navigation,
+    no state change, just an inline error (instruction 3)."""
     if bid_id is not None:
+        _authorized_bid = _tenancy.get_bid_authenticated(_access_token, bid_id)
+        if not _authorized_bid:
+            st.error("You do not have access to that bid.")
+            return
         st.session_state.active_bid = bid_id
+    st.session_state.page = page
     st.rerun()
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -65,6 +161,13 @@ def go(page, bid_id=None):
 # ═════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
     st.markdown(sidebar_brand_html(), unsafe_allow_html=True)
+
+    st.markdown(
+        f'<div style="font-size:.75rem;color:#A9A69D">Signed in as <strong style="color:#EDEAE3">{_ctx.email}</strong>'
+        f'<br>{_ctx.organization_name} · {_ctx.role}</div>', unsafe_allow_html=True)
+    if st.button("Sign out", key="pkg3_sidebar_signout", use_container_width=True):
+        _clear_all_user_scoped_state()
+        st.rerun()
 
     if api_key_configured():
         st.markdown('<span style="font-size:.7rem;color:#27AE60">● API key configured</span>', unsafe_allow_html=True)
@@ -87,7 +190,7 @@ with st.sidebar:
 
     # ── Active Bid Navigation (5-Stage Decision Workflow) ──
     if st.session_state.active_bid:
-        bid = get_bid(st.session_state.active_bid)
+        bid = _tenancy.get_bid_authenticated(_access_token, st.session_state.active_bid)
         if bid:
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
             st.markdown(f'<div style="font-size:.75rem;color:#C9A96E;text-transform:uppercase;margin-bottom:.3rem">Active Bid</div>'
@@ -134,7 +237,7 @@ def _deadline_label(bid: dict) -> str:
 
 def page_dashboard():
     st.markdown(dashboard_brand_html(), unsafe_allow_html=True)
-    bids = get_all_bids()
+    bids = _tenancy.list_bids_authenticated(_access_token)
     active    = [b for b in bids if b["stage"] in ("Qualifying","In Progress","Review")]
     submitted = [b for b in bids if b["stage"] == "Submitted"]
     won       = [b for b in bids if b["stage"] == "Won"]
@@ -192,7 +295,7 @@ def page_dashboard():
 def page_all_bids():
     st.markdown("# All Bids")
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
-    bids = get_all_bids()
+    bids = _tenancy.list_bids_authenticated(_access_token)
     if not bids:
         st.markdown('<div class="empty-state">No bids yet.</div>', unsafe_allow_html=True)
         return
@@ -306,9 +409,11 @@ def page_new_bid():
             notes = st.text_area("Notes", height=70)
             if st.form_submit_button("Create →", use_container_width=True):
                 if title and client:
-                    bid_id = create_bid({"title":title,"client":client,"file_number":file_no,
+                    bid_id = _tenancy.create_bid_for_organization({
+                        "title":title,"client":client,"file_number":file_no,
                         "stage":stage,"sensitivity":sens,"owner":owner,"value_cad":val or None,
-                        "submission_deadline":sub_dl or None,"clarification_deadline":clar_dl or None,"notes":notes})
+                        "submission_deadline":sub_dl or None,"clarification_deadline":clar_dl or None,"notes":notes},
+                        organization_id=_ctx.organization_id)
                     go("stage_understand", bid_id)
                 else:
                     st.error("Title and Client required.")
@@ -387,19 +492,23 @@ def _render_extraction_review():
         if not title or not client:
             st.error("Title and Client are required.")
             return
-        bid_id = create_bid({"title":title,"client":client,"file_number":file_no,
+        bid_id = _tenancy.create_bid_for_organization({
+            "title":title,"client":client,"file_number":file_no,
             "stage":stage,"sensitivity":sens,"owner":owner,"value_cad":val or None,
-            "submission_deadline":sub_dl or None,"clarification_deadline":clar_dl or None,"notes":notes})
-        
-        # Save all package files
+            "submission_deadline":sub_dl or None,"clarification_deadline":clar_dl or None,"notes":notes},
+            organization_id=_ctx.organization_id)
+
+        # Save all package files -- documents/Storage stay server-side
+        # (category B, Package 4 territory); tenant-authorized immediately
+        # before each privileged call.
         for fn, fb in pkg_files:
-            save_upload(bid_id, fn, fb)
-            
+            _tenancy.upload_document_for_organization(bid_id, _ctx.organization_id, fn, fb)
+
         brief_data = extracted.get("brief") or {}
         brief_data["bid_id"] = bid_id
-        upsert_bid_brief(brief_data)
+        _tenancy.save_bid_brief_for_organization(bid_id, _ctx.organization_id, brief_data)
         for r in reqs:
-            upsert_requirement({
+            _tenancy.upsert_requirement_authenticated(_access_token, {
                 **r,
                 "id": None,
                 "bid_id": bid_id,
@@ -409,9 +518,9 @@ def _render_extraction_review():
                 "notes": r.get("notes") or ""
             })
         for d in docs:
-            upsert_document({**d,"id":None,"bid_id":bid_id,"file_path":None})
+            _tenancy.create_document_record_for_organization(bid_id, _ctx.organization_id, {**d,"id":None,"bid_id":bid_id,"file_path":None})
         for s in secs:
-            upsert_section({**s,"id":None,"bid_id":bid_id})
+            _tenancy.upsert_section_authenticated(_access_token, {**s,"id":None,"bid_id":bid_id})
         st.session_state["extraction"] = None
         st.session_state["extraction_pkg_files"] = None
         go("stage_understand", bid_id)

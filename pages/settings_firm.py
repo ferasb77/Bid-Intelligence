@@ -4,11 +4,19 @@ Configures the bidding organization's capability profile, standard credentials,
 insurance defaults, and ethical AI usage disclosure to power generic AI prompts.
 """
 import streamlit as st
-from database import get_firm_profile, save_firm_profile
+import auth_session
+import tenancy
 from config import api_key_configured
 
 
+def _current_access_token_and_org():
+    session = auth_session.current_session()
+    ctx = auth_session.current_auth_context()
+    return session["access_token"], ctx.organization_id
+
+
 def page_settings_firm():
+    _token, _org_id = _current_access_token_and_org()
     st.markdown('<div style="font-size:.72rem;color:#C9A96E;text-transform:uppercase;letter-spacing:.12em;font-weight:600">SETTINGS & PROFILE</div>', unsafe_allow_html=True)
     st.markdown("# Firm Profile & System Configuration")
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
@@ -21,7 +29,7 @@ def page_settings_firm():
         unsafe_allow_html=True
     )
 
-    profile = get_firm_profile()
+    profile = tenancy.get_firm_profile_authenticated(_token, _org_id)
 
     # Display Unconfigured Notice if key fields are empty
     unconfigured = []
@@ -71,7 +79,7 @@ def page_settings_firm():
                              placeholder="Standard disclosure template for tender submissions regarding ethical AI usage...")
 
         if st.form_submit_button("Save Firm Profile", use_container_width=True, type="primary"):
-            save_firm_profile({
+            tenancy.save_firm_profile_authenticated(_token, _org_id, {
                 "company_name": company_name,
                 "overview": overview,
                 "core_capabilities": core_cap,

@@ -10,9 +10,8 @@ Consolidated quality gate answering:
 import io
 import json
 import streamlit as st
-from database import (get_bid, get_requirements, upsert_requirement,
-                      get_documents, get_outline, get_clarifications,
-                      download_file, get_bid_brief)
+import auth_session
+import tenancy
 from analyst import (analyze_proposal_alignment, missing_evidence,
                      compliance_review)
 from extractor import extract_text_from_file
@@ -22,23 +21,30 @@ from components.ui import (qual_badge, evidence_badge, status_badge, readiness_b
 from requirement_semantics import select_qualification_requirements
 
 
+def _current_access_token_and_org():
+    session = auth_session.current_session()
+    ctx = auth_session.current_auth_context()
+    return session["access_token"], ctx.organization_id
+
+
 def page_check(bid_id: int):
-    bid = get_bid(bid_id)
+    _token, _org_id = _current_access_token_and_org()
+    bid = tenancy.get_bid_authenticated(_token, bid_id)
     if not bid:
         st.error("Opportunity not found.")
         return
 
-    reqs = get_requirements(bid_id)
-    docs = get_documents(bid_id)
-    outline = get_outline(bid_id)
-    clars = get_clarifications(bid_id)
+    reqs = tenancy.get_requirements_authenticated(_token, bid_id)
+    docs = tenancy.get_documents_authenticated(_token, bid_id)
+    outline = tenancy.get_outline_authenticated(_token, bid_id)
+    clars = tenancy.get_clarifications_authenticated(_token, bid_id)
 
     st.markdown('<div style="font-size:.72rem;color:#C9A96E;text-transform:uppercase;letter-spacing:.12em;font-weight:600">STAGE 4 · CHECK</div>', unsafe_allow_html=True)
     st.markdown(f"# Bid Review & Quality Gate")
     st.markdown(f'<div style="font-size:1rem;color:#A9A69D">{bid["client"]} — {bid["title"]}</div>', unsafe_allow_html=True)
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
 
-    brief_row = get_bid_brief(bid_id) or {}
+    brief_row = tenancy.get_bid_brief_authenticated(_token, bid_id) or {}
     raw_q_gates = brief_row.get("qualification_gates")
     qual_gates = []
     if isinstance(raw_q_gates, list):

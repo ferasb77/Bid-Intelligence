@@ -75,3 +75,18 @@ def get_anthropic_client(api_key: str | None = None):
 
 def api_key_configured() -> bool:
     return bool(get_api_key())
+
+def get_app_base_url() -> str | None:
+    """Phase 8 remediation package 3: this deployment's own public base
+    URL, used as email_redirect_to when the login gate requests a
+    magic-link sign-in. Must match an entry already in Supabase Auth's
+    Redirect URLs allowlist -- if unset, the login gate omits
+    email_redirect_to and Supabase falls back to its own configured Site
+    URL, which may not match this specific deployment (e.g. staging)."""
+    try:
+        url = st.secrets.get("APP_BASE_URL")
+        if url:
+            return url
+    except Exception:
+        pass
+    return os.getenv("APP_BASE_URL") or None

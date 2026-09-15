@@ -80,23 +80,37 @@ _LEGACY_ORGANIZATION_SLUG = "emg-internal"
 
 def _resolve_legacy_organization_id(sb):
     """PRE-AUTH DEVELOPMENT-ONLY COMPATIBILITY PATH (Phase 8 remediation
-    package 2). Migration 007 made bids.organization_id NOT NULL after
-    backfilling every existing bid to the 'emg-internal' legacy
-    organization. No authenticated/tenant-aware bid-creation path exists
-    in the product yet (Phase 8 remediation package 3 will wire one in via
-    tenancy.create_bid_for_organization(), which takes an explicit,
-    required organization_id and never falls back to this), so the
-    existing, already-commissioned, single-user create_bid() below -- the
-    only bid-creation path the current internal application has -- must
-    keep working without one. This resolves the legacy organization by its
-    known, deterministic slug (never a hardcoded UUID) rather than
-    silently failing the current commissioned app's New Bid flow. This is
-    the ONLY place in the codebase allowed to do this; tenancy.py's own
-    create_bid_for_organization() explicitly never references this slug
-    (tests/test_auth_tenancy.py enforces that). Named, documented, and
-    tested (tests/test_database.py) so its status is explicit rather than
-    a silent multi-tenant default -- exactly the escape hatch Phase 8
-    remediation package 2's own instructions anticipated for this case."""
+    package 2; status re-evaluated and RETAINED in package 3).
+
+    As of Phase 8 remediation package 3, the NORMAL INTERACTIVE application
+    no longer calls create_bid() at all -- both of app.py's bid-creation
+    call sites (the manual form and the extracted-package review) now call
+    tenancy.create_bid_for_organization() directly, with the authenticated
+    caller's real, resolved organization_id -- never inferred, never
+    defaulted to this legacy org. The mandatory auth gate in app.py
+    guarantees no unauthenticated request ever reaches those call sites.
+
+    This function -- and create_bid() below -- is kept ONLY because
+    create_bid() still has real, demonstrated internal (non-interactive,
+    non-user) callers that are out of scope for this package to touch:
+    tests/acceptance/populate_supabase_and_stats.py,
+    tests/acceptance/process_frozen_pipeline.py,
+    tests/acceptance/run_blind_acceptance.py, and the live smoke tests in
+    tests/smoke/test_live_supabase_migration_003.py (which this exact
+    compatibility path was written in package 2 to keep passing against
+    the live database once bids.organization_id became NOT NULL). Removing
+    this now would break all of them for no corresponding benefit, since
+    they are test/acceptance infrastructure, not the interactive UI this
+    package's cutover was about. Per the package 3 instruction's own
+    criterion ('retain only if you can demonstrate a still-required
+    internal non-user path; otherwise remove it') -- this demonstrates
+    exactly that, so it is retained, not removed.
+
+    This resolves the legacy organization by its known, deterministic
+    slug (never a hardcoded UUID). This is the ONLY place in the codebase
+    allowed to do this; tenancy.py's own create_bid_for_organization()
+    explicitly never references this slug (tests/test_auth_tenancy.py
+    enforces that)."""
     row = _one(sb.table("organizations").select("id").eq("slug", _LEGACY_ORGANIZATION_SLUG).execute())
     return row["id"] if row else None
 

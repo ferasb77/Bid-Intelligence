@@ -10,8 +10,8 @@ Final gatekeeper ensuring zero-defect package assembly:
 """
 from datetime import datetime
 import streamlit as st
-from database import (get_bid, get_requirements, get_documents, get_outline,
-                      update_bid, save_upload, upsert_document)
+import auth_session
+import tenancy
 from analyst import submission_readiness_check
 from config import api_key_configured
 from components.ui import (days_until, days_label, status_badge,
@@ -19,15 +19,22 @@ from components.ui import (days_until, days_label, status_badge,
 from evaluator import evaluate_submission_state
 
 
+def _current_access_token_and_org():
+    session = auth_session.current_session()
+    ctx = auth_session.current_auth_context()
+    return session["access_token"], ctx.organization_id
+
+
 def page_submit(bid_id: int):
-    bid = get_bid(bid_id)
+    _token, _org_id = _current_access_token_and_org()
+    bid = tenancy.get_bid_authenticated(_token, bid_id)
     if not bid:
         st.error("Opportunity not found.")
         return
 
-    reqs = get_requirements(bid_id)
-    docs = get_documents(bid_id)
-    outline = get_outline(bid_id)
+    reqs = tenancy.get_requirements_authenticated(_token, bid_id)
+    docs = tenancy.get_documents_authenticated(_token, bid_id)
+    outline = tenancy.get_outline_authenticated(_token, bid_id)
 
     st.markdown('<div style="font-size:.72rem;color:#C9A96E;text-transform:uppercase;letter-spacing:.12em;font-weight:600">STAGE 5 · SUBMIT</div>', unsafe_allow_html=True)
     st.markdown(f"# Submission Control")
@@ -72,11 +79,11 @@ def page_submit(bid_id: int):
                 r_col1, r_col2, r_col3 = st.columns([3, 1, 1])
                 r_col1.caption("⚠️ Requirement status not established from source evidence. Please classify:")
                 if r_col2.button("Mark Required", key=f"btn_mand_req_{doc.get('id')}", use_container_width=True):
-                    upsert_document({"id": doc["id"], "mandatory": 1})
+                    tenancy.set_document_mandatory_for_organization(bid_id, _org_id, doc["id"], 1)
                     st.success(f"Classified '{doc['name']}' as Required.")
                     st.rerun()
                 if r_col3.button("Mark Optional", key=f"btn_mand_opt_{doc.get('id')}", use_container_width=True):
-                    upsert_document({"id": doc["id"], "mandatory": 0})
+                    tenancy.set_document_mandatory_for_organization(bid_id, _org_id, doc["id"], 0)
                     st.info(f"Classified '{doc['name']}' as Optional.")
                     st.rerun()
     else:
@@ -87,7 +94,7 @@ def page_submit(bid_id: int):
         if up_file:
             up_key = f"uploaded_sub_{bid_id}_{up_file.name}_{up_file.size}"
             if not st.session_state.get(up_key):
-                save_upload(bid_id, up_file.name, up_file.read(), doc_type="Submission")
+                tenancy.upload_document_for_organization(bid_id, _org_id, up_file.name, up_file.read(), doc_type="Submission")
                 st.session_state[up_key] = True
                 st.success(f"Added {up_file.name} to submission package.")
                 st.rerun()
@@ -219,7 +226,7 @@ def page_submit(bid_id: int):
                 unsafe_allow_html=True
             )
             if st.button("✅ Mark Bid as Officially Submitted", use_container_width=True, type="primary", key="btn_mark_sub"):
-                update_bid(bid_id, {
+                tenancy.update_bid_authenticated(_token, bid_id, {
                     **bid,
                     "stage": "Submitted"
                 })

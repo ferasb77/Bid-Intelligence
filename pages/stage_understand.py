@@ -13,13 +13,24 @@ Answers:
 """
 import json
 import streamlit as st
-from database import (get_bid, get_bid_brief, upsert_bid_brief, get_requirements,
-                      get_documents, save_upload, update_bid, get_latest_analysis_result,
-                      get_latest_analysis_run, download_file as _download_stored_file)
+from database import download_file as _download_stored_file
 from components.ui import (stage_badge, days_until, days_label, metric_card,
                            readiness_bar, STAGES, SENSITIVITY)
 import analysis_service
+import auth_session
+import tenancy
 from config import get_api_key, api_key_configured
+
+
+def _current_access_token_and_org() -> tuple[str, str]:
+    """Phase 8 remediation package 3: the normal routed UNDERSTAND stage
+    reads bid/analysis data through the authenticated, RLS-backed client,
+    never the service-role client -- app.py's mandatory auth gate
+    guarantees a real session and resolved AuthContext exist by the time
+    this page is ever reached, so both lookups here are non-optional."""
+    session = auth_session.current_session()
+    ctx = auth_session.current_auth_context()
+    return session["access_token"], ctx.organization_id
 
 
 def _ensure_dict(val):
@@ -165,7 +176,8 @@ def _render_active_run_progress(bid_id: int) -> None:
     session_state. Stops polling the instant the run is no longer
     non-terminal by triggering one full-page rerun (instruction 6), after
     which this is no longer entered at all."""
-    run = get_latest_analysis_run(bid_id, "FAST")
+    _token, _ = _current_access_token_and_org()
+    run = tenancy.get_latest_analysis_run_authenticated(_token, bid_id, "FAST")
     if not _should_poll(run):
         st.rerun()
         return
@@ -205,7 +217,8 @@ def _render_fast_analysis_panel(bid_id: int, rfp_docs: list):
     the auto-polling _poll_active_analysis fragment (Phase 2); every other
     branch below is unchanged from Phase 1."""
     st.markdown("### ⚡ Fast Analysis")
-    run = get_latest_analysis_run(bid_id, "FAST")
+    _token, _ = _current_access_token_and_org()
+    run = tenancy.get_latest_analysis_run_authenticated(_token, bid_id, "FAST")
 
     if not rfp_docs:
         st.markdown('<div class="info-box">Upload at least one RFP / Source document above to run Fast Analysis.</div>', unsafe_allow_html=True)
@@ -252,14 +265,24 @@ def _render_fast_analysis_panel(bid_id: int, rfp_docs: list):
 
 
 def _start_fast_analysis(bid_id: int):
+    """Phase 8 remediation package 3: a user-triggered privileged
+    operation (creates an analysis_runs row, spends LLM tokens) -- routed
+    through tenancy.start_fast_analysis_for_organization(), which verifies
+    the caller's organization actually owns bid_id BEFORE calling
+    analysis_service.start_fast_analysis() at all (instruction 16/17).
+    analysis_service.py / fast_analysis.py themselves are unchanged; this
+    only adds the authorization check in front of the existing call."""
     if not st.session_state.get("anthropic_api_key") and not api_key_configured():
         st.error("Add your Anthropic API key first (see New Bid page or Settings).")
         return
     api_key = st.session_state.get("anthropic_api_key") or get_api_key()
+    _, organization_id = _current_access_token_and_org()
     try:
-        analysis_service.start_fast_analysis(bid_id, api_key, created_by="app-ui")
+        tenancy.start_fast_analysis_for_organization(bid_id, organization_id, api_key, created_by="app-ui")
         st.success("Fast Analysis started.")
         st.rerun()
+    except tenancy.AccessDeniedError:
+        st.error("You do not have access to that bid.")
     except analysis_service.DuplicateAnalysisRunError as e:
         st.warning(f"An analysis is already in progress for this bid (run {e.existing_run.get('id')}).")
         st.rerun()
@@ -270,14 +293,15 @@ def _start_fast_analysis(bid_id: int):
 
 
 def page_understand(bid_id: int):
-    bid = get_bid(bid_id)
+    _token, _ = _current_access_token_and_org()
+    bid = tenancy.get_bid_authenticated(_token, bid_id)
     if not bid:
         st.error("Opportunity not found.")
         return
 
-    brief_row = get_bid_brief(bid_id) or {}
-    reqs = get_requirements(bid_id)
-    docs = get_documents(bid_id)
+    brief_row = tenancy.get_bid_brief_authenticated(_token, bid_id) or {}
+    reqs = tenancy.get_requirements_authenticated(_token, bid_id)
+    docs = tenancy.get_documents_authenticated(_token, bid_id)
 
     # Decode JSON fields from brief_row if present
     exec_summary = brief_row.get("executive_summary") or bid.get("notes") or "Executive summary pending synthesis."
@@ -663,7 +687,7 @@ def page_understand(bid_id: int):
     # OpportunityIntelligence contract straight from analysis_results, with
     # no re-extraction. Renders only when a completed Fast Analysis run
     # exists for this bid; otherwise the page behaves exactly as before.
-    analysis_result = get_latest_analysis_result(bid_id, "FAST")
+    analysis_result = tenancy.get_latest_analysis_result_authenticated(_token, bid_id, "FAST")
     if analysis_result and analysis_result.get("structured_intelligence"):
         oi = _ensure_dict(analysis_result["structured_intelligence"])
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)

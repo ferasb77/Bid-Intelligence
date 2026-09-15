@@ -8,29 +8,33 @@ Consolidated working environment for proposal construction:
 5. Action Tasks & Assignments
 """
 import streamlit as st
-from database import (get_bid, get_requirements, get_outline, upsert_section, delete_section,
-                      get_library_items, semantic_library_search, get_deliverables,
-                      upsert_deliverable, delete_deliverable, get_documents, upsert_document,
-                      delete_document, save_upload, get_tasks, upsert_task, delete_task,
-                      get_firm_profile)
+import auth_session
+import tenancy
 from analyst import draft_proposal_section
 from config import api_key_configured
 from components.ui import (metric_card, status_badge, priority_badge, readiness_bar,
                            STATUSES, PRIORITIES, DOC_TYPES)
 
 
+def _current_access_token_and_org():
+    session = auth_session.current_session()
+    ctx = auth_session.current_auth_context()
+    return session["access_token"], ctx.organization_id
+
+
 def page_build(bid_id: int):
-    bid = get_bid(bid_id)
+    _token, _org_id = _current_access_token_and_org()
+    bid = tenancy.get_bid_authenticated(_token, bid_id)
     if not bid:
         st.error("Opportunity not found.")
         return
 
-    reqs = get_requirements(bid_id)
-    sections = get_outline(bid_id)
-    dels = get_deliverables(bid_id)
-    docs = get_documents(bid_id)
-    tasks = get_tasks(bid_id)
-    firm_profile = get_firm_profile()
+    reqs = tenancy.get_requirements_authenticated(_token, bid_id)
+    sections = tenancy.get_outline_authenticated(_token, bid_id)
+    dels = tenancy.get_deliverables_authenticated(_token, bid_id)
+    docs = tenancy.get_documents_authenticated(_token, bid_id)
+    tasks = tenancy.get_tasks_authenticated(_token, bid_id)
+    firm_profile = tenancy.get_firm_profile_authenticated(_token, _org_id)
 
     st.markdown('<div style="font-size:.72rem;color:#C9A96E;text-transform:uppercase;letter-spacing:.12em;font-weight:600">STAGE 3 · BUILD</div>', unsafe_allow_html=True)
     st.markdown(f"# Proposal Workspace")
@@ -100,7 +104,7 @@ def page_build(bid_id: int):
                     n_notes = st.text_area("Scope / Guidance", height=50)
                     if st.form_submit_button("Add Section", use_container_width=True):
                         if n_title:
-                            upsert_section({
+                            tenancy.upsert_section_authenticated(_token, {
                                 "id": None, "bid_id": bid_id, "title": n_title,
                                 "section_num": n_num, "owner": n_owner, "word_limit": n_wlimit,
                                 "sort_order": len(sections), "status": "Not Started", "notes": n_notes
@@ -132,7 +136,7 @@ def page_build(bid_id: int):
 
                 # Semantic Content Reuse
                 with st.expander("📚 Relevant Content Library Blocks (Semantic Search)", expanded=False):
-                    lib_results, used_semantic = semantic_library_search(active_sec["title"], bid_id=bid_id, top_k=4)
+                    lib_results, used_semantic = tenancy.semantic_library_search_authenticated(_token, active_sec["title"], bid_id, top_k=4)
                     if lib_results:
                         for lib_item in lib_results:
                             st.markdown(f"**[{lib_item.get('category','')}] {lib_item.get('title','')}**")
@@ -170,7 +174,7 @@ def page_build(bid_id: int):
                 c_s1, c_s2, c_s3 = st.columns([1.5, 1.5, 1])
                 new_sec_stat = c_s1.selectbox("Status", STATUSES, index=STATUSES.index(active_sec.get("status", "Draft")) if active_sec.get("status") in STATUSES else 2, key=f"stat_{active_sec['id']}")
                 if c_s2.button("💾 Save Section", key=f"save_sec_{active_sec['id']}", use_container_width=True):
-                    upsert_section({
+                    tenancy.upsert_section_authenticated(_token, {
                         **active_sec,
                         "notes": edited_draft,
                         "status": new_sec_stat
@@ -178,7 +182,7 @@ def page_build(bid_id: int):
                     st.success("Saved.")
                     st.rerun()
                 if c_s3.button("🗑", key=f"del_sec_{active_sec['id']}", help="Delete section"):
-                    delete_section(active_sec["id"])
+                    tenancy.delete_section_authenticated(_token, active_sec["id"])
                     st.session_state.pop("active_draft_sec", None)
                     st.rerun()
 
@@ -203,7 +207,7 @@ def page_build(bid_id: int):
                     price_str = f"AI: CAD {d['price_ai']:,.2f}" if d.get("price_ai") else ""
                     c_d3.markdown(f"**Pricing:** {price_str if price_str else 'To be priced'}")
                     if st.button("Delete Service", key=f"del_d_{d['id']}"):
-                        delete_deliverable(d["id"])
+                        tenancy.delete_deliverable_authenticated(_token, d["id"])
                         st.rerun()
         else:
             st.markdown('<div class="info-box">No SOW deliverables defined yet. Add deliverables below.</div>', unsafe_allow_html=True)
@@ -220,7 +224,7 @@ def page_build(bid_id: int):
                 d_cat = c_dp3.selectbox("Category", ["Core Service", "Optional Service", "Reporting", "Call-off Mechanic"])
                 if st.form_submit_button("Add Deliverable", use_container_width=True):
                     if d_title:
-                        upsert_deliverable({
+                        tenancy.upsert_deliverable_authenticated(_token, {
                             "id": None, "bid_id": bid_id, "service_id": d_id,
                             "title": d_title, "description": d_desc, "duration": d_dur,
                             "volume": d_vol, "category": d_cat, "sort_order": len(dels)
@@ -244,7 +248,7 @@ def page_build(bid_id: int):
             up_key = f"uploaded_build_{bid_id}_{up_file.name}_{up_file.size}"
             if not st.session_state.get(up_key):
                 fb = up_file.read()
-                save_upload(bid_id, up_file.name, fb, doc_type="Submission")
+                tenancy.upload_document_for_organization(bid_id, _org_id, up_file.name, fb, doc_type="Submission")
                 st.session_state[up_key] = True
                 st.success(f"Uploaded: {up_file.name}")
                 st.rerun()
@@ -274,7 +278,7 @@ def page_build(bid_id: int):
                 c_t1.markdown(f"**{t['title']}** <span style='font-size:.75rem;color:#A9A69D'>({t.get('owner','Unassigned')})</span>", unsafe_allow_html=True)
                 c_t2.markdown(f"{pri_b} {stat_b}", unsafe_allow_html=True)
                 if c_t3.button("Delete", key=f"del_t_{t['id']}"):
-                    delete_task(t["id"])
+                    tenancy.delete_task_authenticated(_token, t["id"])
                     st.rerun()
         else:
             st.markdown('<div class="empty-state">No action tasks logged.</div>', unsafe_allow_html=True)
@@ -288,7 +292,7 @@ def page_build(bid_id: int):
                 t_pri = st.selectbox("Priority", PRIORITIES, index=1)
                 if st.form_submit_button("Add Task", use_container_width=True):
                     if t_title:
-                        upsert_task({"id": None, "bid_id": bid_id, "title": t_title, "owner": t_owner, "due_date": t_due, "priority": t_pri, "status": "Not Started"})
+                        tenancy.upsert_task_authenticated(_token, {"id": None, "bid_id": bid_id, "title": t_title, "owner": t_owner, "due_date": t_due, "priority": t_pri, "status": "Not Started"})
                         st.rerun()
 
     # ── NEXT STAGE CTA ────────────────────────────────────────────────────────

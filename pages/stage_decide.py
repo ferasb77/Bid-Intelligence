@@ -10,14 +10,22 @@ Answers:
 import json
 import streamlit as st
 from datetime import datetime
-from database import (get_bid, get_requirements, upsert_requirement,
-                      get_clarifications, upsert_clarification, delete_clarification,
-                      get_bid_decision, save_bid_decision, get_firm_profile,
-                      get_bid_brief, update_bid)
 from analyst import generate_clarification_questions, bid_no_bid_score
 from config import api_key_configured
 from components.ui import (qual_badge, evidence_badge, decision_badge, days_until, days_label,
                            metric_card, QUAL_STATUSES, EVIDENCE_STATUSES, CATEGORIES)
+import auth_session
+import tenancy
+
+
+def _current_access_token_and_org() -> tuple[str, str]:
+    """Phase 8 remediation package 3: every read/write on this page goes
+    through the authenticated, RLS-backed client -- app.py's mandatory
+    auth gate guarantees a real session and resolved AuthContext exist by
+    the time this page is ever reached."""
+    session = auth_session.current_session()
+    ctx = auth_session.current_auth_context()
+    return session["access_token"], ctx.organization_id
 
 
 def _ensure_list(val):
@@ -37,16 +45,17 @@ def _ensure_list(val):
 
 
 def page_decide(bid_id: int):
-    bid = get_bid(bid_id)
+    _token, _org_id = _current_access_token_and_org()
+    bid = tenancy.get_bid_authenticated(_token, bid_id)
     if not bid:
         st.error("Opportunity not found.")
         return
 
-    reqs = get_requirements(bid_id)
-    clars = get_clarifications(bid_id)
-    latest_decision = get_bid_decision(bid_id)
-    firm_profile = get_firm_profile()
-    brief_row = get_bid_brief(bid_id) or {}
+    reqs = tenancy.get_requirements_authenticated(_token, bid_id)
+    clars = tenancy.get_clarifications_authenticated(_token, bid_id)
+    latest_decision = tenancy.get_bid_decision_authenticated(_token, bid_id)
+    firm_profile = tenancy.get_firm_profile_authenticated(_token, _org_id)
+    brief_row = tenancy.get_bid_brief_authenticated(_token, bid_id) or {}
 
     st.markdown('<div style="font-size:.72rem;color:#C9A96E;text-transform:uppercase;letter-spacing:.12em;font-weight:600">STAGE 2 · DECIDE</div>', unsafe_allow_html=True)
     c1, c2 = st.columns([3.8, 1.4])
@@ -173,7 +182,7 @@ def page_decide(bid_id: int):
 
                     c_save, c_cancel = st.columns([2, 1])
                     if c_save.form_submit_button("Save Assessment", use_container_width=True, type="primary"):
-                        upsert_requirement({
+                        tenancy.upsert_requirement_authenticated(_token, {
                             **target_req,
                             "qual_status": new_qstat,
                             "evidence_status": new_estat,
@@ -229,7 +238,7 @@ def page_decide(bid_id: int):
                         try:
                             cq_res = generate_clarification_questions(bid, reqs, extra_rfp, firm_conc)
                             for q in cq_res.get("questions", []):
-                                upsert_clarification({
+                                tenancy.upsert_clarification_authenticated(_token, {
                                     "bid_id": bid_id,
                                     "question_id": q.get("id", ""),
                                     "question": q.get("question", ""),
@@ -280,8 +289,8 @@ def page_decide(bid_id: int):
                     try:
                         firm_summary = f"{firm_profile.get('company_name','')}: {firm_profile.get('overview','')} Capabilities: {firm_profile.get('core_capabilities','')}"
                         bn_res = bid_no_bid_score(bid, reqs, firm_summary, qualification_requirements=qual_reqs)
-                        existing_dec = get_bid_decision(bid_id)
-                        save_bid_decision({
+                        existing_dec = tenancy.get_bid_decision_authenticated(_token, bid_id)
+                        tenancy.save_bid_decision_authenticated(_token, {
                             "bid_id": bid_id,
                             "ai_recommendation": bn_res.get("recommendation", "NEEDS MORE INFORMATION"),
                             "ai_confidence": bn_res.get("confidence", "Medium"),
@@ -302,7 +311,7 @@ def page_decide(bid_id: int):
                     except Exception as e:
                         st.error(f"Evaluation failed: {e}")
 
-        latest_decision = get_bid_decision(bid_id)
+        latest_decision = tenancy.get_bid_decision_authenticated(_token, bid_id)
         if latest_decision and (latest_decision.get("ai_recommendation") or latest_decision.get("overall_score")):
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
             ai_rec = latest_decision.get("ai_recommendation") or "NEEDS MORE INFORMATION"
@@ -352,7 +361,7 @@ def page_decide(bid_id: int):
                                               placeholder="Document rationale, risk tolerance, and conditions agreed by executive leadership...")
 
                 if st.form_submit_button("Confirm & Save Official Decision", use_container_width=True, type="primary"):
-                    save_bid_decision({
+                    tenancy.save_bid_decision_authenticated(_token, {
                         **latest_decision,
                         "human_decision": chosen_h,
                         "override_reason": override_notes,
@@ -361,9 +370,9 @@ def page_decide(bid_id: int):
                     })
                     # Update bid stage if NO-GO
                     if chosen_h == "NO-GO":
-                        update_bid(bid_id, {**bid, "stage": "No Bid"})
+                        tenancy.update_bid_authenticated(_token, bid_id, {**bid, "stage": "No Bid"})
                     elif chosen_h in ("GO", "GO WITH CONDITIONS") and bid.get("stage") in ("Identified", "Qualifying"):
-                        update_bid(bid_id, {**bid, "stage": "In Progress"})
+                        tenancy.update_bid_authenticated(_token, bid_id, {**bid, "stage": "In Progress"})
                     st.success("Official pursuit decision recorded.")
                     st.rerun()
 

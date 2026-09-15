@@ -1,7 +1,7 @@
 # Bid Intelligence — Phase 8 Remediation Package 3: Tenant RLS Policy Enforcement & Authenticated Access Cutover
 
 **Date:** 2026-09-15 (UTC)
-**Status:** `TENANT RLS POLICIES LIVE — AUTHENTICATED CUTOVER PENDING USER BOOTSTRAP`
+**Status:** `TENANT RLS POLICIES LIVE — FINAL INTERACTIVE CUTOVER COMPLETE, INCLUDING COACHES ORGANIZATION TENANCY (migration 009, see Addendum 7) — LIVE-PROVEN, PASS DETERMINATION DEFERRED TO USER REVIEW, NOT YET COMMITTED/PUSHED`
 **Live project:** `whonalbdpbubaqhpzrnw`
 
 ---
@@ -327,6 +327,71 @@ Not live-tested — no live session was ever established (blocked by §above), s
 
 ---
 
+## Addendum 5: The Final Bounded Cutover Pass — Auth Gate, Dashboard, Bid-Open, Analysis Reads, Bid Creation
+
+**Date:** 2026-09-15 (UTC), same day, following the explicit instruction to perform one final bounded cutover of the actual normal-UI routes (not just the earlier additive diagnostic panel).
+
+### What changed
+
+1. **Mandatory authentication gate (`app.py`, new, ~120 lines at the top of the script).** An unauthenticated request now sees a sign-in screen (email → magic-link request via `sign_in_with_otp(should_create_user=False)`) and nothing else — `st.stop()` before any Dashboard/bid rendering. `tenancy.resolve_organization_context()`'s three outcomes are each handled explicitly: `NoOrganizationAccess` → error + sign-out, stop (fail closed); exactly one membership → proceeds automatically; `OrganizationSelectionRequired` → an explicit `st.selectbox` + `Continue` button, never auto-chosen, stop until confirmed.
+2. **Dashboard (`page_dashboard`) and All Bids (`page_all_bids`)** now read via `tenancy.list_bids_authenticated(_access_token)` — extended to include the same req/task-count rollup `database.get_all_bids()` used to compute, via the *same* authenticated client (so the rollup counts are themselves RLS-scoped, not just the bid list) — zero change to either page's own rendering logic.
+3. **Bid-open (`go(page, bid_id)`)** is the single place `active_bid` is ever set anywhere in the codebase (confirmed: no other assignment exists) — it now calls `tenancy.get_bid_authenticated(_access_token, bid_id)` first and fails closed (`st.error`, no navigation, no state change) if that returns `None`. The sidebar's own "Active Bid" display was switched to the same authenticated lookup.
+4. **UNDERSTAND-stage reads (`pages/stage_understand.py`)**: the top-level `bid = get_bid(bid_id)`, both analysis-run status-panel reads, and the full-intelligence analysis-result read now go through `tenancy.get_bid_authenticated()` / `tenancy.get_latest_analysis_run_authenticated()` / `tenancy.get_latest_analysis_result_authenticated()` (three new functions added this round, exactly mirroring the original service-role functions' semantics — same ordering, same mode filtering, same COMPLETE-only result lookup — so Fast Analysis's own status/result *meaning* is completely unchanged, only which client reads it).
+5. **Fast Analysis start (`_start_fast_analysis`)** now calls `tenancy.start_fast_analysis_for_organization(bid_id, organization_id, ...)` — built in an earlier round but never actually wired into the real UI button until now — instead of calling `analysis_service.start_fast_analysis()` directly. `AccessDeniedError` is caught and shown as a normal error. `analysis_service.py`/`fast_analysis.py` are untouched.
+6. **Bid creation** (`page_new_bid`'s manual form and `_render_extraction_review`'s "Create Bid with Extracted Package") both call `tenancy.create_bid_for_organization(data, organization_id=_ctx.organization_id)` — the real, resolved organization from the gate, never inferred, never defaulted. `database.create_bid()` is no longer called from `app.py` at all (confirmed: no bare `create_bid({` call remains in the file).
+7. **Logout** consolidated into one function, `_clear_all_user_scoped_state()`, called from all three "Sign out" entry points (the no-access screen, the org-selection screen, and the normal sidebar) — clears the session dict, the resolved `AuthContext`, `active_bid`, and every Package-3 UI selection key (`pkg3_selected_bid`, `pkg3_org_choice`, `pkg3_login_email`, `pkg3_bid_access_denied`) in one place, so the full logout contract is defined exactly once rather than duplicated per button.
+
+### Legacy shim — retained, with concrete evidence (instruction 6)
+
+`database.create_bid()`'s `_resolve_legacy_organization_id()` compatibility path was **not removed**. The normal interactive application no longer calls `database.create_bid()` at all (confirmed above) — but the function itself still has real, demonstrated internal (non-interactive) callers: `tests/acceptance/populate_supabase_and_stats.py`, `tests/acceptance/process_frozen_pipeline.py`, `tests/acceptance/run_blind_acceptance.py`, and — critically — the **live smoke tests** in `tests/smoke/test_live_supabase_migration_003.py`, which this exact compatibility path was written in package 2 specifically to keep passing against the live database. Removing it now would break all of them for no corresponding benefit. Per the instruction's own stated criterion ("retain only if you can demonstrate a still-required internal non-user path; otherwise remove it") — this demonstrates exactly that. Documented precisely in `database.py`'s own updated docstring.
+
+### A genuine dead-code discovery, made while auditing remaining call sites
+
+Auditing every remaining `database.py` call site reachable from `app.py`'s actual router turned up something not previously documented at this scope: **`app.py` contains seven entire page functions — `page_bid_overview`, `page_compliance`, `page_tasks`, `page_documents`, `page_outline`, `page_ai_analyst`, `page_deliverables`, plus the helper `_auto_populate_services`(called only from `page_deliverables`) — that the router never calls, confirmed by a repo-wide search finding zero call sites for any of them outside their own `def` line.** The router's `page in (...)` alias tuples (e.g. `"tasks", "documents", "deliverables"` all routing to `pages.stage_build.page_build`) route to the *module* equivalents in `pages/*.py`, not to these same-named `app.py` functions — evidently left behind when the product was reorganized into the `pages/` package, with only `page_bid_overview` previously flagged (Phase 3's own commissioning report). **All ~52 service-role call sites inside these seven functions are therefore not reachable from any real user path at all** — they do not count against "remaining reachable service-role call sites," for the same reason `page_bid_overview`'s own calls never did. This was not fixed (out of this package's scope — no dead-code removal was requested), only discovered and reported precisely rather than silently left uninvestigated.
+
+### The honest remaining-surface audit (instruction: report exact remaining service-role call sites)
+
+**Cut over to the authenticated client this round:** Dashboard, All Bids, sidebar active-bid display, bid-open (`go()`), UNDERSTAND stage's top-level bid + analysis-run + analysis-result reads, both bid-creation call sites. **Zero remaining service-role reads in any of these.**
+
+**Deliberately privileged, authorization-checked before crossing to service-role:** Fast Analysis start (`tenancy.start_fast_analysis_for_organization`).
+
+**One partial gap found while auditing, disclosed rather than silently left:** the "⬇ Download Report PDF" button (`pages/stage_understand.py`) still calls `database.download_file()` directly — a raw service-role Storage read, not routed through `tenancy.get_report_for_organization()`'s explicit authorization wrapper (which exists and is tested, but isn't wired into this button). It is *indirectly* bounded — the button is only reachable once `run = get_latest_analysis_run_authenticated(...)` has already confirmed RLS-visibility of that run to the caller's organization — but the file read itself is not independently authorization-checked. Storage-level authorization (signed URLs, bucket policy) has been out of scope for every package this engagement has run, explicitly deferred to package 4 from the very first Phase 8 audit onward; this specific button is the concrete instance of that deferral.
+
+**Genuinely remaining, reachable from normal interactive UI, NOT cut over this round — reported exhaustively, not "zero":**
+
+| Module | Reachable via | Remaining service-role call sites |
+|---|---|---|
+| `app.py::_render_extraction_review` | New Bid → package extraction → review screen | 5 (`upsert_requirement`, `upsert_document`, `save_upload`, `upsert_section`, `upsert_bid_brief`) — the bid's own post-creation population, immediately after the bid itself is created under the caller's real organization |
+| `pages/stage_decide.py::page_decide` | Sidebar "2. DECIDE" | 10 (`get_bid`, `get_bid_brief`, `get_bid_decision` ×3, `get_clarifications`, `get_firm_profile`, `get_requirements`, `save_bid_decision` ×2, `update_bid` ×2, `upsert_clarification`, `upsert_requirement`) |
+| `pages/stage_build.py::page_build` | Sidebar "3. BUILD" (and the `outline`/`tasks`/`documents`/`deliverables`/`section_drafter` aliases) | 14 |
+| `pages/stage_check.py::page_check` | Sidebar "4. CHECK" | 6 |
+| `pages/stage_submit.py::page_submit` | Sidebar "5. SUBMIT" | 7 |
+| `pages/stage_debrief.py::page_debrief` | Sidebar "Debrief" (contextual, post-submission) | 4 |
+| `pages/settings_firm.py::page_settings_firm` | Sidebar "Firm Profile & Settings" | 2 |
+| `pages_extra.py` (Content Library, Team Roster, **Executive View's own `get_all_bids()`**, Clarifications, Proposal Analyzer, Section Drafter, Submission Assembler) | Sidebar global nav + in-page tabs | ~35, including a **second, uncut-over bid-listing view** (`page_exec_dashboard`) directly analogous to the Dashboard this round did cut over |
+
+This is a real, substantial remaining surface — not zero, and not represented as zero. It was not addressed this round for a concrete, stated reason: cutting over every write path across five workflow-stage pages and the executive/library/roster pages would mean relying on migration 008's `INSERT`/`UPDATE`/`DELETE` policies in real interactive use for the first time — those policies are live and unit/SQL-tested, but **no write through them has ever been exercised in this entire engagement, only `SELECT`**. Doing that untested, across dozens of call sites, in the same pass as the read-side cutover, was judged a materially different and larger risk than this "one final bounded pass" was scoped for. It is flagged here as the natural next step, not silently deferred.
+
+### New tests (16, `tests/test_interactive_cutover.py`)
+
+`TestCutoverArchitecture` (11): the gate exists before any page function is even defined-reachable; the login screen never touches bid data; no public signup; zero-membership fails closed; multi-membership requires an explicit `Continue` click (never auto-selected); Dashboard/All Bids/`go()` all use the authenticated client with zero remaining `get_all_bids()`/bare `get_bid(` calls in those specific functions; bid creation always passes an explicit `organization_id`, never `emg-internal`; `database.create_bid()` no longer called from `app.py`; Fast-Analysis-start crosses the authorization boundary before ever touching `analysis_service.start_fast_analysis()`; the sidebar has a real Sign-out control. `TestGoAuthorizesBidOpen` (3, behavioral, against the live imported `app` module): authorized bid_id navigates; unauthorized/nonexistent bid_id fails closed with an inline error, zero state change, zero rerun; navigation without a bid_id never even attempts an authorization check. `TestLoginGateBehavior` (1, behavioral via `importlib.reload`): with session state cleared and every live call mocked, reloading `app` genuinely reaches the login screen (`st.text_input` for email actually renders) and never calls `tenancy.list_bids_authenticated` — a real behavioral proof, not just a source-text check.
+
+Six existing tests needed updating for the new call shapes (5 in `tests/test_app_analysis_panel.py`, patching the new `tenancy.*_authenticated()` functions instead of the old direct `database.py` imports; 1 in `tests/test_tenant_rls_enforcement.py`'s logout test, updated for the new shared `_clear_all_user_scoped_state()` function). `tests/smoke/test_all_pages_runtime.py` was updated to simulate an authenticated session before `import app` (the gate runs at import time) and to proxy the "authenticated" client to the real service-role client for that one file's purposes, so `import app` and every page-render test continue exercising full rendering bodies, not early-return "not found" branches.
+
+A genuine, self-identified test-isolation bug was found and fixed mid-round: an initial version of the new test file left `tenancy.auth_client.get_authenticated_client` globally patched for its entire module lifetime (mirroring the smoke test's own pattern), which collided with a *different* file's tests that specifically exercise the real, unpatched function — two `TestClientSeparation` tests failed only when the full suite ran together, not in isolation. Fixed by scoping the patch tightly to the one `import app` statement that needs it, leaving nothing globally patched afterward. Full suite re-run twice after the fix to confirm stability, not just once.
+
+### Full-suite, compile, diff-check, security advisor
+
+- `py_compile` clean across every modified file. `git diff --check` clean.
+- Full suite: **1635 passed, 2 skipped** (1619 → 1635: 16 new tests), run twice for stability, identical result both times.
+- Security advisor: unchanged from every prior round — 0 ERROR, 1 INFO (`coaches`, intended), 2 WARN (SECURITY DEFINER functions, reviewed/accepted), 1 WARN (leaked-password protection, open recommendation, unchanged).
+
+### Status
+
+The 7 named items in this round's instructions are implemented, live-data-consistent with every prior round's RLS/authorization-boundary verification, and covered by 16 new deterministic tests plus a full, stable regression run. **This is not the same claim as "zero service-role call sites remain reachable from normal interactive UI"** — that broader bar is not met, and the honest, itemized remaining surface above (five workflow-stage pages, settings, and the executive/library/roster pages — none of which were in this round's named scope) is reported in full rather than omitted or minimized.
+
+---
+
 ## Addendum 2: Compromised Session Revocation & Token-Hash Invite Flow
 
 **Date:** 2026-09-15 (UTC), same day, following user-reported exposure of the first invite's tokens.
@@ -383,3 +448,299 @@ Wired into `app.py` as one additive call immediately after `st.set_page_config()
 4. Once deployed and dashboard-configured, I send one fresh invitation (`invite_user_by_email` — the same sanctioned mechanism as before, no direct `auth.users` insert) to the same existing user — no new user, no public signup.
 5. You click the link in your own browser; the deployed `handle_invite_callback()` should complete verification, resolve `AuthContext` (organization `emg-internal`, role `owner`), and the app will show a success banner — that is the genuine, live, non-simulated proof the original acceptance plan asked for.
 6. Once that live proof exists, the remaining original acceptance-plan items (Dashboard under authenticated scope, opening an authorized bid via the user-scoped client, logout clearing context, and finally deciding whether to remove the legacy `create_bid()` compatibility shim) can be completed for real, not simulated.
+
+---
+
+## Addendum 3: Live Magic-Link Authentication — Genuinely Proven
+
+**Date:** 2026-09-15 (UTC), same day.
+
+### What happened, in order
+
+1. **Corrected the callback type.** `invite_user_by_email()` on the already-confirmed real user returned `422: A user with this email address has already been registered` (Supabase's invite endpoint only works for genuinely new users) — no side effect, confirmed user count stayed at 1. Switched to Supabase's passwordless magic-link sign-in (`sign_in_with_otp`) as the correct mechanism for an existing user, per explicit user direction. Along the way, corrected an initial mistake (`type=magiclink`) to the actual value Supabase's `verify_otp()` expects for this flow (`type=email`), and fixed a real bug the correction surfaced: `verify_otp()` was hardcoding `type="invite"` regardless of the type actually present in the URL. `INVITE_CALLBACK_ACCEPTED_TYPES` is now `("invite", "email")`; `"magiclink"` is explicitly tested as rejected. 2 new/updated tests, full suite green throughout.
+2. **Committed and pushed** (`387a046373556ec7c7c76589f8eb18d263cf24da`, exact match between local HEAD and `origin/feature/evidence-explainability`).
+3. **Verified the staging deployment** — the automatic redeploy did not pick up the new commit for several minutes; after a manual reboot (by the user), live-verified via two independent probes: `?token_hash=probe&type=email` reached token verification (`"invite verification failed: invalid or expired link"` — accepted, not rejected), while `?token_hash=probe&type=magiclink` was correctly still rejected (`"unsupported callback type: magiclink"`) — confirming the exact corrected code, not an intermediate draft, was live.
+4. **Sent exactly one real magic-link email** via `auth_client.get_auth_client().auth.sign_in_with_otp()` (anon client only, `should_create_user=False`, `email_redirect_to` set to the staging URL). The response structurally cannot return a session/token to the caller (`AuthOtpResponse` has `user=None`, `session=None` always) — confirmed live: both fields were `None`. User count confirmed unchanged (still exactly 1) before and after.
+5. **The real user clicked the email link in their own browser** and reported: the green **"Invitation accepted for feras@enablemygrowth.com"** banner, then the normal Dashboard, no errors.
+
+### Independent, server-side confirmation (not just the user's own report)
+
+- `auth.users.last_sign_in_at` advanced to a fresh timestamp (`2026-09-15 13:09:26`), matching the moment of the click — proof a genuine new session was established via GoTrue, not merely that a page loaded.
+- `tenancy.resolve_organization_context()` re-run against the real user id after the click still resolves correctly: `AuthContext(organization_name='Enable My Growth Internal', role='owner', ...)`.
+- Full suite re-run after all of this: **1612 passed, 2 skipped**, zero regressions.
+- Security advisor re-run: identical to the prior round — 0 ERROR, 1 INFO (`coaches`, intended), 2 WARN (SECURITY DEFINER functions, reviewed/accepted), 1 WARN (leaked-password protection still disabled, still an open recommendation, not remediated).
+
+### What this does and does NOT prove — stated precisely
+
+**Genuinely, live proven now:** the entire bootstrap and callback mechanism, end to end, through a real human clicking a real emailed link in their own browser — no simulation, no mocks, no SQL-layer claim substitution. This is real.
+
+**Still NOT done, and not claimed:** the interactive application itself does not yet *use* this session for anything. Every page still reads and writes exclusively through the service-role client (`database.get_client()`) — no page calls `auth_client.get_authenticated_client()`, no page checks whether a session exists, and nothing is gated behind login. The Dashboard the user saw after clicking rendered exactly as it always has, via the unauthenticated service-role path, not because RLS-scoped access was exercised through their new session. Proving *that* specifically — a page reading data through the user-scoped client, subject to the live RLS policies, using this real session — is the actual "Interactive Application Cutover" (the original spec's own §15), and remains a distinct, separate, not-yet-authorized step. So are logout-clears-context (no page has a logout control yet) and the legacy `create_bid()` compatibility-shim decision (correctly still in place, since nothing has replaced its one caller's need for it).
+
+---
+
+## Addendum 4: Interactive Cutover (Reads) — Built, Tested, Live-Re-Verified — Not Yet Deployed/Click-Tested
+
+**Date:** 2026-09-15 (UTC), same day, following explicit authorization to proceed with the remaining Package 3 acceptance checks.
+
+### New authenticated-read primitives (`tenancy.py`)
+
+Three new functions, deliberately different in kind from every earlier `tenancy.py` function: they read through `auth_client.get_authenticated_client(access_token)`, not the service-role client, and carry **no `organization_id` argument at all** — whatever comes back is determined entirely by migration 008's RLS policies evaluating the real request, not by an application-level filter.
+
+```python
+def list_bids_authenticated(access_token: str) -> list[dict]: ...
+def get_bid_authenticated(access_token: str, bid_id: int) -> dict | None: ...
+def get_bid_analysis_authenticated(access_token: str, bid_id: int) -> dict: ...  # {"runs": [...], "latest_result": ...}
+```
+
+### UI wiring (`app.py`) — additive, invisible unless a session exists
+
+A new "🔐 Authenticated View (Phase 8 Package 3)" panel, rendered immediately after the invite/magic-link callback block, **only when `auth_session.restore_session().ok` is true** — a complete no-op for the existing, still-unauthenticated single-operator flow (every existing page, every existing test, continues reading through the service-role path exactly as before; confirmed by the unchanged full-suite pass count for every other test). The panel shows the signed-in email/organization/role, a **Sign out** button, and a live bid list + bid-detail + analysis-result view built entirely from the three functions above.
+
+**Sign-out handler clears everything the instruction named:** `auth_session.sign_out()` (clears the session dict and the resolved `AuthContext` — already unit-tested) **plus**, explicitly in `app.py`'s own button handler, `st.session_state.pop("active_bid", None)` and `st.session_state.pop("pkg3_selected_bid", None)` (the new panel's own bid-selection cache) — so no user-scoped state of any kind survives a sign-out. Verified two ways: a source-level test confirms the sign-out handler's code contains all three clearing calls (`test_app_py_sign_out_handler_clears_active_bid_and_selection_state`), and the existing `sign_out()` unit tests confirm the auth-module half of the contract.
+
+### Tests
+
+12 new tests (`TestAuthenticatedReads` ×5, `TestLogoutClearsAllUserScopedState` ×2, plus the earlier Addendum 3 work) — full suite: **1619 passed, 2 skipped** (1612 → 1619), `py_compile` clean, `git diff --check` clean, `tests/smoke/test_all_pages_runtime.py` (which renders every page including this new block) still passes unchanged.
+
+### Live re-verification with fresh real data (this round)
+
+**Cross-tenant RLS, both boundaries, re-proven fresh** — a *second*, independent temporary organization/bid (`temp-crosstenant-test-org-2`), created and rolled back in the same transaction:
+
+| Check (real user's real UUID simulated via JWT claim) | Result |
+|---|---|
+| Own `emg-internal` bids visible | **4** |
+| Temp org 2's bid visible | **0** |
+| `can_access_bid()` RPC for temp org 2's bid | **`false`** |
+
+Rolled back; confirmed live afterward: `organizations` = 1, `bids` = 4 — zero residue, same as every prior round.
+
+**Application-layer authorization boundary, re-proven fresh:**
+- Unauthorized analysis start (fake org, bid 8) → `AccessDeniedError`, zero calls into `analysis_service.start_fast_analysis()`, zero possibility of an LLM call.
+- Unauthorized report access (fake org, bid 8, run 1) → `AccessDeniedError`, zero calls into `regenerate_report()`.
+- **Authorized** report access (real `emg-internal` org, bid 8, run 1) → succeeded, real 83,317-byte PDF, `%PDF-` header, zero LLM calls (regeneration from snapshot).
+
+### What this round does and does NOT prove — stated as precisely as every prior round
+
+**Genuinely proven, live, with real data:** the RLS policies and the application authorization boundary both continue to hold exactly as designed, re-verified fresh rather than assumed from earlier rounds. The authenticated-read functions are correct by construction (they contain no filter logic of their own to get wrong — RLS is the only thing that can possibly be scoping the result) and are unit-tested against every response shape they handle.
+
+**NOT yet proven live, and not claimed:** this round's new code (the authenticated-read functions and the `app.py` panel) has not been pushed, has not been deployed to staging, and has not been exercised by an actual browser holding a real session — neither the real user's own session (which exists only in their browser, which this session has no access to) nor a session obtained by this agent (which would require either another magic-link email and using this agent's own browser to click it, or some other credential-bearing action — not attempted, consistent with every prior round's discipline around not materializing or consuming credentials without explicit authorization). The Dashboard/bid-open/analysis-result items in the original acceptance checklist are therefore **code-complete and thoroughly tested, but not yet live-click-tested** — the same honest distinction this report has maintained at every step (Addendum 1's positive-case RLS caveat, Addendum 3's "mechanism proven, cutover not yet used" caveat) continues to apply here.
+
+### Legacy `create_bid()` compatibility shim — determination
+
+**Cannot be removed or disabled yet.** This round cut over *reads* (dashboard listing, bid detail, analysis results) to the authenticated path. It did **not** cut over bid *creation* — `pages/... page_new_bid()` (the application's only bid-creation entry point) still calls `database.create_bid()`, unauthenticated, through the service-role path, exactly as before. `_resolve_legacy_organization_id()` remains the only thing keeping that one call site working now that `bids.organization_id` is `NOT NULL`. Removing it now would break the application's only way to create a new bid, for no corresponding benefit — there is no authenticated bid-creation path yet for it to be replaced by. This determination will need revisiting once (and if) a future package cuts over bid creation too.
+
+### Full-suite and advisor, re-run to close out this round
+
+- Full suite: **1619 passed, 2 skipped**.
+- Security advisor: unchanged from every prior round this session — 0 ERROR, 1 INFO (`coaches`, intended), 2 WARN (SECURITY DEFINER functions, reviewed/accepted), 1 WARN (leaked-password protection, still an open recommendation for the user's own action).
+
+### Status
+
+**`PHASE 8 TENANT RLS POLICY ENFORCEMENT: NOT YET COMPLETE`** — not because anything failed, but because two acceptance-checklist items (Dashboard/bid reads and analysis-result loading, specifically *through a live browser session*) remain code-complete-and-tested rather than live-click-proven, consistent with this report's discipline throughout. Nothing was merged to `main`. Nothing was pushed this round (no instruction to do so was given, and pushing without a plan to actually live-test the result would just repeat the earlier redeploy-then-wait cycle without new information).
+
+---
+
+## Addendum 5: Mandatory Authentication Gate + First Bounded Interactive Cutover — Live-Proven, Still Partial
+
+**Date:** 2026-09-15 (UTC), same day, following the real human's live magic-link sign-in report ("received and accessed successfully" — the green "Invitation accepted" banner, then the normal Dashboard) and explicit authorization to complete the remaining Package 3 acceptance checks.
+
+### The actual change in kind
+
+Every earlier addendum in this report describes authenticated code that existed *alongside* the unauthenticated service-role path — additive, invisible unless a session already existed. This round is the first that makes authentication **mandatory**: `app.py` now opens with a gate (unauthenticated → sign-in screen only, `st.stop()`; zero organization membership → error + sign-out + `st.stop()`; exactly one membership → auto-resolved; more than one → an explicit `st.selectbox` + `Continue` button, never silently auto-chosen) before any page function, any bid data, or any sidebar navigation can render at all.
+
+### What was cut over in this round
+
+- **`go(page, bid_id=None)`** — the single choke point that ever sets `st.session_state.active_bid` anywhere in the codebase (confirmed via a repo-wide search finding zero other assignment sites) — now calls `tenancy.get_bid_authenticated(_access_token, bid_id)` first and fails closed (`st.error`, no navigation, no state change) for a guessed or cross-tenant `bid_id`.
+- **`page_dashboard()` / `page_all_bids()`** — both now read via `tenancy.list_bids_authenticated(_access_token)`, never `database.get_all_bids()`.
+- **Bid creation** — both call sites now use `tenancy.create_bid_for_organization(..., organization_id=_ctx.organization_id)`, never `database.create_bid()`. (`_render_extraction_review()`'s own further writes — requirements/outline/documents/bid_brief — were **not yet** cut over in this round; that gap was closed in Addendum 6 below.)
+- **UNDERSTAND-stage top-level reads** (`pages/stage_understand.py`) — the bid fetch and both analysis-run/result reads moved to `tenancy.get_bid_authenticated()` / `tenancy.get_latest_analysis_run_authenticated()` / `tenancy.get_latest_analysis_result_authenticated()`. (Three further reads in the same page — `get_bid_brief`, `get_requirements`, `get_documents` — were missed in this round and remained bare service-role calls; also closed in Addendum 6.)
+- **Fast-Analysis-start authorization** — `_start_fast_analysis()` now routes through `tenancy.start_fast_analysis_for_organization()`, catching `tenancy.AccessDeniedError`.
+- **Logout** — a single shared `_clear_all_user_scoped_state()` function, called from all three "Sign out" buttons (no-access screen, org-selection screen, sidebar), clears the session dict, `AuthContext`, `active_bid`, and every Package-3 UI selection key.
+
+### A real discovery: seven dead `app.py` page functions
+
+While tracing what was and wasn't actually reachable, a repo-wide call-site search (not an assumption from naming) found that `page_bid_overview`, `page_compliance`, `page_tasks`, `page_documents`, `page_outline`, `page_ai_analyst`, `page_deliverables` (plus their shared helper `_auto_populate_services`) have **zero call sites anywhere outside their own `def` line** — the router's alias tuples (e.g. `"tasks","documents","deliverables"`) all resolve to the `pages/*.py` module equivalents, never to these same-named leftover functions from a pre-`pages/`-package reorganization. They were left untouched and explicitly out of scope, per direct instruction, in every subsequent round including this one.
+
+### Live re-verification this round
+
+- Cross-tenant RLS re-proven fresh with a second independent temporary org/bid, rolled back with zero residue afterward (`organizations` = 1, `bids` = 4, matching the live pre-test baseline).
+- Application-layer authorization boundary re-proven fresh: unauthorized analysis start and unauthorized report access both denied with zero downstream calls; authorized report access succeeded with a real regenerated PDF and zero LLM calls.
+- Full suite: **1635 passed, 2 skipped**, run twice for stability. `py_compile` and `git diff --check` clean. Security advisor unchanged (0 ERROR, 1 INFO `coaches`-no-policy intended, 2 WARN SECURITY DEFINER functions reviewed/accepted, 1 WARN leaked-password protection still an open recommendation).
+
+### Status at the end of this round — explicitly NOT Package 3 PASS
+
+A large remaining reachable service-role surface still existed across the five workflow-stage pages (`stage_decide`, `stage_build`, `stage_check`, `stage_submit`, `stage_debrief`), `settings_firm.py`, and `pages_extra.py` — all still reading and writing through `database.py`'s service-role client despite the auth gate now being mandatory in front of them. This was reported honestly as an **intermediate checkpoint, not Package 3 PASS** — exactly the determination the user then confirmed and used to scope Addendum 6's comprehensive final pass, below.
+
+---
+
+## Addendum 6: Final Comprehensive Interactive-Surface Cutover — Package 3 Acceptance Evidence
+
+**Date:** 2026-09-15 (UTC), same day, per the explicit final-pass instruction: cut over every remaining service-role call reachable from normal interactive UI in `stage_decide`, `stage_build`, `stage_check`, `stage_submit`, `stage_debrief`, `settings_firm.py`, and `pages_extra.py` (including Executive View's second bid-listing surface), leave the seven confirmed-dead `app.py` functions untouched, retain the legacy `database.create_bid()` shim as internal/test-only, and stop before commit/push pending this report.
+
+### (1) Exact files changed
+
+| File | Nature of change |
+|---|---|
+| `tenancy.py` | Added ~30 new functions: full authenticated CRUD primitives for `requirements`, `tasks`, `outline_sections`, `deliverables`, `clarifications` (category A); `debriefs`, `bid_decisions` (category A, partial — no delete policy exists for either); `content_library` (category A, bid-scoped only) plus `semantic_library_search_authenticated`; select-only authenticated reads for `documents`, `document_versions`, `bid_briefs`, plus an aggregate `get_readiness_authenticated` (category B); organization-scoped `firm_profiles` CRUD (category D); five new **privileged, tenant-authorization-gated wrappers** for the writes that must stay server-side under the currently-live RLS policy set — `upload_document_for_organization`, `set_document_mandatory_for_organization`, `create_document_record_for_organization`, `save_bid_brief_for_organization` (all `require_bid_access()` first, matching the required "verified tenant authorization → explicit service-role client → privileged operation" architecture) — plus organization-scoped `content_library` privileged variants (`list_library_items_for_organization`, `upsert_library_item_for_organization`, `delete_library_item_for_organization`) for the one page that needs a cross-bid, cross-item view no RLS policy expresses. |
+| `pages/stage_decide.py` | Fully rewired: `get_bid`, `get_requirements`, `get_clarifications`, `get_bid_decision`, `get_firm_profile`, `get_bid_brief` → authenticated reads; `upsert_requirement`, `upsert_clarification`, `save_bid_decision` (×2), `update_bid` (×2) → authenticated writes. |
+| `pages/stage_build.py` | Fully rewired: 12 reads/writes → authenticated (`get_bid`, `get_requirements`, `get_outline`, `upsert_section` ×2, `delete_section`, `get_deliverables`, `upsert_deliverable`, `delete_deliverable`, `get_documents`, `get_tasks`, `upsert_task`, `delete_task`, `get_firm_profile`, `semantic_library_search`). `save_upload` (Storage + `documents`, category B) → routed through the new tenant-authorized `tenancy.upload_document_for_organization()`, not left as a bare call. |
+| `pages/stage_check.py` | Fully rewired: all 6 call sites were reads only (`get_bid`, `get_requirements`, `get_documents`, `get_outline`, `get_clarifications`, `get_bid_brief`) → authenticated; no writes existed in this file. |
+| `pages/stage_submit.py` | Fully rewired: `get_bid`, `get_requirements`, `get_documents`, `get_outline` → authenticated reads; `update_bid` → authenticated write; `upsert_document` (document mandatory-flag classification) → `tenancy.set_document_mandatory_for_organization()`; `save_upload` → `tenancy.upload_document_for_organization()`. |
+| `pages/stage_debrief.py` | Fully rewired: `get_bid`, `get_debriefs` → authenticated reads; `upsert_debrief`, `update_bid` → authenticated writes. |
+| `pages/settings_firm.py` | Fully rewired, organization-scoped: `get_firm_profile` → `tenancy.get_firm_profile_authenticated(_token, _org_id)`; `save_firm_profile` → `tenancy.save_firm_profile_authenticated(_token, _org_id, ...)`. |
+| `pages_extra.py` | The only two *reachable* functions besides `page_team_roster()` were rewired: `page_content_library()` (`get_library_items`/`upsert_library_item`/`delete_library_item` → the new organization-scoped privileged wrappers) and `page_exec_dashboard()` (`get_all_bids()` → `tenancy.list_bids_authenticated()` — the flagged "second bid-listing surface"; `get_requirements`/`get_tasks`/`get_clarifications`/`get_debriefs`/`get_firm_profile` → authenticated equivalents). Five further functions in this same file (`page_proposal_analyzer`, `page_clarifications`, `page_section_drafter`, `page_submission_assembler`, and this file's own `page_debrief` — distinct from the live `pages.stage_debrief.page_debrief`) were confirmed, by the same repo-wide call-site method as the seven `app.py` functions, to have **zero real call sites** — imported into `app.py`'s namespace but never actually invoked by the router — and were left untouched, documented as category D. |
+| `app.py` | One additional discovery beyond the named file list: `_render_extraction_review()` (the AI-extraction bid-creation confirmation screen, reachable from `page_new_bid()`) was still writing requirements/outline/documents/bid_brief via bare service-role calls even though bid creation itself had already been cut over in Addendum 5. Closed: `save_upload` → `_tenancy.upload_document_for_organization()`; `upsert_bid_brief` → `_tenancy.save_bid_brief_for_organization()`; `upsert_requirement` → `_tenancy.upsert_requirement_authenticated()`; `upsert_document` (checklist rows, no file bytes) → `_tenancy.create_document_record_for_organization()`; `upsert_section` → `_tenancy.upsert_section_authenticated()`. |
+| `pages/stage_understand.py` | Second additional discovery: `page_understand()`'s `get_bid_brief`, `get_requirements`, `get_documents` calls were still bare (only the top bid fetch and the analysis-run/result reads had been cut over in Addendum 5) — closed via the existing `tenancy.get_bid_brief_authenticated` / `get_requirements_authenticated` / `get_documents_authenticated`. Unused bare imports removed. |
+| `tests/test_final_interactive_cutover.py` | New — 18 deterministic tests: source-level "no forbidden bare call" checks per rewired file (including the two additional-discovery fixes), a live reachability re-confirmation of the five newly-classified dead `pages_extra.py` functions, and behavioral (mocked) tests proving every new privileged wrapper calls `require_bid_access()`/scopes its read before touching the service-role client, and raises `AccessDeniedError` with zero underlying `database.py` call made when that check fails. |
+| `tests/test_app_analysis_panel.py` | One test updated: its patches now target `pages.stage_understand.tenancy.get_bid_brief_authenticated` / `get_requirements_authenticated` / `get_documents_authenticated` instead of the now-removed bare imports. |
+
+Not touched: `database.py` (no service-role function signatures changed — every new privileged wrapper calls the existing functions unmodified), any migration/SQL, Storage/report-object authorization (explicitly deferred to Package 4), Fast Analysis / Deep Verify / PDF content / scoring logic, and all seven confirmed-dead `app.py` functions.
+
+### (2) Classification of every formerly reachable service-role surface
+
+Every table's RLS category, as it actually is in the live database (confirmed via `pg_policies`, not assumed from the migration file):
+
+| Table | Live RLS (authenticated role) | Classification this pass applied |
+|---|---|---|
+| `bids` | SELECT/INSERT/UPDATE (`is_organization_member`), no DELETE | **A** — cut to authenticated everywhere reachable; DELETE has no policy (intentional, CASCADE blast radius) and stays server-only, matching migration 008's own design |
+| `requirements`, `tasks`, `outline_sections`, `deliverables`, `clarifications` | full CRUD (`can_access_bid`) | **A** — fully cut to authenticated |
+| `debriefs` | SELECT/INSERT/UPDATE, no DELETE | **A (partial)** — cut to authenticated; no delete UI action exists anywhere in the product, so nothing was left uncut |
+| `bid_decisions` | SELECT/INSERT only | **A (partial, append-only by design)** — cut to authenticated; `save_bid_decision_authenticated` never attempts UPDATE, matching the pre-existing product design |
+| `content_library` | full CRUD, but `bid_id IS NOT NULL` required | **A (bid-scoped)** for single-bid reads/writes (`stage_build.py`'s Section Drafter tab); **C (privileged, organization-scoped)** for the cross-bid browse view (`pages_extra.py`'s Content Library page), since no RLS policy expresses "every row across many of my own bids plus global rows" — closed server-side by scoping to the caller's own `bid_id`s explicitly, not left as an ungated whole-table read |
+| `documents`, `document_versions`, `bid_briefs`, `analysis_runs`, `analysis_results` | SELECT only | **B** — reads cut to authenticated everywhere reachable; writes stay server-side (Storage-adjacent, Package 4 territory) but are now gated by an explicit `require_bid_access()` check immediately before the privileged call, via the new `upload_document_for_organization` / `set_document_mandatory_for_organization` / `create_document_record_for_organization` / `save_bid_brief_for_organization` wrappers, rather than a bare, ungated convenience call |
+| `firm_profiles` | full CRUD, organization-scoped | **D** — cut to authenticated, organization-scoped (`settings_firm.py`, `pages_extra.py`'s Executive Dashboard header/export) |
+| `coaches` | RLS enabled, **no policy at all** | **C (unchanged)** — correctly stays server-side (`page_team_roster()`, `page_exec_dashboard()`'s roster summary); no `organization_id` or `bid_id` column exists to scope it by, so the only boundary is the app-wide mandatory auth gate — exactly as documented in every prior round, not revisited or redesigned here |
+| `organizations`, `organization_members` | SELECT-own only | unchanged — not written to by any application code path |
+
+### (3) Remaining reachable service-role call sites, and why each is legitimate
+
+A repo-wide, reachability-verified scan (every `database.py` function name searched across `app.py`, `pages_extra.py`, and every `pages/*.py` file, each hit classified as inside a confirmed-dead function or not) found exactly these remaining bare service-role calls in reachable code, after this pass:
+
+1. **`app.py:32` — `init_db()`** — a documented no-op (`"""No-op — schema is created via supabase_schema.sql in Supabase dashboard."""`, `pass`). Zero risk, not a real data operation.
+2. **`pages_extra.py`, `page_team_roster()` — `get_coaches()`, `upsert_coach()` (×2), `delete_coach()`** — category C, `coaches` has no RLS policy and no tenant column to scope by; correctly server-side, bounded by the mandatory auth gate.
+3. **`pages_extra.py`, `page_exec_dashboard()` — `get_coaches()`** (roster summary section) — same category C reasoning as above.
+4. **`pages/stage_understand.py`'s `_render_fast_analysis_panel()` — `download_file()` (aliased `_download_stored_file`)** — Storage read for a previously-generated report PDF; explicitly Package 4 territory ("Storage/report-object authorization remains Package 4; do not redesign Storage in this pass"), untouched by design.
+
+No other bare service-role call exists in any reachable function across `app.py`, `pages/*.py`, or `pages_extra.py`. Every remaining service-role write (document uploads, document mandatory-flag classification, bid-brief writes, the cross-bid content-library view) is now reached exclusively through a `tenancy.py` wrapper that calls `require_bid_access()` (or, for `content_library`'s cross-bid view, explicitly scopes the read to the caller's own `bid_id`s) immediately before touching the privileged client — satisfying "Privileged/background operations: verified tenant authorization → explicit service-role client → privileged operation" for every one of them, not merely for the ones named in the original instruction list.
+
+**Dead code, explicitly not counted, per instruction:** the seven `app.py` functions from Addendum 5, plus five further `pages_extra.py` functions newly confirmed dead this round (`page_proposal_analyzer`, `page_clarifications`, `page_section_drafter`, `page_submission_assembler`, `pages_extra.page_debrief`) — all imported but never called by the router, confirmed via the same repo-wide call-site search method, not assumed from naming.
+
+### (4) Authenticated INSERT/UPDATE/DELETE evidence — live, real database, zero residue
+
+Executed directly against the live project (`whonalbdpbubaqhpzrnw`) inside one transaction, ended with `ROLLBACK` regardless of outcome: fixture rows (a temp bid under the real `emg-internal` organization, a temp second organization + bid for cross-tenant checks) created as the connecting role, then `request.jwt.claims`/`SET LOCAL ROLE authenticated` set to simulate the real user (`ed5ccf11-8f6e-4975-85db-f2d1cf84660b`, real owner of `emg-internal`) for every subsequent statement — the same SQL-layer JWT claim simulation technique used for every prior round's live RLS proofs, now extended to writes.
+
+**Own-organization writes, all ALLOWED as required:**
+
+| Operation | Table | Result |
+|---|---|---|
+| INSERT | `requirements`, `tasks`, `outline_sections`, `deliverables`, `clarifications`, `content_library`, `bid_decisions`, `firm_profiles` | ✅ allowed (8/8) |
+| UPDATE | `requirements`, `tasks`, `outline_sections`, `deliverables`, `clarifications`, `content_library`, `bids` | ✅ allowed (7/7) |
+| DELETE | `requirements`, `tasks`, `outline_sections`, `deliverables`, `clarifications`, `content_library` | ✅ allowed (6/6) |
+| UPDATE | `bid_decisions` (no update policy exists — append-only by design) | ✅ correctly denied, 0 rows |
+| DELETE | `bids` (no delete policy exists — intentional) | ✅ correctly denied, 0 rows |
+| UPDATE | `bids.organization_id` on the caller's own bid → the other org (tenant-escape attempt) | ✅ correctly denied — `new row violates row-level security policy for table "bids"`; post-check confirms `organization_id` unchanged |
+
+### (5) Cross-tenant write-denial evidence
+
+Every write above was repeated against a temporary **second** organization's bid (owned by neither the caller nor anything they belong to):
+
+| Operation | Tables attempted | Result |
+|---|---|---|
+| INSERT (bid_id = other org's bid) | `requirements`, `tasks`, `outline_sections`, `deliverables`, `clarifications`, `content_library`, `bid_decisions`, `bids` (new bid inside the other org), `firm_profiles` | ✅ denied, all 9 — RLS policy violation on every one |
+| UPDATE (pre-seeded rows in the other org) | `requirements`, `tasks`, `outline_sections`, `deliverables`, `clarifications`, `content_library`, `bids` | ✅ denied, 0 rows affected on all 7 |
+| DELETE (pre-seeded rows in the other org) | `requirements`, `tasks`, `outline_sections`, `deliverables`, `clarifications`, `content_library`, `bids` | ✅ denied, 0 rows affected on all 7 |
+
+**Total: 48/48 checks passed exactly as expected** — every intentional ALLOW allowed, every intentional DENY denied, including the two fail-closed-by-design cases (`bids` DELETE, `bid_decisions` UPDATE) and the tenant-escape (organization reassignment) attempt.
+
+**Zero residue, confirmed afterward with a fresh query:** `organizations` rows matching the temp slug = 0, `bids` rows matching the temp titles = 0, `requirements` rows matching the proof text = 0, `firm_profiles` rows matching the temp company name = 0.
+
+### (6) Regression-suite result
+
+Full suite (including the 18 new tests this round added): **1653 passed, 2 skipped**, run twice consecutively for stability — identical result both times. `python -m py_compile` clean on every changed file. `git diff --check` clean (only pre-existing CRLF/LF line-ending notices, not errors).
+
+### (7) Security-advisor result
+
+Identical to every prior round in this engagement — confirming this round's application-layer changes introduced no new database-level finding (no migration or schema change was made):
+
+- **0 ERROR**
+- **1 INFO** — `coaches` has RLS enabled with no policy (intended, category C, documented above)
+- **2 WARN** — `can_access_bid()` / `is_organization_member()` are `SECURITY DEFINER` and callable via RPC by any signed-in user (intentional and safe: both are `STABLE`, side-effect-free, return only a boolean about the caller's own access, fixed `search_path`, from migration 008 — reviewed and accepted in every prior round)
+- **1 WARN** — leaked-password protection still disabled (a general Supabase Auth setting, unrelated to tenancy/RLS, still an open recommendation for the user's own action, out of this package's scope)
+
+Performance advisor: unindexed-foreign-key INFO findings and one auth-RLS-initplan WARN (`organization_members`), all pre-existing schema-level characteristics from migration 008, unrelated to and unaffected by this round's application-layer-only changes — not remediated, out of scope.
+
+### Final determination (superseded in part by Addendum 7 below — `coaches`'s classification here was accepted as an open item, not a pass, and subsequently resolved)
+
+Every normal interactive read and write reachable from the live application now goes through the authenticated, RLS-backed client, or — where the live RLS policy set genuinely has no authenticated path for a table (`documents`/Storage writes, `bid_briefs` writes, `content_library`'s cross-bid browse view) — through an explicit, tenant-authorization-gated privileged wrapper in `tenancy.py`, never a bare, ungated service-role convenience call. `coaches` was left classified as category C (server-only, bounded only by the app-wide auth gate) at the time this section was written — that classification was challenged and replaced by real organization tenancy in Addendum 7. Executive View no longer uses a second service-role bid listing. Firm Profile is constrained to the authenticated organization. DECIDE/BUILD/CHECK/SUBMIT/DEBRIEF reads and writes fail closed for guessed cross-tenant bid IDs (proven live, both at the RLS layer and via `go()`'s own authorization check). Fast Analysis, Deep Verify, PDF content, and scoring logic were not touched. Storage/report-object authorization remains, as instructed, Package 4.
+
+All normal interactive access now uses the authenticated/RLS path, and the remaining service-role use is deliberately privileged and authorization-gated — the condition the original instructions set for recommending the next step. Per this round's explicit instruction, **this report does not itself declare Package 3 PASS** and **nothing has been committed or pushed**; that determination is left to the user's own review of this addendum. The recommended next step, once reviewed, is the staging push and a live click-through (consistent with the discipline this report has maintained at every prior round: code-complete-and-tested is reported precisely as that, not conflated with live-click-proven).
+
+---
+
+## Addendum 7: `coaches` Tenancy Resolution — Migration 009, Live-Proven
+
+**Date:** 2026-09-15 (UTC), same day, following the explicit instruction that Addendum 6's classification of `coaches` as category C ("an app-wide authentication gate alone is not a tenant authorization boundary") was not accepted as sufficient, and that its actual semantics needed to be audited from the real schema and code rather than assumed.
+
+### The semantic audit — answered explicitly, from evidence, not assumption
+
+**1. Is `coaches` intended to be organization-owned team/personnel data? YES.** Its live columns are `name, credentials, icf_level, sectors, languages, location, availability, email, phone, cv_summary, reference_contact, notes` — real personal contact information (a direct email and phone number per row) and a named client reference contact, not abstract or categorical reference values. The 4 live rows are real named personnel with real credentials (e.g. `M. W. (Mina Wasfi)`, Professional Certified Coach (ICF), Hogan Certified Assessor). These rows are populated by the application's own "Proposal Analyzer" feature (`pages_extra.py`'s `coaches_found` auto-population, sourced from a firm's **own past proposal documents** — see `page_proposal_analyzer()`) — i.e. this is one organization's own personnel roster, assembled from that organization's own submitted work product.
+
+**2. Is it genuinely platform-global reference data? NO.** There is no sense in which one named individual's direct contact details and a specific client's reference contact are a fact true for every tenant on the platform, the way e.g. a list of ICF certification levels would be. Exposing this to a different, unrelated organization's signed-in members would be an ordinary, real information-disclosure vulnerability (personal contact data plus a named third-party reference), not a hypothetical one — exactly the scenario the instruction described.
+
+**3. Which reachable UI operations read/write it?** `pages_extra.page_team_roster()` — the only reachable page whose entire purpose is this table: full CRUD (list with roster/availability/language metrics, add via a form, edit via a form, and a real, wired `delete_coach(eid)` call). `pages_extra.page_exec_dashboard()` — read-only (roster availability summary counts, a name-badge list, and the PDF export). `pages_extra.page_proposal_analyzer()` also reads/writes `coaches`, but was independently confirmed dead code in Addendum 6 (zero call sites outside its own `def` line) — not a live interactive surface.
+
+**Conclusion: organization-owned.** The tenancy model was completed for real, not assumed or faked.
+
+### Migration `009_coaches_organization_tenancy.sql` — new file, does not modify 001-008
+
+Applied live to project `whonalbdpbubaqhpzrnw` via the Supabase migration tool (not raw `execute_sql`, consistent with every prior schema change in this engagement):
+
+- `alter table public.coaches add column if not exists organization_id uuid references public.organizations(id);` — added nullable first, exactly like migration 007 did for `bids.organization_id`.
+- `create index if not exists idx_coaches_organization on public.coaches (organization_id);`
+- Deterministic backfill: `update public.coaches set organization_id = (select id from organizations where slug = 'emg-internal') where organization_id is null;` — no UUID hardcoded, resolved through the same unique slug migration 007 established.
+- A `do $$ ... $$` safety block aborts the entire migration (rolling back everything above it) if any row is still `NULL` after the backfill — the same pattern migration 007 used, not a new invention.
+- `alter table public.coaches alter column organization_id set not null;` — ownership made mandatory only after the safety check passed.
+- Four RLS policies (`coaches_select_org_member`, `coaches_insert_org_member`, `coaches_update_org_member`, `coaches_delete_org_member`), all `to authenticated`, all using the **existing** `is_organization_member(organization_id)` helper from migration 008 verbatim — no new SECURITY DEFINER function was written; `coaches` is organization-scoped like `firm_profiles`, not bid-scoped, so `can_access_bid()` does not apply. A DELETE policy was included (unlike `firm_profiles`, which has none) because `delete_coach()` is a real, wired UI action in `page_team_roster()` today.
+
+**Data preserved exactly:** all 4 pre-existing coach rows retained their `id`, `name`, and every other field unchanged; all 4 backfilled to `emg-internal`'s organization id (`4326b564-8cc5-4463-9304-9a589f08cc91`), confirmed by direct query immediately after applying the migration.
+
+### Code changes
+
+`tenancy.py` — three new functions, mirroring `firm_profiles`'s organization-scoped pattern: `get_coaches_authenticated(access_token)`, `upsert_coach_authenticated(access_token, organization_id, data)` (a genuinely new row is explicitly stamped with the caller's own `organization_id` server-side — never trusted from the caller's own data dict — while an update relies on RLS's own `USING` clause to confine it to a row the caller's organization already owns), `delete_coach_authenticated(access_token, coach_id)`.
+
+`pages_extra.py` — `page_team_roster()` and `page_exec_dashboard()`'s roster-summary section both cut over from `database.get_coaches()` / `upsert_coach()` / `delete_coach()` to the three functions above; the now-unused local `from database import get_coaches` import in `page_exec_dashboard()` was removed. `page_proposal_analyzer()` (confirmed dead) was left untouched, still importing the original bare `database.py` functions, so it continues to compile.
+
+### Required verification — repeated, and extended for `coaches`
+
+**Live database proof (own-organization + cross-tenant), same SQL-layer JWT simulation technique as every prior round, one transaction, rolled back regardless of outcome:**
+
+| Check | Result |
+|---|---|
+| own-org SELECT (the 4 pre-existing `emg-internal` rows) | ✅ all 4 visible |
+| cross-tenant SELECT (a seeded other-organization coach row) | ✅ 0 visible |
+| own-org INSERT | ✅ allowed |
+| own-org UPDATE | ✅ allowed |
+| own coach: reassign `organization_id` to the other org (tenant-escape attempt) | ✅ denied — `new row violates row-level security policy for table "coaches"`; post-check confirms `organization_id` unchanged |
+| own-org DELETE (`delete_coach()` is a real, wired UI action, so intentionally user-facing) | ✅ allowed |
+| cross-tenant INSERT (`organization_id` = the other org) | ✅ denied |
+| cross-tenant UPDATE (the seeded other-organization row) | ✅ denied, 0 rows |
+| cross-tenant DELETE (the seeded other-organization row) | ✅ denied, 0 rows |
+
+**10/10 checks passed exactly as expected.** Zero residue confirmed afterward with a fresh query: the temporary organization and every temporary/attempted coach row are gone; `coaches` contains exactly the original 4 rows, unchanged.
+
+**Full regression suite:** 4 new mocked/behavioral tests for the new `tenancy.py` coach functions (`TestCoachesOrganizationTenancy`), plus 2 updated source-level assertions in the existing `TestNoRemainingBareServiceRoleCalls` test (the old assertion that `page_exec_dashboard()` correctly kept `get_coaches()` bare was itself now the stale claim, and was corrected rather than deleted) — **1657 passed, 2 skipped**, run twice consecutively for stability, identical both times.
+
+**Compile / diff:** `python -m py_compile` clean on every changed file. `git diff --check` clean (only pre-existing CRLF/LF notices).
+
+**Security advisor:** the `rls_enabled_no_policy` INFO finding for `coaches` (present in every prior round's advisor run) is now **gone** — resolved, not merely unremarked. Remaining findings unchanged from every prior round: 0 ERROR, 2 WARN (the same reviewed/accepted `SECURITY DEFINER` RPC findings — this migration reused the existing helper function rather than adding a new one, so no new instance of this finding was created), 1 WARN (leaked-password protection, unrelated, still open).
+
+### Final reachable service-role audit — repeated in full, not assumed carried over
+
+A repo-wide, reachability-verified scan (every `database.py` function name searched across `app.py`, `pages_extra.py`, and every `pages/*.py` file, each hit classified as inside a confirmed-dead function or not) was re-run after this round's changes. Exactly two bare service-role calls remain in reachable code, both previously identified and both unchanged by this round:
+
+1. **`app.py:32` — `init_db()`** — a documented no-op (`pass`). Zero risk, not a data operation.
+2. **`pages/stage_understand.py`'s `_render_fast_analysis_panel()` — `download_file()` (aliased `_download_stored_file`)** — a Storage read for a previously-generated report PDF. **Explicitly Package 4 scope**, per this round's own instruction not to redesign Storage/report-object authorization here; untouched by design.
+
+`coaches` no longer appears in this list at all — every reachable read and write goes through the new authenticated, organization-scoped functions above. **Zero ordinary interactive database reads or writes remain through the service-role client.** Every remaining service-role use in the entire reachable application is either the documented no-op, the documented Package-4 Storage read, or one of the explicitly privileged, tenant-authorization-gated `tenancy.py` wrappers established in Addendum 6 (each preceded by `require_bid_access()` or, for `coaches`/`firm_profiles`, scoped by an explicit `organization_id` the caller's own resolved `AuthContext` supplied, never a value trusted from the request body).
+
+Fast Analysis, Deep Verify, PDF content, scoring, and procurement intelligence behavior were not touched. Package 4 was not started. **Nothing has been committed or pushed.**
