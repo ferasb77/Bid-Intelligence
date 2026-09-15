@@ -182,6 +182,7 @@ with st.sidebar:
         "📋  Bids Directory": "all_bids",
         "➕  New Bid Ingestion": "new_bid",
         "📚  Content Library": "content_library",
+        "👥  Team & Resource Library": "team_roster",
         "📊  Executive View": "exec_dashboard",
         "⚙️  Firm Profile & Settings": "settings_firm",
     }.items():

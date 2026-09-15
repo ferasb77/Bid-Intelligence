@@ -189,6 +189,23 @@ class TestCutoverArchitecture(unittest.TestCase):
     def test_sign_out_present_in_sidebar_for_normal_authenticated_use(self):
         self.assertIn('st.button("Sign out", key="pkg3_sidebar_signout"', self.source)
 
+    def test_team_roster_reachable_from_global_sidebar_navigation(self):
+        """page_team_roster() (coaches -- migration 009's organization-
+        scoped tenancy) has always been routable ('team_roster' has been
+        in the router's page-dispatch table since it was added), but had
+        no sidebar button pointing at it -- a normal authenticated user
+        had no way to actually reach it through the UI. This is a
+        reachability regression guard, not a new authorization check."""
+        nav_start = self.source.index("# ── Global Navigation ──")
+        nav_end = self.source.index("}.items():", nav_start)
+        nav_block = self.source[nav_start:nav_end]
+        self.assertIn('"team_roster"', nav_block,
+                       "no global sidebar nav entry routes to team_roster")
+
+        router_idx = self.source.index('page in ("team_roster", "coach_roster")')
+        router_block = self.source[router_idx:router_idx + 120]
+        self.assertIn("page_team_roster()", router_block)
+
 
 class TestGoAuthorizesBidOpen(unittest.TestCase):
     """Behavioral: app.go() is the single choke point for opening a bid --
