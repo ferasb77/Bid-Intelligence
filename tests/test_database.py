@@ -135,24 +135,86 @@ class TestUpdateBidPartialUpdate(unittest.TestCase):
         mock_sb.table("bids").update({"stage": "Won"}).eq.assert_called_with("id", 42)
 
 
+def _mock_client_with_legacy_organization(legacy_org_id="legacy-org-uuid", bid_insert_result=None):
+    """Shared helper: routes .table('organizations') to the legacy-org
+    lookup create_bid() now performs (Phase 8 remediation package 2 --
+    bids.organization_id is NOT NULL as of migration 007) and
+    .table('bids') to a normal insert-result mock. Returns (sb, orgs_mock,
+    bids_mock) so callers can assert against the exact sub-mock create_bid()
+    actually called, rather than the side_effect function itself."""
+    sb = MagicMock()
+    orgs_mock = MagicMock()
+    bids_mock = MagicMock()
+
+    data = [{"id": legacy_org_id}] if legacy_org_id else []
+    orgs_mock.select.return_value.eq.return_value.execute.return_value = MagicMock(data=data)
+    bids_mock.insert.return_value.execute.return_value = MagicMock(
+        data=bid_insert_result or [{"id": 99}]
+    )
+
+    def table_side_effect(name):
+        if name == "organizations":
+            return orgs_mock
+        if name == "bids":
+            return bids_mock
+        raise AssertionError(f"unexpected table() call in create_bid(): {name}")
+
+    sb.table.side_effect = table_side_effect
+    return sb, orgs_mock, bids_mock
+
+
 class TestCreateBidUnchanged(unittest.TestCase):
     """Regression guard: this fix must not silently change create_bid()'s
-    behavior (instruction: 'do not silently change create behavior')."""
+    behavior (instruction: 'do not silently change create behavior')
+    beyond the one deliberate, documented addition Phase 8 remediation
+    package 2 required -- attaching the legacy organization_id, since
+    bids.organization_id is now NOT NULL and no authenticated/tenant-aware
+    creation path exists yet for the current commissioned app to use
+    instead (see database.py:_resolve_legacy_organization_id's docstring)."""
 
     @patch("database.get_client")
     def test_create_bid_still_defaults_missing_fields_to_none(self, mock_get_client):
-        mock_sb = MagicMock()
+        mock_sb, orgs_mock, bids_mock = _mock_client_with_legacy_organization(legacy_org_id="legacy-org-uuid")
         mock_get_client.return_value = mock_sb
-        mock_sb.table("bids").insert({}).execute.return_value = MagicMock(data=[{"id": 99}])
 
         database.create_bid({"title": "New Bid", "client": "Some Buyer"})
 
-        called_with = mock_sb.table("bids").insert.call_args[0][0]
+        called_with = bids_mock.insert.call_args[0][0]
         self.assertEqual(called_with, {
             "title": "New Bid", "client": "Some Buyer", "file_number": None,
             "stage": None, "sensitivity": None, "owner": None, "value_cad": None,
             "submission_deadline": None, "clarification_deadline": None, "notes": None,
+            "organization_id": "legacy-org-uuid",
         })
+
+    @patch("database.get_client")
+    def test_create_bid_resolves_legacy_organization_by_slug_not_hardcoded_uuid(self, mock_get_client):
+        """The legacy organization must be looked up via its deterministic
+        slug ('emg-internal'), never a literal UUID baked into the code."""
+        mock_sb, orgs_mock, bids_mock = _mock_client_with_legacy_organization(legacy_org_id="whatever-the-live-uuid-is")
+        mock_get_client.return_value = mock_sb
+
+        database.create_bid({"title": "New Bid", "client": "Some Buyer"})
+
+        orgs_mock.select.assert_called_once_with("id")
+        orgs_mock.select.return_value.eq.assert_called_once_with("slug", database._LEGACY_ORGANIZATION_SLUG)
+        self.assertEqual(database._LEGACY_ORGANIZATION_SLUG, "emg-internal")
+
+    @patch("database.get_client")
+    def test_create_bid_still_defaults_missing_fields_to_none_when_legacy_org_absent(self, mock_get_client):
+        """If, for any reason, the legacy organization cannot be resolved
+        (e.g. a test/staging DB without migration 007 applied), create_bid()
+        must not raise -- it degrades to its pre-package-2 payload shape,
+        exactly as before, and lets the database's own NOT NULL constraint
+        (if present) be the single source of truth on whether the insert
+        succeeds."""
+        mock_sb, orgs_mock, bids_mock = _mock_client_with_legacy_organization(legacy_org_id=None)
+        mock_get_client.return_value = mock_sb
+
+        database.create_bid({"title": "New Bid", "client": "Some Buyer"})
+
+        called_with = bids_mock.insert.call_args[0][0]
+        self.assertNotIn("organization_id", called_with)
 
 
 if __name__ == "__main__":

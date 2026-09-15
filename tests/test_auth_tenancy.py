@@ -1,0 +1,463 @@
+"""
+tests/test_auth_tenancy.py
+
+Deterministic tests for Phase 8 remediation package 2 (authentication &
+tenancy foundation). No live Supabase connection anywhere in this file --
+database.get_client() / auth_client.get_auth_client() are mocked, same
+pattern as tests/test_database.py. No live LLM calls.
+
+Two kinds of coverage, kept clearly separate:
+
+  * Schema/migration correctness (`TestMigration007SchemaContract`): this
+    repo has no precedent for a live-Postgres pytest fixture -- every
+    earlier migration (004/005/006) was verified by a live query after
+    applying it, not by a unit test. These tests follow that same
+    convention for anything genuinely enforced by Postgres itself (unique
+    constraints, check constraints, NOT NULL) by asserting the migration
+    file's own SQL text contains the expected DDL -- they prove the
+    migration *declares* the right constraints, not that Postgres is
+    enforcing them; live enforcement is confirmed separately in
+    BID_INTELLIGENCE_PHASE8_AUTH_TENANCY_FOUNDATION.md's live
+    post-migration verification section.
+
+  * Application-code correctness (everything else): tenancy.py's
+    resolution/primitive functions, auth_client.py/auth_session.py's
+    client separation and session handling -- ordinary mocked unit tests
+    of real Python code.
+"""
+import os
+import time
+import unittest
+from unittest.mock import MagicMock, patch
+
+import database
+import tenancy
+from tenancy import AuthContext, NoOrganizationAccess, OrganizationSelectionRequired
+
+MIGRATION_007_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "migrations", "007_auth_tenancy_foundation.sql"
+)
+
+
+def _migration_007_text() -> str:
+    with open(MIGRATION_007_PATH, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+class TestMigration007SchemaContract(unittest.TestCase):
+    """Static assertions on migration 007's own SQL text -- see module
+    docstring for exactly what this does and does not prove."""
+
+    def setUp(self):
+        self.sql = _migration_007_text().lower()
+
+    def test_organization_creation_model(self):
+        self.assertIn("create table if not exists public.organizations", self.sql)
+        self.assertIn("id          uuid primary key default gen_random_uuid()", self.sql)
+        self.assertIn("name        text not null", self.sql)
+
+    def test_organization_slug_uniqueness(self):
+        self.assertIn("constraint organizations_slug_unique unique (slug)", self.sql)
+
+    def test_membership_uniqueness(self):
+        self.assertIn("create table if not exists public.organization_members", self.sql)
+        self.assertIn("primary key (organization_id, user_id)", self.sql)
+
+    def test_membership_references_auth_users(self):
+        self.assertIn("references auth.users(id) on delete cascade", self.sql)
+
+    def test_valid_roles_only(self):
+        self.assertIn("check (role in ('owner', 'admin', 'member'))", self.sql)
+
+    def test_bid_requires_valid_organization_after_backfill(self):
+        # The NOT NULL is only applied after a guard that aborts the whole
+        # migration if any bid is still unbackfilled.
+        self.assertIn("raise exception", self.sql)
+        self.assertIn("alter column organization_id set not null", self.sql)
+
+    def test_backfill_is_deterministic_and_idempotent(self):
+        # No hardcoded UUID -- referenced only via the unique slug.
+        self.assertNotRegex(self.sql, r"organization_id\s*=\s*'[0-9a-f]{8}-[0-9a-f]{4}-")
+        self.assertIn("on conflict (slug) do nothing", self.sql)
+        self.assertIn("where organization_id is null", self.sql)
+        self.assertIn("'emg-internal'", self.sql)
+
+    def test_migration_006_and_earlier_not_modified(self):
+        # This test only proves migration 007 doesn't literally redeclare/
+        # touch the earlier migrations' own tables in a way that would
+        # collide; the git-status-based non-modification check itself is
+        # performed procedurally, not via pytest (see the Phase 8 report).
+        for earlier_table in ("analysis_runs", "analysis_results"):
+            self.assertNotIn(f"drop table {earlier_table}", self.sql)
+            self.assertNotIn(f"alter table public.{earlier_table} drop", self.sql)
+
+    def test_new_tables_rls_enabled_no_policies_created(self):
+        self.assertIn("alter table public.organizations       enable row level security", self.sql)
+        self.assertIn("alter table public.organization_members enable row level security", self.sql)
+        self.assertNotIn("create policy", self.sql)
+
+    def test_no_destructive_ddl(self):
+        for forbidden in ("drop table", "drop column", "truncate", "delete from"):
+            self.assertNotIn(forbidden, self.sql)
+
+    def test_firm_profiles_organization_id_nullable_additive(self):
+        self.assertIn(
+            "alter table public.firm_profiles\n    add column if not exists organization_id",
+            _migration_007_text(),
+        )
+        # Deliberately not forced NOT NULL -- see decision write-up.
+        self.assertNotIn("alter table public.firm_profiles alter column organization_id set not null", self.sql)
+
+    def test_analysis_runs_created_by_untouched_new_column_added(self):
+        self.assertIn("add column if not exists created_by_user_id", self.sql)
+        self.assertNotIn("drop column created_by", self.sql)
+        self.assertNotIn("alter table public.analysis_runs alter column created_by", self.sql)
+
+
+def _mock_client_for_membership_resolution(memberships, orgs):
+    sb = MagicMock()
+
+    def table_side_effect(name):
+        m = MagicMock()
+        if name == "organization_members":
+            m.select.return_value.eq.return_value.execute.return_value = MagicMock(data=memberships)
+        elif name == "organizations":
+            m.select.return_value.in_.return_value.execute.return_value = MagicMock(data=orgs)
+        else:
+            raise AssertionError(f"unexpected table() call: {name}")
+        return m
+
+    sb.table.side_effect = table_side_effect
+    return sb
+
+
+class TestOrganizationMembershipResolution(unittest.TestCase):
+
+    @patch("tenancy.db.get_client")
+    def test_zero_memberships_fails_closed(self, mock_get_client):
+        mock_get_client.return_value = _mock_client_for_membership_resolution([], [])
+
+        result = tenancy.resolve_organization_context("user-1", "user1@example.com")
+
+        self.assertIsInstance(result, NoOrganizationAccess)
+        self.assertEqual(result.user_id, "user-1")
+
+    @patch("tenancy.db.get_client")
+    def test_one_membership_resolves_to_auth_context(self, mock_get_client):
+        mock_get_client.return_value = _mock_client_for_membership_resolution(
+            memberships=[{"organization_id": "org-1", "role": "owner"}],
+            orgs=[{"id": "org-1", "name": "Enable My Growth Internal"}],
+        )
+
+        result = tenancy.resolve_organization_context("user-1", "user1@example.com")
+
+        self.assertIsInstance(result, AuthContext)
+        self.assertEqual(result.user_id, "user-1")
+        self.assertEqual(result.email, "user1@example.com")
+        self.assertEqual(result.organization_id, "org-1")
+        self.assertEqual(result.organization_name, "Enable My Growth Internal")
+        self.assertEqual(result.role, "owner")
+
+    @patch("tenancy.db.get_client")
+    def test_multiple_memberships_do_not_silently_select(self, mock_get_client):
+        mock_get_client.return_value = _mock_client_for_membership_resolution(
+            memberships=[
+                {"organization_id": "org-1", "role": "member"},
+                {"organization_id": "org-2", "role": "admin"},
+            ],
+            orgs=[
+                {"id": "org-1", "name": "Org One"},
+                {"id": "org-2", "name": "Org Two"},
+            ],
+        )
+
+        result = tenancy.resolve_organization_context("user-1", "user1@example.com")
+
+        self.assertIsInstance(result, OrganizationSelectionRequired)
+        self.assertEqual(result.user_id, "user-1")
+        self.assertEqual(len(result.candidates), 2)
+        org_ids = {c["organization_id"] for c in result.candidates}
+        self.assertEqual(org_ids, {"org-1", "org-2"})
+        # Every candidate carries what a selector needs -- name and role.
+        for c in result.candidates:
+            self.assertIn("organization_name", c)
+            self.assertIn("role", c)
+
+
+class TestAuthContextConstruction(unittest.TestCase):
+
+    def test_auth_context_is_frozen_and_carries_exactly_the_required_fields(self):
+        ctx = AuthContext(
+            user_id="u1", email="a@b.com", organization_id="o1",
+            organization_name="Org", role="member",
+        )
+        self.assertEqual(ctx.user_id, "u1")
+        self.assertEqual(ctx.email, "a@b.com")
+        self.assertEqual(ctx.organization_id, "o1")
+        self.assertEqual(ctx.organization_name, "Org")
+        self.assertEqual(ctx.role, "member")
+        with self.assertRaises(Exception):
+            ctx.role = "owner"  # frozen dataclass -- must not be mutable
+
+
+class TestTenantAwareBidPrimitives(unittest.TestCase):
+
+    @patch("tenancy.db.get_client")
+    def test_list_bids_for_organization_scopes_by_organization_id(self, mock_get_client):
+        sb = MagicMock()
+
+        def table_side_effect(name):
+            m = MagicMock()
+            if name == "bids":
+                m.select.return_value.eq.return_value.order.return_value.execute.return_value = MagicMock(
+                    data=[{"id": 1, "title": "Bid One"}]
+                )
+            elif name in ("requirements", "tasks"):
+                m.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+            else:
+                raise AssertionError(f"unexpected table() call: {name}")
+            return m
+
+        sb.table.side_effect = table_side_effect
+        mock_get_client.return_value = sb
+
+        bids = tenancy.list_bids_for_organization("org-1")
+
+        self.assertEqual(len(bids), 1)
+        self.assertEqual(bids[0]["id"], 1)
+        self.assertEqual(bids[0]["req_count"], 0)
+        self.assertEqual(bids[0]["task_count"], 0)
+
+    @patch("tenancy.db.get_client")
+    def test_get_bid_for_organization_returns_bid_when_owned(self, mock_get_client):
+        sb = MagicMock()
+        sb.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(
+            data=[{"id": 8, "organization_id": "org-1", "title": "Owned Bid"}]
+        )
+        mock_get_client.return_value = sb
+
+        result = tenancy.get_bid_for_organization(8, "org-1")
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["id"], 8)
+
+    @patch("tenancy.db.get_client")
+    def test_cross_organization_bid_lookup_rejected_at_application_boundary(self, mock_get_client):
+        """A bid_id that exists but belongs to a different organization
+        must come back as None -- the double .eq(id).eq(organization_id)
+        filter means Postgres itself would return zero rows; this test
+        proves the application code surfaces that as None, not an
+        exception, and not the other organization's row."""
+        sb = MagicMock()
+        sb.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(
+            data=[]  # Postgres found no row matching BOTH id and this organization_id
+        )
+        mock_get_client.return_value = sb
+
+        result = tenancy.get_bid_for_organization(8, "org-999-not-the-owner")
+
+        self.assertIsNone(result)
+
+    @patch("tenancy.db.get_client")
+    def test_create_bid_for_organization_requires_explicit_organization_id(self, mock_get_client):
+        with self.assertRaises(ValueError):
+            tenancy.create_bid_for_organization({"title": "x", "client": "y"}, organization_id=None)
+        with self.assertRaises(ValueError):
+            tenancy.create_bid_for_organization({"title": "x", "client": "y"}, organization_id="")
+        mock_get_client.assert_not_called()
+
+    @patch("tenancy.db.get_client")
+    def test_create_bid_for_organization_never_defaults_to_legacy_org(self, mock_get_client):
+        """No code path in tenancy.py may ever set organization_id to the
+        legacy 'emg-internal' slug/org itself -- a new bid must always
+        carry an explicit caller-supplied organization_id. ('emg-internal'
+        appears only in this module's own docstring prose explaining that
+        fact, which is fine; this checks there is no executable reference
+        such as a default-parameter value or a literal assignment.)"""
+        source = open(
+            os.path.join(os.path.dirname(__file__), "..", "tenancy.py"), "r", encoding="utf-8"
+        ).read()
+        self.assertNotIn('organization_id="emg-internal"', source)
+        self.assertNotIn("organization_id = 'emg-internal'", source)
+        self.assertNotRegex(source, r"organization_id\s*[:=]\s*['\"]emg-internal")
+
+    @patch("tenancy.db.get_client")
+    def test_create_bid_for_organization_writes_the_given_organization_id(self, mock_get_client):
+        sb = MagicMock()
+        sb.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{"id": 55}])
+        mock_get_client.return_value = sb
+
+        new_id = tenancy.create_bid_for_organization({"title": "New", "client": "Buyer"}, organization_id="org-1")
+
+        self.assertEqual(new_id, 55)
+        inserted = sb.table.return_value.insert.call_args[0][0]
+        self.assertEqual(inserted["organization_id"], "org-1")
+
+
+class TestAuthDataClientSeparation(unittest.TestCase):
+    """Regression guard (instruction 7): the auth client and the server
+    data client must never share a credential, and neither module may read
+    the other's key."""
+
+    def test_auth_client_never_reads_service_role_key(self):
+        """'SUPABASE_SERVICE_KEY' appears in this module's own docstring
+        prose (explaining the separation this test enforces), which is
+        fine -- what must never appear is an actual access pattern that
+        would read it."""
+        source = open(
+            os.path.join(os.path.dirname(__file__), "..", "auth_client.py"), "r", encoding="utf-8"
+        ).read()
+        self.assertNotIn('os.getenv("SUPABASE_SERVICE_KEY")', source)
+        self.assertNotIn('st.secrets["SUPABASE_SERVICE_KEY"]', source)
+        self.assertNotIn("st.secrets.get(\"SUPABASE_SERVICE_KEY\")", source)
+
+    def test_database_module_never_reads_anon_key(self):
+        source = open(
+            os.path.join(os.path.dirname(__file__), "..", "database.py"), "r", encoding="utf-8"
+        ).read()
+        self.assertNotIn('os.getenv("SUPABASE_ANON_KEY")', source)
+        self.assertNotIn('st.secrets["SUPABASE_ANON_KEY"]', source)
+
+    @patch.dict(os.environ, {
+        "SUPABASE_URL": "https://example.supabase.co",
+        "SUPABASE_SERVICE_KEY": "service-role-secret-value",
+        "SUPABASE_ANON_KEY": "anon-public-value",
+    }, clear=False)
+    @patch("database.create_client")
+    def test_database_get_client_uses_service_role_value(self, mock_create_client):
+        # Force the .env-loading / st.secrets branch to fall through to os.environ.
+        with patch("database.st") as mock_st:
+            mock_st.secrets = {}
+            database.get_client()
+        args, _ = mock_create_client.call_args
+        self.assertEqual(args[1], "service-role-secret-value")
+
+    @patch.dict(os.environ, {
+        "SUPABASE_URL": "https://example.supabase.co",
+        "SUPABASE_SERVICE_KEY": "service-role-secret-value",
+        "SUPABASE_ANON_KEY": "anon-public-value",
+    }, clear=False)
+    @patch("auth_client.create_client")
+    def test_auth_client_uses_anon_value_not_service_role_value(self, mock_create_client):
+        import auth_client
+        # auth_client.get_auth_client() imports streamlit locally and reads
+        # st.secrets first -- replace it with an empty dict so the lookup
+        # raises (no secrets.toml in this test process) and the function
+        # falls through to the os.environ values patched above, the same
+        # fallback path database.get_client()'s own test exercises.
+        with patch("streamlit.secrets", {}):
+            auth_client.get_auth_client()
+        args, _ = mock_create_client.call_args
+        self.assertEqual(args[1], "anon-public-value")
+        self.assertNotEqual(args[1], "service-role-secret-value")
+
+
+class TestAuthSession(unittest.TestCase):
+
+    @patch("auth_session.get_auth_client")
+    def test_sign_in_success_populates_session_state(self, mock_get_auth_client):
+        mock_client = MagicMock()
+        mock_session = MagicMock(access_token="at-1", refresh_token="rt-1", expires_at=time.time() + 3600)
+        mock_user = MagicMock(id="user-1", email="a@b.com")
+        mock_client.auth.sign_in_with_password.return_value = MagicMock(session=mock_session, user=mock_user)
+        mock_get_auth_client.return_value = mock_client
+
+        import streamlit as st
+        st.session_state.clear()
+        import auth_session
+        result = auth_session.sign_in("a@b.com", "correct-password")
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.user_id, "user-1")
+        stored = st.session_state[auth_session.SESSION_KEY]
+        self.assertEqual(stored["access_token"], "at-1")
+        self.assertNotIn("password", stored)
+
+    @patch("auth_session.get_auth_client")
+    def test_sign_in_invalid_credentials_returns_generic_error_not_raw_exception_text(self, mock_get_auth_client):
+        mock_client = MagicMock()
+        mock_client.auth.sign_in_with_password.side_effect = Exception("Invalid login credentials: user@internal.example detail=xyz")
+        mock_get_auth_client.return_value = mock_client
+
+        import auth_session
+        result = auth_session.sign_in("a@b.com", "wrong-password")
+
+        self.assertFalse(result.ok)
+        self.assertNotIn("xyz", result.error)
+        self.assertNotIn("user@internal.example", result.error)
+
+    def test_sign_in_missing_fields_never_calls_auth_client(self):
+        import auth_session
+        with patch("auth_session.get_auth_client") as mock_get_auth_client:
+            result = auth_session.sign_in("", "")
+            self.assertFalse(result.ok)
+            mock_get_auth_client.assert_not_called()
+
+    def test_missing_token_session_restoration_fails_closed(self):
+        import streamlit as st
+        import auth_session
+        st.session_state.clear()
+        result = auth_session.restore_session()
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error, "no session")
+
+    def test_expired_token_session_restoration_fails_closed(self):
+        import streamlit as st
+        import auth_session
+        st.session_state.clear()
+        st.session_state[auth_session.SESSION_KEY] = {
+            "access_token": "at-1", "refresh_token": "rt-1",
+            "user_id": "user-1", "email": "a@b.com",
+            "expires_at": time.time() - 10,  # already expired
+        }
+        result = auth_session.restore_session()
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error, "session expired")
+
+    def test_valid_token_session_restoration_succeeds(self):
+        import streamlit as st
+        import auth_session
+        st.session_state.clear()
+        st.session_state[auth_session.SESSION_KEY] = {
+            "access_token": "at-1", "refresh_token": "rt-1",
+            "user_id": "user-1", "email": "a@b.com",
+            "expires_at": time.time() + 3600,
+        }
+        result = auth_session.restore_session()
+        self.assertTrue(result.ok)
+        self.assertEqual(result.user_id, "user-1")
+
+    @patch("auth_session.get_auth_client")
+    def test_sign_out_clears_session_state_even_if_remote_call_fails(self, mock_get_auth_client):
+        mock_client = MagicMock()
+        mock_client.auth.sign_out.side_effect = Exception("network error")
+        mock_get_auth_client.return_value = mock_client
+
+        import streamlit as st
+        import auth_session
+        st.session_state[auth_session.SESSION_KEY] = {"access_token": "at-1", "user_id": "user-1"}
+
+        auth_session.sign_out()
+
+        self.assertNotIn(auth_session.SESSION_KEY, st.session_state)
+
+    def test_no_password_or_service_role_credential_ever_stored_in_session_state(self):
+        source = open(
+            os.path.join(os.path.dirname(__file__), "..", "auth_session.py"), "r", encoding="utf-8"
+        ).read()
+        self.assertNotIn("password\"] =", source)
+        self.assertNotIn("SUPABASE_SERVICE_KEY", source)
+
+
+class TestNoPublicSignUp(unittest.TestCase):
+    """Instruction 6: no open self-registration in this package."""
+
+    def test_auth_session_module_exposes_no_sign_up_function(self):
+        import auth_session
+        self.assertFalse(hasattr(auth_session, "sign_up"))
+        self.assertFalse(hasattr(auth_session, "register"))
+        self.assertFalse(hasattr(auth_session, "create_account"))
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -57,11 +57,39 @@ def get_all_bids():
 def get_bid(bid_id):
     return _one(get_client().table("bids").select("*").eq("id", bid_id).execute())
 
+_LEGACY_ORGANIZATION_SLUG = "emg-internal"
+
+def _resolve_legacy_organization_id(sb):
+    """PRE-AUTH DEVELOPMENT-ONLY COMPATIBILITY PATH (Phase 8 remediation
+    package 2). Migration 007 made bids.organization_id NOT NULL after
+    backfilling every existing bid to the 'emg-internal' legacy
+    organization. No authenticated/tenant-aware bid-creation path exists
+    in the product yet (Phase 8 remediation package 3 will wire one in via
+    tenancy.create_bid_for_organization(), which takes an explicit,
+    required organization_id and never falls back to this), so the
+    existing, already-commissioned, single-user create_bid() below -- the
+    only bid-creation path the current internal application has -- must
+    keep working without one. This resolves the legacy organization by its
+    known, deterministic slug (never a hardcoded UUID) rather than
+    silently failing the current commissioned app's New Bid flow. This is
+    the ONLY place in the codebase allowed to do this; tenancy.py's own
+    create_bid_for_organization() explicitly never references this slug
+    (tests/test_auth_tenancy.py enforces that). Named, documented, and
+    tested (tests/test_database.py) so its status is explicit rather than
+    a silent multi-tenant default -- exactly the escape hatch Phase 8
+    remediation package 2's own instructions anticipated for this case."""
+    row = _one(sb.table("organizations").select("id").eq("slug", _LEGACY_ORGANIZATION_SLUG).execute())
+    return row["id"] if row else None
+
 def create_bid(data):
     clean = {k: data.get(k) for k in
              ["title","client","file_number","stage","sensitivity","owner",
               "value_cad","submission_deadline","clarification_deadline","notes"]}
-    row = _one(get_client().table("bids").insert(clean).execute())
+    sb = get_client()
+    legacy_org_id = _resolve_legacy_organization_id(sb)
+    if legacy_org_id:
+        clean["organization_id"] = legacy_org_id
+    row = _one(sb.table("bids").insert(clean).execute())
     return int(row["id"]) if row else None
 
 def update_bid(bid_id, data):
