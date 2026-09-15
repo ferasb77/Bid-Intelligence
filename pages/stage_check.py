@@ -27,6 +27,47 @@ def _current_access_token_and_org():
     return session["access_token"], ctx.organization_id
 
 
+def _build_procurement_context(brief_row: dict, requirements: list[dict]) -> str:
+    """Canonical, already-extracted procurement intelligence for the
+    Proposal Alignment Analyzer -- NOT bid.notes (a short free-text
+    field, not the tender corpus). Built from bid_briefs (itself derived
+    from the tender documents at ingestion) plus the compliance matrix
+    already loaded for this page. Raw Storage/document reads are
+    explicitly out of scope for this remediation (Package 4)."""
+    def _fmt(label, val):
+        if not val:
+            return ""
+        if isinstance(val, (list, dict)):
+            try:
+                val = json.dumps(val)[:1500]
+            except Exception:
+                val = str(val)[:1500]
+        else:
+            val = str(val)[:1500]
+        return f"{label}: {val}\n"
+
+    parts = [
+        _fmt("Opportunity Type", brief_row.get("opportunity_type")),
+        _fmt("Procurement Model", brief_row.get("procurement_model")),
+        _fmt("Contract Term", brief_row.get("contract_term")),
+        _fmt("Executive Summary (RFP)", brief_row.get("executive_summary")),
+        _fmt("Scope Categories", brief_row.get("scope_categories")),
+        _fmt("Deliverables Summary", brief_row.get("deliverables_summary")),
+        _fmt("Qualification Gates", brief_row.get("qualification_gates")),
+        _fmt("Evaluation Breakdown", brief_row.get("evaluation_breakdown")),
+        _fmt("Commercial Structure", brief_row.get("commercial_structure")),
+        _fmt("Contract Risks", brief_row.get("contract_risks")),
+        _fmt("Submission Requirements", brief_row.get("submission_requirements")),
+        _fmt("Source Citations", brief_row.get("source_citations")),
+    ]
+    has_brief_content = any(parts)
+    if not has_brief_content and not requirements:
+        return "No canonical procurement intelligence has been extracted for this bid yet."
+    mandatory_count = sum(1 for r in requirements if (r.get("category") or "").lower() == "mandatory")
+    parts.append(f"Mandatory Requirements Count: {mandatory_count}\n")
+    return "".join(p for p in parts if p)
+
+
 def page_check(bid_id: int):
     _token, _org_id = _current_access_token_and_org()
     bid = tenancy.get_bid_authenticated(_token, bid_id)
@@ -85,11 +126,14 @@ def page_check(bid_id: int):
     # TAB 1: PROPOSAL ALIGNMENT ANALYZER
     # ══════════════════════════════════════════════════════════════════════════
     with tab_alignment:
-        st.markdown("### Proposal Alignment & Tender Document Audit")
+        st.markdown("### Proposal Alignment & Compliance Audit")
         st.markdown(
             '<div style="font-size:.82rem;color:#A9A69D;margin-bottom:.8rem">'
-            'Upload a draft or final proposal document (PDF / Word / Text). Claude audits it against tender documents '
-            'and compliance criteria, classifying findings into Proposal Submission, Negotiation, Execution, or Delivery stages.'
+            'Upload a draft or final proposal document (PDF / Word / Text). Claude analyzes the entire proposal in '
+            'traceable sections against the compliance matrix and the canonical procurement intelligence already '
+            'extracted for this bid (qualification gates, evaluation criteria, commercial requirements) — not the '
+            'physical tender documents directly. Findings are classified into Proposal Submission, Negotiation, '
+            'Execution, or Delivery stages.'
             '</div>',
             unsafe_allow_html=True
         )
@@ -107,16 +151,20 @@ def page_check(bid_id: int):
             elif not (api_key_configured() or st.session_state.get("anthropic_api_key")):
                 st.error("Configure Anthropic API key.")
             else:
-                with st.spinner("Analyzing proposal alignment against tender criteria… 20–35s"):
+                with st.spinner("Analyzing full proposal in traceable sections against procurement intelligence… 30–90s"):
                     try:
+                        procurement_context = _build_procurement_context(brief_row, reqs)
                         align_res = analyze_proposal_alignment(
                             proposal_text=proposal_text,
                             requirements=reqs,
-                            rfp_text=bid.get("notes", ""),
+                            rfp_text=procurement_context,
                             bid_info=bid
                         )
                         st.session_state["align_result"] = align_res
-                        st.success("Audit complete.")
+                        if align_res.get("status") == "complete":
+                            st.success("Audit complete.")
+                        else:
+                            st.warning(align_res.get("message", "Alignment audit incomplete — no reliable score available"))
                         st.rerun()
                     except Exception as e:
                         st.error(f"Audit failed: {e}")
@@ -125,29 +173,105 @@ def page_check(bid_id: int):
         align_data = st.session_state.get("align_result")
         if align_data:
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-            o_score = align_data.get("overall_score", 0)
-            rec = align_data.get("recommendation", "REVISE")
-            rec_col = "#27AE60" if "SUBMIT" in rec else "#E67E22" if "REVISE" in rec else "#C0392B"
 
-            c_sc1, c_sc2 = st.columns([1, 3])
-            c_sc1.markdown(
-                f'<div style="text-align:center;background:#111118;border:2px solid {rec_col};border-radius:6px;padding:1rem">'
-                f'<div style="font-size:.7rem;color:#A9A69D;text-transform:uppercase">Alignment Score</div>'
-                f'<div style="font-size:2.2rem;font-weight:700;color:{rec_col}">{o_score}/100</div>'
-                f'<div style="font-size:.8rem;color:#EDEAE3;font-weight:600;margin-top:.3rem">{rec}</div>'
-                f'</div>',
-                unsafe_allow_html=True
-            )
-            with c_sc2:
-                st.markdown(f"**Executive Summary:** {align_data.get('executive_summary','')}")
-                strengths = align_data.get("strengths", [])
-                if strengths:
-                    st.markdown("**Identified Strengths:** " + " · ".join(f"<span style='color:#27AE60'>✓ {s}</span>" for s in strengths), unsafe_allow_html=True)
-
-            # Findings grouped by stage
+            is_complete = align_data.get("status") == "complete"
+            cov = align_data.get("coverage_metadata") or {}
+            mandatory_failures = align_data.get("mandatory_failures", [])
+            req_coverage = align_data.get("requirement_coverage", [])
             findings = align_data.get("findings", [])
+            assessed_count = sum(1 for r in req_coverage if r.get("coverage") != "Cannot Assess")
+
+            if not is_complete:
+                st.markdown(
+                    f'<div class="warn-box" style="border-left:4px solid #C0392B">'
+                    f'⛔ <strong>Alignment audit incomplete — no reliable score available</strong>'
+                    f'<div style="font-size:.8rem;color:#A9A69D;margin-top:.4rem">{align_data.get("reason","")}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+                if cov:
+                    st.markdown(
+                        f'<div style="font-size:.76rem;color:#6E6C66;margin-top:.4rem">'
+                        f'Proposal coverage attempted: {cov.get("chars_processed",0):,}/{cov.get("chars_total",0):,} '
+                        f'characters ({cov.get("percentage_covered",0)}%) across {cov.get("successful_chunks",0)}/'
+                        f'{cov.get("chunk_count",0)} sections successfully analyzed.</div>',
+                        unsafe_allow_html=True
+                    )
+                if req_coverage or findings:
+                    st.markdown(
+                        '<div style="font-size:.74rem;color:#6E6C66;margin-top:.3rem">'
+                        'Findings and requirement coverage below reflect only the sections that were '
+                        'successfully analyzed — treat as a partial sample, not a complete scored audit.</div>',
+                        unsafe_allow_html=True
+                    )
+
+            if is_complete:
+                # ── A. ALIGNMENT SCORE & CONFIDENCE ─────────────────────────────
+                o_score = align_data.get("overall_score")
+                score_display = f"{o_score:.0f}/100" if o_score is not None else "N/A"
+                rec = align_data.get("recommendation", "REVISE BEFORE SUBMITTING")
+                rec_col = (
+                    "#27AE60" if "SUBMIT" in rec
+                    else "#E67E22" if "REVISE" in rec
+                    else "#2980B9" if "NO EVALUATIVE CRITERIA" in rec  # informational, not an alarm
+                    else "#C0392B"
+                )
+                basis_label = align_data.get("score_basis") or ""
+
+                c_sc1, c_sc2 = st.columns([1, 3])
+                c_sc1.markdown(
+                    f'<div style="text-align:center;background:#111118;border:2px solid {rec_col};border-radius:6px;padding:1rem">'
+                    f'<div style="font-size:.7rem;color:#A9A69D;text-transform:uppercase">Alignment Score</div>'
+                    f'<div style="font-size:2.2rem;font-weight:700;color:{rec_col}">{score_display}</div>'
+                    f'<div style="font-size:.8rem;color:#EDEAE3;font-weight:600;margin-top:.3rem">{rec}</div>'
+                    f'<div style="font-size:.68rem;color:#6E6C66;margin-top:.3rem">{basis_label}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+                with c_sc2:
+                    st.markdown(f"**Score Rationale:** {align_data.get('score_rationale','')}")
+                    st.markdown(
+                        f'<div style="font-size:.78rem;color:#A9A69D;margin-top:.4rem">'
+                        f'📊 Proposal coverage: <strong>{cov.get("percentage_covered",0)}%</strong> '
+                        f'({cov.get("chars_processed",0):,}/{cov.get("chars_total",0):,} characters, '
+                        f'{cov.get("successful_chunks",0)}/{cov.get("chunk_count",0)} sections analyzed'
+                        f'{", " + str(cov.get("failed_or_skipped_chunks",0)) + " skipped" if cov.get("failed_or_skipped_chunks") else ""})'
+                        f'<br>✅ Requirements assessed: <strong>{assessed_count}/{len(req_coverage)}</strong>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+
+                st.markdown("")
+
+                # ── B. EXECUTIVE SUMMARY ────────────────────────────────────────
+                st.markdown("#### Executive Summary")
+                st.markdown(align_data.get("executive_summary") or "_Not available._")
+
+            # ── C. MANDATORY / DISQUALIFICATION RISKS ─────────────────────────────
+            # Renders regardless of status -- but mandatory_failures is only ever
+            # non-empty on a complete, coverage-complete audit (Cannot Assess
+            # never becomes a mandatory failure), so this is naturally empty for
+            # an incomplete result.
+            if mandatory_failures:
+                st.markdown("#### ⛔ Mandatory / Disqualification Risks")
+                for mf in mandatory_failures:
+                    st.markdown(
+                        f'<div style="background:#1A0000;border:1px solid #3A0000;border-left:4px solid #C0392B;'
+                        f'border-radius:0 4px 4px 0;padding:.6rem 1rem;margin:.3rem 0">'
+                        f'<span style="color:#C0392B;font-weight:700;font-size:.78rem">[{mf.get("req_id","")}] MANDATORY — NOT ADDRESSED</span>'
+                        f'<div style="font-size:.8rem;color:#EDEAE3;margin-top:.2rem">{mf.get("description","")}</div>'
+                        f'<div style="font-size:.76rem;color:#E57373;margin-top:.2rem">{mf.get("reason","")}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+
+            # ── D. CRITICAL FINDINGS ────────────────────────────────────────────
+            # Positive findings from successfully-analyzed sections are shown
+            # even on an incomplete-coverage result (instruction 2: preserve
+            # established positive findings, just don't present them as a
+            # complete scored audit).
             if findings:
-                st.markdown(f"#### Audit Findings ({len(findings)} items)")
+                st.markdown(f"#### Critical Findings ({len(findings)} items)")
                 for f in findings:
                     sev = f.get("severity", "Medium")
                     stage = f.get("stage", "Proposal Submission")
@@ -156,13 +280,60 @@ def page_check(bid_id: int):
                         f'<div style="background:#111118;border:1px solid #292832;border-left:3px solid {sev_col};'
                         f'border-radius:0 4px 4px 0;padding:.6rem 1rem;margin:.35rem 0">'
                         f'<span style="color:{sev_col};font-weight:700;font-size:.72rem">[{sev.upper()}]</span> '
-                        f'<span style="color:#C9A96E;font-size:.72rem">Stage: {stage}</span> '
+                        f'<span style="color:#C9A96E;font-size:.72rem">Req: {f.get("req_id") or "—"} · Stage: {stage}</span> '
                         f'<strong>{f.get("title","")}</strong>'
                         f'<div style="font-size:.8rem;color:#EDEAE3;margin-top:.2rem">{f.get("issue","")}</div>'
-                        f'<div style="font-size:.76rem;color:#27AE60;margin-top:.2rem">💡 Action: {f.get("recommendation","")}</div>'
+                        f'<div style="font-size:.74rem;color:#6E6C66;margin-top:.2rem">📍 {f.get("proposal_location","")}</div>'
+                        f'<div style="font-size:.76rem;color:#27AE60;margin-top:.2rem">💡 {f.get("recommendation","")} '
+                        f'<span style="color:#6E6C66">(Effort: {f.get("effort","")})</span></div>'
                         f'</div>',
                         unsafe_allow_html=True
                     )
+
+            # ── E. REQUIREMENT COVERAGE ─────────────────────────────────────────
+            if req_coverage:
+                st.markdown(f"#### Requirement Coverage ({len(req_coverage)} requirements)")
+                cov_col = {
+                    "Fully Addressed": "#27AE60", "Partially Addressed": "#E67E22",
+                    "Not Addressed": "#C0392B", "Cannot Assess": "#6E6C66",
+                }
+                hdr = st.columns([1, 1, 1.2, 1, 2, 2.3])
+                for col_w, label in zip(hdr, ["Requirement", "Category", "Coverage", "Confidence", "Evidence / Location", "Gap / Action"]):
+                    col_w.markdown(f'<span style="font-size:.7rem;color:#6E6C66;text-transform:uppercase;font-weight:600">{label}</span>', unsafe_allow_html=True)
+                st.markdown('<hr class="section-divider" style="margin:.2rem 0">', unsafe_allow_html=True)
+                for r in req_coverage:
+                    cc = cov_col.get(r.get("coverage", ""), "#6E6C66")
+                    row = st.columns([1, 1, 1.2, 1, 2, 2.3])
+                    row[0].markdown(f'<span style="font-size:.8rem;color:#C9A96E">{r.get("req_id","")}</span>', unsafe_allow_html=True)
+                    row[1].markdown(f'<span style="font-size:.78rem;color:#A9A69D">{r.get("category","")}</span>', unsafe_allow_html=True)
+                    row[2].markdown(f'<span style="color:{cc};font-size:.78rem;font-weight:600">{r.get("coverage","")}</span>', unsafe_allow_html=True)
+                    row[3].markdown(f'<span style="font-size:.76rem;color:#A9A69D">{r.get("confidence","")}</span>', unsafe_allow_html=True)
+                    row[4].markdown(f'<span style="font-size:.76rem">{r.get("evidence_location") or "—"}</span>', unsafe_allow_html=True)
+                    row[5].markdown(f'<span style="font-size:.76rem;color:#A9A69D">{r.get("notes","")}</span>', unsafe_allow_html=True)
+                    st.markdown('<hr class="section-divider" style="margin:.15rem 0">', unsafe_allow_html=True)
+
+            if is_complete:
+                # ── F. STRENGTHS ──────────────────────────────────────────────────
+                strengths = align_data.get("strengths", [])
+                if strengths:
+                    st.markdown("#### Strengths")
+                    st.markdown(" · ".join(f"<span style='color:#27AE60'>✓ {s}</span>" for s in strengths), unsafe_allow_html=True)
+
+                # ── G. PRIORITIZED NEXT STEPS ─────────────────────────────────────
+                next_steps = align_data.get("next_steps", [])
+                if next_steps:
+                    st.markdown("#### Prioritized Next Steps")
+                    for step in sorted(next_steps, key=lambda x: x.get("priority", 99)):
+                        st.markdown(
+                            f'<div style="background:#111118;border:1px solid #292832;border-left:3px solid #C9A96E;'
+                            f'border-radius:0 4px 4px 0;padding:.6rem 1rem;margin:.3rem 0">'
+                            f'<span style="color:#C9A96E;font-weight:700;font-size:.8rem">#{step.get("priority","")}</span> '
+                            f'<span style="font-size:.85rem;color:#EDEAE3">{step.get("action","")}</span> '
+                            f'<span style="font-size:.7rem;color:#A9A69D">({step.get("when","")})</span>'
+                            f'<div style="font-size:.76rem;color:#A9A69D;margin-top:.15rem">{step.get("rationale","")}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True
+                        )
 
     # ══════════════════════════════════════════════════════════════════════════
     # TAB 2: MISSING EVIDENCE SCAN

@@ -11,10 +11,12 @@ Provides decision-oriented intelligence across the bid lifecycle:
   8. addendum_analyzer         — scan amendments and supplementary documents for changes
   9. proposal_alignment        — two-call comprehensive proposal alignment audit
 """
+import concurrent.futures
 import json
 import re
 from typing import Any
 from config import get_anthropic_client
+from requirement_semantics import has_supplier_qualification_evidence
 
 
 def _call(system: str, user: str, max_tokens: int = 2048) -> str:
@@ -649,6 +651,677 @@ Analyze all changes introduced by this document. Return ONLY valid JSON:
 
 
 # ── 9. Comprehensive Proposal Alignment Audit ─────────────────────────────────
+# Correctness remediation (bounded, separate from Phase 8 Package 3 auth/
+# tenancy/RLS work, which is closed and untouched by this change). The
+# previous implementation truncated the proposal to its first 8,000
+# characters and the "RFP context" to bid.notes (a short free-text field,
+# not the tender corpus), made a single ~3,500-token-budget model call for
+# score+findings, and silently substituted a hardcoded 50/REVISE BEFORE
+# SUBMITTING result whenever that call's JSON failed to parse as a dict --
+# with no distinction shown to the user between "the model found nothing"
+# and "the audit never actually completed." requirement_coverage and
+# next_steps were computed but never rendered.
+#
+# This replacement:
+#   * analyzes the WHOLE proposal via bounded, traceable section chunking
+#     (never a single unbounded mega-prompt) -- see the parameters below.
+#   * uses canonical, already-extracted procurement intelligence (the
+#     caller's `rfp_text` argument is expected to be built from bid_briefs
+#     + the compliance matrix, never bid.notes -- see stage_check.py).
+#   * computes the numeric score DETERMINISTICALLY from aggregated
+#     per-requirement coverage (see _compute_score) -- the model is used
+#     only to assert POSITIVE evidence per section (never absence, since
+#     no single section can know what's missing elsewhere) and, in one
+#     final bounded pass, to write narrative prose over the already-fixed
+#     deterministic results. The model can never move the score.
+#   * can never produce a numeric score from a malformed/truncated/
+#     incomplete response -- a chunk whose response is `_truncated` or
+#     otherwise fails validation is retried once, then marked skipped
+#     (counted honestly in coverage_metadata), never trusted.
+#   * distinguishes "Not Addressed" (confirmed absent -- only valid when
+#     proposal coverage is complete) from "Cannot Assess" (coverage was
+#     incomplete, so absence cannot be confirmed) -- unknown absence is
+#     never silently reinterpreted as confirmed absence.
+#   * surfaces Mandatory-category "Not Addressed" requirements as a
+#     separate, score-overriding `mandatory_failures` list -- a high
+#     numeric score can never make a mandatory failure look acceptable.
+#   * returns `status: "incomplete"` (no numeric score at all) only when
+#     every section failed to analyze or the result fails the strict
+#     contract validator -- never a plausible-looking default.
+
+# ── Chunking / call-budget parameters (documented, not tuned silently) ──
+# Target chunk size: 9,000 characters of proposal text per analyzed
+# section -- large enough for a section to carry real context, small
+# enough to keep each per-chunk call's response comfortably inside its
+# token budget (avoiding the exact truncation failure mode this
+# remediation exists to fix).
+_ALIGN_TARGET_CHUNK_CHARS = 9000
+# Sections smaller than this (from heading-based splitting) are merged
+# into a neighbor rather than spent as their own model call.
+_ALIGN_MIN_MERGE_CHARS = 2500
+# Overlap used only by the deterministic fixed-window fallback splitter
+# (used when headings can't be reliably detected), so a fact split
+# exactly across a window boundary is still visible to at least one chunk.
+_ALIGN_OVERLAP_CHARS = 400
+# Hard ceiling on chunks analyzed per audit -- bounds the worst-case call
+# count regardless of document size. Safe analysis ceiling:
+# 16 * 9,000 = 144,000 characters. The live 124,110-character example
+# that prompted this remediation fits fully under this ceiling (needs at
+# most ceil(124110 / (9000-400)) = 15 chunks even in the fixed-window
+# fallback, before any heading-based merging reduces that further) -- it
+# receives complete, not partial, coverage. A document beyond the
+# ceiling is analyzed via evenly-spaced representative sampling across
+# its full length (never just "the first N chunks"), and the shortfall
+# is disclosed honestly via coverage_metadata, never silently dropped.
+#
+# Call budget: 1 model call per analyzed chunk (with at most 1 bounded
+# retry for a chunk whose response fails validation) + 1 final bounded
+# narrative-synthesis call. For a typical 100k-150k character proposal
+# this is ceil(100000/8600)=12 to min(ceil(150000/8600), 16)=16 chunks,
+# i.e. 13-17 calls in the normal case; worst case (every chunk needs its
+# one retry) is bounded at 2 * 16 + 1 = 33 calls, regardless of how large
+# the source document is.
+_ALIGN_MAX_CHUNKS = 16
+# A requirement may only be concluded "Not Addressed" (vs "Cannot
+# Assess") when proposal coverage is at least this complete AND zero
+# chunks failed or were sampled out by the ceiling.
+_ALIGN_COVERAGE_COMPLETE_THRESHOLD = 99.0
+# Safety cap on the shared procurement-intelligence context repeated in
+# every chunk prompt -- defensive only; canonical, already-extracted
+# intelligence (bid_briefs + the compliance matrix) is inherently compact
+# structured text, not a raw document, so this should not normally bind.
+_ALIGN_MAX_PROCUREMENT_CONTEXT_CHARS = 12000
+# Chunk calls are independent (each sees only its own section) and are
+# executed with bounded thread concurrency -- a conservative limit, not
+# unbounded parallelism -- to cut wall-clock latency without changing the
+# total number of calls made, the deterministic aggregation order, each
+# chunk's isolated retry behavior, or the fail-closed treatment of a
+# chunk that ultimately fails. The final narrative-synthesis call is
+# never parallelized -- it must wait for deterministic aggregation to
+# finish, since it summarizes the fixed, already-computed results.
+_ALIGN_CHUNK_CONCURRENCY = 4
+
+_HEADING_RE = re.compile(
+    r'^(?:'
+    r'#{1,6}\s+.{2,100}'                            # markdown heading
+    r'|\d+(?:\.\d+)*[\.\)]?\s+[A-Z][^\n]{2,100}'     # "1. Title" / "2.3 Title"
+    r'|SECTION\s+\d+[:\.]?\s*.{0,80}'                # "SECTION 3: ..."
+    r'|[A-Z][A-Z0-9 \-&,/]{5,79}'                    # short ALL-CAPS line
+    r')\s*$',
+    re.MULTILINE,
+)
+
+
+def _detect_headings(text: str) -> list[tuple[int, str]]:
+    out = []
+    for m in _HEADING_RE.finditer(text):
+        line = m.group(0).strip()
+        if line:
+            out.append((m.start(), line[:100]))
+    return out
+
+
+def _fixed_window_sections(text: str, start: int, end: int) -> list[tuple[int, int, str]]:
+    """Deterministic overlapping fixed-size windows over text[start:end].
+    Every character in [start, end) is covered by at least one window."""
+    sections = []
+    pos = start
+    step = max(_ALIGN_TARGET_CHUNK_CHARS - _ALIGN_OVERLAP_CHARS, 1)
+    while pos < end:
+        win_end = min(pos + _ALIGN_TARGET_CHUNK_CHARS, end)
+        sections.append((pos, win_end, f"Characters {pos:,}-{win_end:,}"))
+        if win_end >= end:
+            break
+        pos += step
+    return sections
+
+
+def _union_chars_covered(ranges: list[tuple[int, int]]) -> int:
+    """Distinct characters covered by a set of (start, end) ranges,
+    counting an overlap (from the fixed-window fallback's deliberate
+    _ALIGN_OVERLAP_CHARS) only once -- a naive sum of (end - start)
+    double-counts overlapping regions and can report >100% coverage."""
+    if not ranges:
+        return 0
+    ordered = sorted(ranges)
+    total = 0
+    cur_start, cur_end = ordered[0]
+    for s, e in ordered[1:]:
+        if s <= cur_end:
+            cur_end = max(cur_end, e)
+        else:
+            total += cur_end - cur_start
+            cur_start, cur_end = s, e
+    total += cur_end - cur_start
+    return total
+
+
+def _split_proposal_into_sections(text: str) -> list[dict]:
+    """Section-aware split (numbered/markdown/ALL-CAPS heading detection)
+    with a deterministic overlapping-window fallback when headings can't
+    be reliably identified. Every character of `text` is accounted for
+    in exactly one raw section at this stage -- nothing is dropped here;
+    the chunk-count ceiling is applied later, explicitly, in
+    _merge_and_bound_sections."""
+    n = len(text)
+    if n == 0:
+        return []
+
+    headings = _detect_headings(text)
+    # Require several headings spread through the document (not all
+    # clustered in the first 30%) before trusting heading-based
+    # splitting -- otherwise a false-positive-heavy detection (e.g. a
+    # proposal with no real headings) would silently degrade to
+    # analyzing mostly the front of the document again.
+    if len(headings) < 3 or headings[-1][0] < n * 0.3:
+        raw = _fixed_window_sections(text, 0, n)
+        return [{"start": s, "end": e, "heading": h, "text": text[s:e]} for s, e, h in raw]
+
+    bounds = [h[0] for h in headings]
+    labels = [h[1] for h in headings]
+    if bounds[0] > 0:
+        bounds = [0] + bounds
+        labels = ["Preamble"] + labels
+    bounds.append(n)
+
+    raw_sections = []
+    for i in range(len(bounds) - 1):
+        s, e = bounds[i], bounds[i + 1]
+        if e <= s:
+            continue
+        raw_sections.append({"start": s, "end": e, "heading": labels[i], "text": text[s:e]})
+    return raw_sections
+
+
+def _merge_and_bound_sections(raw_sections: list[dict]) -> dict:
+    """Merges undersized adjacent sections, splits oversized ones to the
+    target chunk size, then applies the hard _ALIGN_MAX_CHUNKS ceiling
+    via even-stride sampling across the WHOLE document (never just the
+    first N chunks) -- a document beyond the safe ceiling still gets
+    representative, not front-loaded, coverage, and the shortfall is
+    recorded in `skipped_ranges` rather than silently dropped."""
+    if not raw_sections:
+        return {"chunks": [], "chars_total": 0, "skipped_ranges": []}
+
+    chars_total = raw_sections[-1]["end"]
+
+    merged: list[dict] = []
+    buf = None
+    for sec in raw_sections:
+        if buf is None:
+            buf = dict(sec)
+            continue
+        if len(buf["text"]) < _ALIGN_MIN_MERGE_CHARS:
+            buf["end"] = sec["end"]
+            buf["text"] = buf["text"] + sec["text"]
+            buf["heading"] = f'{buf["heading"]} + {sec["heading"]}'
+        else:
+            merged.append(buf)
+            buf = dict(sec)
+    if buf is not None:
+        merged.append(buf)
+
+    bounded: list[dict] = []
+    for sec in merged:
+        if len(sec["text"]) <= _ALIGN_TARGET_CHUNK_CHARS:
+            bounded.append(sec)
+            continue
+        for s, e, _ in _fixed_window_sections(sec["text"], 0, len(sec["text"])):
+            bounded.append({
+                "start": sec["start"] + s, "end": sec["start"] + e,
+                "heading": sec["heading"], "text": sec["text"][s:e],
+            })
+
+    skipped_ranges = []
+    if len(bounded) > _ALIGN_MAX_CHUNKS:
+        n = len(bounded)
+        idx = sorted({round(i * (n - 1) / (_ALIGN_MAX_CHUNKS - 1)) for i in range(_ALIGN_MAX_CHUNKS)})
+        kept_set = set(idx)
+        skipped_ranges = [
+            {"start": bounded[i]["start"], "end": bounded[i]["end"], "heading": bounded[i]["heading"]}
+            for i in range(n) if i not in kept_set
+        ]
+        bounded = [bounded[i] for i in idx]
+
+    for i, c in enumerate(bounded):
+        c["index"] = i
+    for c in bounded:
+        c["total"] = len(bounded)
+
+    return {"chunks": bounded, "chars_total": chars_total, "skipped_ranges": skipped_ranges}
+
+
+_ALIGN_CHUNK_SYSTEM = (
+    "You are a senior proposal reviewer auditing ONE section of a larger proposal "
+    "against a compliance matrix and canonical procurement intelligence. You can "
+    "only see this section -- you cannot see the rest of the proposal, so NEVER "
+    "assert that something is missing or absent; only report what you can "
+    "positively confirm IS present in this section. Derive all conclusions "
+    "strictly from the provided section text and procurement intelligence. "
+    "Respond with valid JSON only."
+)
+
+
+def _align_chunk_prompt(bid_header: str, procurement_context: str, req_block: str, chunk: dict) -> str:
+    return f"""{bid_header}
+
+=== CANONICAL PROCUREMENT INTELLIGENCE (already extracted for this bid) ===
+{procurement_context}
+
+=== COMPLIANCE MATRIX (requirements to check for evidence of) ===
+{req_block}
+
+=== PROPOSAL SECTION BEING REVIEWED ===
+Section: {chunk['heading']} (part {chunk['index'] + 1} of {chunk['total']})
+{chunk['text']}
+
+For THIS SECTION ONLY, return ONLY valid JSON:
+{{
+  "chunk_findings": [
+    {{
+      "severity": "Critical|High|Medium|Low",
+      "stage": "Proposal Submission|Negotiation / Shortlist|Contract Execution|Contractual Obligation",
+      "category": "<category>",
+      "req_id": "<req_id or null>",
+      "title": "<finding title>",
+      "issue": "<concise explanation of a gap or risk visible in THIS section>",
+      "recommendation": "<actionable fix>",
+      "effort": "Minor edit|Moderate rewrite|Major addition|Post-submission action"
+    }}
+  ],
+  "requirement_assertions": [
+    {{
+      "req_id": "<req_id>",
+      "coverage": "Fully Addressed|Partially Addressed",
+      "confidence": "High|Medium|Low",
+      "evidence": "<short quote or precise paraphrase from THIS section>"
+    }}
+  ]
+}}
+Only include a requirement_assertion when THIS section actually contains evidence for it -- do not list requirements this section does not address."""
+
+
+def _call_alignment_chunk(prompt: str, max_tokens: int = 2000) -> dict | None:
+    """One attempt plus one bounded retry. Returns a validated per-chunk
+    result, or None if both attempts failed or were truncated -- the
+    caller marks the chunk skipped rather than trusting partial data."""
+    for _attempt in range(2):
+        try:
+            raw = _call(_ALIGN_CHUNK_SYSTEM, prompt, max_tokens=max_tokens)
+            parsed = _parse_json(raw)
+        except Exception:
+            continue
+        if not isinstance(parsed, dict):
+            continue
+        if parsed.get("_truncated"):
+            continue  # a partially-recovered chunk result is never trusted
+        if "chunk_findings" not in parsed or "requirement_assertions" not in parsed:
+            continue
+        if not isinstance(parsed["chunk_findings"], list) or not isinstance(parsed["requirement_assertions"], list):
+            continue
+        return parsed
+    return None
+
+
+_COVERAGE_RANK = {"Fully Addressed": 2, "Partially Addressed": 1}
+_COVERAGE_SCORE_MAP = {"Fully Addressed": 100.0, "Partially Addressed": 50.0, "Not Addressed": 0.0}
+
+
+def _aggregate_requirement_coverage(requirements: list[dict], chunk_results: list[dict],
+                                     coverage_complete: bool) -> list[dict]:
+    """Deterministic aggregation: the strongest positive assertion for a
+    requirement across all successfully-analyzed chunks wins. Absence
+    (no positive assertion anywhere) becomes 'Not Addressed' ONLY when
+    proposal coverage is complete; otherwise 'Cannot Assess' -- unknown
+    absence must never be silently reinterpreted as confirmed absence."""
+    assertions_by_req: dict[str, dict] = {}
+    for cr in chunk_results:
+        chunk_label = cr["chunk_label"]
+        for a in cr.get("requirement_assertions", []):
+            rid = a.get("req_id")
+            cov = a.get("coverage")
+            if not rid or cov not in _COVERAGE_RANK:
+                continue
+            existing = assertions_by_req.get(rid)
+            if existing is None or _COVERAGE_RANK[cov] > _COVERAGE_RANK[existing["coverage"]]:
+                assertions_by_req[rid] = {
+                    "coverage": cov,
+                    "confidence": a.get("confidence", "Medium"),
+                    "evidence": (a.get("evidence") or "")[:300],
+                    "location": chunk_label,
+                }
+
+    rows = []
+    for r in requirements:
+        rid = r.get("req_id") or ""
+        hit = assertions_by_req.get(rid)
+        base = {
+            "req_id": rid, "category": r.get("category", ""),
+            "description": (r.get("description") or "")[:160],
+            # Computed once here, against the FULL original requirement
+            # dict (not the truncated description above) -- see
+            # _compute_score()/_extract_mandatory_failures() for why this
+            # exists and how it's used; stripped before the result is
+            # ever returned to a caller.
+            "_is_qualification_gate": has_supplier_qualification_evidence(r),
+        }
+        if hit:
+            rows.append({
+                **base,
+                "coverage": hit["coverage"], "confidence": hit["confidence"],
+                "evidence_location": hit["location"], "notes": hit["evidence"],
+            })
+        elif coverage_complete:
+            rows.append({
+                **base,
+                "coverage": "Not Addressed", "confidence": "High",
+                "evidence_location": "", "notes": "No supporting evidence found anywhere in the analyzed proposal.",
+            })
+        else:
+            rows.append({
+                **base,
+                "coverage": "Cannot Assess", "confidence": "Low",
+                "evidence_location": "", "notes": "Proposal coverage is incomplete -- absence cannot be confirmed.",
+            })
+    return rows
+
+
+_ALIGN_SCORE_BASIS_BUYER_WEIGHTED = "Buyer-weighted evaluation criteria"
+_ALIGN_SCORE_BASIS_NO_BUYER_WEIGHTS = "Internal equal-weight evaluation criteria — buyer weights unavailable"
+_ALIGN_SCORE_BASIS_INCOMPLETE_WEIGHTS = "Internal equal-weight evaluation criteria — buyer weighting incomplete"
+_ALIGN_SCORE_BASIS_NO_EVALUATION_CRITERIA = "No evaluative criteria identified"
+
+# Categories that are, by procurement convention, the buyer's numerically
+# evaluated/rated criteria -- the ONLY set eligible for the Evaluation
+# Alignment Score by default. "Mandatory" requirements are qualification
+# gates, evaluated pass/fail, never part of a numeric average (instruction
+# 1.B). Anything else (Supporting, Commercial, Contractual, etc.) joins the
+# evaluation set ONLY if the procurement itself made it evaluative, i.e. the
+# buyer gave it an explicit weight -- never assumed, never equal-weighted in
+# by category alone (instruction 1.C).
+_ALIGN_EVALUATIVE_CATEGORIES = {"rated", "financial"}
+
+
+def _valid_weight(w) -> bool:
+    return isinstance(w, (int, float)) and not isinstance(w, bool) and w > 0
+
+
+def _compute_score(requirement_coverage: list[dict]) -> dict:
+    """Evaluation Alignment Score -- instruction 1's corrected scoring
+    universe. Three requirement classes are kept strictly separate:
+
+      A. Evaluation criteria (category Rated/Financial, OR any other
+         category the buyer explicitly gave a valid weight to -- that
+         weight IS the procurement making it evaluative). This is the
+         ONLY set the numeric score is computed from.
+      B. Mandatory/qualification requirements -- ALWAYS excluded from
+         the numeric average regardless of any weight value; they are
+         gates, handled separately by _extract_mandatory_failures() /
+         _derive_recommendation()'s override. This is category-based
+         (category == Mandatory) OR semantic (the requirement's own
+         text carries supplier-qualification/eligibility cues, per
+         requirement_semantics.has_supplier_qualification_evidence() --
+         the same governed cue-detection already used for DECIDE/CHECK's
+         own Qualification Gates KPI) -- so a qualification/eligibility
+         gate is excluded from the score regardless of what category it
+         happens to be filed under, and regardless of any stray weight.
+      C. Everything else (Supporting, Commercial, Contractual, etc.
+         with no buyer weight) -- stays in requirement_coverage/
+         findings for visibility, but is never an equal-weight
+         contributor to the score merely by existing.
+
+    Scoring rubric: Fully Addressed = 100, Partially Addressed = 50,
+    Not Addressed = 0. 'Cannot Assess' rows are excluded from the
+    calculation entirely (neither numerator nor denominator) -- unknown
+    coverage must never silently lower the score.
+
+    Buyer weights are used, and mathematically normalized if they do
+    not already sum to 1, ONLY when EVERY evaluation-set requirement
+    carries a valid weight (a positive, non-boolean numeric `weight`
+    field -- no other field is ever treated as a weight). If weighting
+    is missing entirely or only partial/ambiguous, the score falls back
+    to an explicitly labelled internal equal-weight average across the
+    same evaluation set -- no weight is ever invented for a requirement
+    that doesn't have one, and no requirement that DOES have one is
+    ever silently dropped just because a neighbor lacks one.
+
+    If the resulting evaluation set is empty -- a procurement with real
+    requirements but no legitimate rated/evaluative criteria at all
+    (only mandatory/qualification/commercial/supporting items) -- no
+    score is invented from that non-evaluative set; overall_score is
+    None with score_basis _ALIGN_SCORE_BASIS_NO_EVALUATION_CRITERIA."""
+    evaluation_set = [
+        r for r in requirement_coverage
+        if (r["category"] or "").strip().lower() != "mandatory"
+        and not r.get("_is_qualification_gate")
+        and r["coverage"] in _COVERAGE_SCORE_MAP
+        and (
+            (r["category"] or "").strip().lower() in _ALIGN_EVALUATIVE_CATEGORIES
+            or _valid_weight(r.get("_weight"))
+        )
+    ]
+    if not evaluation_set:
+        return {"overall_score": None, "score_basis": _ALIGN_SCORE_BASIS_NO_EVALUATION_CRITERIA}
+
+    weights = [r.get("_weight") for r in evaluation_set]
+    valid_flags = [_valid_weight(w) for w in weights]
+
+    if all(valid_flags):
+        total_w = sum(weights)  # normalized mathematically via division, not assumed to sum to 1
+        score = sum(_COVERAGE_SCORE_MAP[r["coverage"]] * w for r, w in zip(evaluation_set, weights)) / total_w
+        basis = _ALIGN_SCORE_BASIS_BUYER_WEIGHTED
+    elif any(valid_flags):
+        # Incomplete/ambiguous buyer weighting -- do not invent the
+        # missing weights and do not drop the requirements that have
+        # them either; fall back to equal weight across the whole set.
+        score = sum(_COVERAGE_SCORE_MAP[r["coverage"]] for r in evaluation_set) / len(evaluation_set)
+        basis = _ALIGN_SCORE_BASIS_INCOMPLETE_WEIGHTS
+    else:
+        score = sum(_COVERAGE_SCORE_MAP[r["coverage"]] for r in evaluation_set) / len(evaluation_set)
+        basis = _ALIGN_SCORE_BASIS_NO_BUYER_WEIGHTS
+
+    return {"overall_score": round(score, 1), "score_basis": basis}
+
+
+def _extract_mandatory_failures(requirement_coverage: list[dict]) -> list[dict]:
+    """A requirement surfaces as a mandatory/qualification risk when it
+    is Mandatory-category OR semantically a supplier-qualification/
+    eligibility gate (see _compute_score()'s docstring -- the same
+    signal, so a gate is excluded from the score AND flagged as a risk
+    consistently, never one without the other) AND was not addressed."""
+    return [
+        {
+            "req_id": r["req_id"], "category": r["category"], "description": r["description"],
+            "coverage": r["coverage"],
+            "reason": r["notes"] or "Mandatory/qualification requirement not addressed in the analyzed proposal.",
+        }
+        for r in requirement_coverage
+        if ((r["category"] or "").strip().lower() == "mandatory" or r.get("_is_qualification_gate"))
+        and r["coverage"] == "Not Addressed"
+    ]
+
+
+_ALIGN_REC_NO_EVALUATIVE_CRITERIA = "REVIEW — NO EVALUATIVE CRITERIA IDENTIFIED"
+
+
+def _derive_recommendation(overall_score: float | None, mandatory_failures: list[dict]) -> tuple[str, str]:
+    """Mandatory failures always override the recommendation -- a high
+    numeric score can never make a mandatory failure look acceptable.
+
+    A None score with NO mandatory failures is the zero-evaluation-
+    universe case (instruction 2): a procurement can be genuinely,
+    completely audited and simply contain no legitimate rated/
+    evaluative criteria at all (only mandatory/commercial/supporting
+    requirements, all of which are otherwise fine). That is not a
+    failure, and must not be presented as one -- it gets its own
+    distinct, non-alarming recommendation value rather than being
+    forced into "MAJOR REVISION NEEDED", which would misrepresent a
+    clean, complete audit as a problem."""
+    if mandatory_failures:
+        return (
+            "MAJOR REVISION NEEDED",
+            f"{len(mandatory_failures)} mandatory/qualification requirement(s) have no supporting evidence "
+            f"in the analyzed proposal -- this overrides the numeric score.",
+        )
+    if overall_score is None:
+        return (
+            _ALIGN_REC_NO_EVALUATIVE_CRITERIA,
+            "This procurement's requirements contain no legitimate rated/evaluative criteria to score "
+            "(only mandatory, qualification, commercial, or supporting requirements were found, and none "
+            "of them failed) -- there is no numeric Evaluation Alignment Score to compute, by design, not "
+            "because the audit failed.",
+        )
+    if overall_score >= 85:
+        return ("SUBMIT AS-IS", f"{overall_score:.0f}/100 structured alignment score.")
+    if overall_score >= 60:
+        return ("REVISE BEFORE SUBMITTING", f"{overall_score:.0f}/100 structured alignment score.")
+    return ("MAJOR REVISION NEEDED", f"{overall_score:.0f}/100 structured alignment score.")
+
+
+def _aggregate_findings(chunk_results: list[dict]) -> list[dict]:
+    findings = []
+    for cr in chunk_results:
+        for f in cr.get("chunk_findings", []):
+            f = dict(f)
+            f["proposal_location"] = cr["chunk_label"]
+            findings.append(f)
+    order = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
+    findings.sort(key=lambda f: order.get(f.get("severity", "Medium"), 2))
+    return findings
+
+
+_ALIGN_SYNTHESIS_SYSTEM = (
+    "You write a concise executive narrative summarizing an already-completed, "
+    "deterministic proposal alignment audit. You do NOT reassess coverage, "
+    "scores, or mandatory failures -- those are fixed and provided to you as "
+    "ground truth. Respond with valid JSON only."
+)
+
+
+def _synthesize_narrative(bid_header: str, overall_score: float | None, recommendation: str,
+                           mandatory_failures: list[dict], requirement_coverage: list[dict],
+                           findings: list[dict], coverage_meta: dict) -> dict | None:
+    """One bounded final call over the already-fixed deterministic
+    results. It may only produce narrative prose -- it never has the
+    ability to alter coverage classifications, mandatory-failure status,
+    the numeric score, or buyer weights, because none of those are
+    passed to it as anything other than fixed, already-decided facts."""
+    cov_counts = {
+        c: sum(1 for r in requirement_coverage if r["coverage"] == c)
+        for c in ("Fully Addressed", "Partially Addressed", "Not Addressed", "Cannot Assess")
+    }
+    finding_lines = "\n".join(
+        f'- [{f.get("severity", "")}] {f.get("title", "")}: {f.get("issue", "")}' for f in findings[:25]
+    ) or "None."
+
+    prompt = f"""{bid_header}
+
+Deterministic audit results (already final -- do not alter):
+Score: {overall_score if overall_score is not None else "N/A"}/100 | Recommendation: {recommendation}
+Requirement coverage counts: {cov_counts}
+Mandatory failures: {len(mandatory_failures)}
+Proposal coverage analyzed: {coverage_meta['percentage_covered']}% ({coverage_meta['successful_chunks']}/{coverage_meta['chunk_count']} sections)
+
+Findings:
+{finding_lines}
+
+Write a concise executive narrative reflecting the results above exactly as given. Do NOT include a
+score, recommendation, coverage percentage, weights, or mandatory-status field in your response --
+those are fixed and rendered separately; restate them in prose only, never as separate JSON fields.
+Return ONLY valid JSON, with EXACTLY these three keys and no others:
+{{
+  "executive_summary": "<max 300 chars, must be consistent with the score/recommendation above>",
+  "strengths": ["<strength 1>", "<strength 2>", "<strength 3>"],
+  "next_steps": [
+    {{"priority": 1, "action": "<action>", "rationale": "<why it matters>",
+      "when": "Before submission|If shortlisted|Before contract execution|Upon contract award"}}
+  ]
+}}"""
+    try:
+        raw = _call(_ALIGN_SYNTHESIS_SYSTEM, prompt, max_tokens=1500)
+        parsed = _parse_json(raw)
+    except Exception:
+        return None
+    if not isinstance(parsed, dict) or parsed.get("_truncated"):
+        return None
+    if not all(k in parsed for k in ("executive_summary", "strengths", "next_steps")):
+        return None
+    # Structural guarantee, not just prompt discipline: even if the model
+    # ignores the instruction above and includes extra fields (a
+    # score/recommendation/coverage/weight it invented), only these three
+    # narrative keys are ever read out of its response -- everything else
+    # is discarded here, never reaching the deterministic result.
+    return {
+        "executive_summary": parsed["executive_summary"],
+        "strengths": parsed["strengths"],
+        "next_steps": parsed["next_steps"],
+    }
+
+
+_ALIGNMENT_REQUIRED_KEYS = (
+    "status", "overall_score", "score_basis", "score_rationale", "recommendation",
+    "executive_summary", "strengths", "findings", "mandatory_failures",
+    "requirement_coverage", "next_steps", "coverage_metadata",
+)
+
+
+def _validate_alignment_contract(result: dict) -> bool:
+    """The minimum result contract. Missing keys and legitimate empty
+    values are NOT equivalent -- this checks presence and shape, not
+    that arrays are non-empty (an empty findings list can be a
+    legitimate, complete result)."""
+    if not isinstance(result, dict):
+        return False
+    for key in _ALIGNMENT_REQUIRED_KEYS:
+        if key not in result:
+            return False
+    for list_key in ("strengths", "findings", "mandatory_failures", "requirement_coverage", "next_steps"):
+        if not isinstance(result[list_key], list):
+            return False
+    if not isinstance(result["coverage_metadata"], dict):
+        return False
+    return True
+
+
+_ALIGN_INCOMPLETE_MESSAGE = "Alignment audit incomplete — no reliable score available"
+
+
+def _process_chunks_concurrently(chunks: list[dict], bid_header: str, procurement_context: str,
+                                  req_block: str) -> tuple[dict[int, dict], set[int]]:
+    """Runs each chunk's (already internally retry-bounded)
+    _call_alignment_chunk() call under a small, bounded thread pool --
+    chunk calls are independent (each sees only its own section text),
+    so concurrency changes only wall-clock latency, never the total call
+    count, the deterministic aggregation order (the caller re-sorts by
+    original chunk index, never completion order), or a failed chunk's
+    fail-closed treatment (still recorded, still excluded from
+    coverage). Returns (index -> parsed result, set of failed indices)."""
+    outputs: dict[int, dict] = {}
+    failed: set[int] = set()
+
+    def _run_one(chunk: dict):
+        chunk_label = f'{chunk["heading"]} (section {chunk["index"] + 1}/{chunk["total"]})'
+        prompt = _align_chunk_prompt(bid_header, procurement_context, req_block, chunk)
+        try:
+            parsed = _call_alignment_chunk(prompt)
+        except Exception:
+            parsed = None
+        return chunk["index"], chunk_label, parsed
+
+    max_workers = max(1, min(_ALIGN_CHUNK_CONCURRENCY, len(chunks)))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(_run_one, c) for c in chunks]
+        for future in concurrent.futures.as_completed(futures):
+            idx, label, parsed = future.result()
+            if parsed is None:
+                failed.add(idx)
+            else:
+                parsed["chunk_label"] = label
+                outputs[idx] = parsed
+
+    return outputs, failed
+
+
 def analyze_proposal_alignment(
     proposal_text: str,
     requirements: list[dict],
@@ -656,114 +1329,183 @@ def analyze_proposal_alignment(
     bid_info: dict,
 ) -> dict:
     """
-    Two-call comprehensive alignment analysis scoring the proposal against RFP documents.
-    Call 1: Overall score, findings by procurement stage, strengths, and next steps.
-    Call 2: Per-requirement coverage breakdown.
+    Multi-pass, chunk-traceable proposal alignment audit. Replaces the
+    earlier single-call, first-8,000-characters-only version -- see the
+    module-level comment above this section for the full remediation
+    rationale.
+
+    `rfp_text` is expected to be the caller's CANONICAL PROCUREMENT
+    INTELLIGENCE context (bid_briefs + the compliance matrix), never raw
+    bid notes -- see pages/stage_check.py's `_build_procurement_context`.
+
+    Scoring is entirely deterministic (see _compute_score); the model is
+    used only for (a) per-section positive-evidence assertions and
+    findings -- never absence, since no single section can know what's
+    missing elsewhere -- and (b) one final bounded narrative-synthesis
+    pass over the already-fixed deterministic results.
     """
-    rfp_snippet = (rfp_text or "")[:4000]
-    proposal_snip = (proposal_text or "")[:8000]
+    text = proposal_text or ""
+    chars_total = len(text)
+
+    split = _merge_and_bound_sections(_split_proposal_into_sections(text))
+    chunks = split["chunks"]
+
+    if not chunks:
+        return {
+            "status": "incomplete",
+            "message": _ALIGN_INCOMPLETE_MESSAGE,
+            "reason": "No proposal text was available to analyze.",
+            "coverage_metadata": {
+                "chars_total": chars_total, "chars_processed": 0, "percentage_covered": 0.0,
+                "chunk_count": 0, "successful_chunks": 0, "failed_or_skipped_chunks": 0,
+                "sections": [], "coverage_complete": False,
+            },
+        }
+
+    bid_header = f"BID: {bid_info.get('title', '')} | CLIENT: {bid_info.get('client', '')}"
 
     req_lines = []
     for r in requirements:
         cat = r.get("category", "")
         rid = r.get("req_id", "")
         desc = (r.get("description") or "")[:120]
-        wt = f"{r['weight']*100:.0f}%" if r.get("weight") else ""
+        wt = f"{r['weight'] * 100:.0f}%" if r.get("weight") else ""
         ev = (r.get("evidence") or "")[:60]
         req_lines.append(f"[{cat}] {rid} {wt}: {desc} | Evidence: {ev}")
     req_block = "\n".join(req_lines) if req_lines else "No requirements loaded."
 
-    bid_header = f"BID: {bid_info.get('title','')} | CLIENT: {bid_info.get('client','')}"
+    procurement_context = (rfp_text or "")[:_ALIGN_MAX_PROCUREMENT_CONTEXT_CHARS] or \
+        "No canonical procurement intelligence has been extracted for this bid yet."
 
-    SYSTEM = (
-        "You are a senior proposal reviewer with expertise in competitive procurement. "
-        "Assess how well the proposal satisfies the specific tender requirements. "
-        "Derive ALL conclusions strictly from the tender documents and proposal text provided. "
-        "Classify findings into accurate procurement stages: Proposal Submission, Negotiation / Shortlist, "
-        "Contract Execution, or Contractual Obligation. Respond with valid JSON only."
+    chunk_outputs, failed_indices = _process_chunks_concurrently(chunks, bid_header, procurement_context, req_block)
+    # Deterministic aggregation order: iterate `chunks` in their original,
+    # stable order -- never the (nondeterministic) order concurrent
+    # futures happen to complete in.
+    chunk_results = [chunk_outputs[c["index"]] for c in chunks if c["index"] in chunk_outputs]
+    successful_chunks = len(chunk_results)
+
+    chars_processed = _union_chars_covered(
+        [(c["start"], c["end"]) for c in chunks if c["index"] not in failed_indices]
+    )
+    percentage_covered = round(min(chars_processed / chars_total, 1.0) * 100, 1) if chars_total else 0.0
+    coverage_complete = (
+        percentage_covered >= _ALIGN_COVERAGE_COMPLETE_THRESHOLD
+        and not failed_indices
+        and not split["skipped_ranges"]
     )
 
-    prompt1 = f"""{bid_header}
+    coverage_metadata = {
+        "chars_total": chars_total,
+        "chars_processed": chars_processed,
+        "percentage_covered": percentage_covered,
+        "chunk_count": len(chunks) + len(split["skipped_ranges"]),
+        "successful_chunks": successful_chunks,
+        "failed_or_skipped_chunks": len(failed_indices) + len(split["skipped_ranges"]),
+        "sections": [
+            {"index": c["index"], "heading": c["heading"], "chars": c["end"] - c["start"]}
+            for c in chunks
+        ],
+        "coverage_complete": coverage_complete,
+    }
 
-=== TENDER DOCUMENTS ===
-{rfp_snippet}
+    if successful_chunks == 0:
+        return {
+            "status": "incomplete",
+            "message": _ALIGN_INCOMPLETE_MESSAGE,
+            "reason": "Every proposal section failed to analyze (malformed or truncated model responses).",
+            "coverage_metadata": coverage_metadata,
+        }
 
-=== COMPLIANCE MATRIX ===
-{req_block}
+    # Positive evidence already gathered (findings, requirement
+    # assertions) is valid regardless of whether coverage is complete --
+    # a chunk that WAS successfully analyzed really did find what it
+    # found. What is NOT valid without complete coverage is a numeric
+    # score or a recommendation: those would present a partial sample as
+    # though it were a finished audit. So aggregate coverage/findings
+    # unconditionally, but gate scoring, the mandatory-failure
+    # determination, the recommendation, and narrative synthesis behind
+    # `coverage_complete` -- fail closed rather than let a >ceiling or
+    # partially-failed run look like a complete scored audit (instruction
+    # 2). This also applies to a document beyond the chunk ceiling:
+    # `coverage_complete` is already False whenever `skipped_ranges` is
+    # non-empty, so it falls into this same fail-closed path, not a
+    # silent partial score.
+    requirement_coverage = _aggregate_requirement_coverage(requirements, chunk_results, coverage_complete)
+    findings = _aggregate_findings(chunk_results)
 
-=== PROPOSAL TEXT ===
-{proposal_snip}
+    if not coverage_complete:
+        for row in requirement_coverage:
+            row.pop("_is_qualification_gate", None)
+        return {
+            "status": "incomplete",
+            "message": _ALIGN_INCOMPLETE_MESSAGE,
+            "reason": (
+                "Proposal coverage did not reach the full-audit threshold "
+                f"({percentage_covered}% analyzed, {len(failed_indices)} chunk(s) failed, "
+                f"{len(split['skipped_ranges'])} section(s) beyond the analysis ceiling) -- "
+                "no reliable score can be shown. The findings and requirement coverage "
+                "established from the sections that WERE successfully analyzed are preserved below."
+            ),
+            "overall_score": None,
+            "score_basis": None,
+            "score_rationale": None,
+            "recommendation": None,
+            "executive_summary": None,
+            "strengths": [],
+            "findings": findings,
+            "mandatory_failures": [],
+            "requirement_coverage": requirement_coverage,
+            "next_steps": [],
+            "coverage_metadata": coverage_metadata,
+        }
 
-Review the proposal against the tender requirements. Score 0-100 based on proposal submission criteria.
-Return ONLY valid JSON:
-{{
-  "overall_score": <0-100>,
-  "score_rationale": "<max 100 chars>",
-  "recommendation": "SUBMIT AS-IS|REVISE BEFORE SUBMITTING|MAJOR REVISION NEEDED",
-  "executive_summary": "<max 200 chars>",
-  "strengths": ["<strength 1>", "<strength 2>", "<strength 3>"],
-  "findings": [
-    {{
-      "severity": "Critical|High|Medium|Low",
-      "stage": "Proposal Submission|Negotiation / Shortlist|Contract Execution|Contractual Obligation",
-      "category": "<category>",
-      "req_id": "<req_id or null>",
-      "title": "<finding title>",
-      "issue": "<concise explanation of gap>",
-      "recommendation": "<actionable fix>",
-      "proposal_location": "<section or N/A>",
-      "effort": "Minor edit|Moderate rewrite|Major addition|Post-submission action"
-    }}
-  ],
-  "next_steps": [
-    {{
-      "priority": 1,
-      "action": "<action description>",
-      "rationale": "<why it matters>",
-      "when": "Before submission|If shortlisted|Before contract execution|Upon contract award"
-    }}
-  ]
-}}"""
+    weight_by_req = {r.get("req_id"): r.get("weight") for r in requirements}
+    for row in requirement_coverage:
+        row["_weight"] = weight_by_req.get(row["req_id"])
 
-    raw1 = _call(SYSTEM, prompt1, max_tokens=3500)
-    result = _parse_json(raw1)
-    if not isinstance(result, dict):
-        result = {"overall_score": 50, "recommendation": "REVISE BEFORE SUBMITTING", "findings": [], "strengths": [], "next_steps": []}
+    score_info = _compute_score(requirement_coverage)
+    mandatory_failures = _extract_mandatory_failures(requirement_coverage)
+    for row in requirement_coverage:
+        row.pop("_weight", None)
+        row.pop("_is_qualification_gate", None)
+    recommendation, score_rationale = _derive_recommendation(score_info["overall_score"], mandatory_failures)
 
-    # Call 2: Requirement Coverage
-    cov_lines = [f"{r.get('req_id','')} [{r.get('category','')}]: {(r.get('description') or '')[:80]}" for r in requirements]
-    cov_block = "\n".join(cov_lines) if cov_lines else "No requirements."
+    narrative = _synthesize_narrative(
+        bid_header, score_info["overall_score"], recommendation, mandatory_failures,
+        requirement_coverage, findings, coverage_metadata,
+    )
+    if narrative is None:
+        executive_summary = (
+            "Narrative synthesis unavailable — the deterministic requirement-level audit "
+            "below is valid and complete."
+        )
+        strengths, next_steps = [], []
+    else:
+        executive_summary = narrative.get("executive_summary", "")
+        strengths = narrative.get("strengths", [])
+        next_steps = narrative.get("next_steps", [])
 
-    prompt2 = f"""{bid_header}
+    result = {
+        "status": "complete",
+        "overall_score": score_info["overall_score"],
+        "score_basis": score_info["score_basis"],
+        "score_rationale": score_rationale,
+        "recommendation": recommendation,
+        "executive_summary": executive_summary,
+        "strengths": strengths,
+        "findings": findings,
+        "mandatory_failures": mandatory_failures,
+        "requirement_coverage": requirement_coverage,
+        "next_steps": next_steps,
+        "coverage_metadata": coverage_metadata,
+    }
 
-=== REQUIREMENTS TO ASSESS ===
-{cov_block}
-
-=== PROPOSAL TEXT ===
-{proposal_snip}
-
-Assess per-requirement coverage. Return ONLY valid JSON:
-{{
-  "requirement_coverage": [
-    {{
-      "req_id": "<req_id>",
-      "category": "<category>",
-      "description": "<concise description>",
-      "coverage": "Fully Addressed|Partially Addressed|Not Addressed|Cannot Assess",
-      "confidence": "High|Medium|Low",
-      "notes": "<one sentence note>"
-    }}
-  ]
-}}"""
-
-    try:
-        raw2 = _call(SYSTEM, prompt2, max_tokens=3000)
-        coverage_result = _parse_json(raw2)
-        if isinstance(coverage_result, dict):
-            result["requirement_coverage"] = coverage_result.get("requirement_coverage", [])
-        else:
-            result["requirement_coverage"] = []
-    except Exception:
-        result["requirement_coverage"] = []
+    if not _validate_alignment_contract(result):
+        return {
+            "status": "incomplete",
+            "message": _ALIGN_INCOMPLETE_MESSAGE,
+            "reason": "Internal result failed contract validation.",
+            "coverage_metadata": coverage_metadata,
+        }
 
     return result
