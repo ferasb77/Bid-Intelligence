@@ -1,0 +1,44 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Migration 006: Close open RLS tables — Phase 8 remediation package 1
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Additive only. Does not touch migrations 001-005, does not create any
+-- policy, does not add any tenancy column, does not alter grants or table
+-- ownership, does not use FORCE ROW LEVEL SECURITY, and does not modify any
+-- row of data. Exactly one operation on exactly three tables.
+--
+-- Phase 8's live production-readiness audit (see
+-- BID_INTELLIGENCE_PHASE8_PRODUCTION_READINESS_AUDIT.md) found that
+-- `bid_briefs`, `bid_decisions`, and `firm_profiles` were the only three
+-- application-facing tables in this project with row level security
+-- disabled -- every other table (bids, requirements, tasks, documents,
+-- document_versions, outline_sections, content_library, coaches,
+-- clarifications, debriefs, deliverables, analysis_runs, analysis_results)
+-- already has RLS enabled with zero policies, live-confirmed via direct
+-- pg_catalog query and Supabase's own security advisor.
+--
+-- With RLS enabled and zero policies defined, these three tables become
+-- fail-closed to the `anon` and `authenticated` Postgres roles: neither
+-- role gets any implicit access, by Postgres's own RLS semantics (a table
+-- with RLS enabled and no policy denies all rows to any role not exempted
+-- from RLS). This is intentional and matches the eleven already-enabled
+-- tables' current state -- these three should not have been any different.
+--
+-- This does not change current application behavior. The application
+-- (database.py:get_client()) connects exclusively with the Supabase
+-- service-role key, server-side only, and the service-role role bypasses
+-- RLS by definition -- it is exempt regardless of whether RLS is enabled
+-- or disabled, or whether any policy exists. No application code path
+-- today uses an anon or authenticated key against any table, so there is
+-- nothing for this change to break.
+--
+-- User/tenant-scoped RLS policies (so that an eventual authenticated,
+-- non-service-role client can be safely introduced for browser-facing
+-- reads) are explicitly NOT part of this migration -- they require the
+-- organization/tenancy model that does not exist yet, and are deferred to
+-- a later, separate remediation package (Phase 8 remediation package 2 and
+-- beyond).
+-- ═══════════════════════════════════════════════════════════════════════════
+
+alter table public.bid_briefs    enable row level security;
+alter table public.bid_decisions enable row level security;
+alter table public.firm_profiles enable row level security;
