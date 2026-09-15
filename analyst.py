@@ -14,12 +14,11 @@ Provides decision-oriented intelligence across the bid lifecycle:
 import json
 import re
 from typing import Any
-import anthropic
-from config import get_api_key
+from config import get_anthropic_client
 
 
 def _call(system: str, user: str, max_tokens: int = 2048) -> str:
-    client = anthropic.Anthropic(api_key=get_api_key())
+    client = get_anthropic_client()
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=max_tokens,
