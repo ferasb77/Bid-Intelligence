@@ -50,7 +50,21 @@ from auth_client import get_auth_client
 
 SESSION_KEY = "bi_auth_session"
 AUTH_CONTEXT_KEY = "bi_auth_context"
-INVITE_CALLBACK_ACCEPTED_TYPES = ("invite",)
+# 'invite' -- the original Supabase Auth invite-acceptance flow, valid only
+# once per user (Supabase's invite endpoint refuses to re-send once an
+# account is confirmed -- see 'email' below for the fallback that covers
+# every later sign-in of an already-registered user).
+# 'email' -- the token_hash type Supabase's verify_otp() expects for a
+# passwordless magic-link sign-in (sign_in_with_otp()) for an EXISTING,
+# already-registered user; added for exactly that reason: the bootstrap
+# real user's first invite was already accepted (and its session then
+# revoked after the tokens were exposed in the browser's URL fragment
+# during troubleshooting), so a second 'invite' call is rejected by
+# Supabase's own API (HTTP 422, 'already been registered') -- magic-link
+# sign-in is the correct, still-token-hash-based, still-never-exposes-a-
+# raw-token-to-this-server mechanism for that case, and for every future
+# passwordless sign-in this real user performs.
+INVITE_CALLBACK_ACCEPTED_TYPES = ("invite", "email")
 
 
 @dataclass(frozen=True)
@@ -118,15 +132,22 @@ def current_session() -> dict | None:
 
 
 def handle_invite_callback() -> AuthResult:
-    """Handles Supabase's token_hash-based invite-acceptance callback
-    (Phase 8 remediation package 3 authenticated cutover, bootstrap round).
-    Call this once, early -- before rendering any normal page content. It
-    is a safe no-op (returns ok=False, error='no invite callback present')
-    whenever the expected query parameters are absent, so it never affects
-    ordinary page loads.
+    """Handles Supabase's token_hash-based auth callback for this
+    bootstrap (Phase 8 remediation package 3 authenticated cutover): the
+    original `type=invite` flow, and `type=email` (the token_hash type
+    Supabase's verify_otp() expects for a magic-link sign-in) for every
+    sign-in after a user's first invite has already been accepted
+    (Supabase's own invite endpoint refuses to re-send once an account is
+    confirmed, so magic-link sign-in is the correct mechanism for any
+    later sign-in of the same real user -- see
+    INVITE_CALLBACK_ACCEPTED_TYPES). Call this once,
+    early -- before rendering any normal page content. It is a safe no-op
+    (returns ok=False, error='no invite callback present') whenever the
+    expected query parameters are absent, so it never affects ordinary
+    page loads.
 
-    Deliberately narrow for this bootstrap: only `type=invite` is accepted
-    -- a magiclink/recovery/signup/email_change token_hash is rejected
+    Deliberately narrow: only the types in INVITE_CALLBACK_ACCEPTED_TYPES
+    are accepted -- a recovery/signup/email_change token_hash is rejected
     without being processed. This uses ONLY the anon/public auth client
     (auth_client.get_auth_client()) to call verify_otp -- never the
     service-role client. On success, resolves the real AuthContext via
@@ -146,7 +167,7 @@ def handle_invite_callback() -> AuthResult:
         return AuthResult(ok=False, error="no invite callback present")
 
     if otp_type not in INVITE_CALLBACK_ACCEPTED_TYPES:
-        # Not the bootstrap invite flow -- reject without processing, but
+        # Not an accepted bootstrap flow -- reject without processing, but
         # still strip the params so an unsupported token_hash never sits
         # in the visible URL.
         st.query_params.pop("token_hash", None)
@@ -155,7 +176,7 @@ def handle_invite_callback() -> AuthResult:
 
     try:
         client = get_auth_client()
-        resp = client.auth.verify_otp({"token_hash": token_hash, "type": "invite"})
+        resp = client.auth.verify_otp({"token_hash": token_hash, "type": otp_type})
     except Exception:
         st.query_params.pop("token_hash", None)
         st.query_params.pop("type", None)

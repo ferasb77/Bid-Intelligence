@@ -474,7 +474,10 @@ class TestInviteCallback(unittest.TestCase):
     def test_unsupported_callback_type_rejected_without_processing(self, mock_get_auth_client):
         import streamlit as st
         import auth_session
-        qp = self._mock_query_params(token_hash="abc123", type="magiclink")
+        # 'recovery' is a real EmailOtpType but not one this bootstrap
+        # accepts (only 'invite' and 'email' are -- see
+        # INVITE_CALLBACK_ACCEPTED_TYPES).
+        qp = self._mock_query_params(token_hash="abc123", type="recovery")
         with patch.object(st, "query_params", qp):
             result = auth_session.handle_invite_callback()
         self.assertFalse(result.ok)
@@ -520,6 +523,61 @@ class TestInviteCallback(unittest.TestCase):
         # one-time token stripped from the URL after processing
         self.assertNotIn("token_hash", qp)
         self.assertNotIn("type", qp)
+
+    @patch("tenancy.resolve_organization_context")
+    @patch("auth_session.get_auth_client")
+    def test_successful_email_type_verification_passes_through_the_correct_type(
+        self, mock_get_auth_client, mock_resolve
+    ):
+        """Regression guard: verify_otp() must be called with the type
+        actually present in the URL (`email` -- the token_hash type
+        Supabase's verify_otp() expects for a magic-link sign-in, NOT the
+        `magiclink` literal), never a hardcoded 'invite' -- a real bug
+        caught during this bootstrap (Supabase rejects a second invite for
+        an already-registered user with a 422, so magic-link sign-in via
+        `type=email` was added as the fallback for every later sign-in of
+        the same real user; the call must use the matching type or
+        Supabase rejects the verification)."""
+        import streamlit as st
+        import auth_session
+        from tenancy import AuthContext
+
+        mock_client = MagicMock()
+        mock_session = MagicMock(access_token="at-magic", refresh_token="rt-magic", expires_at=time.time() + 3600)
+        mock_user = MagicMock(id="ed5ccf11-8f6e-4975-85db-f2d1cf84660b", email="feras@enablemygrowth.com")
+        mock_client.auth.verify_otp.return_value = MagicMock(session=mock_session, user=mock_user)
+        mock_get_auth_client.return_value = mock_client
+        mock_resolve.return_value = AuthContext(
+            user_id="ed5ccf11-8f6e-4975-85db-f2d1cf84660b", email="feras@enablemygrowth.com",
+            organization_id="4326b564-8cc5-4463-9304-9a589f08cc91",
+            organization_name="Enable My Growth Internal", role="owner",
+        )
+
+        qp = self._mock_query_params(token_hash="fresh-magiclink-token-hash", type="email")
+        st.session_state.clear()
+        with patch.object(st, "query_params", qp):
+            result = auth_session.handle_invite_callback()
+
+        self.assertTrue(result.ok)
+        mock_client.auth.verify_otp.assert_called_once_with(
+            {"token_hash": "fresh-magiclink-token-hash", "type": "email"}
+        )
+        self.assertEqual(st.session_state[auth_session.AUTH_CONTEXT_KEY].role, "owner")
+
+    @patch("auth_session.get_auth_client")
+    def test_magiclink_literal_type_is_not_accepted(self, mock_get_auth_client):
+        """The literal string 'magiclink' is NOT the correct type for this
+        token_hash flow (that was an initial mistake, corrected to 'email'
+        -- see INVITE_CALLBACK_ACCEPTED_TYPES) -- it must be rejected the
+        same as any other unsupported type."""
+        import streamlit as st
+        import auth_session
+        qp = self._mock_query_params(token_hash="abc123", type="magiclink")
+        with patch.object(st, "query_params", qp):
+            result = auth_session.handle_invite_callback()
+        self.assertFalse(result.ok)
+        self.assertIn("unsupported callback type", result.error)
+        mock_get_auth_client.assert_not_called()
 
     @patch("auth_session.get_auth_client")
     def test_invalid_or_expired_token_fails_closed_and_strips_url(self, mock_get_auth_client):
