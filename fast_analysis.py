@@ -229,6 +229,20 @@ occurrence even if the same criterion label repeats with a different value elsew
 text -- do NOT merge, average, or pick one value if the text states more than one for the same
 label. This is the single most important instruction in this prompt.
 
+A weight or point value belongs here ONLY when its role is to score, rank, or otherwise ASSESS
+a bidder's submission -- their technical response, methodology, experience, team, references,
+qualifications, proposal quality, or price treated as one of several factors used to select the
+winning bidder (e.g. "Technical 80%, Price 20%" IS a genuine evaluation criterion and belongs
+here). A weight or percentage used only to CALCULATE a bidder's own price -- for example a
+weighted average or blend of resource rates, cost line-items, usage scenarios, or quantities
+combined into a single price figure -- is a pricing-calculation mechanism, not an evaluation
+criterion, even when it appears in a table with a column literally named "Weight" or "Weighted
+Cost." Do not extract pricing-calculation weights here -- if this same task also asks for this
+procurement's requirements or pricing/commercial content, capture the weighting there instead
+(with the weight values preserved verbatim), so the fact is not lost, only correctly classified.
+When genuinely uncertain whether a weight scores the bidder or only computes their price, prefer
+NOT extracting it here.
+
 Return ONLY valid JSON:
 {
   "evaluation_criteria": [
@@ -263,13 +277,18 @@ requirement in the document; extract only what is listed below.
      FRAMEWORK, LOTS).
    Preserve every distinct occurrence (do not merge repeats into one).
 3. evaluation_criteria: """ + _EVAL_SCHEMA.strip() + """
-4. requirements, restricted to exactly three topics -- do not extract any other requirement:
+4. requirements, restricted to exactly four topics -- do not extract any other requirement:
    (a) the service-category scope description for each named category/lot (what each category
        includes), (b) the mandatory submission mechanics (how/where/when to submit, what
-       forms are required, bilingual/accessibility/security-clearance obligations), and
+       forms are required, bilingual/accessibility/security-clearance obligations),
        (c) any stated pricing-evaluation consequence rule (e.g. what happens if a proponent's
        pricing appears abnormally low, including any required explanation or contract-security/
-       performance-bond consequence).
+       performance-bond consequence), and (d) any stated pricing-calculation formula or
+       weighting used to combine multiple cost/rate line-items into a single price figure (e.g.
+       a weighted blend of resource rates, cost scenarios, or quantities) -- preserve the actual
+       weight/percentage values verbatim in the requirement text; this is the correct home for a
+       weight excluded from evaluation_criteria above because it only calculates price rather
+       than scoring the bidder.
 
 Return ONLY valid JSON:
 {
@@ -341,6 +360,16 @@ identity, dates, requirements, commercial clauses, contract term, or deliverable
 Preserve EVERY distinct occurrence exactly as stated, even if the same criterion label repeats
 under a different category/scope with a different value -- do NOT merge, average, or normalize.
 Do not include a "Total points" summary row as a criterion occurrence.
+
+An occurrence belongs here ONLY when its role is to score, rank, or otherwise ASSESS a bidder's
+submission (price treated as one of several factors used to select the winning bidder -- e.g.
+"Technical 80%, Price 20%" -- is a genuine occurrence here). A weight or percentage used only to
+CALCULATE a bidder's own price --
+a weighted average or blend of resource rates, cost line-items, usage scenarios, or quantities
+combined into a single price figure -- is a pricing-calculation mechanism, not an evaluation
+occurrence, even when it appears in a table with a column literally named "Weight" or "Weighted
+Cost." When genuinely uncertain whether a weight scores the bidder or only computes their
+price, prefer NOT extracting it here.
 
 Return ONLY valid JSON:
 {

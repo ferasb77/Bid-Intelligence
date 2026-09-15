@@ -216,15 +216,43 @@ def _build_ambiguities(ambiguities: dict) -> list[dict]:
             "question": "Please confirm whether the separate pricing stage is the sole pricing assessment.",
         })
     for dist in ambiguities.get("category_date_distinctions", []):
-        docs = sorted({o.get("source_doc") for o in (dist.get("occurrences") or [])
+        occs = dist.get("occurrences") or []
+        docs = sorted({o.get("source_doc") for o in occs
                       if isinstance(o, dict) and o.get("source_doc")})
         source = (", ".join(docs) if docs else "internal milestone mentions") + "."
+        # Phase 6 holdout finding (City of Calgary): this detector's own
+        # trigger condition is -- and must remain -- "2+ distinct dates for
+        # the same milestone kind," independent of whether real
+        # category/lot scope data exists (changing that would risk
+        # suppressing Bank of Canada's own genuine category-scoped
+        # distinction). But the WORDING previously always said "category/
+        # scope" even for a corpus with no category structure at all,
+        # where the real cause is more often sequential amendment
+        # supersession (an earlier date superseded by a later addendum)
+        # than a parallel, category-scoped split. Only claim category/scope
+        # phrasing when at least one occurrence actually carries real
+        # scope data (component/lot/category) -- otherwise use a generic,
+        # data-driven phrasing that doesn't imply structure the source
+        # doesn't have.
+        has_real_scope = any(
+            isinstance(o, dict) and isinstance(o.get("scope"), dict)
+            and any((o["scope"].get(k) for k in ("component", "lot", "category")))
+            for o in occs
+        )
+        if has_real_scope:
+            why = "Likely category-specific scheduling, not a true conflict, but worth confirming."
+            question = "Please confirm the date applicable to each category/scope."
+        else:
+            why = ("More than one date was found for this same milestone -- this is often a later "
+                   "addendum superseding an earlier one rather than a true conflict, but worth "
+                   "confirming which date currently governs.")
+            question = "Please confirm which of these dates is the current, governing one."
         tagged.append({
             "_type": _AMBIGUITY_TYPE_CATEGORY_DATE,
             "issue": f"Multiple distinct dates found for milestone type {dist['milestone_kind']}.",
-            "why": "Likely category-specific scheduling, not a true conflict, but worth confirming.",
+            "why": why,
             "source": source,
-            "question": "Please confirm the date applicable to each category/scope.",
+            "question": question,
         })
     # Phase 4 generalization fix: an empty `tagged` list here is a genuine,
     # meaningful result -- the three detectors ran and correctly found none
@@ -852,9 +880,14 @@ def build_fast_report_content(result: FastAnalysisResult) -> SimpleNamespace:
             f"Confirm the authoritative evaluation weighting before finalizing responses "
             f"({eval_ref}) — do not guess which scoring table governs.")
     if date_ref:
-        attention_points.append(
-            f"Confirm date exposure per category/scope ({date_ref}) and calendar the applicable "
-            "date once clarified.")
+        if categories:
+            attention_points.append(
+                f"Confirm date exposure per category/scope ({date_ref}) and calendar the "
+                "applicable date once clarified.")
+        else:
+            attention_points.append(
+                f"Confirm which of the multiple dates found for the same milestone is current "
+                f"({date_ref}) and calendar it once clarified.")
     C.ATTENTION_POINTS = attention_points
 
     # ---- Section 10: Source Map ----

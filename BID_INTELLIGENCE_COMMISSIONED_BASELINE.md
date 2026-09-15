@@ -1,7 +1,7 @@
-# Bid Intelligence — Commissioned Baseline (Generic Assembly)
+# Bid Intelligence — Commissioned Baseline (Generalized Assembly)
 
 **Commissioned date:** 2026-09-15 (UTC)
-**Status:** Live-commissioned, generic-assembly baseline. Product Integration Phases 1–5 complete, accepted, and hardened. This document supersedes the earlier single-procurement (Bank of Canada only) baseline and freezes the current, cross-procurement-validated state as the reproducible commissioned baseline.
+**Status:** Live-commissioned, three-procurement-validated baseline. Product Integration Phases 1–6 complete, accepted, and hardened, including one full holdout-validation cycle (a real, previously-unused third procurement genuinely failed on first contact, was diagnosed and corrected, then re-validated live). This document supersedes the earlier two-procurement (`bid-intelligence-generic-v1`) baseline and freezes the current, three-procurement-validated state as the reproducible commissioned baseline.
 
 ---
 
@@ -20,7 +20,7 @@ Fast Analysis V4 is the default, integrated analysis path of the Bid Intelligenc
 
 ## Latest test result
 
-**1520 passed, 2 skipped** (full repository suite, `pytest -q`), `py_compile` clean, `git diff --check` clean. The 2 skips are pre-existing, live-API-gated tests unrelated to this baseline (unchanged since Phase 1). Zero failures.
+**1529 passed, 2 skipped** (full repository suite, `pytest -q`), `py_compile` clean, `git diff --check` clean. The 2 skips are pre-existing, live-API-gated tests unrelated to this baseline (unchanged since Phase 1). Zero failures. (Prior baseline: 1520 passed; the 9 additional passing tests are `tests/test_fast_analysis_pricing_evaluation_separation.py`, added for the Phase 6 pricing/evaluation semantic-separation correction below.)
 
 ## Product state (Phase 5 additions)
 
@@ -78,6 +78,29 @@ Four live Fast Analysis runs, each through the real UI, against the same real 5-
 
 Full detail: `BID_INTELLIGENCE_PHASE5_GENERIC_ASSEMBLY_REPORT.md`.
 
+### 3. City of Calgary — Design and Delivery Services for Leadership Learning and Development (Phase 6 third-procurement holdout)
+
+This procurement was deliberately never analyzed or even inspected in detail until Phase 6, specifically to serve as a genuine holdout against the two-procurement generic-assembly baseline above. It is the only one of the three corpora that produced a real, live holdout failure before correction.
+
+**Holdout history — preserved, not rewritten:**
+
+- **`PHASE 6 HOLDOUT: FAIL`** (original, run_id 6) — the frozen `bid-intelligence-generic-v1` engine correctly extracted this corpus's structure overall, but misclassified its commercial pricing-calculation formula (a weighted blend of resource rates, 55% / 35% / 10%) as an evaluation criterion, because `_EVAL_SCHEMA` had no semantic distinction between "weight that scores the bidder" and "weight that only calculates the bidder's own price." A related scoped-date ambiguity wording defect (hardcoded "category/scope" phrasing inappropriate for a corpus with no real category-scoped dates) was also found. Both were genuine defects, diagnosed and reported without being silently fixed, per the holdout protocol.
+- **`GENERALIZATION DEFECT CORRECTED: PASS`** (corrected, final accepted live run **`run_id = 8`**) — `_EVAL_SCHEMA`, `_EVAL_FOCUSED_SCHEMA`, and `_IDENTITY_EVAL_REQ_SCHEMA` were corrected with a procurement-agnostic semantic-role distinction (bidder-scoring vs. price-calculating weight) plus an explicit pointer so an excluded pricing weight is still captured, verbatim, as a commercial/requirements fact rather than being lost. The `CATEGORY_DATE_DISTINCTION` ambiguity wording was made conditional on whether real scope data is present, instead of always assuming category-scoped dates. Nine new regression tests (`tests/test_fast_analysis_pricing_evaluation_separation.py`) lock in both directions of the fix. Live-validated across three authorized Calgary runs (6, 7, 8); run 7 additionally surfaced — and run 8 confirmed fixed — a narrower sub-defect where the excluded pricing weight values were being dropped entirely rather than redirected.
+
+**Accepted final result (run_id = 8, live-validated):**
+
+- Procurement: **City of Calgary** — Design and Delivery Services for Leadership Learning and Development (bid_id 1)
+- Pricing formula **excluded from evaluation**: **YES** (`evaluation.weights_by_category` empty; no fabricated evaluation table rendered)
+- Pricing formula **retained commercially**: **YES** — captured verbatim in the requirements/commercial content, sourced to `S-PT-024 - Addendum Five.pdf`
+- 55% retained: **YES** · 35% retained: **YES** · 10% retained: **YES** (each appears exactly once in the persisted record and rendered report; no duplication)
+- No fabricated evaluation table: confirmed (0 occurrences of a "Rated Criteria" table anywhere in the persisted record or generated PDF)
+- Scoped-date framing corrected: confirmed (generic "which of these dates is the current, governing one" wording used, not the category/scope wording, since this corpus has no real category-scoped date data)
+- Cross-corpus leakage: **0** (0 occurrences of "Bank of Canada," "RFP 2026-026," "Canada's Drug Agency," "C-262700410," or "CDA-AMC" anywhere in Calgary's persisted record, UI, or generated PDF)
+- Report regeneration without extraction: **PASS** (zero network/API calls, reproduces the current persisted snapshot)
+- **Pricing-formula provenance is currently available at document-level granularity for this requirement class (the pricing formula is attributed to its source document), not page-level granularity.** This is stated precisely rather than overstated; page-level provenance for this specific requirement family is a known limitation, not yet closed.
+
+Full detail, including the original holdout failure diagnosis, root-cause trace, and all three live-run telemetry records: `BID_INTELLIGENCE_PHASE6_THIRD_PROCUREMENT_HOLDOUT_REPORT.md`; concise summary: `BID_INTELLIGENCE_PHASE6_GENERALIZATION_RELEASE_NOTES.md`.
+
 ## Supabase migrations now live
 
 - **004** (`migrations/004_analysis_runs.sql`) — `analysis_runs` and `analysis_results` tables, RLS enabled (no policies defined yet, by deliberate design), duplicate-active-run partial unique index.
@@ -87,15 +110,16 @@ Both unchanged since the earlier commissioned baseline and independently re-conf
 
 ## Known limitations
 
-Limitations the earlier baseline listed that Phase 5 has since resolved (Bank-of-Canada-only rendering, hardcoded evaluation-category assumptions, missing commercial provenance for supplement-extracted facts) have been removed from this list. What remains genuinely open:
+Limitations the earlier baselines listed that have since been resolved (Bank-of-Canada-only rendering, hardcoded evaluation-category assumptions, missing commercial provenance for supplement-extracted facts, and — as of Phase 6 — pricing-calculation weights being misclassified as evaluation criteria) have been removed from this list. What remains genuinely open:
 
-1. **Only two materially different real procurements have been live-commissioned so far** (Bank of Canada and CDA-AMC). The generic assembly layer's rules (category-discovery threshold, substantive-row predicate, leftover-bucket pruning) were designed and tuned against these two corpora's real extraction behavior. Broader generalization confidence — a third, structurally different real procurement, deliberately not yet analyzed so this baseline stays clean and reproducible — still requires a dedicated holdout-validation phase.
-2. **Fast Analysis remains probabilistic.** Two live runs against the identical CDA-AMC corpus (run_id 3 and run_id 5) produced different opportunity-title picks, different response-requirement counts, and a different evaluation-weight ambiguity finding — all non-material, correctly-sourced variation, not defects, but a real characteristic of live extraction that any consumer of this product should expect.
-3. **`app.py`'s `page_bid_overview()` remains unreachable dead code**, unchanged since Phase 3 (out of scope for every phase since).
-4. **Fast Analysis V4's document routing (`DOCUMENT_ROUTING`) is filename-identity-dependent for Bank of Canada's own optimized routes.** A document uploaded through a real browser file picker for any file other than the master RFP falls back to the broadest safe extraction mode (`ROUTE_IDENTITY_EVAL_REQ`) rather than its narrow, optimized route. This is by design (the safe generic fallback is exactly what makes the engine work correctly for every other real corpus, CDA-AMC included) but means Bank of Canada's own call profile depends on exact historical filenames.
-5. **Visual PDF inspection depends on available local tooling.** This engagement's environment has no `pdftoppm`/poppler installed, so every PDF verification this session was a structural + full-text review (via `pypdf` text extraction), not a rasterized, page-by-page visual review. Anyone reproducing this baseline with visual-inspection tooling available should still perform one.
+1. **Only three materially different real procurements have now been live-commissioned/corrected** (Bank of Canada, CDA-AMC, and City of Calgary). Calgary's holdout run genuinely failed on first contact and required a real correction, which is meaningful evidence the first two corpora's rules were not simply overfit — but three corpora is still a modest sample. Broader holdout coverage — a fourth, structurally different real procurement — still requires a dedicated, separately authorized holdout-validation phase.
+2. **Fast Analysis remains probabilistic.** Multiple live runs against the identical CDA-AMC corpus (run_id 3 and run_id 5) and the identical Calgary corpus (run_id 6, 7, 8) each produced some non-material variation (opportunity-title picks, response-requirement counts, ambiguity findings) — correctly-sourced variation, not defects, but a real characteristic of live extraction that any consumer of this product should expect.
+3. **`app.py`'s `page_bid_overview()` remains unreachable dead code**, unchanged since Phase 3 (out of scope for every phase since, including Phase 6).
+4. **Fast Analysis V4's document routing (`DOCUMENT_ROUTING`) is filename-identity-dependent for Bank of Canada's own optimized routes.** A document uploaded through a real browser file picker for any file other than the master RFP falls back to the broadest safe extraction mode (`ROUTE_IDENTITY_EVAL_REQ`) rather than its narrow, optimized route. This is by design (the safe generic fallback is exactly what makes the engine work correctly for every other real corpus, CDA-AMC and Calgary included) but means Bank of Canada's own call profile depends on exact historical filenames.
+5. **Visual PDF inspection depends on available local tooling.** This engagement's environment has no `pdftoppm`/poppler installed, so every PDF verification this session (including Calgary's run-8 PDF) was a structural + full-text review (via `pypdf` text extraction), not a rasterized, page-by-page visual review. Anyone reproducing this baseline with visual-inspection tooling available should still perform one.
 6. **The general (non-focused-task) evaluation-extraction fallback path does not carry `source_refs`.** When a corpus's real section headings don't match `find_section()`'s known patterns (confirmed live for CDA-AMC), evaluation data falls back to the broader `evaluation_criteria` family, which — unlike the focused rated-criteria task's own occurrences — does not carry per-criterion source page/excerpt provenance in the current schema. Identity, dates, response requirements, and commercial facts are unaffected.
-7. **Live-run evidence (PDFs, telemetry, benchmark corpora under `evaluation/`, `output/`, `tmp/`) is intentionally excluded from version control** (see `.gitignore`) as regenerable, non-implementation output — not a product limitation, but relevant to anyone trying to reproduce a specific historical run's exact artifacts from git history alone.
+7. **Some requirements-family provenance is document-level, not page-level.** Confirmed for Calgary run 8: the pricing-calculation formula redirected into `requirements` (per the Phase 6 correction) is attributed to its correct source document (`S-PT-024 - Addendum Five.pdf`) but not to a specific page within it. This is a genuine, currently-open granularity gap for this requirement class, not yet closed — stated here precisely so it is not overstated as page-level provenance elsewhere in this document.
+8. **Live-run evidence (PDFs, telemetry, benchmark corpora under `evaluation/`, `output/`, `tmp/`) is intentionally excluded from version control** (see `.gitignore`) as regenerable, non-implementation output — not a product limitation, but relevant to anyone trying to reproduce a specific historical run's exact artifacts from git history alone.
 
 ## Deep Verify
 
@@ -103,4 +127,4 @@ Limitations the earlier baseline listed that Phase 5 has since resolved (Bank-of
 
 ---
 
-*This document reflects the repository state at the `bid-intelligence-generic-v1` commissioned-baseline commit. For narrative detail on how this state was reached, see `BID_INTELLIGENCE_PHASE4_GENERALIZATION_REPORT.md`, `BID_INTELLIGENCE_PHASE5_GENERIC_ASSEMBLY_REPORT.md`, and `BID_INTELLIGENCE_GENERIC_ASSEMBLY_RELEASE_NOTES.md`. The earlier, Bank-of-Canada-only baseline remains available at the `bid-intelligence-commissioned-v1` tag.*
+*This document reflects the repository state at the `bid-intelligence-generalized-v2` commissioned-baseline commit. For narrative detail on how this state was reached, see `BID_INTELLIGENCE_PHASE4_GENERALIZATION_REPORT.md`, `BID_INTELLIGENCE_PHASE5_GENERIC_ASSEMBLY_REPORT.md`, `BID_INTELLIGENCE_GENERIC_ASSEMBLY_RELEASE_NOTES.md`, `BID_INTELLIGENCE_PHASE6_THIRD_PROCUREMENT_HOLDOUT_REPORT.md`, and `BID_INTELLIGENCE_PHASE6_GENERALIZATION_RELEASE_NOTES.md`. Earlier baselines remain available, unmodified, at the `bid-intelligence-commissioned-v1` (Bank-of-Canada-only) and `bid-intelligence-generic-v1` (two-procurement generic) tags.*

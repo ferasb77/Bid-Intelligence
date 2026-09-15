@@ -1,0 +1,108 @@
+{
+  "corpus_identity": {
+    "buyer": "The City of Calgary",
+    "procurement_title": "Design and Delivery Services for Leadership Learning and Development",
+    "procurement_type": "RFP (Request for Proposal), single-supplier award via a Highest Rated Proponent negotiation model",
+    "file_reference_number": "26-1603",
+    "file_reference_ambiguity": "Addendum One (S-PT-024 - Addendum One V4.0.pdf) states FILE NUMBER '26-1610' for this identical title, while Addendum Two, Addendum Three, Addendum Four, Addendum Five, and every QA Log all consistently state '26-1603'. Treated as the authoritative number (5-of-6 documents agree) with the single outlier recorded as a genuine, source-visible inconsistency, not silently resolved.",
+    "bid_id_in_product": 1,
+    "number_of_files": 10,
+    "file_names_as_uploaded": [
+      "CGC 2026-05-13.pdf",
+      "Addendum Four.pdf",
+      "S-PT-024 - Addendum One V4.0.pdf",
+      "S-PT-024 - Addendum Two V4.0.pdf",
+      "S-PT-024 - Addendum Three.pdf",
+      "S-PT-024 - Addendum Five.pdf",
+      "QA Log 26-1603.pdf",
+      "QA Log 26-1603_Updated _June 26_2026.pdf",
+      "QA Log 26-1603_Updated _June 30_2026.pdf",
+      "QA Log 26-1603_Updated _July 08_2026.pdf"
+    ],
+    "file_formats": ["PDF"],
+    "approximate_total_pages": "~34 pages across all 10 documents (CGC master document alone is 22 pages; the remaining 9 documents are short addenda (1-2 pages each) and cumulative Q&A logs)",
+    "note_on_corpus_composition": "This corpus is structurally unlike either prior commissioned corpus: it contains NO primary RFP narrative document at all -- only (a) 'CGC 2026-05-13.pdf', the City's standing, opportunity-agnostic 'Consulting General Conditions' (X 900, Version 3.1) template that applies to all City of Calgary consulting engagements, not specific to this opportunity; (b) five addenda (numbered One, Two, Three, Four, Five -- note: Addendum numbered 'Four' is a separate file not following the 'S-PT-024 -' naming convention the other four use); and (c) four cumulative snapshots of the same Q&A log (26-1603, dated June 23 (original), June 26, June 30, and July 8 2026), each a superset of the previous. The full RFP document itself (which would contain the complete Appendix C evaluation-criteria table, Appendix B deliverables detail, and Schedule 2 special conditions in full) was never uploaded as part of this bid's 'RFP / Source' corpus -- addenda and Q&A only reference and amend it. This is a genuinely different, harder generalization case: most of what Fast Analysis can extract about identity/dates/scope/commercial terms must come from addenda amendments and Q&A answers referencing page numbers in a document that isn't present, and evaluation weights are recorded nowhere in this corpus at all.",
+    "extraction_method": "Deterministic only (extractor.extract_document_with_metadata, PDF text extraction with page markers) -- zero LLM calls used to build this checklist."
+  },
+
+  "dates": {
+    "original_submission_deadline": "2026-07-07 (referenced in QA Log Q12, 'the proposal submission deadline is July 7')",
+    "questions_deadline_per_addendum_one": "Prior to 16:00:59 MST on 2026-07-08",
+    "addenda_issuance_deadline_per_addendum_one": "2026-07-10",
+    "submission_deadline_after_addendum_one": "2026-07-14, 16:00:59 MST",
+    "addenda_issuance_deadline_per_addendum_four": "2026-07-15",
+    "final_submission_deadline_after_addendum_four": "2026-07-16, 16:00:59 MST",
+    "addendum_issue_dates": {
+      "addendum_one": "2026-06-26",
+      "addendum_two": "2026-06-30",
+      "addendum_three": "2026-07-08",
+      "addendum_four": "2026-07-10",
+      "addendum_five": "2026-07-13"
+    },
+    "qa_log_last_updated_most_recent_snapshot": "2026-07-08",
+    "note": "The submission deadline changed twice via addenda (July 7 [original, referenced only in Q&A] -> July 14 [Addendum One] -> July 16 [Addendum Four]). This is sequential supersession by dated addenda, not a simultaneous conflict, so it is not classified as an ambiguity -- but a bid team relying on an early snapshot (e.g. the original QA Log or Addendum One/Two/Three alone) would see a stale deadline."
+  },
+
+  "procurement_scope": {
+    "has_scored_service_categories_like_bank_of_canada": false,
+    "note": "No scored category/lot structure comparable to Bank of Canada's Category 1/2/3. The scope instead defines SIX target-audience tiers for one single service (leadership learning & development), used to scale/scope delivery, not as separately-scored evaluation tracks -- structurally closer to CDA-AMC's non-scored 'coaching groups' than to Bank of Canada's categories, but with six tiers instead of three and no per-tier evaluation weighting mentioned anywhere in this corpus.",
+    "target_audience_tiers": [
+      {"tier": 1, "label": "Personal Leadership", "note": "Individual contributors, not supervisors, self-enroll, have not taken Emerging Leaders program"},
+      {"tier": 2, "label": "Emerging Leaders", "note": "Identified as future leaders, may take a supervisory role within 1 year"},
+      {"tier": 3, "label": "Foundational Leadership", "note": "No further definition provided beyond 'refer to RFP'"},
+      {"tier": 4, "label": "Frontline Leaders", "note": "No further definition provided beyond 'refer to RFP'"},
+      {"tier": 5, "label": "Mid to Senior Level leaders", "note": "Includes managers, directors, general managers; excludes executive-level (though executives participate in team learning)"},
+      {"tier": 6, "label": "Leading Supervisors and Leading Managers", "note": "1-5 years' experience/tenure referenced for this tier"}
+    ],
+    "cohort_model": "Approximately 4 cohorts per year per tier, ~25 participants per cohort (~100 participants/year per tier level). Cohort duration approx. 3 days. Content mix approx. 50% existing / 50% co-created, with greatest co-creation need in the Business Unit where CAO/COO set priorities.",
+    "delivery_model": "Blended: in-person facilitation in Calgary plus virtual components where appropriate. City has no preference on consulting-team geographic location provided deliverables/requirements are met (confirmed via Q&A: a Toronto-based team was explicitly accepted).",
+    "post_facilitation_support": "Per Addendum Four/Five: post-facilitation support of 3 hours per participant within one cohort (25 participants x 3 hours = 75 hours), added as Appendix B Clause D.7.",
+    "future_related_opportunity": "The City confirmed (Q&A) it anticipates a separate, future RFP for Coaching Services -- explicitly NOT part of this opportunity's scope."
+  },
+
+  "qualification_mandatory_requirements": [
+    {"item": "Business registration", "basis": "Schedule 2, Special Conditions (referenced at 'page 30 of 50' of the un-uploaded main RFP) -- proof of registration in Alberta Registries required, confirmed applicable even if the proponent is registered/incorporated in another Canadian province and with the CRA, per the Business Corporations Act."},
+    {"item": "Maximum submission length", "basis": "20 pages -- referenced as a stated RFP requirement; see ambiguities below for whether this means 20 single-sided or 20 double-sided page faces."},
+    {"item": "Proposal format", "basis": "Referenced as 'clause 2.3 Proposal Format' of the main RFP (not itself present in this corpus)."}
+  ],
+
+  "evaluation": {
+    "available_in_this_corpus": false,
+    "note": "No evaluation-criteria weight/point table exists anywhere in the uploaded corpus. Two references to evaluation-relevant sections exist -- 'Appendix C, Section 3.1(e) (Goals and objectives -- ability to show program mandate -- what does success look like)' and 'Section D.5 (Relationship and Account Management)' -- but neither the addenda nor the Q&A logs state a weight, point value, or pass/fail status for either. The Q&A confirms pricing is 'incorporated into the overall pricing formula used for evaluation and scoring' (i.e. price IS part of the overall evaluation), and that the process selects exactly ONE firm via a 'Highest Rated Negotiations Proponent' model, but the technical/price weighting split is never stated in this corpus. An honest extraction of THIS corpus should show evaluation criteria as not available/not extracted, not a fabricated points table -- the full RFP document that would contain it was never uploaded."
+  },
+
+  "response_requirements": [
+    "Maximum submission length: 20 pages (page-count basis -- single- vs double-sided -- not definitively clarified; see ambiguities).",
+    "Proposal format per 'clause 2.3 Proposal Format' of the main RFP.",
+    "Complete the Pricing Form (a separate Excel spreadsheet, not part of this text corpus) -- yellow cells to be completed with lump-sum pricing per the two sample cohort scenarios plus a fixed travel-expense fee, confirmed via Q&A.",
+    "Schedule 2 Special Conditions: proof of Alberta Registries business registration (or equivalent extra-provincial registration plus CRA registration).",
+    "Acknowledge receipt of each addendum via the Addendum's own Acknowledgement document."
+  ],
+
+  "commercial_and_contractual": {
+    "instrument_type": "Standard City of Calgary consulting engagement under the Consulting General Conditions (CGC, X 900, Version 3.1, 2026-05-13) plus an Agreement Letter and Scope + Fee document -- not itself a standing offer or call-off arrangement; a single-firm award with negotiated final rates.",
+    "selection_model": "Highest Rated (Negotiations) Proponent -- the top-scored proponent negotiates a final cost breakdown; final negotiated rates are reflected in the Scope + Fee and Agreement Letter documents.",
+    "pricing_structure": "Lump Sum pricing for exactly ONE sample cohort scenario per line item (NOT annual pricing, NOT pricing for all six leadership levels, NOT pricing for multiple cohorts, NOT total contract-term value -- explicitly excluded per Addendum Five). Weighted pricing formula: Item 1 (25 people, 3 full days x 8 hrs) = 55% weight; Item 2 (25 people, 3.5 days x 4 hrs) = 35% weight; Item 3 (Travel Expenses, fixed fee, round-trip Calgary economy airfare + 3 nights' accommodation + meals) = 10% weight. Example total weighted cost shown: $3,725.00 (illustrative, not a real bid price). A full cost breakdown for Items 1 & 2 is required post-award from the Highest Rated Negotiations Proponent only.",
+    "post_facilitation_pricing": "3 hours of post-facilitation support per participant within one cohort = 75 hours total (25 participants x 3 hours), added via Addendum Four/Five as a pricing consideration.",
+    "ip": "Per the Consulting General Conditions (Article 7): newly created intellectual property is owned by The City; the Consultant grants a license for any pre-existing IP used; no use of City insignia without permission.",
+    "insurance_indemnities": "Per the Consulting General Conditions (Article 8): Consultant indemnity, insurance, subcontractors' insurance, proof of insurance, and Workers' Compensation Board (Alberta) account requirements -- specific dollar coverage amounts are not stated in the CGC template itself (left to the Agreement Letter, not present in this corpus).",
+    "termination": "Per the Consulting General Conditions (Article 9): immediate termination rights, a Performance Improvement Notice process, termination on notice, and a right to audit Consultant accounts.",
+    "work_volume": "Non-exclusive agreement -- per the Consulting General Conditions (4.09), the City does not guarantee any minimum work volume.",
+    "confidentiality_scope_note": "This solicitation is explicitly limited to the scope of services defined in the RFP -- confirmed via Q&A that additional services such as coaching or psychometric assessments are out of scope and must not be priced into this response."
+  },
+
+  "material_ambiguities_visible_from_source": {
+    "file_number_discrepancy": {
+      "issue": "Addendum One states FILE NUMBER '26-1610' for the identical procurement title that every other document (Addenda Two/Three/Four/Five, all four QA Log snapshots) states as '26-1603'.",
+      "why_it_matters": "A bid team relying on Addendum One alone for the reference number would cite the wrong file number in correspondence with the City.",
+      "source": "S-PT-024 - Addendum One V4.0.pdf (states 26-1610) vs. S-PT-024 - Addendum Two V4.0.pdf, S-PT-024 - Addendum Three.pdf, Addendum Four.pdf, S-PT-024 - Addendum Five.pdf, and all QA Log 26-1603 snapshots (state 26-1603).",
+      "question": "Please confirm the correct file/reference number for this solicitation -- 26-1603 or 26-1610."
+    },
+    "page_count_basis_ambiguity": {
+      "issue": "Q1 (asked in the original QA Log and repeated unchanged through every later snapshot) explicitly asks whether the stated '20 page' maximum submission length means 20 single-sided pages (20 total page faces) or 20 double-sided pages (40 total page faces). The recorded answer -- 'Refer to clause 2.3 Proposal Format' -- does not actually state which interpretation is correct.",
+      "why_it_matters": "A proponent could misjudge how much content fits within the page limit by a factor of two.",
+      "source": "QA Log 26-1603_Updated _July 08_2026.pdf, Question 1 and its Answer.",
+      "question": "Please confirm explicitly whether the 20-page submission limit means 20 single-sided page faces or 20 double-sided sheets (40 page faces)."
+    }
+  }
+}
