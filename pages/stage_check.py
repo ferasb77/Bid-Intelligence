@@ -373,6 +373,9 @@ def page_check(bid_id: int):
             mandatory_failures = align_data.get("mandatory_failures", [])
             req_coverage = align_data.get("requirement_coverage", [])
             findings = align_data.get("findings", [])
+            unresolved_items = align_data.get("unresolved_items") or []
+            priority_actions = align_data.get("priority_actions") or []
+            partial_summary = align_data.get("partial_summary")
             assessed_count = sum(1 for r in req_coverage if r.get("coverage") != "Cannot Assess")
 
             if not is_complete:
@@ -383,14 +386,6 @@ def page_check(bid_id: int):
                     f'</div>',
                     unsafe_allow_html=True
                 )
-                if cov:
-                    st.markdown(
-                        f'<div style="font-size:.76rem;color:#6E6C66;margin-top:.4rem">'
-                        f'Proposal coverage attempted: {cov.get("chars_processed",0):,}/{cov.get("chars_total",0):,} '
-                        f'characters ({cov.get("percentage_covered",0)}%) across {cov.get("successful_chunks",0)}/'
-                        f'{cov.get("chunk_count",0)} sections successfully analyzed.</div>',
-                        unsafe_allow_html=True
-                    )
                 skipped_files = cov.get("skipped_files") or []
                 if skipped_files:
                     skipped_names = ", ".join(f["filename"] for f in skipped_files)
@@ -406,6 +401,50 @@ def page_check(bid_id: int):
                         'successfully analyzed — treat as a partial sample, not a complete scored audit.</div>',
                         unsafe_allow_html=True
                     )
+
+                # ── DETERMINISTIC PARTIAL AUDIT SUMMARY ─────────────────────────
+                # Purely structured -- zero LLM calls. Distinguishes CONFIRMED
+                # gaps from genuine UNKNOWNS rather than blending the two.
+                if partial_summary:
+                    ps = partial_summary
+                    st.markdown(
+                        f'<div style="background:#1A1500;border:1px solid #3A2E00;border-left:4px solid #E67E22;'
+                        f'border-radius:0 4px 4px 0;padding:.8rem 1rem;margin:.6rem 0">'
+                        f'<strong style="color:#E67E22">{ps.get("headline","")}</strong>'
+                        f'<div style="font-size:.8rem;color:#EDEAE3;margin-top:.4rem">'
+                        f'📊 Coverage: <strong>{ps.get("coverage_percentage",0)}%</strong> &nbsp;·&nbsp; '
+                        f'Sections analyzed: <strong>{ps.get("sections_analyzed","")}</strong> &nbsp;·&nbsp; '
+                        f'Failed: <strong>{ps.get("sections_failed",0)}</strong> &nbsp;·&nbsp; '
+                        f'Ceiling-skipped: <strong>{ps.get("sections_ceiling_skipped",0)}</strong>'
+                        f'</div>'
+                        f'<div style="font-size:.8rem;color:#EDEAE3;margin-top:.3rem">'
+                        f'✅ Fully Addressed: <strong>{ps.get("requirements_fully_addressed",0)}</strong> &nbsp;·&nbsp; '
+                        f'🟠 Partially Addressed: <strong>{ps.get("requirements_partially_addressed",0)}</strong> &nbsp;·&nbsp; '
+                        f'❓ Cannot Assess: <strong>{ps.get("requirements_cannot_assess",0)}</strong>'
+                        f'</div>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+
+                # ── FAILED / SKIPPED SECTION DIAGNOSTICS ────────────────────────
+                # Safe categories only -- filename, section label, and a
+                # closed-vocabulary reason category. Never prompts, proposal
+                # text, or raw exception bodies. Distinguishes analysis-
+                # engine failures from package-ceiling budget limits.
+                diagnostics = cov.get("failed_chunk_diagnostics") or []
+                if diagnostics:
+                    with st.expander(f"Sections Not Analyzed ({len(diagnostics)})", expanded=False):
+                        for d in diagnostics:
+                            is_ceiling = d.get("category") == "beyond_analysis_ceiling"
+                            label = "Package ceiling" if is_ceiling else "Analysis engine"
+                            col = "#6E6C66" if is_ceiling else "#C0392B"
+                            st.markdown(
+                                f'<div style="font-size:.76rem;color:#A9A69D;margin:.2rem 0">'
+                                f'<span style="color:{col};font-weight:600">[{label}]</span> '
+                                f'{d.get("filename") or "—"} — {d.get("section","")} '
+                                f'<span style="color:#6E6C66">({d.get("category","")})</span></div>',
+                                unsafe_allow_html=True
+                            )
 
             if is_complete:
                 # ── A. ALIGNMENT SCORE & CONFIDENCE ─────────────────────────────
@@ -449,6 +488,31 @@ def page_check(bid_id: int):
                 st.markdown("#### Executive Summary")
                 st.markdown(align_data.get("executive_summary") or "_Not available._")
 
+            # ── PRIORITY ACTIONS BEFORE SUBMISSION ──────────────────────────────
+            # Deterministic, bounded (max 10): established mandatory/
+            # qualification failures first, then Critical/High/Medium
+            # Proposal-Submission-stage findings. Never negotiation/
+            # execution/contractual-obligation items or Cannot-Assess
+            # unresolved items -- those aren't actionable before submission.
+            if priority_actions:
+                st.markdown(f"#### 🎯 Priority Actions Before Submission ({len(priority_actions)})")
+                for i, pa in enumerate(priority_actions, 1):
+                    sev = pa.get("severity", "Medium")
+                    sev_col = "#C0392B" if sev == "Critical" else "#E67E22" if sev == "High" else "#2980B9"
+                    rec = pa.get("recommendation", "")
+                    st.markdown(
+                        f'<div style="background:#111118;border:1px solid #292832;border-left:3px solid {sev_col};'
+                        f'border-radius:0 4px 4px 0;padding:.6rem 1rem;margin:.3rem 0">'
+                        f'<span style="color:{sev_col};font-weight:700;font-size:.72rem">#{i} · [{sev.upper()}]</span> '
+                        f'<span style="color:#C9A96E;font-size:.72rem">Req: {pa.get("req_id") or "—"}</span> '
+                        f'<strong>{pa.get("title","")}</strong>'
+                        f'<div style="font-size:.8rem;color:#EDEAE3;margin-top:.2rem">{pa.get("detail","")}</div>'
+                        + (f'<div style="font-size:.76rem;color:#27AE60;margin-top:.2rem">💡 {rec}</div>' if rec else "")
+                        + f'</div>',
+                        unsafe_allow_html=True
+                    )
+                st.markdown("")
+
             # ── C. MANDATORY / DISQUALIFICATION RISKS ─────────────────────────────
             # Renders regardless of status -- but mandatory_failures is only ever
             # non-empty on a complete, coverage-complete audit (Cannot Assess
@@ -467,13 +531,29 @@ def page_check(bid_id: int):
                         unsafe_allow_html=True
                     )
 
-            # ── D. CRITICAL FINDINGS ────────────────────────────────────────────
+            # ── D. AUDIT FINDINGS ────────────────────────────────────────────────
+            # Renamed from "Critical Findings" -- this list already contains
+            # Critical, High, Medium, AND Low items, sorted in that order.
             # Positive findings from successfully-analyzed sections are shown
             # even on an incomplete-coverage result (instruction 2: preserve
             # established positive findings, just don't present them as a
-            # complete scored audit).
+            # complete scored audit). Reconciled against package-wide
+            # coverage and deduplicated -- see analyst._reconcile_findings_
+            # with_package_evidence()/_deduplicate_findings().
             if findings:
-                st.markdown(f"#### Critical Findings ({len(findings)} items)")
+                sev_counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0}
+                for f in findings:
+                    sev_counts[f.get("severity", "Medium")] = sev_counts.get(f.get("severity", "Medium"), 0) + 1
+                st.markdown(f"#### Audit Findings ({len(findings)} items)")
+                st.markdown(
+                    f'<div style="font-size:.78rem;color:#A9A69D;margin-bottom:.5rem">'
+                    f'<span style="color:#C0392B;font-weight:600">Critical: {sev_counts["Critical"]}</span> &nbsp;·&nbsp; '
+                    f'<span style="color:#E67E22;font-weight:600">High: {sev_counts["High"]}</span> &nbsp;·&nbsp; '
+                    f'<span style="color:#2980B9;font-weight:600">Medium: {sev_counts["Medium"]}</span> &nbsp;·&nbsp; '
+                    f'<span style="color:#6E6C66;font-weight:600">Low: {sev_counts["Low"]}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
                 for f in findings:
                     sev = f.get("severity", "Medium")
                     stage = f.get("stage", "Proposal Submission")
@@ -488,6 +568,22 @@ def page_check(bid_id: int):
                         f'<div style="font-size:.74rem;color:#6E6C66;margin-top:.2rem">📍 {f.get("proposal_location","")}</div>'
                         f'<div style="font-size:.76rem;color:#27AE60;margin-top:.2rem">💡 {f.get("recommendation","")} '
                         f'<span style="color:#6E6C66">(Effort: {f.get("effort","")})</span></div>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+
+            # ── NEEDS VERIFICATION / CANNOT ASSESS ──────────────────────────────
+            # Deliberately separate from Audit Findings -- these are NOT
+            # established compliance defects, only requirements the package
+            # coverage couldn't confirm or deny.
+            if unresolved_items:
+                st.markdown(f"#### 🔍 Needs Verification / Cannot Assess ({len(unresolved_items)})")
+                for u in unresolved_items:
+                    st.markdown(
+                        f'<div style="background:#111118;border:1px solid #292832;border-left:3px solid #6E6C66;'
+                        f'border-radius:0 4px 4px 0;padding:.6rem 1rem;margin:.3rem 0">'
+                        f'<span style="color:#A9A69D;font-weight:700;font-size:.72rem">[{u.get("req_id","")}] {u.get("category","")}</span>'
+                        f'<div style="font-size:.8rem;color:#EDEAE3;margin-top:.2rem">{u.get("reason","")}</div>'
                         f'</div>',
                         unsafe_allow_html=True
                     )

@@ -147,6 +147,132 @@ def _score_and_confidence_block(align_result: dict, cov: dict, is_complete: bool
     return table
 
 
+def _partial_audit_summary_block(partial_summary: dict):
+    """Deterministic Partial Audit Summary -- purely a render of already-
+    computed structured fields (analyst._build_partial_audit_summary()),
+    zero LLM calls. Distinguishes CONFIRMED coverage counts from genuine
+    UNKNOWNS (Cannot Assess / unresolved mandatory-qualification items)."""
+    if not partial_summary:
+        return None
+    ps = partial_summary
+    lines = [
+        f'<font name="{_font("bold")}" color="#{C_AMBER.hexval()[2:]}" size="10">{safe(ps.get("headline"), 200)}</font><br/>',
+        f'<font size="8">📊 Coverage: <b>{ps.get("coverage_percentage", 0)}%</b> &nbsp;·&nbsp; '
+        f'Sections analyzed: <b>{safe(ps.get("sections_analyzed"), 20)}</b> &nbsp;·&nbsp; '
+        f'Failed: <b>{ps.get("sections_failed", 0)}</b> &nbsp;·&nbsp; '
+        f'Ceiling-skipped: <b>{ps.get("sections_ceiling_skipped", 0)}</b></font><br/>',
+        f'<font size="8">✅ Fully Addressed: <b>{ps.get("requirements_fully_addressed", 0)}</b> &nbsp;·&nbsp; '
+        f'🟠 Partially Addressed: <b>{ps.get("requirements_partially_addressed", 0)}</b> &nbsp;·&nbsp; '
+        f'❓ Cannot Assess: <b>{ps.get("requirements_cannot_assess", 0)}</b></font>',
+    ]
+    box = Table([[Paragraph("".join(lines), ParagraphStyle("partial_summary", fontName=_font("regular"),
+                                                              fontSize=8, leading=12))]],
+                colWidths=[content_w(True)])
+    box.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), C_GREY_4),
+        ("BOX", (0, 0), (-1, -1), 0.75, C_AMBER),
+        ("LINEBEFORE", (0, 0), (0, -1), 2.5, C_AMBER),
+        ("TOPPADDING", (0, 0), (-1, -1), 3 * mm),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3 * mm),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3 * mm),
+    ]))
+    return box
+
+
+def _priority_actions_section(priority_actions: list):
+    """Priority Actions Before Submission -- deterministic, bounded
+    (analyst._select_priority_actions(), max 10): established mandatory/
+    qualification failures first, then Proposal-Submission-stage
+    findings by severity. Never negotiation/execution/contractual-
+    obligation items or Cannot-Assess unresolved items."""
+    if not priority_actions:
+        return None
+    rows = [KeepTogether([_section_bar(f"Priority Actions Before Submission ({len(priority_actions)})", accent=C_RED)]),
+            Spacer(1, 2 * mm)]
+    for i, pa in enumerate(priority_actions, 1):
+        sev = pa.get("severity", "Medium")
+        sev_colour = _SEVERITY_COLOUR.get(sev, C_GREY_2)
+        rec = pa.get("recommendation", "")
+        body = (
+            f'<font name="{_font("bold")}" color="#{sev_colour.hexval()[2:]}">#{i} · [{safe(sev, 12)}]</font> '
+            f'<font name="{_font("semibold")}" size="8.5">{safe(pa.get("title"), 200)}</font><br/>'
+            f'<font size="8">{safe(pa.get("detail"), 260)}</font>'
+        )
+        if rec:
+            body += f'<br/><font size="7.5" color="#{C_GREEN.hexval()[2:]}">Recommendation: {safe(rec, 240)}</font>'
+        box = Table([[Paragraph(body, ParagraphStyle("parow", fontName=_font("regular"), fontSize=8, leading=11))]],
+                    colWidths=[content_w(True)])
+        box.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), C_BLUE_L),
+            ("LINEBEFORE", (0, 0), (0, -1), 2.5, sev_colour),
+            ("BOX", (0, 0), (-1, -1), 0.5, C_GREY_3),
+            ("TOPPADDING", (0, 0), (-1, -1), 2.5 * mm),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5 * mm),
+            ("LEFTPADDING", (0, 0), (-1, -1), 3 * mm),
+        ]))
+        rows.append(box)
+        rows.append(Spacer(1, 1.5 * mm))
+    return rows
+
+
+def _unresolved_items_section(unresolved_items: list):
+    """Needs Verification / Cannot Assess -- deliberately separate from
+    Audit Findings: these are NOT established compliance defects, only
+    requirements the package coverage couldn't confirm or deny."""
+    if not unresolved_items:
+        return None
+    rows = [KeepTogether([_section_bar(f"Needs Verification / Cannot Assess ({len(unresolved_items)})", accent=C_GREY_2)]),
+            Spacer(1, 2 * mm)]
+    for u in unresolved_items:
+        box = Table([[Paragraph(
+            f'<font name="{_font("bold")}" color="#{C_GREY_1.hexval()[2:]}">'
+            f'[{safe(u.get("req_id"), 20)}] {safe(u.get("category"), 30)}</font><br/>'
+            f'<font size="8">{safe(u.get("reason"), 300)}</font>',
+            ParagraphStyle("unresolved_row", fontName=_font("regular"), fontSize=8, leading=11)
+        )]], colWidths=[content_w(True)])
+        box.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), C_GREY_4),
+            ("LINEBEFORE", (0, 0), (0, -1), 2.5, C_GREY_2),
+            ("BOX", (0, 0), (-1, -1), 0.5, C_GREY_3),
+            ("TOPPADDING", (0, 0), (-1, -1), 2.5 * mm),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5 * mm),
+            ("LEFTPADDING", (0, 0), (-1, -1), 3 * mm),
+        ]))
+        rows.append(box)
+        rows.append(Spacer(1, 1.5 * mm))
+    return rows
+
+
+def _failed_section_diagnostics_block(diagnostics: list):
+    """Sections Not Analyzed -- safe categories only (filename, section
+    label, closed-vocabulary reason category). Never prompts, proposal
+    text, or raw exception bodies. Visually distinguishes analysis-
+    engine failures from package-ceiling budget limits."""
+    if not diagnostics:
+        return None
+    lines = []
+    for d in diagnostics:
+        is_ceiling = d.get("category") == "beyond_analysis_ceiling"
+        label = "Package ceiling" if is_ceiling else "Analysis engine"
+        colour = C_GREY_2 if is_ceiling else C_RED
+        lines.append(
+            f'<font color="#{colour.hexval()[2:]}"><b>[{label}]</b></font> '
+            f'{safe(d.get("filename") or "—", 80)} — {safe(d.get("section"), 100)} '
+            f'<font color="#{C_GREY_2.hexval()[2:]}">({safe(d.get("category"), 40)})</font><br/>'
+        )
+    box = Table([[Paragraph("".join(lines), ParagraphStyle("diag", fontName=_font("regular"),
+                                                              fontSize=7.5, leading=11))]],
+                colWidths=[content_w(True)])
+    box.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), C_GREY_4),
+        ("BOX", (0, 0), (-1, -1), 0.5, C_GREY_3),
+        ("TOPPADDING", (0, 0), (-1, -1), 2.5 * mm),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5 * mm),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3 * mm),
+    ]))
+    return box
+
+
 def _mandatory_risks_section(mandatory_failures: list):
     if not mandatory_failures:
         return None
@@ -464,6 +590,13 @@ def generate_alignment_audit_pdf(bid: dict, align_result: dict, proposal_filenam
             story.append(pp(safe(reason, 500), "note"))
         story.append(Spacer(1, 3 * mm))
 
+        # ── Deterministic Partial Audit Summary (near the top for an
+        # incomplete audit) -- zero LLM calls, purely structured.
+        partial_block = _partial_audit_summary_block(align_result.get("partial_summary"))
+        if partial_block:
+            story.append(partial_block)
+            story.append(Spacer(1, 4 * mm))
+
     # ── A. Alignment & confidence ────────────────────────────────────────────
     story.append(_score_and_confidence_block(align_result, cov, is_complete))
     story.append(Spacer(1, 5 * mm))
@@ -483,20 +616,50 @@ def generate_alignment_audit_pdf(bid: dict, align_result: dict, proposal_filenam
         story.append(pp(safe(align_result.get("executive_summary"), 1500) or "Not available.", "cell"))
         story.append(Spacer(1, 5 * mm))
 
+    # ── Priority Actions Before Submission ────────────────────────────────────
+    priority_block = _priority_actions_section(align_result.get("priority_actions") or [])
+    if priority_block:
+        story.extend(priority_block)
+        story.append(Spacer(1, 4 * mm))
+
     # ── C. Mandatory / Qualification Risks ───────────────────────────────────
     mandatory_block = _mandatory_risks_section(align_result.get("mandatory_failures") or [])
     if mandatory_block:
         story.extend(mandatory_block)
         story.append(Spacer(1, 4 * mm))
 
-    # ── D. Critical Findings ─────────────────────────────────────────────────
+    # ── D. Audit Findings (renamed from "Critical Findings" -- contains
+    # Critical, High, Medium, AND Low items, sorted in that order) ───────────
     findings = align_result.get("findings") or []
     findings_table = _findings_section(findings)
     if findings_table:
-        story.append(_section_bar(f"Critical Findings ({len(findings)})"))
+        sev_counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0}
+        for f in findings:
+            sev_counts[f.get("severity", "Medium")] = sev_counts.get(f.get("severity", "Medium"), 0) + 1
+        story.append(_section_bar(f"Audit Findings ({len(findings)})"))
+        story.append(Spacer(1, 1.5 * mm))
+        story.append(pp(
+            f'Critical: <b>{sev_counts["Critical"]}</b>  ·  High: <b>{sev_counts["High"]}</b>  ·  '
+            f'Medium: <b>{sev_counts["Medium"]}</b>  ·  Low: <b>{sev_counts["Low"]}</b>',
+            "note"
+        ))
         story.append(Spacer(1, 2 * mm))
         story.append(findings_table)
         story.append(Spacer(1, 5 * mm))
+
+    # ── Needs Verification / Cannot Assess ────────────────────────────────────
+    unresolved_block = _unresolved_items_section(align_result.get("unresolved_items") or [])
+    if unresolved_block:
+        story.extend(unresolved_block)
+        story.append(Spacer(1, 4 * mm))
+
+    # ── Sections Not Analyzed (failed / ceiling-skipped diagnostics) ─────────
+    diagnostics_block = _failed_section_diagnostics_block(cov.get("failed_chunk_diagnostics") or [])
+    if diagnostics_block:
+        story.append(_section_bar("Sections Not Analyzed", accent=C_GREY_2))
+        story.append(Spacer(1, 2 * mm))
+        story.append(diagnostics_block)
+        story.append(Spacer(1, 4 * mm))
 
     # ── E. Requirement Coverage Matrix ───────────────────────────────────────
     req_coverage = align_result.get("requirement_coverage") or []

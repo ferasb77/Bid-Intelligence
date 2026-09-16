@@ -696,9 +696,6 @@ Analyze all changes introduced by this document. Return ONLY valid JSON:
 # token budget (avoiding the exact truncation failure mode this
 # remediation exists to fix).
 _ALIGN_TARGET_CHUNK_CHARS = 9000
-# Sections smaller than this (from heading-based splitting) are merged
-# into a neighbor rather than spent as their own model call.
-_ALIGN_MIN_MERGE_CHARS = 2500
 # Overlap used only by the deterministic fixed-window fallback splitter
 # (used when headings can't be reliably detected), so a fact split
 # exactly across a window boundary is still visible to at least one chunk.
@@ -880,14 +877,38 @@ def _even_stride_sample_indices(n: int, k: int) -> list[int]:
     return sorted({round(i * (n - 1) / (k - 1)) for i in range(k)})
 
 
+def _combine_heading_parts(parts: list[str], max_shown: int = 3) -> str:
+    """Caps a merged chunk's displayed heading/provenance to the first
+    `max_shown` constituent section headings plus a '+N more section(s)'
+    tail, instead of an ever-growing '+'-joined string -- keeps
+    provenance genuinely useful rather than unreadable for a chunk that
+    greedily absorbed many small sections."""
+    if len(parts) <= max_shown:
+        return " + ".join(parts)
+    shown = " + ".join(parts[:max_shown])
+    return f"{shown} (+{len(parts) - max_shown} more section(s))"
+
+
 def _merge_and_size_bound_sections(raw_sections: list[dict]) -> list[dict]:
-    """Merges undersized adjacent sections and splits oversized ones down
-    to the target chunk size. Applies NO chunk-count ceiling -- callers
-    decide how/where to bound the total: _merge_and_bound_sections below
-    applies the ceiling immediately for a single document, while the
-    package pipeline (_allocate_package_chunk_budget) bounds ACROSS all
-    of a package's files together after collecting each file's bounded
-    sections from this function."""
+    """Merges adjacent sections and splits oversized ones down to the
+    target chunk size. Applies NO chunk-count ceiling -- callers decide
+    how/where to bound the total: _merge_and_bound_sections below applies
+    the ceiling immediately for a single document, while the package
+    pipeline (_allocate_package_chunk_budget) bounds ACROSS all of a
+    package's files together after collecting each file's bounded
+    sections from this function.
+
+    Merge strategy: greedy bin-packing toward _ALIGN_TARGET_CHUNK_CHARS
+    (not merely "buffer is still under the much lower
+    _ALIGN_MIN_MERGE_CHARS floor") -- a section keeps absorbing the next
+    adjacent section as long as the COMBINED size still fits under the
+    target. The prior floor-only condition stopped absorbing as soon as
+    the buffer alone crossed _ALIGN_MIN_MERGE_CHARS (2,500 chars), even
+    when the buffer was still well under the 9,000-char target and the
+    next section was small -- leaving many chunks in that 2,500-9,000
+    "dead zone" that a real bin-pack would have combined. This never
+    merges across a file boundary (each call here only ever receives one
+    file's own raw sections)."""
     if not raw_sections:
         return []
 
@@ -896,15 +917,19 @@ def _merge_and_size_bound_sections(raw_sections: list[dict]) -> list[dict]:
     for sec in raw_sections:
         if buf is None:
             buf = dict(sec)
+            buf["_heading_parts"] = [sec["heading"]]
             continue
-        if len(buf["text"]) < _ALIGN_MIN_MERGE_CHARS:
+        if len(buf["text"]) + len(sec["text"]) <= _ALIGN_TARGET_CHUNK_CHARS:
             buf["end"] = sec["end"]
             buf["text"] = buf["text"] + sec["text"]
-            buf["heading"] = f'{buf["heading"]} + {sec["heading"]}'
+            buf["_heading_parts"].append(sec["heading"])
         else:
+            buf["heading"] = _combine_heading_parts(buf.pop("_heading_parts"))
             merged.append(buf)
             buf = dict(sec)
+            buf["_heading_parts"] = [sec["heading"]]
     if buf is not None:
+        buf["heading"] = _combine_heading_parts(buf.pop("_heading_parts"))
         merged.append(buf)
 
     bounded: list[dict] = []
@@ -1071,6 +1096,11 @@ _ALIGN_CHUNK_SYSTEM = (
     "assert that something is missing or absent; only report what you can "
     "positively confirm IS present in this section. Derive all conclusions "
     "strictly from the provided section text and procurement intelligence. "
+    "This input is an excerpt/chunk taken from a larger source document -- "
+    "the point where the supplied excerpt ends is NOT evidence that the source "
+    "document itself ends there. Never report truncation, incompleteness, a "
+    "missing continuation, or a cut-off table solely because the excerpt you "
+    "were given ends at that point. "
     "Respond with valid JSON only."
 )
 
@@ -1114,26 +1144,47 @@ For THIS SECTION ONLY, return ONLY valid JSON:
 Only include a requirement_assertion when THIS section actually contains evidence for it -- do not list requirements this section does not address."""
 
 
-def _call_alignment_chunk(prompt: str, max_tokens: int = 2000) -> dict | None:
-    """One attempt plus one bounded retry. Returns a validated per-chunk
-    result, or None if both attempts failed or were truncated -- the
-    caller marks the chunk skipped rather than trusting partial data."""
+_CHUNK_FAILURE_API_ERROR = "api_error"
+_CHUNK_FAILURE_PARSE_ERROR = "parse_error"
+_CHUNK_FAILURE_MALFORMED_RESPONSE = "malformed_response"
+_CHUNK_FAILURE_TRUNCATED_RESPONSE = "truncated_response"
+_CHUNK_FAILURE_UNKNOWN = "unknown_error"
+
+
+def _call_alignment_chunk(prompt: str, max_tokens: int = 2000) -> tuple[dict | None, str | None]:
+    """One attempt plus one bounded retry. Returns (validated per-chunk
+    result, None) on success, or (None, failure_category) if both
+    attempts failed or were truncated -- the caller marks the chunk
+    skipped rather than trusting partial data. failure_category is a
+    small, safe, closed-vocabulary label (never the prompt, proposal
+    text, or raw exception body) so the caller can surface WHY a chunk
+    failed without exposing anything sensitive."""
+    last_category = _CHUNK_FAILURE_UNKNOWN
     for _attempt in range(2):
         try:
             raw = _call(_ALIGN_CHUNK_SYSTEM, prompt, max_tokens=max_tokens)
+        except Exception:
+            last_category = _CHUNK_FAILURE_API_ERROR
+            continue
+        try:
             parsed = _parse_json(raw)
         except Exception:
+            last_category = _CHUNK_FAILURE_PARSE_ERROR
             continue
         if not isinstance(parsed, dict):
+            last_category = _CHUNK_FAILURE_MALFORMED_RESPONSE
             continue
         if parsed.get("_truncated"):
+            last_category = _CHUNK_FAILURE_TRUNCATED_RESPONSE
             continue  # a partially-recovered chunk result is never trusted
         if "chunk_findings" not in parsed or "requirement_assertions" not in parsed:
+            last_category = _CHUNK_FAILURE_MALFORMED_RESPONSE
             continue
         if not isinstance(parsed["chunk_findings"], list) or not isinstance(parsed["requirement_assertions"], list):
+            last_category = _CHUNK_FAILURE_MALFORMED_RESPONSE
             continue
-        return parsed
-    return None
+        return parsed, None
+    return None, last_category
 
 
 _COVERAGE_RANK = {"Fully Addressed": 2, "Partially Addressed": 1}
@@ -1351,16 +1402,408 @@ def _derive_recommendation(overall_score: float | None, mandatory_failures: list
     return ("MAJOR REVISION NEEDED", f"{overall_score:.0f}/100 structured alignment score.")
 
 
+_FINDING_SEVERITY_ORDER = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
+
+
+def _theme_has(text: str, *patterns: str) -> bool:
+    return any(re.search(p, text, re.IGNORECASE) for p in patterns)
+
+
+def _classify_finding_theme(finding: dict) -> str:
+    """Deterministic finding-theme classifier (no LLM call) -- gives
+    dedup a real axis to cluster on beyond bare requirement ID, so a
+    requirement with several genuinely different gaps (e.g. incomplete
+    pricing vs. unclear expense assumptions vs. an unsigned declaration)
+    stays as separate findings instead of over-merging."""
+    text = f"{finding.get('title', '')} {finding.get('issue', '')}"
+    pricing_kw = _theme_has(text, r"\bpric(e|ing)\b", r"\bcost\b", r"\bfee\b", r"\brate\b", r"\bexpense\b")
+    if _theme_has(text, r"\bmissing\b", r"not\s+(provided|included|found|submitted|attached)", r"does\s+not\s+exist"):
+        return "Missing required artifact"
+    if _theme_has(text, r"\bsignature\b", r"\bsigned\b", r"sign[- ]off", r"\bunsigned\b"):
+        return "Mandatory form/signature"
+    if pricing_kw and _theme_has(text, r"\bincomplete\b", r"\bmissing\b", r"not\s+(provided|included)"):
+        return "Pricing completeness"
+    if pricing_kw and _theme_has(text, r"\bunclear\b", r"\bambiguous\b", r"\bvague\b", r"\bassumption\b"):
+        return "Pricing clarity"
+    if _theme_has(text, r"\binsufficient\b", r"\bweak(ness)?\b", r"\binadequate\b", r"lacks?\s+(detail|evidence|specificity)"):
+        return "Evidence weakness"
+    if _theme_has(text, r"\bmethodolog(y|ies)\b"):
+        return "Methodology gap"
+    if _theme_has(text, r"\bqualificat", r"\beligib", r"\bcertif", r"\baccredit", r"\bcompliance\b"):
+        return "Qualification/compliance"
+    if _theme_has(text, r"\bformat\b", r"\bformality\b", r"\badministrat", r"\bchecklist\b", r"\bpage\s+limit\b", r"\btemplate\b"):
+        return "Administrative/formality"
+    if _theme_has(text, r"\bprivacy\b", r"data\s+protection", r"\bsecurity\b", r"\bsafeguard", r"\bconfidential"):
+        return "Data/privacy safeguard"
+    if _theme_has(text, r"\bincomplete\b", r"\bpartial\b", r"not\s+fully"):
+        return "Incomplete content"
+    return "Other"
+
+
 def _aggregate_findings(chunk_results: list[dict]) -> list[dict]:
     findings = []
     for cr in chunk_results:
         for f in cr.get("chunk_findings", []):
             f = dict(f)
             f["proposal_location"] = cr["chunk_label"]
+            f["finding_type"] = _classify_finding_theme(f)
             findings.append(f)
-    order = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
-    findings.sort(key=lambda f: order.get(f.get("severity", "Medium"), 2))
+    findings.sort(key=lambda f: _FINDING_SEVERITY_ORDER.get(f.get("severity", "Medium"), 2))
     return findings
+
+
+# ── PACKAGE-LEVEL FINDING RECONCILIATION ──────────────────────────────────
+# A chunk only ever sees its own section -- it cannot know what evidence
+# exists elsewhere in the proposal/package, so a chunk-level "this is
+# missing" observation is only ever a LOCAL opinion, never package-level
+# truth. Package-level truth is what _aggregate_requirement_coverage()
+# already computed deterministically from every chunk's positive
+# assertions. Reconciliation cross-checks the two and never lets a local
+# opinion contradict the deterministic package-wide result.
+
+_EXISTENCE_ABSENCE_RE = re.compile(
+    r"\b(is\s+missing|not\s+(provided|included|found|present|submitted|attached)|"
+    r"does\s+not\s+exist|no\s+(copy|evidence|document|schedule|form|certificate|declaration)\b|"
+    r"could\s+not\s+(locate|find)|\babsent\b|not\s+attached|"
+    r"was\s+not\s+(included|provided|submitted))\b",
+    re.IGNORECASE,
+)
+
+_BOUNDARY_ARTIFACT_RE = re.compile(
+    r"\b(appears?\s+truncated|response\s+is\s+incomplete|table\s+is\s+cut\s*off|"
+    r"document\s+(appears?\s+to\s+)?(ends?|stops?)\s+(mid[- ]sentence|abruptly)|"
+    r"section\s+(appears?\s+)?(cut\s*off|truncated)|text\s+(appears?\s+)?truncated|"
+    r"ends?\s+abruptly|incomplete\s+response|content\s+continues?\s+beyond\s+this\s+excerpt|"
+    r"cannot\s+confirm\s+(beyond|past)\s+this\s+(point|section|excerpt)|"
+    r"(this|the)\s+(chunk|excerpt|section)\s+ends?\s+(at|after)\s+[\d,]+\s+characters?)\b",
+    re.IGNORECASE,
+)
+
+# A genuine, structured, SOURCE-level signal -- never a bare "chunk
+# failed" or "file is in unusable_files" alone (analysis-engine failure
+# and physical source-document corruption are different things; only
+# the extractor's OWN reported reason text, cross-checked against this
+# finding's own source filename, counts as real evidence).
+_TRUNCATION_SOURCE_EVIDENCE_RE = re.compile(
+    r"truncat|corrupt|unreadable|could\s+not\s+be\s+parsed|parsing\s+failed|damaged|incomplete\s+workbook",
+    re.IGNORECASE,
+)
+
+_INTERNAL_CHUNK_LANGUAGE_RE = re.compile(
+    r"\b(this\s+(chunk|excerpt|section\s+alone)|first\s+[\d,]+\s+characters?|"
+    r"within\s+this\s+(chunk|excerpt)|in\s+this\s+excerpt)\b",
+    re.IGNORECASE,
+)
+
+
+def _finding_is_existence_absence_claim(finding: dict) -> bool:
+    text = f"{finding.get('title', '')} {finding.get('issue', '')}"
+    return bool(_EXISTENCE_ABSENCE_RE.search(text))
+
+
+# Vocabulary that describes the CLAIM ("missing", "not provided") rather
+# than the ARTIFACT being claimed missing ("Schedule A", "signature") --
+# stripped out when extracting artifact keywords for the evidence-aware
+# contradiction check below, so "missing" itself never counts as a
+# spurious keyword match against unrelated evidence text.
+_ABSENCE_CLAIM_VOCAB = {
+    "missing", "absent", "provided", "included", "found", "present", "submitted",
+    "attached", "exist", "exists", "locate", "confirm", "confirmed", "documented", "mentioned",
+}
+
+
+def _extract_artifact_keywords(text: str) -> frozenset:
+    """Keywords describing the ARTIFACT/EVIDENCE at stake, never the
+    absence-claim vocabulary itself. When `text` contains an existence/
+    absence cue phrase (the finding side, e.g. "...is missing"), ONLY
+    the words BEFORE that cue are used -- the grammatical subject of "X
+    is missing/absent/not provided". This deliberately excludes words
+    AFTER the cue, which are typically a location/container modifier
+    ("missing FROM the declaration form") rather than the actual absent
+    element ("the signature") -- without this, a finding like "The
+    signature is missing from the declaration form" would spuriously
+    match evidence that only proves the FORM exists, not that it is
+    signed. When `text` has no such cue (the evidence side -- a
+    coverage row's own evidence_location + notes, which only ever
+    reports positive findings), the whole text is used."""
+    match = _EXISTENCE_ABSENCE_RE.search(text)
+    subject_text = text[:match.start()] if match else text
+    return _issue_keywords(subject_text) - _ABSENCE_CLAIM_VOCAB
+
+
+def _package_evidence_contradicts_absence_claim(finding: dict, coverage_row: dict) -> bool:
+    """Deterministic, no-LLM evidence-aware check for a 'Partially
+    Addressed' requirement: does the coverage row's OWN positive
+    evidence (its evidence_location + notes -- the manifest/source
+    filename identity and the aggregated evidence text) specifically
+    name the same artifact the finding claims is absent? 'Partially
+    Addressed' alone is never sufficient justification to suppress --
+    a requirement can be partially addressed for a completely different,
+    still-real reason than the one a specific finding names (e.g. the
+    form exists but isn't signed; some pricing exists but a required
+    schedule is genuinely absent). Only a real keyword overlap between
+    what the finding says is missing and what the coverage row's own
+    evidence actually names counts as a contradiction."""
+    finding_terms = _extract_artifact_keywords(f"{finding.get('title', '')} {finding.get('issue', '')}")
+    if not finding_terms:
+        return False
+    evidence_text = f"{coverage_row.get('evidence_location', '')} {coverage_row.get('notes', '')}"
+    evidence_terms = _extract_artifact_keywords(evidence_text)
+    return bool(finding_terms & evidence_terms)
+
+
+def _finding_is_chunk_boundary_artifact(finding: dict) -> bool:
+    text = f"{finding.get('title', '')} {finding.get('issue', '')}"
+    return bool(_BOUNDARY_ARTIFACT_RE.search(text))
+
+
+def _finding_source_filename(finding: dict) -> str | None:
+    loc = finding.get("proposal_location") or ""
+    if " — " in loc:
+        return loc.split(" — ", 1)[0]
+    return None
+
+
+def _has_source_level_truncation_evidence(filename: str | None, unusable_files: list[dict]) -> bool:
+    if not filename:
+        return False
+    for uf in unusable_files:
+        if uf.get("filename") == filename and _TRUNCATION_SOURCE_EVIDENCE_RE.search(uf.get("reason") or ""):
+            return True
+    return False
+
+
+def _strip_internal_chunk_language(text: str) -> str:
+    cleaned = _INTERNAL_CHUNK_LANGUAGE_RE.sub("", text or "")
+    return re.sub(r"\s{2,}", " ", cleaned).strip()
+
+
+def _build_unresolved_items(requirement_coverage: list[dict]) -> list[dict]:
+    """One deterministic item per requirement the package COULDN'T
+    confirm (coverage == 'Cannot Assess') -- must be called BEFORE
+    `_is_qualification_gate` is popped from the rows, so mandatory/
+    qualification-gate items can still be identified here. This is the
+    single source of truth for "needs verification" -- chunk-level
+    findings tied to the same req_id are dropped during reconciliation
+    rather than duplicated here."""
+    items = []
+    for r in requirement_coverage:
+        if r.get("coverage") != "Cannot Assess":
+            continue
+        is_mandatory_or_gate = (
+            (r.get("category") or "").strip().lower() == "mandatory" or bool(r.get("_is_qualification_gate"))
+        )
+        desc = r.get("description") or "this requirement"
+        items.append({
+            "req_id": r.get("req_id"), "category": r.get("category", ""),
+            "description": r.get("description", ""),
+            "is_mandatory_or_qualification": is_mandatory_or_gate,
+            "reason": (
+                f"{r.get('req_id', '')} — {desc} could not be assessed because relevant package "
+                "sections were not successfully analyzed."
+            ),
+        })
+    return items
+
+
+def _reconcile_findings_with_package_evidence(
+    findings: list[dict], requirement_coverage: list[dict], unusable_files: list[dict]
+) -> list[dict]:
+    """Deterministic, no-LLM reconciliation between chunk-local findings
+    and the already-final package-wide requirement_coverage:
+
+      * Cannot Assess -- the requirement-level uncertainty is already
+        represented once in unresolved_items; a chunk-level opinion
+        about it is dropped, never presented as an established finding.
+      * Fully Addressed -- an EXISTENCE/absence claim (e.g. "Schedule A
+        is missing") is suppressed unconditionally, because the
+        deterministic package-level result already establishes full
+        coverage for this requirement.
+      * Partially Addressed -- "Partially Addressed" ALONE never proves
+        the specific artifact a finding names actually exists (the
+        requirement can be partially addressed for a completely
+        different, still-real reason -- e.g. a declaration FORM exists
+        but isn't SIGNED, or some pricing exists but a required
+        schedule is genuinely absent). An existence/absence claim is
+        suppressed here ONLY when
+        _package_evidence_contradicts_absence_claim() finds the
+        coverage row's OWN evidence (evidence_location + notes) names
+        the SAME artifact the finding claims is missing -- a real,
+        deterministic keyword-level contradiction, not the bare
+        Partially-Addressed status.
+      * A CONTENT-QUALITY finding (e.g. "safeguards described are
+        insufficient") is NOT an existence claim and is always kept --
+        it describes something coverage aggregation doesn't already
+        capture.
+      * Chunk-boundary artifacts ("appears truncated", "ends abruptly",
+        etc.) are suppressed unless this finding's own source file has a
+        genuine, structured extraction-level truncation/corruption
+        signal -- never a bare failed-chunk or unusable-file membership
+        alone.
+    """
+    coverage_by_req = {r["req_id"]: r for r in requirement_coverage if r.get("req_id")}
+    reconciled = []
+    for f in findings:
+        if _finding_is_chunk_boundary_artifact(f):
+            src = _finding_source_filename(f)
+            if not _has_source_level_truncation_evidence(src, unusable_files):
+                continue
+
+        req_id = f.get("req_id")
+        cov_row = coverage_by_req.get(req_id) if req_id else None
+        if cov_row is not None:
+            cov_state = cov_row.get("coverage")
+            if cov_state == "Cannot Assess":
+                continue
+            if _finding_is_existence_absence_claim(f):
+                if cov_state == "Fully Addressed":
+                    continue
+                if cov_state == "Partially Addressed" and _package_evidence_contradicts_absence_claim(f, cov_row):
+                    continue
+
+        f = dict(f)
+        f["issue"] = _strip_internal_chunk_language(f.get("issue", "")) or f.get("issue", "")
+        reconciled.append(f)
+    return reconciled
+
+
+def _findings_describe_same_theme(a: dict, b: dict) -> bool:
+    if (a.get("req_id"), a.get("category"), a.get("finding_type")) != (b.get("req_id"), b.get("category"), b.get("finding_type")):
+        return False
+    ka, kb = _issue_keywords(a.get("issue", "")), _issue_keywords(b.get("issue", ""))
+    if not ka or not kb:
+        return (a.get("issue", "") or "").strip().lower() == (b.get("issue", "") or "").strip().lower()
+    overlap = len(ka & kb) / len(ka | kb)
+    return overlap >= 0.5
+
+
+_DEDUP_STOPWORDS = {
+    "the", "a", "an", "is", "are", "was", "were", "this", "that", "in", "on", "for", "to",
+    "of", "and", "or", "not", "it", "be", "as", "with", "at", "by", "from", "section",
+    "here", "file", "has", "have", "been", "will", "would", "could", "should",
+}
+
+
+def _issue_keywords(text: str) -> frozenset:
+    words = re.findall(r"[a-z]{4,}", (text or "").lower())
+    return frozenset(w for w in words if w not in _DEDUP_STOPWORDS)
+
+
+def _deduplicate_findings(findings: list[dict]) -> list[dict]:
+    """Deterministic, theme-aware consolidation (no LLM call): findings
+    only cluster when req_id, category, AND the deterministic finding
+    theme all match, AND their issue-text keyword overlap clears a fixed
+    threshold -- so a requirement with several genuinely different gaps
+    (e.g. incomplete pricing vs. unclear assumptions vs. an unsigned
+    declaration, all tied to the same req_id) stays as distinct findings,
+    while repeated local observations of the SAME underlying problem
+    across different chunks/files collapse into one. Keeps the
+    strongest-severity version, merges distinct evidence locations
+    (capped, with a '+N more' tail), and strips internal chunk-local
+    language from the surviving issue text."""
+    clusters: list[list[dict]] = []
+    for f in findings:
+        placed = False
+        for cluster in clusters:
+            if _findings_describe_same_theme(cluster[0], f):
+                cluster.append(f)
+                placed = True
+                break
+        if not placed:
+            clusters.append([f])
+
+    deduped = []
+    for cluster in clusters:
+        best = min(cluster, key=lambda f: _FINDING_SEVERITY_ORDER.get(f.get("severity", "Medium"), 2))
+        merged = dict(best)
+        merged["issue"] = _strip_internal_chunk_language(merged.get("issue", "")) or merged.get("issue", "")
+        locations, seen = [], set()
+        for f in cluster:
+            loc = f.get("proposal_location")
+            if loc and loc not in seen:
+                seen.add(loc)
+                locations.append(loc)
+        if len(locations) > 1:
+            shown = locations[:3]
+            extra = len(locations) - len(shown)
+            merged["proposal_location"] = "; ".join(shown) + (f" (+{extra} more)" if extra > 0 else "")
+        deduped.append(merged)
+
+    deduped.sort(key=lambda f: _FINDING_SEVERITY_ORDER.get(f.get("severity", "Medium"), 2))
+    return deduped
+
+
+def _select_priority_actions(mandatory_failures: list[dict], findings: list[dict], max_n: int = 10) -> list[dict]:
+    """Deterministic "Priority Actions Before Submission" selector:
+    established mandatory/qualification failures first (Critical, by
+    definition -- they already override any score), then Proposal-
+    Submission-stage findings by severity (Critical, then High, then
+    Medium only if space remains). Deliberately excludes negotiation-
+    stage, execution-stage, and contractual-obligation-stage findings
+    (not actionable before submission), and Cannot-Assess/unresolved
+    items (not established defects)."""
+    actions: list[dict] = []
+    used_req_ids = set()
+
+    for mf in mandatory_failures:
+        if len(actions) >= max_n:
+            return actions[:max_n]
+        actions.append({
+            "source": "mandatory_failure", "severity": "Critical", "req_id": mf.get("req_id"),
+            "title": f'{mf.get("req_id", "")} — Mandatory requirement not addressed',
+            "detail": mf.get("reason", ""),
+        })
+        used_req_ids.add(mf.get("req_id"))
+
+    submission_findings = [f for f in findings if (f.get("stage") or "") == "Proposal Submission"]
+    for sev in ("Critical", "High", "Medium"):
+        for f in submission_findings:
+            if len(actions) >= max_n:
+                return actions[:max_n]
+            if f.get("severity") != sev:
+                continue
+            if f.get("req_id") and f.get("req_id") in used_req_ids:
+                continue
+            actions.append({
+                "source": "finding", "severity": sev, "req_id": f.get("req_id"),
+                "title": f.get("title", ""), "detail": f.get("issue", ""),
+                "recommendation": f.get("recommendation", ""),
+            })
+    return actions[:max_n]
+
+
+_PARTIAL_AUDIT_HEADLINE = "This is a partial audit. No reliable overall alignment score is available."
+
+
+def _build_partial_audit_summary(
+    requirement_coverage: list[dict], unresolved_items: list[dict], coverage_metadata: dict,
+    priority_actions: list[dict], failed_chunks_count: int, ceiling_skipped_count: int,
+) -> dict:
+    """Deterministic Partial Audit Summary (no LLM call) -- built purely
+    from already-computed structured results, generated only when
+    status == 'incomplete'. Distinguishes CONFIRMED gaps (Fully/
+    Partially Addressed counts, established mandatory/qualification
+    failures -- structurally always empty here, since 'Not Addressed'
+    can only be assigned once coverage IS complete) from genuine
+    UNKNOWNS (Cannot Assess count, unresolved mandatory/qualification
+    items) rather than blending the two."""
+    fully = sum(1 for r in requirement_coverage if r.get("coverage") == "Fully Addressed")
+    partially = sum(1 for r in requirement_coverage if r.get("coverage") == "Partially Addressed")
+    cannot_assess = sum(1 for r in requirement_coverage if r.get("coverage") == "Cannot Assess")
+    unresolved_mandatory = [u for u in unresolved_items if u.get("is_mandatory_or_qualification")]
+    return {
+        "headline": _PARTIAL_AUDIT_HEADLINE,
+        "coverage_percentage": coverage_metadata.get("percentage_covered", 0.0),
+        "sections_analyzed": f'{coverage_metadata.get("successful_chunks", 0)}/{coverage_metadata.get("chunk_count", 0)}',
+        "sections_failed": failed_chunks_count,
+        "sections_ceiling_skipped": ceiling_skipped_count,
+        "requirements_fully_addressed": fully,
+        "requirements_partially_addressed": partially,
+        "requirements_cannot_assess": cannot_assess,
+        "established_mandatory_qualification_failures": [],
+        "unresolved_mandatory_qualification_items": unresolved_mandatory,
+        "priority_actions": priority_actions,
+    }
 
 
 _ALIGN_SYNTHESIS_SYSTEM = (
@@ -1460,7 +1903,7 @@ _ALIGN_INCOMPLETE_MESSAGE = "Alignment audit incomplete — no reliable score av
 
 
 def _process_chunks_concurrently(chunks: list[dict], bid_header: str, procurement_context: str,
-                                  req_block: str) -> tuple[dict[int, dict], set[int]]:
+                                  req_block: str) -> tuple[dict[int, dict], set[int], dict[int, dict]]:
     """Runs each chunk's (already internally retry-bounded)
     _call_alignment_chunk() call under a small, bounded thread pool --
     chunk calls are independent (each sees only its own section text),
@@ -1468,9 +1911,13 @@ def _process_chunks_concurrently(chunks: list[dict], bid_header: str, procuremen
     count, the deterministic aggregation order (the caller re-sorts by
     original chunk index, never completion order), or a failed chunk's
     fail-closed treatment (still recorded, still excluded from
-    coverage). Returns (index -> parsed result, set of failed indices)."""
+    coverage). Returns (index -> parsed result, set of failed indices,
+    index -> safe failure diagnostic {"filename","section","category",
+    "attempts"} -- never the prompt, proposal text, or raw exception
+    body)."""
     outputs: dict[int, dict] = {}
     failed: set[int] = set()
+    diagnostics: dict[int, dict] = {}
 
     def _run_one(chunk: dict):
         # Package chunks (tagged by _allocate_package_chunk_budget with
@@ -1485,23 +1932,27 @@ def _process_chunks_concurrently(chunks: list[dict], bid_header: str, procuremen
             chunk_label = f'{chunk["heading"]} (section {chunk["index"] + 1}/{chunk["total"]})'
         prompt = _align_chunk_prompt(bid_header, procurement_context, req_block, chunk)
         try:
-            parsed = _call_alignment_chunk(prompt)
+            parsed, failure_category = _call_alignment_chunk(prompt)
         except Exception:
-            parsed = None
-        return chunk["index"], chunk_label, parsed
+            parsed, failure_category = None, _CHUNK_FAILURE_API_ERROR
+        return chunk["index"], chunk_label, parsed, failure_category, chunk.get("source_filename")
 
     max_workers = max(1, min(_ALIGN_CHUNK_CONCURRENCY, len(chunks)))
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(_run_one, c) for c in chunks]
         for future in concurrent.futures.as_completed(futures):
-            idx, label, parsed = future.result()
+            idx, label, parsed, failure_category, source_filename = future.result()
             if parsed is None:
                 failed.add(idx)
+                diagnostics[idx] = {
+                    "filename": source_filename, "section": label,
+                    "category": failure_category or _CHUNK_FAILURE_UNKNOWN, "attempts": 2,
+                }
             else:
                 parsed["chunk_label"] = label
                 outputs[idx] = parsed
 
-    return outputs, failed
+    return outputs, failed, diagnostics
 
 
 def analyze_proposal_alignment(
@@ -1559,7 +2010,9 @@ def analyze_proposal_alignment(
     procurement_context = (rfp_text or "")[:_ALIGN_MAX_PROCUREMENT_CONTEXT_CHARS] or \
         "No canonical procurement intelligence has been extracted for this bid yet."
 
-    chunk_outputs, failed_indices = _process_chunks_concurrently(chunks, bid_header, procurement_context, req_block)
+    chunk_outputs, failed_indices, failure_diagnostics = _process_chunks_concurrently(
+        chunks, bid_header, procurement_context, req_block
+    )
     # Deterministic aggregation order: iterate `chunks` in their original,
     # stable order -- never the (nondeterministic) order concurrent
     # futures happen to complete in.
@@ -1576,6 +2029,12 @@ def analyze_proposal_alignment(
         and not split["skipped_ranges"]
     )
 
+    ceiling_diagnostics = [
+        {"filename": None, "section": s.get("heading"), "category": "beyond_analysis_ceiling", "attempts": 0}
+        for s in split["skipped_ranges"]
+    ]
+    failed_chunk_diagnostics = list(failure_diagnostics.values()) + ceiling_diagnostics
+
     coverage_metadata = {
         "chars_total": chars_total,
         "chars_processed": chars_processed,
@@ -1588,6 +2047,7 @@ def analyze_proposal_alignment(
             for c in chunks
         ],
         "coverage_complete": coverage_complete,
+        "failed_chunk_diagnostics": failed_chunk_diagnostics,
     }
 
     if successful_chunks == 0:
@@ -1614,10 +2074,23 @@ def analyze_proposal_alignment(
     # silent partial score.
     requirement_coverage = _aggregate_requirement_coverage(requirements, chunk_results, coverage_complete)
     findings = _aggregate_findings(chunk_results)
+    # Package-level finding reconciliation (before _is_qualification_gate
+    # is popped from the rows, so unresolved_items can still tell a
+    # mandatory/qualification-gate requirement apart): a chunk-local
+    # observation is never allowed to contradict the deterministic,
+    # package-wide requirement_coverage it was aggregated into.
+    unresolved_items = _build_unresolved_items(requirement_coverage)
+    findings = _reconcile_findings_with_package_evidence(findings, requirement_coverage, unusable_files=[])
+    findings = _deduplicate_findings(findings)
 
     if not coverage_complete:
         for row in requirement_coverage:
             row.pop("_is_qualification_gate", None)
+        priority_actions = _select_priority_actions([], findings)
+        partial_summary = _build_partial_audit_summary(
+            requirement_coverage, unresolved_items, coverage_metadata, priority_actions,
+            failed_chunks_count=len(failed_indices), ceiling_skipped_count=len(split["skipped_ranges"]),
+        )
         return {
             "status": "incomplete",
             "message": _ALIGN_INCOMPLETE_MESSAGE,
@@ -1635,9 +2108,12 @@ def analyze_proposal_alignment(
             "executive_summary": None,
             "strengths": [],
             "findings": findings,
+            "unresolved_items": unresolved_items,
             "mandatory_failures": [],
             "requirement_coverage": requirement_coverage,
             "next_steps": [],
+            "priority_actions": priority_actions,
+            "partial_summary": partial_summary,
             "coverage_metadata": coverage_metadata,
         }
 
@@ -1651,6 +2127,7 @@ def analyze_proposal_alignment(
         row.pop("_weight", None)
         row.pop("_is_qualification_gate", None)
     recommendation, score_rationale = _derive_recommendation(score_info["overall_score"], mandatory_failures)
+    priority_actions = _select_priority_actions(mandatory_failures, findings)
 
     narrative = _synthesize_narrative(
         bid_header, score_info["overall_score"], recommendation, mandatory_failures,
@@ -1676,9 +2153,11 @@ def analyze_proposal_alignment(
         "executive_summary": executive_summary,
         "strengths": strengths,
         "findings": findings,
+        "unresolved_items": unresolved_items,
         "mandatory_failures": mandatory_failures,
         "requirement_coverage": requirement_coverage,
         "next_steps": next_steps,
+        "priority_actions": priority_actions,
         "coverage_metadata": coverage_metadata,
     }
 
@@ -1769,7 +2248,14 @@ def analyze_proposal_alignment_package(
                 ],
                 "skipped_files": [],
                 "sampled": False,
+                "failed_chunk_diagnostics": [],
             },
+            "unresolved_items": [],
+            "priority_actions": [],
+            "partial_summary": _build_partial_audit_summary(
+                [], [], {"percentage_covered": 0.0, "successful_chunks": 0, "chunk_count": 0}, [],
+                failed_chunks_count=0, ceiling_skipped_count=0,
+            ),
         }
 
     bid_header = f"BID: {bid_info.get('title', '')} | CLIENT: {bid_info.get('client', '')}"
@@ -1787,7 +2273,9 @@ def analyze_proposal_alignment_package(
     procurement_context = (rfp_text or "")[:_ALIGN_MAX_PROCUREMENT_CONTEXT_CHARS] or \
         "No canonical procurement intelligence has been extracted for this bid yet."
 
-    chunk_outputs, failed_indices = _process_chunks_concurrently(kept_chunks, bid_header, procurement_context, req_block)
+    chunk_outputs, failed_indices, failure_diagnostics = _process_chunks_concurrently(
+        kept_chunks, bid_header, procurement_context, req_block
+    )
     chunk_results = [chunk_outputs[c["index"]] for c in kept_chunks if c["index"] in chunk_outputs]
     successful_chunks = len(chunk_results)
 
@@ -1835,6 +2323,16 @@ def analyze_proposal_alignment_package(
         if m["analyzable"] and m["char_count"] > 0 and m["chunk_count"] == 0
     ]
 
+    ceiling_diagnostics = [
+        {"filename": s.get("source_filename"), "section": s.get("heading"),
+         "category": "beyond_analysis_ceiling", "attempts": 0}
+        for s in skipped_sections
+    ]
+    failed_chunk_diagnostics = list(failure_diagnostics.values()) + ceiling_diagnostics
+    unusable_files_meta = [
+        {"filename": f["filename"], "reason": f.get("unusable_reason")} for f in unusable_files
+    ]
+
     coverage_metadata = {
         "chars_total": chars_total,
         "chars_processed": chars_processed,
@@ -1849,11 +2347,10 @@ def analyze_proposal_alignment_package(
         ],
         "coverage_complete": coverage_complete,
         "files": file_manifest_metrics,
-        "unusable_files": [
-            {"filename": f["filename"], "reason": f.get("unusable_reason")} for f in unusable_files
-        ],
+        "unusable_files": unusable_files_meta,
         "skipped_files": skipped_files,
         "sampled": bool(skipped_sections),
+        "failed_chunk_diagnostics": failed_chunk_diagnostics,
     }
 
     if successful_chunks == 0:
@@ -1866,6 +2363,14 @@ def analyze_proposal_alignment_package(
 
     requirement_coverage = _aggregate_requirement_coverage(requirements, chunk_results, coverage_complete)
     findings = _aggregate_findings(chunk_results)
+    # Package-level finding reconciliation (before _is_qualification_gate
+    # is popped, so unresolved_items can still tell a mandatory/
+    # qualification-gate requirement apart): a chunk-local observation
+    # from one file is never allowed to contradict package-wide evidence
+    # confirmed elsewhere in the submission package.
+    unresolved_items = _build_unresolved_items(requirement_coverage)
+    findings = _reconcile_findings_with_package_evidence(findings, requirement_coverage, unusable_files_meta)
+    findings = _deduplicate_findings(findings)
 
     if not coverage_complete:
         for row in requirement_coverage:
@@ -1891,6 +2396,11 @@ def analyze_proposal_alignment_package(
             + " -- no reliable score can be shown. The findings and requirement coverage established from "
               "the sections that WERE successfully analyzed are preserved below."
         )
+        priority_actions = _select_priority_actions([], findings)
+        partial_summary = _build_partial_audit_summary(
+            requirement_coverage, unresolved_items, coverage_metadata, priority_actions,
+            failed_chunks_count=len(failed_indices), ceiling_skipped_count=len(skipped_sections),
+        )
         return {
             "status": "incomplete",
             "message": _ALIGN_INCOMPLETE_MESSAGE,
@@ -1902,9 +2412,12 @@ def analyze_proposal_alignment_package(
             "executive_summary": None,
             "strengths": [],
             "findings": findings,
+            "unresolved_items": unresolved_items,
             "mandatory_failures": [],
             "requirement_coverage": requirement_coverage,
             "next_steps": [],
+            "priority_actions": priority_actions,
+            "partial_summary": partial_summary,
             "coverage_metadata": coverage_metadata,
         }
 
@@ -1918,6 +2431,7 @@ def analyze_proposal_alignment_package(
         row.pop("_weight", None)
         row.pop("_is_qualification_gate", None)
     recommendation, score_rationale = _derive_recommendation(score_info["overall_score"], mandatory_failures)
+    priority_actions = _select_priority_actions(mandatory_failures, findings)
 
     narrative = _synthesize_narrative(
         bid_header, score_info["overall_score"], recommendation, mandatory_failures,
@@ -1943,9 +2457,11 @@ def analyze_proposal_alignment_package(
         "executive_summary": executive_summary,
         "strengths": strengths,
         "findings": findings,
+        "unresolved_items": unresolved_items,
         "mandatory_failures": mandatory_failures,
         "requirement_coverage": requirement_coverage,
         "next_steps": next_steps,
+        "priority_actions": priority_actions,
         "coverage_metadata": coverage_metadata,
     }
 

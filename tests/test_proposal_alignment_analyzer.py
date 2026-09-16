@@ -925,6 +925,40 @@ class TestStageCheckRendering(unittest.TestCase):
         self.assertIn("Not fully analyzed", rendered)
         self.assertIn("Team CVs.pdf", rendered)
 
+    def test_findings_section_renamed_to_audit_findings_with_severity_counts_and_new_sections(self):
+        """Findings-layer remediation: 'Critical Findings' is renamed to
+        'Audit Findings' (the list contains Critical/High/Medium/Low, not
+        only Critical) with a severity summary count line; Priority
+        Actions Before Submission and Needs Verification / Cannot Assess
+        render as their own distinct sections."""
+        align_data = {
+            "status": "complete", "overall_score": 78.0, "score_basis": "Buyer-weighted evaluation criteria",
+            "score_rationale": "78/100.", "recommendation": "REVISE BEFORE SUBMITTING",
+            "executive_summary": "Solid overall.",
+            "findings": [{"severity": "Medium", "stage": "Proposal Submission", "title": "Weak safeguards",
+                          "issue": "Safeguards described are insufficient.", "req_id": "M2",
+                          "proposal_location": "Schedule A.pdf", "recommendation": "Strengthen safeguards.",
+                          "effort": "Moderate rewrite"}],
+            "unresolved_items": [{"req_id": "M5", "category": "Mandatory", "description": "Insurance declaration",
+                                   "reason": "M5 — Insurance declaration could not be assessed because relevant "
+                                             "package sections were not successfully analyzed."}],
+            "priority_actions": [{"source": "finding", "severity": "Medium", "req_id": "M2",
+                                   "title": "Weak safeguards", "detail": "Safeguards described are insufficient.",
+                                   "recommendation": "Strengthen safeguards."}],
+            "mandatory_failures": [],
+            "requirement_coverage": [{"req_id": "M2", "category": "Mandatory", "coverage": "Partially Addressed",
+                                       "confidence": "Medium", "evidence_location": "Schedule A.pdf", "notes": "x"}],
+            "strengths": [], "next_steps": [],
+            "coverage_metadata": {"chars_total": 1000, "chars_processed": 1000, "percentage_covered": 100.0,
+                                   "chunk_count": 1, "successful_chunks": 1, "failed_or_skipped_chunks": 0},
+        }
+        rendered = self._render(align_data)
+        self.assertIn("Audit Findings", rendered)
+        self.assertNotIn("Critical Findings", rendered)
+        self.assertIn("Priority Actions Before Submission", rendered)
+        self.assertIn("Needs Verification", rendered)
+        self.assertIn("Insurance declaration", rendered)
+
     def test_complete_result_renders_every_required_section(self):
         align_data = {
             "status": "complete", "overall_score": 72.0, "score_basis": "unweighted_structured",
