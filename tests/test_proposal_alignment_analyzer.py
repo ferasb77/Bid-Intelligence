@@ -870,6 +870,8 @@ class TestStageCheckRendering(unittest.TestCase):
              patch("pages.stage_check.tenancy.get_outline_authenticated", return_value=[]), \
              patch("pages.stage_check.tenancy.get_clarifications_authenticated", return_value=[]), \
              patch("pages.stage_check.tenancy.get_bid_brief_authenticated", return_value={}), \
+             patch("pages.stage_check.tenancy.get_procurement_state_for_organization",
+                   return_value={"procurement_revision": 1, "procurement_truth_status": "governed"}), \
              patch("pages.stage_check._current_access_token_and_org", return_value=_FAKE_TOKEN_AND_ORG), \
              patch("pdf_export.generate_compliance_pdf", return_value=b""):
             mock_bid.return_value = {

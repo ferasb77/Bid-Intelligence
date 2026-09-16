@@ -53,7 +53,7 @@ from fast_analysis import (
     run_fast_analysis_corpus, FastAnalysisResult, route_document, find_section,
     BATCH_GROUP, ROUTE_SKIP, ROUTE_EVAL_ONLY, ROUTE_IDENTITY_EVAL_REQ, ROUTE_COMMERCIAL_ONLY,
 )
-from fast_analysis_app_adapter import build_opportunity_intelligence, build_bid_brief_projection
+from fast_analysis_app_adapter import build_opportunity_intelligence
 from scripts.fast_analysis_report_adapter import build_fast_report_content
 from scripts.build_boc_bid_intelligence_preview_pdf import build as _render_pdf
 
@@ -490,7 +490,6 @@ def _execute_fast_analysis_run(run_id: int, bid_id: int, docs: list[dict], api_k
 
         db.update_analysis_run(run_id, {"status": "ASSEMBLING"})
         opportunity_intelligence = build_opportunity_intelligence(result)
-        bid_brief_projection = build_bid_brief_projection(result)
 
         content = build_fast_report_content(result)
         pdf_bytes = _render_pdf_bytes(content)
@@ -502,14 +501,28 @@ def _execute_fast_analysis_run(run_id: int, bid_id: int, docs: list[dict], api_k
             opportunity_intelligence.get("fact_origins"),
             report_content_snapshot=_content_to_dict(content))
 
-        bid_brief_projection["bid_id"] = bid_id
-        db.upsert_bid_brief(bid_brief_projection)
+        # Fast Analysis is advisory-only (Procurement Revision & Addendum
+        # Governance, migration 010): it renders exclusively from its own
+        # analysis_results.structured_intelligence and NEVER writes
+        # bid_briefs -- canonical procurement truth is established only
+        # through a governed baseline/buyer-update review and apply. The
+        # run is instead stamped with the procurement revision it ran
+        # against and how many of its corpus documents have not yet gone
+        # through a governed review, so the UI can flag it as advisory
+        # and potentially stale relative to canonical truth.
+        procurement_state = db.get_bid_procurement_state(bid_id)
+        reviewed_hashes = db.get_reviewed_document_hashes(bid_id)
+        unreviewed_document_count = sum(
+            1 for d in docs if (d["id"], d.get("content_hash")) not in reviewed_hashes
+        )
 
         db.update_analysis_run(run_id, {
             "status": "COMPLETE",
             "completed_at": datetime.now(timezone.utc).isoformat(),
             "telemetry": _telemetry_summary(result),
             "report_storage_path": report_storage_path,
+            "based_on_procurement_revision": procurement_state["procurement_revision"],
+            "unreviewed_document_count": unreviewed_document_count,
         })
     except Exception as exc:
         db.update_analysis_run(run_id, {

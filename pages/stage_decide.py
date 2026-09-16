@@ -13,7 +13,7 @@ from datetime import datetime
 from analyst import generate_clarification_questions, bid_no_bid_score
 from config import api_key_configured
 from components.ui import (qual_badge, evidence_badge, decision_badge, days_until, days_label,
-                           metric_card, QUAL_STATUSES, EVIDENCE_STATUSES, CATEGORIES)
+                           metric_card, procurement_staleness_banner, QUAL_STATUSES, EVIDENCE_STATUSES, CATEGORIES)
 import auth_session
 import tenancy
 
@@ -67,6 +67,21 @@ def page_decide(bid_id: int):
         c2.markdown('<div style="text-align:right;padding-top:.7rem"><span style="background:#111118;border:1px solid #353129;color:#A9A69D;padding:.3rem .7rem;border-radius:4px;font-size:.78rem;font-weight:600">Decision: Not Yet Recorded</span></div>', unsafe_allow_html=True)
 
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
+
+    procurement_state = tenancy.get_procurement_state_for_organization(bid_id, _org_id)
+    if latest_decision:
+        # A decision exists -- pass its stored basis explicitly, even if
+        # that stored value is NULL (a decision made before revision
+        # tracking existed), so the banner can distinguish "unknown basis"
+        # from "no decision to compare at all".
+        banner_html = procurement_staleness_banner(
+            procurement_state, latest_decision.get("based_on_procurement_revision"),
+            context_label="This bid/no-bid decision",
+        )
+    else:
+        banner_html = procurement_staleness_banner(procurement_state, context_label="This bid/no-bid decision")
+    if banner_html:
+        st.markdown(banner_html, unsafe_allow_html=True)
 
     from requirement_semantics import (
         select_qualification_requirements,

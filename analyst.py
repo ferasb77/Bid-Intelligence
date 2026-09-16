@@ -1127,7 +1127,7 @@ For THIS SECTION ONLY, return ONLY valid JSON:
       "category": "<category>",
       "req_id": "<req_id or null>",
       "title": "<finding title>",
-      "issue": "<concise explanation of a gap or risk visible in THIS section>",
+      "issue": "<a SUBSTANTIVE gap, risk, or content-quality deficiency actually VISIBLE in THIS section's own text -- e.g. specific wording that is unclear, incomplete, unsigned, or non-compliant>",
       "recommendation": "<actionable fix>",
       "effort": "Minor edit|Moderate rewrite|Major addition|Post-submission action"
     }}
@@ -1137,10 +1137,13 @@ For THIS SECTION ONLY, return ONLY valid JSON:
       "req_id": "<req_id>",
       "coverage": "Fully Addressed|Partially Addressed",
       "confidence": "High|Medium|Low",
-      "evidence": "<short quote or precise paraphrase from THIS section>"
+      "evidence": "<short quote or precise paraphrase from THIS section ONLY -- describe positively what IS present; never mention what this section does or does not contain relative to the rest of the document, never mention truncation, and never mention section/chunk/excerpt boundaries>"
     }}
   ]
 }}
+CRITICAL RULES for chunk_findings:
+- Only include a chunk_finding for a SUBSTANTIVE deficiency you can see WITHIN this section's own text (unclear wording, an unsigned field, incomplete content, a real compliance gap). Whether a requirement/artifact is present ANYWHERE ELSE in the proposal is unknowable from this section alone and is decided later, after every section has been reviewed -- do NOT create a chunk_finding whose issue is that something is "not present," "not addressed," "not visible," or "cannot be seen" in this section/excerpt/chunk. That is not useful signal at package level and is discarded.
+- Do NOT create a chunk_finding that merely restates a requirement is satisfied, has no gap, or needs no action ("No gap identified", "Requirement satisfied", "Maintain current documentation") -- if there is nothing wrong, do not emit a finding for it at all.
 Only include a requirement_assertion when THIS section actually contains evidence for it -- do not list requirements this section does not address."""
 
 
@@ -1472,10 +1475,46 @@ _EXISTENCE_ABSENCE_RE = re.compile(
 _BOUNDARY_ARTIFACT_RE = re.compile(
     r"\b(appears?\s+truncated|response\s+is\s+incomplete|table\s+is\s+cut\s*off|"
     r"document\s+(appears?\s+to\s+)?(ends?|stops?)\s+(mid[- ]sentence|abruptly)|"
-    r"section\s+(appears?\s+)?(cut\s*off|truncated)|text\s+(appears?\s+)?truncated|"
+    r"section\s+[\w\s]{0,25}?(appears?\s+(?:to\s+be\s+)?)?(cut\s*off|truncated)|"
+    r"text\s+(appears?\s+)?truncated|"
     r"ends?\s+abruptly|incomplete\s+response|content\s+continues?\s+beyond\s+this\s+excerpt|"
     r"cannot\s+confirm\s+(beyond|past)\s+this\s+(point|section|excerpt)|"
-    r"(this|the)\s+(chunk|excerpt|section)\s+ends?\s+(at|after)\s+[\d,]+\s+characters?)\b",
+    r"(this|the)\s+(chunk|excerpt|section)\s+ends?\s+(at|after)\s+[\d,]+\s+characters?|"
+    r"cuts?\s+off\s+mid[- ](table|sentence|paragraph)|"
+    r"table\s+[\w\s]{0,15}?cuts?\s+off)\b",
+    re.IGNORECASE,
+)
+
+# A finding/coverage-note phrase that scopes an absence claim to THIS
+# excerpt/chunk specifically ("not present in this section excerpt") --
+# distinct from _BOUNDARY_ARTIFACT_RE (which flags outright truncation
+# claims): this is a local-scope existence claim, stripped from
+# requirement_coverage's own gap/evidence text whenever the row already
+# carries real (Fully/Partially Addressed) package-wide evidence, since
+# "not present in THIS excerpt" is a true-but-irrelevant local
+# observation once OTHER evidence has already been found for the same
+# requirement.
+_LOCAL_EXCERPT_ABSENCE_RE = re.compile(
+    r"\b(not\s+present\s+in\s+this\s+(?:section\s+excerpt|section|excerpt|chunk)|"
+    r"not\s+(?:addressed|visible|found|included)\s+in\s+this\s+(?:section\s+excerpt|section|excerpt|chunk)|"
+    r"cannot\s+be\s+seen\s+(?:here|in\s+this\s+(?:section|excerpt|chunk))|"
+    r"(?:is\s+)?absent\s+from\s+this\s+(?:section\s+excerpt|section|excerpt|chunk)|"
+    r"excluded\s+from\s+this\s+(?:section\s+excerpt|section|excerpt|chunk))\b",
+    re.IGNORECASE,
+)
+
+# A record that is not a finding at all -- purely positive/no-issue
+# chunk output that should never have been emitted into chunk_findings
+# in the first place. Matched against the WHOLE (stripped) title or
+# issue text, not a substring, so it only catches genuinely empty
+# "findings" rather than a real finding that happens to mention one of
+# these phrases in passing.
+_NON_FINDING_RE = re.compile(
+    r"^(no\s+(?:gap|issue|deficiency|concern)s?\s+(?:identified|found|noted)|"
+    r"requirement\s+(?:is\s+)?satisfied|"
+    r"maintain\s+current\s+documentation|"
+    r"fully\s+compliant|"
+    r"no\s+action\s+(?:required|needed))\s*\.?\s*$",
     re.IGNORECASE,
 )
 
@@ -1578,6 +1617,118 @@ def _strip_internal_chunk_language(text: str) -> str:
     return re.sub(r"\s{2,}", " ", cleaned).strip()
 
 
+def _finding_is_non_finding(finding: dict) -> bool:
+    """A record that carries no actual gap/issue -- 'No gap identified',
+    'Requirement satisfied', 'Maintain current documentation', etc.
+    Positive evidence belongs in requirement_coverage/strengths, never
+    in AUDIT FINDINGS."""
+    for text in (finding.get("title") or "", finding.get("issue") or ""):
+        if _NON_FINDING_RE.match(text.strip()):
+            return True
+    return False
+
+
+def _split_compound_req_ids(raw_req_id: str, canonical_req_ids: set) -> list[str]:
+    """Normalizes a possibly-compound req_id string ("M5, M6", "M5/M6",
+    "R5, R6, R7") into the list of individual CANONICAL req_ids it
+    actually references. A bare single req_id that's already canonical
+    returns as a one-item list unchanged. Any fragment that isn't a
+    known canonical req_id is dropped (never invents a requirement)."""
+    if not raw_req_id:
+        return []
+    if raw_req_id in canonical_req_ids:
+        return [raw_req_id]
+    parts = re.split(r"\s*(?:,|/|&|\band\b)\s*", raw_req_id.strip())
+    return [p for p in parts if p in canonical_req_ids]
+
+
+# Deterministic, filename-based canonical-artifact identity -- covers
+# the small set of near-universally-named procurement submission
+# artifacts explicitly called out in this remediation. Never claims an
+# artifact exists based on chunk/model text, only on the Submission
+# Package Manifest's own file list.
+_CANONICAL_ARTIFACT_PATTERNS = {
+    "technical proposal": [r"technical\s+proposal"],
+    "financial proposal": [r"financial\s+proposal", r"pricing\s+proposal", r"price\s+proposal"],
+    "schedule a": [r"schedule\s*a\b", r"ai\s+disclosure"],
+    "submission form": [r"submission\s+form", r"supplement\s+a\b"],
+}
+
+
+def _build_artifact_existence_map(package_files: list[dict]) -> dict[str, bool]:
+    """Deterministic artifact-existence map built ONLY from the
+    Submission Package's own included, analyzable files (never from
+    chunk/model text) -- filename + package_path matched against a
+    small set of canonical, near-universally-named procurement
+    artifacts. Presence here means the FILE is in the package; it says
+    nothing about that file's content compliance, signature, format, or
+    completeness -- see _finding_claims_absent_artifact_present_in_
+    manifest()'s docstring for why that distinction matters."""
+    present = {name: False for name in _CANONICAL_ARTIFACT_PATTERNS}
+    for f in package_files or []:
+        if not f.get("analyzable"):
+            continue
+        haystack = f"{f.get('filename', '')} {f.get('package_path', '')}"
+        for name, patterns in _CANONICAL_ARTIFACT_PATTERNS.items():
+            if present[name]:
+                continue
+            if any(re.search(p, haystack, re.IGNORECASE) for p in patterns):
+                present[name] = True
+    return present
+
+
+def _finding_claims_absent_artifact_present_in_manifest(finding: dict, artifact_map: dict) -> bool:
+    """A STRONGER, manifest-only suppression signal alongside the per-
+    req_id evidence-aware check: if a finding is an existence/absence
+    claim and names one of the canonical artifacts BY NAME, and that
+    exact file is confirmed present in the Submission Package Manifest,
+    the claim is false regardless of req_id matching (covers findings
+    with no/wrong req_id). Never suppresses a CONTENT-quality finding
+    (e.g. "signature is blank on Supplement A") -- artifact presence
+    does not prove content compliance, only that the file exists."""
+    if not artifact_map or not _finding_is_existence_absence_claim(finding):
+        return False
+    text = f"{finding.get('title', '')} {finding.get('issue', '')}".lower()
+    return any(is_present and name in text for name, is_present in artifact_map.items())
+
+
+def _clean_coverage_row_text(text: str) -> str:
+    """Strips chunk-boundary and local-excerpt-scoped absence language
+    from a requirement_coverage row's own notes/evidence text -- see
+    _reconcile_requirement_coverage_text()'s docstring for why this
+    field (unlike findings) was never cleaned before."""
+    cleaned = _BOUNDARY_ARTIFACT_RE.sub("", text or "")
+    cleaned = _LOCAL_EXCERPT_ABSENCE_RE.sub("", cleaned)
+    cleaned = _strip_internal_chunk_language(cleaned)
+    cleaned = re.sub(r"\s*[,;]\s*(?=[,;.]|$)", "", cleaned)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" ,.;")
+    return cleaned or "Evidence confirmed elsewhere in the analyzed submission package."
+
+
+def _reconcile_requirement_coverage_text(requirement_coverage: list[dict]) -> list[dict]:
+    """Package-level reconciliation for requirement_coverage ROWS
+    THEMSELVES, not only findings. A row's 'notes' field is the winning
+    chunk assertion's own free-text 'evidence' string, verbatim -- the
+    model can write self-contradictory LOCAL-scope language into that
+    field even for a genuinely positive (Fully/Partially Addressed)
+    assertion, e.g. "Financial Proposal addressed with cost detail, but
+    not present in this section excerpt" or "...Section 6 appears
+    truncated". The row's own COVERAGE STATE is already deterministically
+    correct (the strongest assertion across every chunk, computed in
+    _aggregate_requirement_coverage) -- what needs cleaning is only the
+    accompanying text, which must never contradict that state by
+    implying the artifact is absent or that the SOURCE document itself
+    is truncated (both are artifacts of what ONE excerpt could see, not
+    package-level facts). Cannot Assess / Not Addressed rows already
+    carry a fixed, safe, deterministic fallback string (never chunk-
+    generated) and are left untouched -- mutates and returns the same
+    list for convenience."""
+    for row in requirement_coverage:
+        if row.get("coverage") in ("Fully Addressed", "Partially Addressed"):
+            row["notes"] = _clean_coverage_row_text(row.get("notes", ""))
+    return requirement_coverage
+
+
 def _build_unresolved_items(requirement_coverage: list[dict]) -> list[dict]:
     """One deterministic item per requirement the package COULDN'T
     confirm (coverage == 'Cannot Assess') -- must be called BEFORE
@@ -1607,14 +1758,22 @@ def _build_unresolved_items(requirement_coverage: list[dict]) -> list[dict]:
 
 
 def _reconcile_findings_with_package_evidence(
-    findings: list[dict], requirement_coverage: list[dict], unusable_files: list[dict]
+    findings: list[dict], requirement_coverage: list[dict], unusable_files: list[dict],
+    requirements: list[dict] | None = None, artifact_existence_map: dict | None = None,
 ) -> list[dict]:
     """Deterministic, no-LLM reconciliation between chunk-local findings
     and the already-final package-wide requirement_coverage:
 
-      * Cannot Assess -- the requirement-level uncertainty is already
-        represented once in unresolved_items; a chunk-level opinion
-        about it is dropped, never presented as an established finding.
+      * Non-findings ("No gap identified", "Requirement satisfied", ...)
+        are dropped outright -- positive evidence belongs in coverage/
+        strengths, never in AUDIT FINDINGS.
+      * A compound req_id ("M5, M6", "M5/M6") is split against the
+        canonical requirement IDs before every check below; if EVERY
+        referenced requirement is Cannot Assess, the finding is dropped
+        (the uncertainty is already represented once, per requirement,
+        in unresolved_items) rather than surviving because the literal
+        string "M5, M6" never matched a single coverage row.
+      * Cannot Assess (single req_id) -- same drop, for the same reason.
       * Fully Addressed -- an EXISTENCE/absence claim (e.g. "Schedule A
         is missing") is suppressed unconditionally, because the
         deterministic package-level result already establishes full
@@ -1631,6 +1790,14 @@ def _reconcile_findings_with_package_evidence(
         the SAME artifact the finding claims is missing -- a real,
         deterministic keyword-level contradiction, not the bare
         Partially-Addressed status.
+      * Manifest-aware suppression (independent of req_id matching): if
+        `artifact_existence_map` confirms a canonical artifact (e.g.
+        "Technical Proposal") is present in the Submission Package, any
+        existence/absence claim naming that artifact is suppressed --
+        this catches findings with no/wrong req_id that the per-row
+        check above can't reach. Never suppresses a content-quality
+        claim about that same artifact (artifact presence doesn't prove
+        signature/format/completeness).
       * A CONTENT-QUALITY finding (e.g. "safeguards described are
         insufficient") is NOT an existence claim and is always kept --
         it describes something coverage aggregation doesn't already
@@ -1640,29 +1807,58 @@ def _reconcile_findings_with_package_evidence(
         genuine, structured extraction-level truncation/corruption
         signal -- never a bare failed-chunk or unusable-file membership
         alone.
+      * Category canonicalization: when a finding's (single) req_id
+        matches a canonical requirement, its displayed category is
+        overwritten from that canonical requirement's own category --
+        never trusts arbitrary per-chunk category wording, so the same
+        requirement can't appear under inconsistent categories.
     """
     coverage_by_req = {r["req_id"]: r for r in requirement_coverage if r.get("req_id")}
+    category_by_req = {r.get("req_id"): r.get("category") for r in (requirements or []) if r.get("req_id")}
+    canonical_req_ids = set(coverage_by_req.keys())
+    artifact_existence_map = artifact_existence_map or {}
+
     reconciled = []
     for f in findings:
+        if _finding_is_non_finding(f):
+            continue
+
         if _finding_is_chunk_boundary_artifact(f):
             src = _finding_source_filename(f)
             if not _has_source_level_truncation_evidence(src, unusable_files):
                 continue
 
-        req_id = f.get("req_id")
-        cov_row = coverage_by_req.get(req_id) if req_id else None
-        if cov_row is not None:
-            cov_state = cov_row.get("coverage")
-            if cov_state == "Cannot Assess":
+        if _finding_claims_absent_artifact_present_in_manifest(f, artifact_existence_map):
+            continue
+
+        raw_req_id = f.get("req_id") or ""
+        req_ids = _split_compound_req_ids(raw_req_id, canonical_req_ids)
+
+        if len(req_ids) > 1:
+            # Compound reference (e.g. "M5, M6") -- if EVERY referenced
+            # requirement is Cannot Assess, this is the exact same
+            # uncertainty unresolved_items already represents once per
+            # requirement; drop rather than let the compound string
+            # dodge the single-req_id check below.
+            states = [coverage_by_req[rid].get("coverage") for rid in req_ids]
+            if states and all(s == "Cannot Assess" for s in states):
                 continue
-            if _finding_is_existence_absence_claim(f):
-                if cov_state == "Fully Addressed":
+        elif len(req_ids) == 1:
+            cov_row = coverage_by_req.get(req_ids[0])
+            if cov_row is not None:
+                cov_state = cov_row.get("coverage")
+                if cov_state == "Cannot Assess":
                     continue
-                if cov_state == "Partially Addressed" and _package_evidence_contradicts_absence_claim(f, cov_row):
-                    continue
+                if _finding_is_existence_absence_claim(f):
+                    if cov_state == "Fully Addressed":
+                        continue
+                    if cov_state == "Partially Addressed" and _package_evidence_contradicts_absence_claim(f, cov_row):
+                        continue
 
         f = dict(f)
         f["issue"] = _strip_internal_chunk_language(f.get("issue", "")) or f.get("issue", "")
+        if len(req_ids) == 1 and category_by_req.get(req_ids[0]):
+            f["category"] = category_by_req[req_ids[0]]
         reconciled.append(f)
     return reconciled
 
@@ -2074,13 +2270,17 @@ def analyze_proposal_alignment(
     # silent partial score.
     requirement_coverage = _aggregate_requirement_coverage(requirements, chunk_results, coverage_complete)
     findings = _aggregate_findings(chunk_results)
-    # Package-level finding reconciliation (before _is_qualification_gate
-    # is popped from the rows, so unresolved_items can still tell a
-    # mandatory/qualification-gate requirement apart): a chunk-local
-    # observation is never allowed to contradict the deterministic,
-    # package-wide requirement_coverage it was aggregated into.
+    # Package-level reconciliation (before _is_qualification_gate is
+    # popped from the rows, so unresolved_items can still tell a
+    # mandatory/qualification-gate requirement apart): neither a chunk-
+    # local finding NOR a requirement_coverage row's own notes text is
+    # ever allowed to contradict the deterministic, package-wide result
+    # it was aggregated into.
     unresolved_items = _build_unresolved_items(requirement_coverage)
-    findings = _reconcile_findings_with_package_evidence(findings, requirement_coverage, unusable_files=[])
+    requirement_coverage = _reconcile_requirement_coverage_text(requirement_coverage)
+    findings = _reconcile_findings_with_package_evidence(
+        findings, requirement_coverage, unusable_files=[], requirements=requirements,
+    )
     findings = _deduplicate_findings(findings)
 
     if not coverage_complete:
@@ -2363,13 +2563,19 @@ def analyze_proposal_alignment_package(
 
     requirement_coverage = _aggregate_requirement_coverage(requirements, chunk_results, coverage_complete)
     findings = _aggregate_findings(chunk_results)
-    # Package-level finding reconciliation (before _is_qualification_gate
-    # is popped, so unresolved_items can still tell a mandatory/
-    # qualification-gate requirement apart): a chunk-local observation
-    # from one file is never allowed to contradict package-wide evidence
-    # confirmed elsewhere in the submission package.
+    # Package-level reconciliation (before _is_qualification_gate is
+    # popped, so unresolved_items can still tell a mandatory/
+    # qualification-gate requirement apart): neither a chunk-local
+    # finding NOR a requirement_coverage row's own notes text is ever
+    # allowed to contradict package-wide evidence confirmed elsewhere in
+    # the submission package.
     unresolved_items = _build_unresolved_items(requirement_coverage)
-    findings = _reconcile_findings_with_package_evidence(findings, requirement_coverage, unusable_files_meta)
+    requirement_coverage = _reconcile_requirement_coverage_text(requirement_coverage)
+    artifact_existence_map = _build_artifact_existence_map(package_files)
+    findings = _reconcile_findings_with_package_evidence(
+        findings, requirement_coverage, unusable_files_meta,
+        requirements=requirements, artifact_existence_map=artifact_existence_map,
+    )
     findings = _deduplicate_findings(findings)
 
     if not coverage_complete:
@@ -2474,3 +2680,156 @@ def analyze_proposal_alignment_package(
         }
 
     return result
+
+
+# ── 10. Procurement Change Proposal (migration 010 governance foundation) ──
+# Compares a buyer-issued update document against the CURRENT governed
+# procurement truth and PROPOSES changes -- it never applies them. This is
+# a PURE function: it makes zero database writes and never imports
+# `database` or `tenancy` (structurally verified by
+# tests/test_procurement_revision_governance.py, the same source-inspection
+# pattern already used to guarantee pdf_alignment.py makes no LLM calls).
+# A human reviews and approves every proposal via
+# tenancy.record_change_review_decision_for_organization() before anything
+# reaches canonical truth through
+# tenancy.apply_procurement_update_review_for_organization().
+
+_PROCUREMENT_CHANGE_SYSTEM = (
+    "You are a senior procurement analyst comparing a buyer-issued update document "
+    "against the CURRENT governed procurement truth for this opportunity. You "
+    "identify what the update changes, clarifies, or confirms unchanged -- you do "
+    "NOT decide what happens to canonical truth; a human reviews and approves every "
+    "proposal you make before it can ever be applied. Cover at minimum: "
+    "deadlines/dates, submission instructions, mandatory requirements, supplier "
+    "qualification/eligibility, evaluation criteria and weights, pricing/commercial "
+    "terms, scope/deliverables, contractual obligations, required forms/schedules, "
+    "insurance, AI/data/privacy requirements, clarification answers, and "
+    "administrative requirements. Never use unsupported external knowledge -- every "
+    "proposal must be grounded in the supplied document text. This input may be one "
+    "section/chunk of a larger buyer document -- the point where this excerpt ends "
+    "is not evidence the document itself ends there; never propose a change based on "
+    "an assumed truncation. Respond with valid JSON only."
+)
+
+
+def _procurement_change_prompt(bid_header: str, current_requirements_block: str, buyer_update_type: str,
+                                chunk_text: str, chunk_label: str, filename: str) -> str:
+    return f"""{bid_header}
+Buyer update type: {buyer_update_type}
+
+=== CURRENT GOVERNED PROCUREMENT TRUTH (requirements) ===
+{current_requirements_block}
+
+=== BUYER-ISSUED UPDATE DOCUMENT: {filename} -- {chunk_label} ===
+{chunk_text}
+
+Compare this document content against the current governed truth above. Return ONLY valid JSON:
+{{
+  "proposals": [
+    {{
+      "entity_type": "requirement|bid_brief_field",
+      "entity_id": "<req_id, or bid_brief field name (opportunity_type|contract_term|procurement_model|commercial_structure|submission_requirements|key_dates)>",
+      "change_type": "ADDED|MODIFIED|SUPERSEDED|REMOVED|CLARIFIED|UNCHANGED",
+      "canonical_effect": "canonical_change|evidence_only",
+      "previous_value": {{"description": "<current value verbatim from the truth block above, or null if ADDED>"}},
+      "new_value": {{"description": "<proposed value>", "category": "<Mandatory|Rated|Financial|Supporting -- ONLY for a new requirement>", "weight": null}},
+      "physical_source_ref": "<section/page reference from THIS document>",
+      "extraction_evidence": {{"sources": [{{"page": <int or null>, "section": "<str or null>", "excerpt": "<short verbatim quote from THIS document>"}}]}}
+    }}
+  ]
+}}
+Rules:
+- change_type UNCHANGED must have canonical_effect "evidence_only".
+- change_type ADDED, MODIFIED, SUPERSEDED, or REMOVED must have canonical_effect "canonical_change".
+- change_type CLARIFIED: set canonical_effect to "canonical_change" ONLY if this clarification changes how a requirement should be interpreted going forward; otherwise "evidence_only".
+- Only propose a change when THIS document's text actually supports it -- never invent, never infer from outside knowledge.
+- If this section contains nothing relevant to procurement truth, return an empty "proposals" array."""
+
+
+def propose_procurement_changes(
+    review_documents: list[dict],
+    current_requirements: list[dict],
+    bid_info: dict,
+    buyer_update_type: str,
+) -> list[dict]:
+    """Deterministic-shape, LLM-assisted proposal generator for the
+    Procurement Documents & Addenda governance workflow. PURE FUNCTION:
+    makes zero database writes, never mutates requirements/bid_briefs/
+    conflicts/procurement_revision -- it only ever RETURNS a list of
+    proposal dicts shaped for procurement_changes rows. The caller
+    (tenancy.propose_procurement_changes_for_organization) is responsible
+    for persisting them as pending rows and for filling in
+    target_requirement_id where a proposal's entity_id resolves to an
+    existing requirement.
+
+    `review_documents`: [{"document_id", "filename", "content_hash",
+    "role", "text"}] -- every document in the review, not just the
+    primary one.
+    `current_requirements`: the FULL current governed compliance matrix
+    (already lifecycle_status='active'-filtered by the caller) -- every
+    proposal is compared against this, never against the original RFP
+    alone, and never a truncated sample.
+
+    Reuses the existing Alignment chunking helpers unchanged
+    (_split_proposal_into_sections / _merge_and_size_bound_sections /
+    _even_stride_sample_indices / _ALIGN_MAX_CHUNKS) so a large buyer
+    document is chunked and bounded exactly like a proposal document is
+    for Alignment -- no new chunking logic, no change to those functions.
+    """
+    bid_header = f"BID: {bid_info.get('title', '')} | CLIENT: {bid_info.get('client', '')}"
+    req_lines = []
+    for r in current_requirements:
+        req_lines.append(
+            f"[{r.get('category', '')}] {r.get('req_id', '')}: {(r.get('description') or '')[:200]} "
+            f"(weight: {r.get('weight')}, rfso_ref: {r.get('rfso_ref')})"
+        )
+    current_requirements_block = "\n".join(req_lines) if req_lines else "No requirements currently governed."
+
+    all_proposals: list[dict] = []
+    for doc in review_documents:
+        text = doc.get("text") or ""
+        if not text.strip():
+            continue
+        sections = _merge_and_size_bound_sections(_split_proposal_into_sections(text))
+        if not sections:
+            continue
+        if len(sections) > _ALIGN_MAX_CHUNKS:
+            idx = _even_stride_sample_indices(len(sections), _ALIGN_MAX_CHUNKS)
+            sections = [sections[i] for i in idx]
+
+        for i, chunk in enumerate(sections):
+            chunk_label = f"{chunk['heading']} (part {i + 1}/{len(sections)})"
+            prompt = _procurement_change_prompt(
+                bid_header, current_requirements_block, buyer_update_type,
+                chunk["text"], chunk_label, doc.get("filename", ""),
+            )
+            try:
+                raw = _call(_PROCUREMENT_CHANGE_SYSTEM, prompt, max_tokens=2500)
+                parsed = _parse_json(raw)
+            except Exception:
+                continue
+            if not isinstance(parsed, dict) or parsed.get("_truncated"):
+                continue
+            proposals = parsed.get("proposals")
+            if not isinstance(proposals, list):
+                continue
+
+            for p in proposals:
+                if not isinstance(p, dict):
+                    continue
+                p = dict(p)
+                evidence = p.get("extraction_evidence") or {}
+                sources = evidence.get("sources") if isinstance(evidence, dict) else None
+                if isinstance(sources, list):
+                    for s in sources:
+                        if isinstance(s, dict):
+                            s["document_id"] = doc.get("document_id")
+                            s["document_hash"] = doc.get("content_hash")
+                p["extraction_evidence"] = evidence
+                p["source_document_id"] = doc.get("document_id")
+                p["source_document_hash"] = doc.get("content_hash")
+                if not p.get("physical_source_ref"):
+                    p["physical_source_ref"] = f"{doc.get('filename', '')} — {chunk_label}"
+                all_proposals.append(p)
+
+    return all_proposals

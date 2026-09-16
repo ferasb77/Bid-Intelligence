@@ -210,7 +210,48 @@ def _poll_active_analysis(bid_id: int) -> None:
     _render_active_run_progress(bid_id)
 
 
-def _render_fast_analysis_panel(bid_id: int, rfp_docs: list):
+def _render_fast_analysis_governance_note(run: dict, procurement_state: dict) -> None:
+    """Migration 010 follow-up correction: a completed run's own stamped
+    based_on_procurement_revision/unreviewed_document_count. NULL means
+    the run predates procurement-revision tracking (basis unknown) -- it
+    is never displayed as revision 1 or as 0 documents outstanding. An
+    ungoverned bid's stronger message takes precedence over an ordinary
+    stale-revision comparison, matching procurement_staleness_banner."""
+    based_on = run.get("based_on_procurement_revision")
+    unreviewed = run.get("unreviewed_document_count")
+    truth_status = procurement_state.get("procurement_truth_status", "ungoverned")
+    current_revision = procurement_state.get("procurement_revision", 1)
+
+    if truth_status != "governed":
+        st.markdown(
+            '<div class="warn-box">⚠️ Procurement truth has not yet been governed -- this run is advisory '
+            'only and may reflect an unverified initial extraction.</div>', unsafe_allow_html=True)
+    elif based_on is None:
+        st.markdown(
+            '<div class="warn-box">⚠️ Procurement revision basis is unknown for this run — it predates '
+            'procurement-revision tracking. Re-analysis is required before treating it as current.</div>',
+            unsafe_allow_html=True)
+    elif based_on != current_revision:
+        st.markdown(
+            f'<div class="warn-box">⚠️ This run was based on procurement revision {based_on}; the current '
+            f'revision is {current_revision}. Re-run Fast Analysis to reflect the latest procurement truth.</div>',
+            unsafe_allow_html=True)
+
+    if unreviewed is None:
+        st.markdown(
+            '<div style="font-size:.78rem;color:#6E6C66">Unreviewed-document basis is unknown for this run.</div>',
+            unsafe_allow_html=True)
+    elif unreviewed > 0:
+        st.markdown(
+            f'<div class="warn-box">⚠️ {unreviewed} corpus document(s) have not yet been through a governed '
+            'review — this output is advisory only.</div>', unsafe_allow_html=True)
+    else:
+        st.markdown(
+            '<div style="font-size:.78rem;color:#27AE60">✅ Every corpus document is covered by a governed review.</div>',
+            unsafe_allow_html=True)
+
+
+def _render_fast_analysis_panel(bid_id: int, rfp_docs: list, procurement_state: dict):
     """Status + start/retry UI for the Fast Analysis engine. Goes through
     analysis_service.py exclusively; never touches fast_analysis.py or the
     report adapters directly. The active/non-terminal case is delegated to
@@ -243,6 +284,7 @@ def _render_fast_analysis_panel(bid_id: int, rfp_docs: list):
             f'{f" in {duration:.0f}s" if isinstance(duration, (int, float)) else ""} '
             f'— see the <strong>UNDERSTAND</strong> stage for the intelligence report.</div>',
             unsafe_allow_html=True)
+        _render_fast_analysis_governance_note(run, procurement_state)
         c1, c2 = st.columns(2)
         if run.get("report_storage_path"):
             pdf_bytes = _download_stored_file(run["report_storage_path"])
@@ -292,8 +334,323 @@ def _start_fast_analysis(bid_id: int):
         st.error(f"Could not start Fast Analysis: {e}")
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# PROCUREMENT REVISION & ADDENDUM GOVERNANCE (migration 010)
+# ═════════════════════════════════════════════════════════════════════════════
+# "Establish Procurement Baseline" (ungoverned bids) and "Procurement
+# Documents & Addenda" (governed bids) -- the human-reviewed workflow that
+# makes procurement truth an explicitly governed process instead of the
+# silent, unreviewed extraction the CDA-AMC audit found. Every write here
+# goes through tenancy.py's governance wrappers, which themselves call
+# only the migration-010 SECURITY DEFINER RPCs -- this module never writes
+# to requirements/bid_briefs/procurement_changes directly. No material
+# change is ever auto-approved; Apply is only ever reachable once every
+# proposed change for the review has an explicit human decision. Document
+# selection only ever shows names/types -- raw Storage bytes are never
+# surfaced to the browser (extraction happens server-side inside
+# tenancy.propose_procurement_changes_for_organization()).
+
+_GOVERNANCE_BUYER_UPDATE_TYPES = [
+    "Bulletin", "Addendum", "Amendment", "Clarification/Q&A",
+    "Revised Schedule", "Revised Pricing Form", "Revised Submission Form", "Other",
+]
+_DOCUMENT_ROLES = ["primary", "supporting", "replacement", "attachment"]
+
+
+def _current_user_id() -> str | None:
+    session = auth_session.current_session()
+    return (session or {}).get("user_id")
+
+
+def _governance_llm_ready() -> bool:
+    return bool(st.session_state.get("anthropic_api_key")) or api_key_configured()
+
+
+def _render_document_role_picker(bid_id: int, organization_id: str, docs: list, key_prefix: str):
+    """Shared step-1 widget for both baseline and buyer-update workflows:
+    upload new buyer document(s) and/or select from already-registered
+    'RFP / Source' documents, then assign each selected document a role.
+    Returns (document_ids, document_roles) once the selection is valid
+    (>=1 document, exactly one primary); otherwise None. Only ever shows a
+    document's name/type/version -- never a preview or download of its
+    bytes."""
+    up_files = st.file_uploader(
+        "Upload new buyer document(s)", accept_multiple_files=True,
+        type=["pdf", "docx", "doc", "xlsx", "txt"], key=f"{key_prefix}_upload_{bid_id}",
+    )
+    if up_files and st.button("⬆ Add uploaded file(s) to the document registry",
+                               key=f"{key_prefix}_upload_btn_{bid_id}"):
+        for uf in up_files:
+            tenancy.upload_document_for_organization(
+                bid_id, organization_id, uf.name, uf.read(), doc_type="RFP / Source")
+        st.success(f"{len(up_files)} document(s) uploaded.")
+        st.rerun()
+
+    rfp_docs = [d for d in docs if d.get("doc_type") == "RFP / Source"]
+    if not rfp_docs:
+        st.markdown(
+            '<div class="info-box">No RFP / Source documents are in the registry yet -- upload at '
+            'least one above.</div>', unsafe_allow_html=True)
+        return None
+
+    options = {f"{d['name']} (v{d.get('version', 1)})": d["id"] for d in rfp_docs}
+    selected_labels = st.multiselect(
+        "Documents in this review", list(options.keys()), key=f"{key_prefix}_select_{bid_id}")
+    if not selected_labels:
+        return None
+
+    st.markdown('<div style="font-size:.8rem;color:#A9A69D;margin-top:.4rem">'
+                'Assign a role to each selected document — exactly one must be Primary.</div>',
+                unsafe_allow_html=True)
+    roles = {}
+    for label in selected_labels:
+        doc_id = options[label]
+        default_idx = 0 if len(selected_labels) == 1 else 0
+        roles[doc_id] = st.selectbox(label, _DOCUMENT_ROLES, index=default_idx,
+                                     key=f"{key_prefix}_role_{bid_id}_{doc_id}")
+
+    primary_count = sum(1 for r in roles.values() if r == "primary")
+    if primary_count != 1:
+        st.markdown(
+            f'<div class="warn-box">Exactly one selected document must be marked Primary '
+            f'(currently {primary_count}).</div>', unsafe_allow_html=True)
+        return None
+
+    return list(roles.keys()), list(roles.values())
+
+
+def _render_change_proposal_row(change: dict, bid_id: int, organization_id: str, key_prefix: str) -> None:
+    """One proposed change: entity, current vs. proposed value, change
+    type, canonical effect (always shown, called out specifically for
+    CLARIFIED rows), physical source, and an evidence-excerpt expander
+    (text only, never raw file bytes). Renders Approve/Reject for a
+    pending row, or the recorded decision otherwise. Never auto-approves
+    -- the only way review_decision changes is an explicit button click
+    routed through tenancy.record_change_review_decision_for_organization,
+    which stamps the real authenticated user id, never auth.uid()."""
+    change_type = change.get("change_type", "")
+    canonical_effect = change.get("canonical_effect", "")
+    prev = change.get("previous_value") or {}
+    new = change.get("new_value") or {}
+    effect_color = "#E67E22" if canonical_effect == "canonical_change" else "#6E6C66"
+    effect_label = "CANONICAL CHANGE" if canonical_effect == "canonical_change" else "EVIDENCE ONLY — no truth change"
+    decision = change.get("review_decision", "pending")
+
+    st.markdown(
+        f'<div style="background:#111118;border:1px solid #292832;border-left:3px solid {effect_color};'
+        f'border-radius:0 4px 4px 0;padding:.7rem 1rem;margin:.4rem 0">'
+        f'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem">'
+        f'<span style="font-weight:600;color:#EDEAE3">{(change.get("entity_type") or "requirement").replace("_"," ").title()} '
+        f'— {change.get("entity_id") or "New"}</span>'
+        f'<span style="background:{effect_color};color:#0B0B0F;padding:.15rem .55rem;border-radius:3px;'
+        f'font-size:.68rem;font-weight:700;white-space:nowrap">{change_type} · {effect_label}</span>'
+        f'</div>'
+        + ('<div style="font-size:.72rem;color:#C9A96E;margin-top:.35rem">⚠ Clarification — confirm whether '
+           'this is CANONICAL CHANGE (changes how the requirement is interpreted going forward) or EVIDENCE '
+           'ONLY (confirms existing truth, no change) before approving.</div>' if change_type == "CLARIFIED" else '')
+        + f'<div style="display:flex;gap:1.2rem;margin-top:.5rem;flex-wrap:wrap">'
+        f'<div style="flex:1;min-width:200px"><div style="font-size:.72rem;color:#A9A69D;text-transform:uppercase">Current value</div>'
+        f'<div style="font-size:.84rem">{prev.get("description") or "— (new)"}</div></div>'
+        f'<div style="flex:1;min-width:200px"><div style="font-size:.72rem;color:#A9A69D;text-transform:uppercase">Proposed value</div>'
+        f'<div style="font-size:.84rem;color:#EDEAE3">{new.get("description") or "—"}</div></div>'
+        f'</div>'
+        + (f'<div style="font-size:.72rem;color:#6E6C66;margin-top:.4rem">Source: {change["physical_source_ref"]}</div>'
+           if change.get("physical_source_ref") else '')
+        + '</div>',
+        unsafe_allow_html=True,
+    )
+
+    evidence = change.get("extraction_evidence") or {}
+    sources = evidence.get("sources") if isinstance(evidence, dict) else None
+    if sources:
+        with st.expander("🔎 View evidence excerpt", expanded=False):
+            for s in sources:
+                if not isinstance(s, dict):
+                    continue
+                loc = f"page {s['page']}" if s.get("page") else (s.get("section") or "")
+                st.markdown(f"**{loc or 'Source excerpt'}**")
+                if s.get("excerpt"):
+                    st.markdown(f"> {s['excerpt']}")
+
+    if decision == "pending":
+        c_approve, c_reject = st.columns(2)
+        if c_approve.button("✅ Approve", key=f"{key_prefix}_approve_{change['id']}", use_container_width=True):
+            tenancy.record_change_review_decision_for_organization(
+                bid_id, organization_id, change["id"], "approved", _current_user_id())
+            st.rerun()
+        if c_reject.button("❌ Reject", key=f"{key_prefix}_reject_{change['id']}", use_container_width=True):
+            tenancy.record_change_review_decision_for_organization(
+                bid_id, organization_id, change["id"], "rejected", _current_user_id())
+            st.rerun()
+    else:
+        badge_color = "#27AE60" if decision == "approved" else "#C0392B"
+        st.markdown(f'<span style="color:{badge_color};font-size:.78rem;font-weight:600">'
+                    f'Decision: {decision.upper()}</span>', unsafe_allow_html=True)
+
+
+def _render_review_decision_and_apply(bid_id: int, organization_id: str, review: dict, key_prefix: str) -> None:
+    """Step 5-9 (baseline) / 4-8 (buyer update) shared across both review
+    kinds: list every proposed change with its decision control, then a
+    governed Apply gated on zero remaining pending decisions."""
+    changes = tenancy.get_procurement_changes_for_organization(bid_id, organization_id, review["id"])
+    if not changes:
+        st.markdown('<div class="info-box">Analysis found no material or confirmable facts in the '
+                    'selected document(s).</div>', unsafe_allow_html=True)
+        return
+
+    st.markdown(f"**{len(changes)} proposed fact(s) from this document set**")
+    for change in changes:
+        _render_change_proposal_row(change, bid_id, organization_id, key_prefix)
+
+    pending_count = sum(1 for c in changes if c.get("review_decision") == "pending")
+    approved_count = sum(1 for c in changes if c.get("review_decision") == "approved")
+    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+    if pending_count:
+        st.markdown(f'<div class="info-box">{pending_count} decision(s) still pending — '
+                    f'Apply unlocks once every proposal has been approved or rejected.</div>',
+                    unsafe_allow_html=True)
+    if st.button("🔒 Apply — commit governed procurement truth", key=f"{key_prefix}_apply_{review['id']}",
+                 type="primary", disabled=pending_count > 0, use_container_width=True):
+        try:
+            result = tenancy.apply_procurement_update_review_for_organization(
+                bid_id, organization_id, review["id"], review.get("base_procurement_revision"),
+                _current_user_id(),
+            )
+            st.session_state[f"{key_prefix}_apply_result_{bid_id}"] = result
+            st.rerun()
+        except Exception as e:
+            reason = str(e)
+            if "no_approved_material_proposal" in reason:
+                st.error("At least one proposal must be approved before this review can be applied.")
+            elif "stale_revision" in reason:
+                st.error("Procurement truth changed since this review was created. Refresh and start again.")
+            else:
+                st.error(f"Apply failed: {reason}")
+
+    applied = st.session_state.pop(f"{key_prefix}_apply_result_{bid_id}", None)
+    if applied is not None:
+        st.markdown(
+            f'<div class="info-box">✅ Procurement truth is now <strong>governed</strong>. '
+            f'Resulting procurement revision: <strong>{applied.get("resulting_revision")}</strong> '
+            f'({applied.get("applied_change_count", 0)} change(s) applied).</div>',
+            unsafe_allow_html=True)
+
+
+def _render_baseline_workflow(bid_id: int, organization_id: str, docs: list, revision: int) -> None:
+    """Establish Procurement Baseline (ungoverned bids)."""
+    st.markdown("### 🏛️ Establish Procurement Baseline")
+    st.markdown(
+        '<div class="warn-box">⚠ <strong>Procurement truth is not yet governed.</strong> The intelligence '
+        'shown on this page comes from an unreviewed initial extraction. Establish a governed baseline below '
+        'so a human confirms it before it is relied on.</div>', unsafe_allow_html=True)
+
+    reviews = tenancy.get_procurement_update_reviews_for_organization(bid_id, organization_id)
+    active = next((r for r in reviews if r["review_kind"] == "baseline"
+                   and r["status"] in ("ready_for_review", "reviewed")), None)
+    failed = next((r for r in reviews if r["review_kind"] == "baseline" and r["status"] == "failed"), None)
+
+    if active:
+        st.markdown(f'<div style="font-size:.82rem;color:#A9A69D">Baseline review #{active["id"]} — '
+                    f'awaiting human decisions.</div>', unsafe_allow_html=True)
+        _render_review_decision_and_apply(bid_id, organization_id, active, "baseline")
+        return
+
+    if failed:
+        st.markdown(f'<div class="warn-box">The last baseline analysis failed: '
+                    f'{failed.get("review_note") or "unknown error"}. You may start a new one below.</div>',
+                    unsafe_allow_html=True)
+
+    picker = _render_document_role_picker(bid_id, organization_id, docs, "baseline")
+    if not picker:
+        return
+    document_ids, document_roles = picker
+
+    if not _governance_llm_ready():
+        st.error("Add your Anthropic API key first (see New Bid page or Settings) to run baseline analysis.")
+        return
+
+    if st.button("🏛️ Create Baseline Review & Analyze", key=f"baseline_create_{bid_id}", type="primary"):
+        try:
+            created = tenancy.create_procurement_update_review_for_organization(
+                bid_id, organization_id, "baseline", document_ids, document_roles,
+                buyer_update_type="Original RFP",
+            )
+            review_id = created.get("review_id")
+            with st.spinner("Analyzing selected document(s) against the extracted compliance matrix…"):
+                tenancy.propose_procurement_changes_for_organization(bid_id, organization_id, review_id)
+            st.rerun()
+        except Exception as e:
+            st.error(f"Could not create/analyze baseline review: {e}")
+
+
+def _render_buyer_update_workflow(bid_id: int, organization_id: str, docs: list, revision: int) -> None:
+    """Procurement Documents & Addenda (governed bids)."""
+    st.markdown("### 📬 Procurement Documents & Addenda")
+    st.markdown(
+        f'<div style="font-size:.82rem;color:#A9A69D">Procurement truth is governed — current revision '
+        f'<strong>{revision}</strong>. Use this to incorporate a buyer-issued bulletin, addendum, amendment, '
+        f'or clarification against the CURRENT governed truth.</div>', unsafe_allow_html=True)
+
+    reviews = tenancy.get_procurement_update_reviews_for_organization(bid_id, organization_id)
+    active = next((r for r in reviews if r["review_kind"] == "buyer_update"
+                   and r["status"] in ("ready_for_review", "reviewed")), None)
+    failed = next((r for r in reviews if r["review_kind"] == "buyer_update" and r["status"] == "failed"), None)
+
+    if active:
+        st.markdown(
+            f'<div style="font-size:.82rem;color:#A9A69D">Buyer update review #{active["id"]} '
+            f'({active.get("buyer_update_type") or "—"}) — awaiting human decisions.</div>',
+            unsafe_allow_html=True)
+        _render_review_decision_and_apply(bid_id, organization_id, active, "buyer_update")
+        return
+
+    if failed:
+        st.markdown(f'<div class="warn-box">The last buyer-update analysis failed: '
+                    f'{failed.get("review_note") or "unknown error"}. You may start a new one below.</div>',
+                    unsafe_allow_html=True)
+
+    with st.expander("📬 Incorporate a buyer-issued update document", expanded=False):
+        update_type = st.selectbox("Update type", _GOVERNANCE_BUYER_UPDATE_TYPES, key=f"buyer_update_type_{bid_id}")
+        picker = _render_document_role_picker(bid_id, organization_id, docs, "buyer_update")
+        if not picker:
+            return
+        document_ids, document_roles = picker
+
+        if not _governance_llm_ready():
+            st.error("Add your Anthropic API key first (see New Bid page or Settings) to run this analysis.")
+            return
+
+        if st.button("📬 Create Update Review & Analyze", key=f"buyer_update_create_{bid_id}", type="primary"):
+            try:
+                created = tenancy.create_procurement_update_review_for_organization(
+                    bid_id, organization_id, "buyer_update", document_ids, document_roles,
+                    buyer_update_type=update_type,
+                )
+                review_id = created.get("review_id")
+                with st.spinner("Analyzing against CURRENT governed procurement truth…"):
+                    tenancy.propose_procurement_changes_for_organization(bid_id, organization_id, review_id)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Could not create/analyze update review: {e}")
+
+
+def _render_procurement_governance_panel(bid_id: int, organization_id: str, docs: list) -> dict:
+    """Returns the fetched procurement_state so callers elsewhere on this
+    page (the Fast Analysis panel) don't need a second, redundant fetch."""
+    state = tenancy.get_procurement_state_for_organization(bid_id, organization_id)
+    truth_status = state.get("procurement_truth_status", "ungoverned")
+    revision = state.get("procurement_revision", 1)
+
+    if truth_status == "governed":
+        _render_buyer_update_workflow(bid_id, organization_id, docs, revision)
+    else:
+        _render_baseline_workflow(bid_id, organization_id, docs, revision)
+
+    return state
+
+
 def page_understand(bid_id: int):
-    _token, _ = _current_access_token_and_org()
+    _token, _org_id = _current_access_token_and_org()
     bid = tenancy.get_bid_authenticated(_token, bid_id)
     if not bid:
         st.error("Opportunity not found.")
@@ -332,6 +689,14 @@ def page_understand(bid_id: int):
 
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
 
+    # ── PROCUREMENT REVISION & ADDENDUM GOVERNANCE (migration 010) ───────────
+    # Rendered before everything else on this page: whether procurement
+    # truth is governed shapes how much trust the rest of the page's
+    # intelligence deserves (an ungoverned bid must never visually imply
+    # its revision 1 is verified truth).
+    procurement_state = _render_procurement_governance_panel(bid_id, _org_id, docs)
+    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+
     # ── TOP KPI SUMMARY CARDS ──────────────────────────────────────────────────
     sub_days = days_until(bid.get("submission_deadline"))
     clar_days = days_until(bid.get("clarification_deadline"))
@@ -351,7 +716,7 @@ def page_understand(bid_id: int):
     # section further down, which continues to render only once a run is
     # COMPLETE.
     rfp_docs = [d for d in docs if d.get("doc_type") == "RFP / Source"]
-    _render_fast_analysis_panel(bid_id, rfp_docs)
+    _render_fast_analysis_panel(bid_id, rfp_docs, procurement_state)
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
     # ── SECTION A0: CROSS-DOCUMENT CONFLICTS & DISCREPANCIES ──────────────────

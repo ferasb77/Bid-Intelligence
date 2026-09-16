@@ -145,7 +145,8 @@ def list_bids_for_organization(organization_id: str) -> list[dict]:
     )
     for b in bids:
         b["id"] = int(b["id"])
-        reqs = sb.table("requirements").select("id,status").eq("bid_id", b["id"]).execute().data or []
+        reqs = (sb.table("requirements").select("id,status").eq("bid_id", b["id"])
+                .eq("lifecycle_status", "active").execute().data or [])
         tasks = sb.table("tasks").select("id,status").eq("bid_id", b["id"]).execute().data or []
         b["req_count"] = len(reqs)
         b["req_done"] = sum(1 for r in reqs if r["status"] == "Complete")
@@ -311,9 +312,201 @@ def save_bid_brief_for_organization(
     """Authorization boundary in front of database.upsert_bid_brief().
     `bid_briefs` is category B (select-only via RLS; writes stay
     server-side alongside the analysis pipeline that normally produces
-    them) -- tenant-authorized immediately before the privileged call."""
+    them) -- tenant-authorized immediately before the privileged call.
+
+    NOTE (migration 010): this remains the intake-wizard's own write path
+    (app.py's RFP-extraction review screen, synthesize_bid_brief() ->
+    save_bid_brief_for_organization()) -- a brand-new bid has no
+    procurement-revision history yet, so its first bid_briefs write is
+    not "divergence" the way Fast Analysis's REPEATED unconditional
+    overwrite was. Fast Analysis itself no longer calls this path at all
+    (see analysis_service.py) -- bid_briefs is a governed projection,
+    rebuilt only inside apply_procurement_update_review()/
+    resolve_procurement_conflict()'s own transaction from that point
+    forward."""
     require_bid_access(bid_id, organization_id)
     db.upsert_bid_brief(data)
+
+
+# ── Procurement Revision & Addendum Governance (migration 010) ─────────────
+# Every function below is an authorization boundary in front of one of
+# database.py's governed RPC wrappers -- require_bid_access() runs FIRST,
+# before any privileged/service-role call, exactly like every other
+# wrapper in this section. The RPCs themselves additionally re-validate
+# the actor belongs to the target organization (defense in depth, per
+# migration 010's own design) -- this wrapper is the primary application-
+# level gate, not a decorative one.
+
+def get_procurement_state_for_organization(bid_id: int, organization_id: str) -> dict:
+    require_bid_access(bid_id, organization_id)
+    return db.get_bid_procurement_state(bid_id)
+
+
+def get_procurement_update_reviews_for_organization(bid_id: int, organization_id: str) -> list[dict]:
+    require_bid_access(bid_id, organization_id)
+    return db.get_procurement_update_reviews(bid_id)
+
+
+def get_procurement_changes_for_organization(bid_id: int, organization_id: str, review_id: int) -> list[dict]:
+    require_bid_access(bid_id, organization_id)
+    changes = db.get_procurement_changes(review_id)
+    # Defense in depth: never return a change row that doesn't actually
+    # belong to this bid, even if review_id were somehow mismatched.
+    return [c for c in changes if int(c.get("bid_id", -1)) == int(bid_id)]
+
+
+def get_procurement_conflicts_for_organization(
+    bid_id: int, organization_id: str, status: str | None = None
+) -> list[dict]:
+    require_bid_access(bid_id, organization_id)
+    return db.get_procurement_conflicts(bid_id, status=status)
+
+
+def create_procurement_update_review_for_organization(
+    bid_id: int, organization_id: str, review_kind: str,
+    document_ids: list[int], document_roles: list[str],
+    buyer_update_type: str | None = None, buyer_issued_date: str | None = None,
+    conflict_id: int | None = None, idempotency_key: str | None = None,
+) -> dict:
+    require_bid_access(bid_id, organization_id)
+    return db.create_procurement_update_review(
+        bid_id, organization_id, review_kind, document_ids, document_roles,
+        buyer_update_type=buyer_update_type, buyer_issued_date=buyer_issued_date,
+        conflict_id=conflict_id, idempotency_key=idempotency_key,
+    )
+
+
+def propose_procurement_changes_for_organization(
+    bid_id: int, organization_id: str, review_id: int, api_key: str | None = None
+) -> list[dict]:
+    """Authorization boundary in front of the change-proposal analysis
+    step (analyst.propose_procurement_changes() -- pure LLM-proposal
+    function, never writes to the database itself). This wrapper is what
+    actually persists the resulting proposals as pending
+    procurement_changes rows and transitions the review to
+    'ready_for_review' -- the LLM function itself has no database access
+    at all (see analyst.py)."""
+    require_bid_access(bid_id, organization_id)
+    reviews = [r for r in db.get_procurement_update_reviews(bid_id)
+               if r["id"] == review_id and int(r.get("bid_id", -1)) == int(bid_id)]
+    if not reviews:
+        raise AccessDeniedError(f"review {review_id} does not belong to bid {bid_id}")
+    review = reviews[0]
+    review_docs = db.get_client().table("procurement_update_review_documents").select(
+        "document_id,role"
+    ).eq("review_id", review_id).execute().data or []
+    documents = db.get_documents(bid_id)
+    docs_by_id = {d["id"]: d for d in documents}
+    review_documents = []
+    for rd in review_docs:
+        doc = docs_by_id.get(rd["document_id"])
+        if not doc:
+            continue
+        storage_path = doc.get("storage_path")
+        file_bytes = db.download_file(storage_path) if storage_path else None
+        text = ""
+        if file_bytes:
+            from extractor import extract_text_from_file
+            text = extract_text_from_file(file_bytes, doc["name"])
+        review_documents.append({
+            "document_id": doc["id"], "filename": doc["name"],
+            "content_hash": doc.get("content_hash"), "role": rd["role"], "text": text,
+        })
+
+    current_requirements = db.get_requirements(bid_id)
+    bid = db.get_bid(bid_id)
+    # analyst.propose_procurement_changes is a pure LLM function with no
+    # database access -- it only ever knows a requirement by its
+    # human-readable req_id (entity_id), never the internal bigint primary
+    # key. Resolving that to target_requirement_id is this wrapper's job:
+    # without it, apply_procurement_update_review()'s MODIFIED/SUPERSEDED/
+    # REMOVED/UNCHANGED branches (which all key off target_requirement_id)
+    # would silently no-op on every approved change against an EXISTING
+    # requirement.
+    req_id_to_pk = {r.get("req_id"): r.get("id") for r in current_requirements if r.get("req_id")}
+
+    try:
+        import analyst
+        proposals = analyst.propose_procurement_changes(
+            review_documents=review_documents,
+            current_requirements=current_requirements,
+            bid_info=bid or {},
+            buyer_update_type=review.get("buyer_update_type") or "Original RFP",
+        )
+
+        rows = []
+        for p in proposals:
+            entity_type = p.get("entity_type", "requirement")
+            change_type = p.get("change_type", "UNCHANGED")
+            target_requirement_id = p.get("target_requirement_id")
+            if entity_type == "requirement" and change_type != "ADDED" and target_requirement_id is None:
+                target_requirement_id = req_id_to_pk.get(p.get("entity_id"))
+            rows.append({
+                "review_id": review_id, "bid_id": bid_id, "organization_id": organization_id,
+                "review_decision": "pending",
+                "source_document_id": p.get("source_document_id"),
+                "source_document_hash": p.get("source_document_hash"),
+                "physical_source_ref": p.get("physical_source_ref"),
+                "entity_type": entity_type,
+                "entity_id": p.get("entity_id"),
+                "target_requirement_id": target_requirement_id,
+                "related_requirement_ids": p.get("related_requirement_ids"),
+                "change_type": change_type,
+                "canonical_effect": p.get("canonical_effect", "evidence_only"),
+                "previous_value": p.get("previous_value"),
+                "new_value": p.get("new_value"),
+                "extraction_evidence": p.get("extraction_evidence"),
+                "proposed_by": "system",
+            })
+
+        db.insert_proposed_procurement_changes(rows)
+        db.mark_review_ready_for_review(review_id)
+        return proposals
+    except Exception as e:
+        # Analysis-failure-only terminal state (never left stuck in
+        # 'analyzing' with no recovery path) -- matches
+        # analysis_service._execute_fast_analysis_run's own
+        # never-stuck-non-terminal guarantee.
+        db.mark_review_failed(review_id, str(e)[:500])
+        raise
+
+
+def record_change_review_decision_for_organization(
+    bid_id: int, organization_id: str, change_id: int, decision: str,
+    actor_user_id: str, review_note: str | None = None,
+) -> None:
+    require_bid_access(bid_id, organization_id)
+    changes = [c for c in db.get_client().table("procurement_changes").select("id,bid_id")
+               .eq("id", change_id).execute().data or [] if int(c["bid_id"]) == int(bid_id)]
+    if not changes:
+        raise AccessDeniedError(f"change {change_id} does not belong to bid {bid_id}")
+    db.record_change_review_decision(change_id, decision, actor_user_id, review_note=review_note)
+
+
+def apply_procurement_update_review_for_organization(
+    bid_id: int, organization_id: str, review_id: int,
+    expected_base_revision: int, actor_user_id: str,
+) -> dict:
+    require_bid_access(bid_id, organization_id)
+    reviews = [r for r in db.get_procurement_update_reviews(bid_id)
+               if r["id"] == review_id and int(r.get("bid_id", -1)) == int(bid_id)]
+    if not reviews:
+        raise AccessDeniedError(f"review {review_id} does not belong to bid {bid_id}")
+    return db.apply_procurement_update_review(review_id, expected_base_revision, actor_user_id)
+
+
+def resolve_procurement_conflict_for_organization(
+    bid_id: int, organization_id: str, conflict_id: int, expected_base_revision: int,
+    resolution_value: dict, resolution_reason: str, actor_user_id: str,
+) -> dict:
+    require_bid_access(bid_id, organization_id)
+    conflicts = [c for c in db.get_procurement_conflicts(bid_id)
+                 if c["id"] == conflict_id and int(c.get("bid_id", -1)) == int(bid_id)]
+    if not conflicts:
+        raise AccessDeniedError(f"conflict {conflict_id} does not belong to bid {bid_id}")
+    return db.resolve_procurement_conflict(
+        conflict_id, expected_base_revision, resolution_value, resolution_reason, actor_user_id
+    )
 
 
 # ── Authenticated user-scoped reads (Phase 8 remediation package 3, ─────
@@ -353,7 +546,8 @@ def list_bids_authenticated(access_token: str) -> list[dict]:
     )
     for b in rows:
         b["id"] = int(b["id"])
-        reqs = client.table("requirements").select("id,status").eq("bid_id", b["id"]).execute().data or []
+        reqs = (client.table("requirements").select("id,status").eq("bid_id", b["id"])
+                .eq("lifecycle_status", "active").execute().data or [])
         tasks = client.table("tasks").select("id,status").eq("bid_id", b["id"]).execute().data or []
         b["req_count"] = len(reqs)
         b["req_done"] = sum(1 for r in reqs if r["status"] == "Complete")
@@ -505,16 +699,30 @@ def get_latest_analysis_result_authenticated(
 
 
 # ── requirements (category A: full CRUD) ─────────────────────────────────
-def get_requirements_authenticated(access_token: str, bid_id: int) -> list[dict]:
+def get_requirements_authenticated(access_token: str, bid_id: int, include_retired: bool = False) -> list[dict]:
+    """Migration 010: current-truth reads default to lifecycle_status=
+    'active' only -- see database.get_requirements()'s docstring for the
+    full rationale (a superseded/removed requirement must never silently
+    continue affecting DECIDE/CHECK/SUBMIT scoring or the compliance
+    matrix). include_retired=True is for an explicit history/audit view."""
     client = auth_client.get_authenticated_client(access_token)
-    return (
-        client.table("requirements").select("*").eq("bid_id", bid_id)
-        .order("category").order("req_id").execute().data or []
-    )
+    query = client.table("requirements").select("*").eq("bid_id", bid_id)
+    if not include_retired:
+        query = query.eq("lifecycle_status", "active")
+    return query.order("category").order("req_id").execute().data or []
 
 
 def upsert_requirement_authenticated(access_token: str, data: dict) -> None:
+    """Category A (RLS-only, no explicit require_bid_access -- Postgres RLS
+    itself is the access boundary for the write below). The canonical-field
+    governance guard is still service-role plumbing, not a privilege
+    escalation: it only READS bids.procurement_truth_status to decide
+    whether to allow the write, mirroring database.upsert_requirement()'s
+    own guard (see db._guard_canonical_requirement_write's docstring) --
+    the actual write still goes through the caller's own RLS-scoped
+    `client`, never the service client."""
     client = auth_client.get_authenticated_client(access_token)
+    db._guard_canonical_requirement_write(db.get_client(), data)
     keys_with_integrity = ["req_id", "category", "description", "rfso_ref", "weight",
                            "evidence", "owner", "deadline", "status", "notes",
                            "qual_status", "gap_action", "qual_notes",
@@ -552,6 +760,13 @@ def upsert_requirement_authenticated(access_token: str, data: dict) -> None:
 
 
 def delete_requirement_authenticated(access_token: str, req_id: int) -> None:
+    sb = db.get_client()
+    row = db._one(sb.table("requirements").select("bid_id").eq("id", req_id).execute())
+    if row and db._bid_is_governed(sb, row.get("bid_id")):
+        raise db.GovernedRequirementMutationError(
+            "This bid's procurement truth is already governed -- requirements can only be retired "
+            "through a governed procurement review (Procurement Documents & Addenda), never deleted directly."
+        )
     auth_client.get_authenticated_client(access_token).table("requirements").delete().eq("id", req_id).execute()
 
 
@@ -824,7 +1039,8 @@ def get_readiness_authenticated(access_token: str, bid_id: int) -> dict:
     authenticated-select-only (category B) -- all three reads here use
     the same authenticated client, identical aggregation logic."""
     client = auth_client.get_authenticated_client(access_token)
-    reqs = client.table("requirements").select("category,status").eq("bid_id", bid_id).execute().data or []
+    reqs = (client.table("requirements").select("category,status").eq("bid_id", bid_id)
+            .eq("lifecycle_status", "active").execute().data or [])
     tsks = client.table("tasks").select("status").eq("bid_id", bid_id).execute().data or []
     docs = client.table("documents").select("doc_type,status").eq("bid_id", bid_id).execute().data or []
     mand = [r for r in reqs if r["category"] == "Mandatory"]

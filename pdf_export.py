@@ -149,6 +149,26 @@ def generate_compliance_pdf(bid: dict, requirements: list) -> bytes:
     story = []
     cover_header(story, bid, "Proposal Compliance Matrix")
 
+    # Procurement Revision & Addendum Governance (migration 010): the
+    # matrix below is always the live/current compliance matrix by
+    # construction (a governed apply retires/adds requirements in place),
+    # so there is nothing to compare against here -- only the governance
+    # status itself needs surfacing, so an ungoverned bid never visually
+    # implies its (unverified) revision 1 is verified procurement truth.
+    truth_status = bid.get("procurement_truth_status", "ungoverned")
+    story.append(Paragraph(
+        f"Procurement revision: {bid.get('procurement_revision', '—')}"
+        f"     |     Governance status: {'Governed' if truth_status == 'governed' else 'Ungoverned (not yet baselined)'}",
+        STYLES["meta"]
+    ))
+    if truth_status != "governed":
+        story.append(Spacer(1, 1*mm))
+        story.append(Paragraph(
+            "⚠  No baseline procurement review has been completed for this opportunity — this matrix may "
+            "reflect an unverified initial extraction, not human-reviewed procurement truth.",
+            STYLES["warn"]))
+    story.append(Spacer(1, 2*mm))
+
     # Scorecard
     story.append(_scorecard(requirements))
 

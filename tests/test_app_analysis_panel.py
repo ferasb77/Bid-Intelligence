@@ -180,9 +180,13 @@ class TestFastAnalysisPanelReachability(unittest.TestCase):
 
     @patch("streamlit.markdown")
     @patch("streamlit.expander")
+    @patch("streamlit.file_uploader", return_value=None)
     @patch("streamlit.button", return_value=False)
     @patch("streamlit.columns", side_effect=lambda spec, *a, **k: [unittest.mock.MagicMock()
                                                                      for _ in range(spec if isinstance(spec, int) else len(spec))])
+    @patch("pages.stage_understand.tenancy.get_procurement_update_reviews_for_organization", return_value=[])
+    @patch("pages.stage_understand.tenancy.get_procurement_state_for_organization",
+           return_value={"procurement_revision": 1, "procurement_truth_status": "governed"})
     @patch("pages.stage_understand.tenancy.get_latest_analysis_result_authenticated", return_value=None)
     @patch("pages.stage_understand.tenancy.get_latest_analysis_run_authenticated", return_value=None)
     @patch("pages.stage_understand.tenancy.get_documents_authenticated")
@@ -192,7 +196,8 @@ class TestFastAnalysisPanelReachability(unittest.TestCase):
     @patch("pages.stage_understand._current_access_token_and_org", return_value=_FAKE_TOKEN_AND_ORG)
     def test_page_understand_actually_calls_the_fast_analysis_panel(
             self, mock_token_org, mock_get_bid, mock_get_brief, mock_get_reqs, mock_get_docs,
-            mock_get_run, mock_get_result, mock_columns, mock_button, mock_expander, mock_markdown):
+            mock_get_run, mock_get_result, mock_procurement_state, mock_procurement_reviews,
+            mock_columns, mock_button, mock_file_uploader, mock_expander, mock_markdown):
         mock_get_bid.return_value = {
             "id": 1, "client": "Test Buyer", "title": "Test RFP", "stage": "Identified",
             "sensitivity": "Standard", "submission_deadline": None, "clarification_deadline": None,

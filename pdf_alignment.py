@@ -562,6 +562,51 @@ def generate_alignment_audit_pdf(bid: dict, align_result: dict, proposal_filenam
         "commercial requirements — not a re-read of the physical tender documents during this run.",
         "note"
     ))
+
+    # Procurement Revision & Addendum Governance (migration 010): `bid` is
+    # fetched fresh at PDF-generation time, so its procurement_revision/
+    # procurement_truth_status are CURRENT as of right now -- while
+    # align_result["based_on_procurement_revision"] was stamped at the
+    # moment this audit was actually run (stage_check.py). A mismatch
+    # means a buyer update or conflict resolution has been applied to the
+    # compliance matrix since this audit ran, and it should be re-run.
+    current_revision = bid.get("procurement_revision")
+    truth_status = bid.get("procurement_truth_status", "ungoverned")
+    based_on_revision = align_result.get("based_on_procurement_revision")
+    governance_line = (
+        f"Procurement revision used: {based_on_revision if based_on_revision is not None else '—'}"
+        f"     |     Current procurement revision: {current_revision if current_revision is not None else '—'}"
+        f"     |     Governance status: {'Governed' if truth_status == 'governed' else 'Ungoverned (not yet baselined)'}"
+    )
+    story.append(Spacer(1, 2 * mm))
+    story.append(pp(governance_line, "meta"))
+    if truth_status != "governed":
+        story.append(Spacer(1, 1.5 * mm))
+        story.append(pp(
+            "⚠ No baseline procurement review has been completed for this opportunity — the compliance "
+            "matrix audited above may reflect an unverified initial extraction, not human-reviewed "
+            "procurement truth.",
+            "warn"
+        ))
+    elif based_on_revision is None:
+        # NULL means this audit predates procurement-revision tracking (or
+        # was never stamped) -- never displayed as if it matched the
+        # current revision just because the comparison below would
+        # otherwise be skipped.
+        story.append(Spacer(1, 1.5 * mm))
+        story.append(pp(
+            "⚠ Procurement revision basis is unknown for this audit — it predates procurement-revision "
+            "tracking. Re-run this audit before treating it as current.",
+            "warn"
+        ))
+    elif current_revision is not None and based_on_revision != current_revision:
+        story.append(Spacer(1, 1.5 * mm))
+        story.append(pp(
+            f"⚠ STALE: this audit was run against procurement revision {based_on_revision}, but the current "
+            f"procurement revision is {current_revision}. A buyer update or conflict resolution has been "
+            "applied since — re-run this audit before relying on it.",
+            "warn"
+        ))
     story.append(Spacer(1, 3 * mm))
     story.append(HRFlowable(width="100%", thickness=0.5, color=C_GREY_3, spaceAfter=4 * mm))
 

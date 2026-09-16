@@ -192,18 +192,31 @@ class TestAnalysisLifecycleSuccess(unittest.TestCase):
     @patch("analysis_service.db")
     @patch("analysis_service.extract_document_with_metadata")
     @patch("analysis_service.run_fast_analysis_corpus")
-    def test_bid_brief_projection_is_upserted_on_completion(self, mock_run, mock_extract, mock_db):
+    def test_bid_brief_is_never_written_and_run_is_stamped_with_governance_state(self, mock_run, mock_extract, mock_db):
+        """Fast Analysis is advisory-only (migration 010): it must never
+        establish canonical bid_briefs truth, and must instead stamp the
+        run with the procurement revision it ran against and how many
+        corpus documents are not yet covered by a governed review."""
         mock_db.download_file.return_value = b"fake pdf bytes"
         mock_extract.return_value = ("parsed document text", {})
         mock_run.return_value = _sample_fast_result()
         mock_db.upload_analysis_report.return_value = "path.pdf"
+        mock_db.get_bid_procurement_state.return_value = {
+            "procurement_revision": 3, "procurement_truth_status": "governed",
+        }
+        mock_db.get_reviewed_document_hashes.return_value = {(10, "hash-a")}
 
-        svc._execute_fast_analysis_run(run_id=1, bid_id=55, docs=_sample_docs(bid_id=55), api_key="fake")
+        docs = _sample_docs(bid_id=55)
+        docs[0]["content_hash"] = "hash-b"  # not in the reviewed set -> unreviewed
+        svc._execute_fast_analysis_run(run_id=1, bid_id=55, docs=docs, api_key="fake")
 
-        mock_db.upsert_bid_brief.assert_called_once()
-        payload = mock_db.upsert_bid_brief.call_args[0][0]
-        self.assertEqual(payload["bid_id"], 55)
-        self.assertIn("executive_summary", payload)
+        mock_db.upsert_bid_brief.assert_not_called()
+
+        complete_call = [c for c in mock_db.update_analysis_run.call_args_list
+                         if c.args[1].get("status") == "COMPLETE"][0]
+        payload = complete_call.args[1]
+        self.assertEqual(payload["based_on_procurement_revision"], 3)
+        self.assertEqual(payload["unreviewed_document_count"], 1)
 
     @patch("analysis_service.db")
     @patch("analysis_service.extract_document_with_metadata")

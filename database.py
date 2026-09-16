@@ -65,7 +65,8 @@ def get_all_bids():
     bids = _rows(sb.table("bids").select("*").order("submission_deadline").execute())
     for b in bids:
         b["id"] = int(b["id"])
-        reqs  = _rows(sb.table("requirements").select("id,status").eq("bid_id", b["id"]).execute())
+        reqs  = _rows(sb.table("requirements").select("id,status").eq("bid_id", b["id"])
+                      .eq("lifecycle_status", "active").execute())
         tasks = _rows(sb.table("tasks").select("id,status").eq("bid_id", b["id"]).execute())
         b["req_count"]  = len(reqs)
         b["req_done"]   = sum(1 for r in reqs if r["status"]=="Complete")
@@ -143,10 +144,89 @@ def delete_bid(bid_id):
     get_client().table("bids").delete().eq("id", bid_id).execute()
 
 # ── Requirements ──────────────────────────────────────────────────────────────
-def get_requirements(bid_id):
-    return _rows(get_client().table("requirements")
-                 .select("*").eq("bid_id", bid_id)
-                 .order("category").order("req_id").execute())
+def get_requirements(bid_id, include_retired: bool = False):
+    """Migration 010: current-truth reads default to lifecycle_status='active'
+    only -- a superseded/removed requirement (retired via a governed
+    procurement_changes apply) must never silently continue participating
+    in scoring, qualification gates, or compliance display. Pass
+    include_retired=True only for an explicit history/audit view that
+    genuinely wants to see retired rows too."""
+    query = get_client().table("requirements").select("*").eq("bid_id", bid_id)
+    if not include_retired:
+        query = query.eq("lifecycle_status", "active")
+    return _rows(query.order("category").order("req_id").execute())
+
+class GovernedRequirementMutationError(Exception):
+    """Raised when a direct (non-governed) write would change a canonical
+    procurement-truth field on a requirement belonging to a bid whose
+    procurement_truth_status is 'governed'. Once governed, canonical
+    requirement facts (what the buyer's procurement actually requires) may
+    change only through the procurement-governance RPCs (migration 010) --
+    see tenancy.propose_procurement_changes_for_organization() /
+    apply_procurement_update_review_for_organization(). Supplier-side
+    assessment fields (qual_status, evidence_status, owner, gap_action,
+    qual_notes, status, deadline, notes) are never blocked -- they track
+    OUR compliance posture against an unchanged requirement, not the
+    requirement's own definition, and remain freely editable regardless of
+    governance state."""
+
+
+# The requirement fields that describe WHAT the buyer's procurement
+# actually requires -- exactly the fields apply_procurement_update_review()
+# writes for an ADDED/MODIFIED change (migration 010, PART 3). Any other
+# field on `requirements` is supplier-side/administrative and is never
+# gated by governance state.
+_CANONICAL_REQUIREMENT_FIELDS = {"description", "category", "rfso_ref", "weight"}
+
+
+def _bid_is_governed(sb, bid_id) -> bool:
+    if bid_id is None:
+        return False
+    row = _one(sb.table("bids").select("procurement_truth_status").eq("id", bid_id).execute())
+    return bool(row) and row.get("procurement_truth_status") == "governed"
+
+
+def _guard_canonical_requirement_write(sb, data: dict) -> None:
+    """Call before any direct (non-RPC) write to `requirements` that could
+    touch a canonical field. Resolves bid_id from the payload, or from the
+    target row when only an id is given (an UPDATE need not repeat bid_id).
+    No-ops if the bid is not yet governed (the legitimate
+    ungoverned-baseline-construction path).
+
+    Critically, for an UPDATE this compares against the CURRENT stored
+    value of each canonical field, not merely whether the key is PRESENT
+    in `data` -- the only live caller of upsert_requirement()
+    (stage_decide.py's Assess Requirement drawer) spreads the FULL
+    existing row (`**target_req`) and only actually intends to change
+    supplier-side assessment fields; description/category/rfso_ref/weight
+    are present in that payload, unchanged, on every single save. Treating
+    mere key-presence as an edit would incorrectly block that page's only
+    live requirement-editing UI the moment a bid becomes governed. A
+    brand-new INSERT (no `id`) has nothing to compare against, so any
+    canonical field supplied there is always a real write of that field."""
+    canonical_fields = _CANONICAL_REQUIREMENT_FIELDS & set(data.keys())
+    if not canonical_fields:
+        return
+    bid_id = data.get("bid_id")
+    req_id = data.get("id")
+    if req_id:
+        current = _one(sb.table("requirements").select(
+            "bid_id," + ",".join(sorted(_CANONICAL_REQUIREMENT_FIELDS))
+        ).eq("id", req_id).execute())
+        if not current:
+            return
+        if bid_id is None:
+            bid_id = current.get("bid_id")
+        canonical_fields = {f for f in canonical_fields if data.get(f) != current.get(f)}
+        if not canonical_fields:
+            return
+    if _bid_is_governed(sb, bid_id):
+        raise GovernedRequirementMutationError(
+            "This bid's procurement truth is already governed -- "
+            f"{sorted(canonical_fields)} can only change through a governed procurement review "
+            "(Procurement Documents & Addenda), not a direct edit."
+        )
+
 
 def format_requirement_payload(data, keys):
     """Format payload for requirements table. Preserves native list/dict for JSONB source_refs."""
@@ -163,6 +243,7 @@ def format_requirement_payload(data, keys):
 
 def upsert_requirement(data):
     sb = get_client()
+    _guard_canonical_requirement_write(sb, data)
     keys_with_integrity = ["req_id","category","description","rfso_ref","weight",
                            "evidence","owner","deadline","status","notes",
                            "qual_status","gap_action","qual_notes",
@@ -199,7 +280,14 @@ def upsert_requirement(data):
             raise
 
 def delete_requirement(req_id):
-    get_client().table("requirements").delete().eq("id", req_id).execute()
+    sb = get_client()
+    row = _one(sb.table("requirements").select("bid_id").eq("id", req_id).execute())
+    if row and _bid_is_governed(sb, row.get("bid_id")):
+        raise GovernedRequirementMutationError(
+            "This bid's procurement truth is already governed -- requirements can only be retired "
+            "through a governed procurement review (Procurement Documents & Addenda), never deleted directly."
+        )
+    sb.table("requirements").delete().eq("id", req_id).execute()
 
 # ── Tasks ─────────────────────────────────────────────────────────────────────
 def get_tasks(bid_id):
@@ -258,8 +346,17 @@ def create_expected_document(bid_id, name, doc_type, owner=None,
 
 def save_upload(bid_id, filename, file_bytes, doc_type="RFP / Source",
                 owner=None, doc_id=None):
-    """Upload file to Supabase Storage and create/update document record."""
+    """Upload file to Supabase Storage and create/update document record.
+    Migration 010: content_hash is computed server-side from the exact raw
+    uploaded bytes (never trusted from the browser) and persisted at
+    creation/upload time -- this is the ONLY place a NEW document's hash
+    is established. A re-upload against an existing doc_id (a genuinely
+    new version, different bytes) gets its own fresh hash; this is
+    distinct from ensure_document_hash()'s lazy legacy-document path,
+    which only ever fills a NULL hash for bytes that already existed
+    before migration 010 and never overwrites a hash once set."""
     sb = get_client()
+    content_hash = hash_document_bytes(file_bytes)
 
     # Build storage path
     import uuid
@@ -304,6 +401,7 @@ def save_upload(bid_id, filename, file_bytes, doc_type="RFP / Source",
                 "file_size": len(file_bytes),
                 "version": new_ver,
                 "status": "Uploaded",
+                "content_hash": content_hash,
             }).eq("id", doc_id).execute()
         return file_path, doc_id
     else:
@@ -313,6 +411,7 @@ def save_upload(bid_id, filename, file_bytes, doc_type="RFP / Source",
             "file_path": file_path, "storage_path": storage_path,
             "file_size": len(file_bytes), "version": 1,
             "status": "Uploaded",
+            "content_hash": content_hash,
         }).execute())
         new_id = int(row["id"]) if row else None
         return file_path, new_id
@@ -357,7 +456,8 @@ def delete_section(sec_id):
 # ── Readiness ─────────────────────────────────────────────────────────────────
 def get_readiness(bid_id):
     sb   = get_client()
-    reqs = _rows(sb.table("requirements").select("category,status").eq("bid_id", bid_id).execute())
+    reqs = _rows(sb.table("requirements").select("category,status").eq("bid_id", bid_id)
+                 .eq("lifecycle_status", "active").execute())
     tsks = _rows(sb.table("tasks").select("status").eq("bid_id", bid_id).execute())
     docs = _rows(sb.table("documents").select("doc_type,status").eq("bid_id", bid_id).execute())
     mand = [r for r in reqs if r["category"]=="Mandatory"]
@@ -761,4 +861,192 @@ def save_firm_profile(data: dict) -> None:
             sb.table("firm_profiles").insert(clean).execute()
     except Exception:
         pass
+
+
+# ── Procurement Revision & Addendum Governance (migration 010) ─────────────
+# Every WRITE below is a single call into one of migration 010's
+# SECURITY DEFINER RPCs -- this module never performs a sequence of
+# separate .update()/.insert() calls against the governance tables and
+# calls it transactional. All four RPCs are granted to service_role only
+# (REVOKE'd from authenticated/anon at the database level), matching this
+# module's own privileged-client contract -- tenancy.py's authorization
+# wrappers call these AFTER require_bid_access(), never before.
+
+def hash_document_bytes(file_bytes: bytes) -> str:
+    """SHA-256 of raw bytes -- the one place this hash is computed. Never
+    trust a browser-computed hash as authoritative."""
+    import hashlib
+    return hashlib.sha256(file_bytes).hexdigest()
+
+
+def ensure_document_hash(document_id: int) -> str | None:
+    """Server-side lazy hashing for a legacy document with a NULL
+    content_hash: download bytes through the existing authorized
+    service-role Storage path, compute SHA-256, persist ONLY if the
+    column is still NULL (never overwrite an existing hash -- if a
+    freshly-computed hash ever disagreed with an already-stored one for
+    the same document_id, that would mean the underlying bytes changed
+    out from under an existing hash, which is an integrity problem, not
+    something to silently paper over by replacing history). Returns the
+    resulting hash (existing or newly computed), or None if the document
+    has no storage_path / bytes could not be downloaded."""
+    sb = get_client()
+    row = _one(sb.table("documents").select("content_hash,storage_path").eq("id", document_id).execute())
+    if not row:
+        return None
+    if row.get("content_hash"):
+        return row["content_hash"]
+    storage_path = row.get("storage_path")
+    if not storage_path:
+        return None
+    file_bytes = download_file(storage_path)
+    if not file_bytes:
+        return None
+    new_hash = hash_document_bytes(file_bytes)
+    # Guard against a concurrent hashing race: only write if still NULL.
+    current = _one(sb.table("documents").select("content_hash").eq("id", document_id).execute())
+    if current and not current.get("content_hash"):
+        sb.table("documents").update({"content_hash": new_hash}).eq("id", document_id).execute()
+        return new_hash
+    return (current or {}).get("content_hash") or new_hash
+
+
+def create_procurement_update_review(
+    bid_id: int, organization_id: str, review_kind: str,
+    document_ids: list[int], document_roles: list[str],
+    buyer_update_type: str | None = None, buyer_issued_date: str | None = None,
+    conflict_id: int | None = None, idempotency_key: str | None = None,
+) -> dict:
+    """Calls migration 010's create_procurement_update_review RPC. For
+    baseline/buyer_update reviews, ensures every target document has a
+    content_hash BEFORE the RPC call (the RPC itself cannot reach Supabase
+    Storage -- see the RPC's own migration comment) -- this is the
+    Python-side pre-step that makes the RPC's document_not_ready
+    validation meaningful rather than a permanent blocker for legacy
+    documents."""
+    if review_kind in ("baseline", "buyer_update"):
+        for doc_id in document_ids:
+            ensure_document_hash(doc_id)
+    sb = get_client()
+    result = sb.rpc("create_procurement_update_review", {
+        "p_bid_id": bid_id, "p_organization_id": organization_id, "p_review_kind": review_kind,
+        "p_buyer_update_type": buyer_update_type, "p_buyer_issued_date": buyer_issued_date,
+        "p_document_ids": document_ids, "p_document_roles": document_roles,
+        "p_conflict_id": conflict_id, "p_idempotency_key": idempotency_key,
+    }).execute()
+    rows = result.data or []
+    return rows[0] if rows else {}
+
+
+def get_procurement_update_reviews(bid_id: int) -> list[dict]:
+    return _rows(get_client().table("procurement_update_reviews").select("*")
+                 .eq("bid_id", bid_id).order("created_at", desc=True).execute())
+
+
+def get_procurement_changes(review_id: int) -> list[dict]:
+    return _rows(get_client().table("procurement_changes").select("*")
+                 .eq("review_id", review_id).order("id").execute())
+
+
+def insert_proposed_procurement_changes(rows: list[dict]) -> None:
+    """Inserts LLM-proposed changes as review_decision='pending' rows --
+    the only field this function writes beyond what the proposal function
+    itself supplies. Never sets applied_at, never mutates canonical truth;
+    this is pure staging, an ordinary table insert (allowed for
+    service-role, matching every other write in this module) -- it is
+    NOT one of the four governed RPCs because it creates no canonical
+    effect by itself and is naturally paired with the review's own
+    'analyzing' -> 'ready_for_review' status transition."""
+    if not rows:
+        return
+    get_client().table("procurement_changes").insert(rows).execute()
+
+
+def mark_review_ready_for_review(review_id: int) -> None:
+    get_client().table("procurement_update_reviews").update(
+        {"status": "ready_for_review", "analyzed_at": _now_iso()}
+    ).eq("id", review_id).execute()
+
+
+def mark_review_failed(review_id: int, reason: str) -> None:
+    """Analysis-failure only -- never used to represent an apply failure
+    (an apply failure leaves the review row untouched; see migration
+    010's own comment on why 'failed' is reserved for proposal-generation
+    failure)."""
+    get_client().table("procurement_update_reviews").update(
+        {"status": "failed", "review_note": reason}
+    ).eq("id", review_id).execute()
+
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+def record_change_review_decision(
+    change_id: int, decision: str, actor_user_id: str | None, review_note: str | None = None
+) -> None:
+    get_client().rpc("record_change_review_decision", {
+        "p_change_id": change_id, "p_decision": decision,
+        "p_actor_user_id": actor_user_id, "p_review_note": review_note,
+    }).execute()
+
+
+def apply_procurement_update_review(
+    review_id: int, expected_base_revision: int, actor_user_id: str | None
+) -> dict:
+    result = get_client().rpc("apply_procurement_update_review", {
+        "p_review_id": review_id, "p_expected_base_revision": expected_base_revision,
+        "p_actor_user_id": actor_user_id,
+    }).execute()
+    rows = result.data or []
+    return rows[0] if rows else {}
+
+
+def get_procurement_conflicts(bid_id: int, status: str | None = None) -> list[dict]:
+    query = get_client().table("procurement_conflicts").select("*").eq("bid_id", bid_id)
+    if status:
+        query = query.eq("status", status)
+    return _rows(query.order("created_at").execute())
+
+
+def resolve_procurement_conflict(
+    conflict_id: int, expected_base_revision: int, resolution_value: dict,
+    resolution_reason: str, actor_user_id: str | None,
+) -> dict:
+    result = get_client().rpc("resolve_procurement_conflict", {
+        "p_conflict_id": conflict_id, "p_expected_base_revision": expected_base_revision,
+        "p_resolution_value": resolution_value, "p_resolution_reason": resolution_reason,
+        "p_actor_user_id": actor_user_id,
+    }).execute()
+    rows = result.data or []
+    return rows[0] if rows else {}
+
+
+def get_bid_procurement_state(bid_id: int) -> dict:
+    """{'procurement_revision': int, 'procurement_truth_status': str} for
+    the staleness banner -- a small, focused read, not a full bid fetch."""
+    row = _one(get_client().table("bids").select("procurement_revision,procurement_truth_status")
+               .eq("id", bid_id).execute())
+    return row or {"procurement_revision": 1, "procurement_truth_status": "ungoverned"}
+
+
+def get_reviewed_document_hashes(bid_id: int) -> set[tuple[int, str]]:
+    """(document_id, content_hash) pairs covered by at least one APPLIED
+    baseline/buyer_update review for this bid -- the set
+    analysis_runs.unreviewed_document_count (Fast Analysis advisory
+    staleness signal) is computed against. Conflict-resolution and
+    pending/failed reviews never count -- they establish no canonical
+    procurement truth for the document (per migration 010's review_kind
+    semantics)."""
+    sb = get_client()
+    reviews = _rows(sb.table("procurement_update_reviews").select("id")
+                     .eq("bid_id", bid_id).eq("status", "applied")
+                     .in_("review_kind", ["baseline", "buyer_update"]).execute())
+    review_ids = [r["id"] for r in reviews]
+    if not review_ids:
+        return set()
+    docs = _rows(sb.table("procurement_update_review_documents").select("document_id,document_hash")
+                 .in_("review_id", review_ids).execute())
+    return {(d["document_id"], d["document_hash"]) for d in docs if d.get("document_hash")}
 

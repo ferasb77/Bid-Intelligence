@@ -18,7 +18,7 @@ from analyst import (analyze_proposal_alignment_package, missing_evidence,
 from extractor import build_alignment_submission_package, summarize_submission_package, build_report_manifest
 from config import api_key_configured
 from components.ui import (qual_badge, evidence_badge, status_badge, readiness_bar,
-                           metric_card, QUAL_STATUSES)
+                           metric_card, procurement_staleness_banner, QUAL_STATUSES)
 from requirement_semantics import select_qualification_requirements
 from pdf_alignment import generate_alignment_audit_pdf
 
@@ -202,6 +202,13 @@ def page_check(bid_id: int):
     st.markdown(f'<div style="font-size:1rem;color:#A9A69D">{bid["client"]} — {bid["title"]}</div>', unsafe_allow_html=True)
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
 
+    procurement_state = tenancy.get_procurement_state_for_organization(bid_id, _org_id)
+    banner_html = procurement_staleness_banner(
+        procurement_state, context_label="The compliance matrix used on this page",
+    )
+    if banner_html:
+        st.markdown(banner_html, unsafe_allow_html=True)
+
     brief_row = tenancy.get_bid_brief_authenticated(_token, bid_id) or {}
     raw_q_gates = brief_row.get("qualification_gates")
     qual_gates = []
@@ -312,6 +319,13 @@ def page_check(bid_id: int):
                             rfp_text=procurement_context,
                             bid_info=bid
                         )
+                        # Stamped at analysis time (migration 010) so the
+                        # exported PDF can later compare "what revision was
+                        # this audit run against" to whatever the bid's
+                        # procurement_revision has become by download time,
+                        # even though `reqs` itself is always the live/
+                        # current compliance matrix by construction.
+                        align_res["based_on_procurement_revision"] = procurement_state.get("procurement_revision")
                         st.session_state[_align_result_key(bid_id)] = align_res
                         # Frozen, SLIM snapshot of the package manifest AS IT
                         # WAS AUDITED -- the manifest shown in the exported

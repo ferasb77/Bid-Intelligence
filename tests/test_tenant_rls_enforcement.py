@@ -399,6 +399,9 @@ def _mock_authenticated_client_for(table_data: dict):
         m.select.return_value.order.return_value.execute.return_value = MagicMock(data=data)
         m.select.return_value.eq.return_value.execute.return_value = MagicMock(data=data)
         m.select.return_value.eq.return_value.order.return_value.execute.return_value = MagicMock(data=data)
+        # Migration 010: requirements/readiness reads chain a second
+        # .eq("lifecycle_status", "active") onto the bid_id filter.
+        m.select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(data=data)
         return m
 
     client.table.side_effect = table_side_effect

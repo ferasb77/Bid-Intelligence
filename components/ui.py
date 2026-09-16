@@ -243,6 +243,67 @@ def metric_card(label, value, sub="", color=None):
       {"<div class='sub'>"+sub+"</div>" if sub else ""}
     </div>"""
 
+# Sentinel default for `based_on_revision`: distinguishes "this artifact
+# has no stored revision-basis concept at all" (the default -- e.g. CHECK's
+# live-read compliance matrix, which is always current by construction, so
+# there is nothing to compare) from an explicit `None`, which means "this
+# artifact DOES have a based_on_procurement_revision column, and its
+# stored value is NULL" -- a historical row that predates procurement-
+# revision tracking, never treated as current just because None == None
+# would otherwise short-circuit the comparison.
+_NO_REVISION_BASIS_TRACKED = object()
+
+
+def procurement_staleness_banner(procurement_state: dict, based_on_revision=_NO_REVISION_BASIS_TRACKED,
+                                  context_label: str = "This page") -> str:
+    """Shared governance/staleness banner for DECIDE and CHECK (migration
+    010). `procurement_state` is {'procurement_revision', 'procurement_truth_status'}
+    from tenancy.get_procurement_state_for_organization() -- an 'ungoverned'
+    bid must never visually imply its (unverified) revision 1 is verified
+    truth; that stronger message always takes precedence over an ordinary
+    stale-revision comparison below.
+
+    `based_on_revision`:
+      - omitted (default): this artifact has no stored revision-basis
+        concept (nothing to compare) -- only the ungoverned check applies.
+      - explicit None: the artifact DOES track a basis, and its stored
+        value is NULL (predates tracking / never recorded) -- rendered as
+        "basis unknown", never treated as current.
+      - an int: compared against the CURRENT revision to detect drift
+        caused by a buyer update or conflict resolution applied since.
+
+    Returns "" when nothing is stale."""
+    current_revision = procurement_state.get("procurement_revision", 1)
+    truth_status = procurement_state.get("procurement_truth_status", "ungoverned")
+    if truth_status != "governed":
+        return (
+            '<div class="warn-box">'
+            '⚠️ <strong>PROCUREMENT TRUTH NOT YET GOVERNED:</strong> No baseline procurement review has been '
+            f'completed for this opportunity. {context_label} may reflect an unverified initial extraction, '
+            'not a human-reviewed procurement baseline. Establish a baseline review before relying on it.'
+            '</div>'
+        )
+    if based_on_revision is _NO_REVISION_BASIS_TRACKED:
+        return ""
+    if based_on_revision is None:
+        return (
+            '<div class="warn-box">'
+            f'⚠️ <strong>PROCUREMENT REVISION BASIS UNKNOWN:</strong> {context_label} predates procurement-'
+            'revision tracking, or its basis was never recorded. Re-analysis is required before treating it '
+            'as current.'
+            '</div>'
+        )
+    if based_on_revision != current_revision:
+        return (
+            '<div class="warn-box">'
+            f'⚠️ <strong>STALE — PROCUREMENT TRUTH HAS CHANGED:</strong> {context_label} is based on procurement '
+            f'revision {based_on_revision}. The current procurement revision is {current_revision} '
+            '(a buyer update or conflict resolution was applied since). Re-analysis is required.'
+            '</div>'
+        )
+    return ""
+
+
 def days_until(deadline_str):
     if not deadline_str:
         return None
