@@ -17,6 +17,7 @@ import re
 import csv
 import json
 import time
+import hashlib
 import zipfile
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
@@ -734,14 +735,67 @@ def extract_text_from_file(file_bytes: bytes, filename: str) -> str:
 
 # ── PACKAGE UNPACKING WITH SECURITY CONTROLS ──────────────────────────────────
 
+# Defensive ZIP limits shared by every ZIP-consuming entry point in this
+# module. Checked against ZipInfo metadata (file_size / compress_size)
+# BEFORE any entry is decompressed, so a hostile archive never gets to
+# spend memory/CPU before being rejected.
+_ZIP_MAX_ENTRY_COUNT = 50
+_ZIP_MAX_INDIVIDUAL_UNCOMPRESSED_BYTES = 25 * 1024 * 1024   # 25 MB / file
+_ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES = 100 * 1024 * 1024        # 100 MB / package
+_ZIP_MAX_COMPRESSION_RATIO = 100                               # bomb heuristic
+
+_WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:[\\/]")
+
+
+def _zip_entry_path_is_unsafe(entry_name: str) -> str | None:
+    """entry_name must already have backslashes normalized to '/'.
+    Returns a short rejection reason, or None if the path is safe."""
+    if entry_name.startswith("//") or entry_name.startswith("\\\\"):
+        return "UNC path"
+    if entry_name.startswith("/"):
+        return "absolute path"
+    if _WINDOWS_DRIVE_RE.match(entry_name):
+        return "Windows drive path"
+    if ".." in entry_name.split("/"):
+        return "path traversal"
+    return None
+
+
+def _zip_archive_entry_count_exceeded(z: "zipfile.ZipFile") -> str | None:
+    n_real_entries = sum(1 for e in z.infolist() if not e.is_dir())
+    if n_real_entries > _ZIP_MAX_ENTRY_COUNT:
+        return f"archive contains {n_real_entries} entries, exceeding the maximum of {_ZIP_MAX_ENTRY_COUNT}"
+    return None
+
+
+def _zip_entry_exceeds_limits(entry: "zipfile.ZipInfo", running_total_bytes: int) -> str | None:
+    if entry.file_size > _ZIP_MAX_INDIVIDUAL_UNCOMPRESSED_BYTES:
+        mb = _ZIP_MAX_INDIVIDUAL_UNCOMPRESSED_BYTES // (1024 * 1024)
+        return f"exceeds the maximum individual uncompressed file size ({mb} MB)"
+    if running_total_bytes + entry.file_size > _ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES:
+        mb = _ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES // (1024 * 1024)
+        return f"would exceed the maximum total uncompressed package size ({mb} MB)"
+    if entry.compress_size > 0 and (entry.file_size / entry.compress_size) > _ZIP_MAX_COMPRESSION_RATIO:
+        ratio = entry.file_size / entry.compress_size
+        return f"suspicious compression ratio ({ratio:.0f}:1) -- rejected as a possible compression bomb"
+    return None
+
+
 def unpack_procurement_package(raw_files: list[tuple[str, bytes]]) -> tuple[list[tuple[str, bytes]], list[str]]:
     """
     Unpack uploaded files, safely extracting ZIP archives.
-    Rejects path traversal (e.g. ../ or absolute paths), filters unsupported binaries (.exe, .bin)
-    and legacy unsupported office formats (.doc), returning (supported_files, warnings).
+    Rejects path traversal (../, ..\\, absolute paths, Windows drive paths,
+    UNC paths), enforces defensive ZIP limits (entry count, per-file and
+    total uncompressed size, compression ratio -- all checked before any
+    entry is decompressed), filters unsupported binaries (.exe, .bin),
+    legacy unsupported office formats (.doc), and nested ZIPs (unsupported
+    in this version), returning (supported_files, warnings).
     """
     supported_extensions = {".pdf", ".docx", ".xlsx", ".xls", ".csv", ".txt", ".md"}
-    unsupported_legacy = {".doc"}
+    unsupported_legacy = {".doc": "Convert to modern .docx format.",
+                           ".ppt": "Legacy PowerPoint (.ppt) is unsupported in this version.",
+                           ".pptx": "PPTX is unsupported in this version.",
+                           ".zip": "Nested ZIP archives are unsupported in this version."}
     unpacked = []
     warnings = []
 
@@ -752,15 +806,21 @@ def unpack_procurement_package(raw_files: list[tuple[str, bytes]]) -> tuple[list
         if lower_name.endswith(".zip"):
             try:
                 with zipfile.ZipFile(io.BytesIO(fbytes)) as z:
+                    count_error = _zip_archive_entry_count_exceeded(z)
+                    if count_error:
+                        warnings.append(f"Rejected ZIP archive {fname_clean}: {count_error}.")
+                        continue
+
+                    running_total = 0
                     for entry in z.infolist():
                         if entry.is_dir():
                             continue
-                        
+
                         entry_name = entry.filename.replace("\\", "/")
-                        
-                        # Security Check: Reject path traversal
-                        if entry_name.startswith("/") or ".." in entry_name.split("/"):
-                            warnings.append(f"Security Alert: Skipped unsafe file path in archive: {entry_name}")
+
+                        unsafe_reason = _zip_entry_path_is_unsafe(entry_name)
+                        if unsafe_reason:
+                            warnings.append(f"Security Alert: Skipped unsafe file path in archive ({unsafe_reason}): {entry_name}")
                             continue
 
                         # Skip hidden OS files
@@ -768,11 +828,17 @@ def unpack_procurement_package(raw_files: list[tuple[str, bytes]]) -> tuple[list
                         if base_entry.startswith(".") or entry_name.startswith("__MACOSX"):
                             continue
 
+                        limit_reason = _zip_entry_exceeds_limits(entry, running_total)
+                        if limit_reason:
+                            warnings.append(f"Skipped '{base_entry}' in archive: {limit_reason}.")
+                            continue
+
                         ext = os.path.splitext(base_entry)[1].lower()
                         if ext in supported_extensions:
+                            running_total += entry.file_size
                             unpacked.append((base_entry, z.read(entry.filename)))
                         elif ext in unsupported_legacy:
-                            warnings.append(f"Skipped legacy format '{base_entry}'. Convert to modern .docx / .xlsx format.")
+                            warnings.append(f"Skipped unsupported file '{base_entry}': {unsupported_legacy[ext]}")
                         else:
                             warnings.append(f"Ignored unsupported file in archive: {base_entry}")
             except Exception as e:
@@ -782,7 +848,7 @@ def unpack_procurement_package(raw_files: list[tuple[str, bytes]]) -> tuple[list
             if ext in supported_extensions:
                 unpacked.append((fname_clean, fbytes))
             elif ext in unsupported_legacy:
-                warnings.append(f"Skipped legacy format '{fname_clean}'. Convert to modern .docx / .xlsx format.")
+                warnings.append(f"Skipped unsupported file '{fname_clean}': {unsupported_legacy[ext]}")
             else:
                 warnings.append(f"Ignored unsupported file: {fname_clean}")
 
@@ -796,6 +862,285 @@ def unpack_procurement_package(raw_files: list[tuple[str, bytes]]) -> tuple[list
                 warnings.extend(xls_meta.get("warnings", []))
 
     return unpacked, warnings
+
+
+# ── SUBMISSION PACKAGE ASSEMBLY (Proposal Alignment Analyzer) ────────────────
+# Package-aware variant used only by the Alignment Analyzer's multi-file
+# submission package. Unlike unpack_procurement_package() (used by the
+# tender-ingestion pipeline and many existing tests/scripts, whose
+# (filename, bytes) return contract is preserved untouched above), this
+# keeps the full in-package relative path distinct from the plain
+# filename, and surfaces every discovered entry (including rejected /
+# unsupported ones) so the caller can render a complete manifest instead
+# of only ever seeing what happened to succeed.
+
+_SUBMISSION_SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".xlsx", ".xls", ".csv", ".txt", ".md"}
+_SUBMISSION_EXPLICIT_UNSUPPORTED = {
+    ".doc": "Legacy Word (.doc) is unsupported in this version. Convert to .docx.",
+    ".ppt": "Legacy PowerPoint (.ppt) is unsupported in this version.",
+    ".pptx": "PPTX is unsupported in this version.",
+    ".zip": "Nested ZIP archives are unsupported in this version.",
+}
+
+
+def unpack_submission_package(raw_files: list[tuple[str, bytes]]) -> list[dict]:
+    """Flattens direct uploads and .zip packages into entries for the
+    Alignment Analyzer's Submission Package. Each entry:
+      {"filename", "package_path", "bytes", "status", "reason", "occurrence_index"}
+    "status" is a ZIP/discovery-layer concern only: "ok" | "unsupported" |
+    "rejected". Extraction success/failure and duplicate detection are
+    decided by the caller (build_alignment_submission_package) -- this
+    function's job is only safe, complete discovery, never silent drops.
+
+    "occurrence_index" is a strictly increasing counter over every entry
+    discovered, in discovery order (across every raw upload and every ZIP
+    member) -- it exists purely so build_alignment_submission_package()
+    can derive a file_id that is unique per OCCURRENCE even when two
+    entries share both the same package_path AND identical bytes (e.g.
+    two separate direct uploads that both happen to be named
+    "Schedule C.xlsx", or two ZIP uploads that both happen to be named
+    "submission.zip" and both contain a root-level "Schedule C.xlsx").
+    package_path alone is not guaranteed unique across independent top-
+    level uploads, so it cannot be relied on as the sole disambiguator."""
+    entries: list[dict] = []
+
+    def _emit(filename: str, package_path: str, data: bytes, status: str, reason: str | None) -> None:
+        entries.append({
+            "filename": filename, "package_path": package_path, "bytes": data,
+            "status": status, "reason": reason, "occurrence_index": len(entries),
+        })
+
+    for fname, fbytes in raw_files:
+        fname_clean = os.path.basename(fname.strip())
+        lower_name = fname_clean.lower()
+
+        if lower_name.endswith(".zip"):
+            try:
+                with zipfile.ZipFile(io.BytesIO(fbytes)) as z:
+                    count_error = _zip_archive_entry_count_exceeded(z)
+                    if count_error:
+                        _emit(fname_clean, fname_clean, b"", "rejected", f"ZIP rejected: {count_error}.")
+                        continue
+
+                    running_total = 0
+                    for entry in z.infolist():
+                        if entry.is_dir():
+                            continue
+
+                        entry_name = entry.filename.replace("\\", "/")
+                        base_entry = os.path.basename(entry_name)
+                        if base_entry.startswith(".") or entry_name.startswith("__MACOSX"):
+                            continue
+
+                        package_path = f"{fname_clean}/{entry_name}"
+
+                        unsafe_reason = _zip_entry_path_is_unsafe(entry_name)
+                        if unsafe_reason:
+                            _emit(base_entry or entry_name, package_path, b"", "rejected",
+                                  f"Security: rejected unsafe path in archive ({unsafe_reason}).")
+                            continue
+
+                        limit_reason = _zip_entry_exceeds_limits(entry, running_total)
+                        if limit_reason:
+                            _emit(base_entry, package_path, b"", "rejected", f"Skipped: {limit_reason}.")
+                            continue
+
+                        ext = os.path.splitext(base_entry)[1].lower()
+                        if ext in _SUBMISSION_SUPPORTED_EXTENSIONS:
+                            running_total += entry.file_size
+                            _emit(base_entry, package_path, z.read(entry.filename), "ok", None)
+                        elif ext in _SUBMISSION_EXPLICIT_UNSUPPORTED:
+                            _emit(base_entry, package_path, b"", "unsupported", _SUBMISSION_EXPLICIT_UNSUPPORTED[ext])
+                        else:
+                            _emit(base_entry, package_path, b"", "unsupported", f"Unsupported file type '{ext or 'unknown'}'.")
+            except Exception as e:
+                _emit(fname_clean, fname_clean, b"", "rejected", f"Failed to open ZIP archive: {e}")
+        else:
+            ext = os.path.splitext(fname_clean)[1].lower()
+            if ext in _SUBMISSION_SUPPORTED_EXTENSIONS:
+                _emit(fname_clean, fname_clean, fbytes, "ok", None)
+            elif ext in _SUBMISSION_EXPLICIT_UNSUPPORTED:
+                _emit(fname_clean, fname_clean, b"", "unsupported", _SUBMISSION_EXPLICIT_UNSUPPORTED[ext])
+            else:
+                _emit(fname_clean, fname_clean, b"", "unsupported", f"Unsupported file type '{ext or 'unknown'}'.")
+
+    return entries
+
+
+_EXTRACTION_FAILURE_MARKERS = (
+    "[DOCX parsing failed:",
+    "[XLSX parsing failed:",
+    "[XLS parsing failed:",
+    "[XLS workbook contains no readable cell values]",
+    "[Unsupported file format",
+)
+_SOURCE_MARKER_RE = re.compile(r"\[\[SOURCE:[^\]]*\]\]")
+
+
+def _extraction_failure_reason(text: str, meta: dict) -> str | None:
+    """Deterministic, non-guessing failure classification for one
+    extracted file. Returns None when the extraction produced usable
+    content; otherwise a short human-readable reason -- never fabricated,
+    always derived from the extractor's own reported status/markers."""
+    if meta.get("unsupported"):
+        return "Unsupported file format."
+    if meta.get("type") == "xls" and meta.get("parse_status") not in {"PARSED", "EMPTY_WORKBOOK"}:
+        xls_warnings = meta.get("warnings") or []
+        return xls_warnings[0] if xls_warnings else f"Legacy workbook could not be parsed ({meta.get('parse_status')})."
+    for marker in _EXTRACTION_FAILURE_MARKERS:
+        if marker in (text or ""):
+            return marker.strip("[]").strip()
+    body = _SOURCE_MARKER_RE.sub("", text or "").strip()
+    if not body:
+        return "No extractable text content was found in this file."
+    return None
+
+
+def build_alignment_submission_package(raw_files: list[tuple[str, bytes]]) -> dict:
+    """Full Submission Package assembly for the Proposal Alignment
+    Analyzer: ZIP-safe flattening (unpack_submission_package), stable
+    per-entry identity, byte-identical duplicate detection, and per-file
+    text extraction (extract_document_with_metadata) -- everything the
+    UI manifest and analyst.analyze_proposal_alignment_package() need.
+    Purely in-memory; performs no Storage or database writes.
+
+    Each file record: {"file_id", "content_hash", "filename",
+    "package_path", "file_type", "lifecycle_status" ("extracted"|
+    "failed"|"unsupported"|"rejected"|"duplicate"), "duplicate_of_
+    file_id", "text", "char_count", "analyzable", "unusable_reason",
+    "extraction_meta", "included", "role"}.
+
+    OCCURRENCE identity vs CONTENT identity are deliberately separate:
+
+      file_id = SHA256(occurrence_index \\0 package_path \\0 content_hash)
+      content_hash = SHA256(file_bytes)
+
+    file_id folds in unpack_submission_package()'s discovery-order
+    occurrence_index specifically so two SEPARATE occurrences can never
+    collide on file_id even when both package_path AND bytes happen to
+    match -- e.g. two direct uploads both named "Schedule C.xlsx" with
+    identical content, or two ZIP uploads both named "submission.zip"
+    that each contain a root-level "Schedule C.xlsx". package_path alone
+    is not guaranteed unique across independent top-level uploads, so it
+    cannot be trusted as the sole disambiguator; occurrence_index (a
+    strict discovery-order counter) always is. file_id is still fully
+    deterministic for a given, stable upload list (the same files in the
+    same order always reproduce the same file_ids), which is what
+    Streamlit widget keys need to stay stable across reruns that don't
+    change the upload set.
+
+    content_hash is used SOLELY for duplicate detection: the first
+    occurrence of a given content_hash is retained (lifecycle_status
+    "extracted"/"failed"/"unsupported" as appropriate); every later
+    occurrence with the same content_hash becomes lifecycle_status
+    "duplicate" with duplicate_of_file_id set to the retained
+    occurrence's own (unique) file_id -- never its own.
+    """
+    raw_entries = unpack_submission_package(raw_files)
+
+    files: list[dict] = []
+    seen_content_hashes: dict[str, dict] = {}
+
+    for entry in raw_entries:
+        fname = entry["filename"]
+        package_path = entry["package_path"]
+        fbytes = entry["bytes"]
+        file_type = os.path.splitext(fname)[1].lstrip(".").lower() or "unknown"
+        content_hash = hashlib.sha256(fbytes).hexdigest()
+        file_id = hashlib.sha256(
+            f"{entry['occurrence_index']}\x00{package_path}\x00{content_hash}".encode("utf-8", "surrogateescape")
+        ).hexdigest()[:24]
+
+        if entry["status"] in ("rejected", "unsupported"):
+            files.append({
+                "file_id": file_id, "content_hash": content_hash, "filename": fname, "package_path": package_path,
+                "file_type": file_type, "lifecycle_status": entry["status"],
+                "duplicate_of_file_id": None, "text": "", "char_count": 0,
+                "analyzable": False, "unusable_reason": entry["reason"],
+                "extraction_meta": {},
+            })
+            continue
+
+        dup_of = seen_content_hashes.get(content_hash)
+        if dup_of is not None:
+            files.append({
+                "file_id": file_id, "content_hash": content_hash, "filename": fname, "package_path": package_path,
+                "file_type": file_type, "lifecycle_status": "duplicate",
+                "duplicate_of_file_id": dup_of["file_id"], "text": "", "char_count": 0,
+                "analyzable": False,
+                "unusable_reason": f"Identical content already present as '{dup_of['package_path']}'.",
+                "extraction_meta": {},
+            })
+            continue
+
+        text, meta = extract_document_with_metadata(fbytes, fname)
+        failure_reason = _extraction_failure_reason(text, meta)
+        failed = failure_reason is not None
+        files.append({
+            "file_id": file_id, "content_hash": content_hash, "filename": fname, "package_path": package_path,
+            "file_type": file_type,
+            "lifecycle_status": "failed" if failed else "extracted",
+            "duplicate_of_file_id": None,
+            "text": "" if failed else text,
+            "char_count": 0 if failed else len(text),
+            "analyzable": not failed,
+            "unusable_reason": failure_reason,
+            "extraction_meta": meta,
+        })
+        seen_content_hashes[content_hash] = {"file_id": file_id, "package_path": package_path}
+
+    # Default include/exclude: duplicates carry no unique content (never
+    # "missing" -- excluding them can never hurt completeness), so they
+    # default excluded. Extracted/failed/unsupported files default
+    # INCLUDED -- a real, potentially-substantive submission item must be
+    # actively, visibly excluded by the user rather than silently vanish
+    # from the completeness calculus.
+    for f in files:
+        f["included"] = f["lifecycle_status"] in ("extracted", "failed", "unsupported")
+        f["role"] = None
+
+    extracted_files = [f for f in files if f["lifecycle_status"] == "extracted"]
+    primary_file_id = None
+    if len(extracted_files) == 1:
+        extracted_files[0]["role"] = "primary"
+        primary_file_id = extracted_files[0]["file_id"]
+
+    return {"files": files, "primary_file_id": primary_file_id}
+
+
+def summarize_submission_package(files: list[dict]) -> dict:
+    """Deterministic manifest summary metrics (item 6 / item 9): counts
+    only, safe to compute repeatedly for display without touching any
+    LLM or Storage call."""
+    return {
+        "files_supplied": len(files),
+        "files_included": sum(1 for f in files if f.get("included")),
+        "files_excluded": sum(1 for f in files if not f.get("included")),
+        "files_extracted": sum(1 for f in files if f.get("lifecycle_status") == "extracted"),
+        "files_unsupported": sum(1 for f in files if f.get("lifecycle_status") == "unsupported"),
+        "files_failed": sum(1 for f in files if f.get("lifecycle_status") == "failed"),
+        "files_duplicate": sum(1 for f in files if f.get("lifecycle_status") == "duplicate"),
+        "files_rejected": sum(1 for f in files if f.get("lifecycle_status") == "rejected"),
+    }
+
+
+_REPORT_MANIFEST_FIELDS = (
+    "file_id", "filename", "package_path", "file_type", "role", "included",
+    "lifecycle_status", "duplicate_of_file_id", "char_count", "unusable_reason",
+)
+
+
+def build_report_manifest(files: list[dict]) -> list[dict]:
+    """Slim, report-safe projection of a Submission Package's file list --
+    used for the frozen snapshot stored alongside an audit result
+    (pages/stage_check.py's align_result_package_snapshot_<bid_id>) and
+    for the exported PDF's manifest section. Deliberately excludes the
+    heavy payloads ("text", "extraction_meta") the live in-session
+    package carries for analysis -- the report only ever needs to know
+    WHAT was in the package and its status, never the extracted content
+    itself (that already went into the audit result's own findings/
+    coverage, which the report renders separately)."""
+    return [{k: f.get(k) for k in _REPORT_MANIFEST_FIELDS} for f in files]
 
 
 # ── SOURCE PROVENANCE VALIDATION ENGINE ───────────────────────────────────────

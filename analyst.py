@@ -704,24 +704,24 @@ _ALIGN_MIN_MERGE_CHARS = 2500
 # exactly across a window boundary is still visible to at least one chunk.
 _ALIGN_OVERLAP_CHARS = 400
 # Hard ceiling on chunks analyzed per audit -- bounds the worst-case call
-# count regardless of document size. Safe analysis ceiling:
-# 16 * 9,000 = 144,000 characters. The live 124,110-character example
-# that prompted this remediation fits fully under this ceiling (needs at
-# most ceil(124110 / (9000-400)) = 15 chunks even in the fixed-window
-# fallback, before any heading-based merging reduces that further) -- it
-# receives complete, not partial, coverage. A document beyond the
-# ceiling is analyzed via evenly-spaced representative sampling across
-# its full length (never just "the first N chunks"), and the shortfall
-# is disclosed honestly via coverage_metadata, never silently dropped.
+# count regardless of document (or, for a package, whole-package) size. A
+# single document beyond the ceiling is analyzed via evenly-spaced
+# representative sampling across its full length (never just "the first N
+# chunks"); a multi-file PACKAGE beyond the ceiling uses
+# _allocate_package_chunk_budget()'s fair, size-proportional allocation
+# across files instead of a single even stride (see that function). In
+# both cases the shortfall is disclosed honestly via coverage_metadata,
+# never silently dropped, and forces status="incomplete" (never a score
+# presented as though the sample were the whole submission).
 #
 # Call budget: 1 model call per analyzed chunk (with at most 1 bounded
 # retry for a chunk whose response fails validation) + 1 final bounded
-# narrative-synthesis call. For a typical 100k-150k character proposal
-# this is ceil(100000/8600)=12 to min(ceil(150000/8600), 16)=16 chunks,
-# i.e. 13-17 calls in the normal case; worst case (every chunk needs its
-# one retry) is bounded at 2 * 16 + 1 = 33 calls, regardless of how large
-# the source document is.
-_ALIGN_MAX_CHUNKS = 16
+# narrative-synthesis call. Raised from 16 to 24 chunks to accommodate a
+# genuine multi-document submission package (technical proposal +
+# schedules + CVs + declarations), not just one document -- worst case
+# (every chunk needs its one retry) is bounded at 2 * 24 + 1 = 49 calls,
+# regardless of how large or how many files the source package contains.
+_ALIGN_MAX_CHUNKS = 24
 # A requirement may only be concluded "Not Addressed" (vs "Cannot
 # Assess") when proposal coverage is at least this complete AND zero
 # chunks failed or were sampled out by the ceiling.
@@ -833,17 +833,63 @@ def _split_proposal_into_sections(text: str) -> list[dict]:
     return raw_sections
 
 
-def _merge_and_bound_sections(raw_sections: list[dict]) -> dict:
-    """Merges undersized adjacent sections, splits oversized ones to the
-    target chunk size, then applies the hard _ALIGN_MAX_CHUNKS ceiling
-    via even-stride sampling across the WHOLE document (never just the
-    first N chunks) -- a document beyond the safe ceiling still gets
-    representative, not front-loaded, coverage, and the shortfall is
-    recorded in `skipped_ranges` rather than silently dropped."""
-    if not raw_sections:
-        return {"chunks": [], "chars_total": 0, "skipped_ranges": []}
+_XLSX_SHEET_MARKER_RE = re.compile(
+    r"\[\[SOURCE:\s*(?P<file>[^|\]]+?)\s*\|\s*SHEET:\s*(?P<sheet>[^|\]]+?)\s*\|\s*ROWS:\s*[\d]+-[\d]+\]\]\n"
+)
 
-    chars_total = raw_sections[-1]["end"]
+
+def _split_structured_sheets_into_sections(text: str) -> list[dict]:
+    """XLSX/XLS raw split: one section per worksheet, using the exact
+    sheet name from the deterministic [[SOURCE: file | SHEET: name |
+    ROWS: a-b]] marker extract_xlsx_with_metadata()/extract_xls_with_
+    metadata() already embed in the text -- never inferred from content,
+    never re-detected via the generic prose heading regex (which would
+    risk mis-splitting tabular data). A sheet larger than the target
+    chunk size is further windowed with the same deterministic
+    overlapping-window fallback used for prose. Falls back to the
+    generic splitter only if no sheet markers are present at all (e.g. an
+    XML-fallback extraction that produced a single unmarked blob)."""
+    matches = list(_XLSX_SHEET_MARKER_RE.finditer(text))
+    if not matches:
+        return _split_proposal_into_sections(text)
+
+    raw: list[dict] = []
+    for i, m in enumerate(matches):
+        seg_start = m.start()
+        seg_end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        heading = f"Sheet: {m.group('sheet').strip()}"
+        seg_text = text[seg_start:seg_end]
+        if len(seg_text) <= _ALIGN_TARGET_CHUNK_CHARS:
+            raw.append({"start": seg_start, "end": seg_end, "heading": heading, "text": seg_text})
+        else:
+            for s, e, _ in _fixed_window_sections(seg_text, 0, len(seg_text)):
+                raw.append({"start": seg_start + s, "end": seg_start + e, "heading": heading, "text": seg_text[s:e]})
+    return raw
+
+
+def _even_stride_sample_indices(n: int, k: int) -> list[int]:
+    """k deterministic, evenly-spaced indices across range(n) (never just
+    the first k) -- shared by the legacy single-document ceiling and the
+    package-wide per-file quota sampling below."""
+    if k <= 0 or n <= 0:
+        return []
+    if k >= n:
+        return list(range(n))
+    if k == 1:
+        return [0]
+    return sorted({round(i * (n - 1) / (k - 1)) for i in range(k)})
+
+
+def _merge_and_size_bound_sections(raw_sections: list[dict]) -> list[dict]:
+    """Merges undersized adjacent sections and splits oversized ones down
+    to the target chunk size. Applies NO chunk-count ceiling -- callers
+    decide how/where to bound the total: _merge_and_bound_sections below
+    applies the ceiling immediately for a single document, while the
+    package pipeline (_allocate_package_chunk_budget) bounds ACROSS all
+    of a package's files together after collecting each file's bounded
+    sections from this function."""
+    if not raw_sections:
+        return []
 
     merged: list[dict] = []
     buf = None
@@ -871,11 +917,27 @@ def _merge_and_bound_sections(raw_sections: list[dict]) -> dict:
                 "start": sec["start"] + s, "end": sec["start"] + e,
                 "heading": sec["heading"], "text": sec["text"][s:e],
             })
+    return bounded
+
+
+def _merge_and_bound_sections(raw_sections: list[dict]) -> dict:
+    """Single-document path (unchanged behavior/contract): merge/size-
+    bound via the shared helper above, then apply the hard
+    _ALIGN_MAX_CHUNKS ceiling via even-stride sampling across the WHOLE
+    document (never just the first N chunks) -- a document beyond the
+    safe ceiling still gets representative, not front-loaded, coverage,
+    and the shortfall is recorded in `skipped_ranges` rather than
+    silently dropped."""
+    if not raw_sections:
+        return {"chunks": [], "chars_total": 0, "skipped_ranges": []}
+
+    chars_total = raw_sections[-1]["end"]
+    bounded = _merge_and_size_bound_sections(raw_sections)
 
     skipped_ranges = []
     if len(bounded) > _ALIGN_MAX_CHUNKS:
         n = len(bounded)
-        idx = sorted({round(i * (n - 1) / (_ALIGN_MAX_CHUNKS - 1)) for i in range(_ALIGN_MAX_CHUNKS)})
+        idx = _even_stride_sample_indices(n, _ALIGN_MAX_CHUNKS)
         kept_set = set(idx)
         skipped_ranges = [
             {"start": bounded[i]["start"], "end": bounded[i]["end"], "heading": bounded[i]["heading"]}
@@ -889,6 +951,117 @@ def _merge_and_bound_sections(raw_sections: list[dict]) -> dict:
         c["total"] = len(bounded)
 
     return {"chunks": bounded, "chars_total": chars_total, "skipped_ranges": skipped_ranges}
+
+
+def _allocate_package_chunk_budget(
+    per_file_sections: list[tuple[dict, list[dict]]], ceiling: int
+) -> tuple[list[dict], list[dict]]:
+    """Package-wide chunk-count ceiling with FAIR allocation across
+    files (instruction 8: "do not silently sacrifice an entire small
+    file because a large primary proposal consumed most of the package
+    budget"). `per_file_sections` is a list of (file_dict,
+    size_bounded_raw_sections) pairs in package order.
+
+    Allocation:
+      1. If the package's total section count already fits under
+         `ceiling`, everything is kept -- no sampling, nothing skipped.
+      2. Otherwise every file with at least one section is first
+         guaranteed exactly 1 kept chunk (as long as there are no more
+         files than the ceiling allows).
+      3. Remaining budget is distributed proportionally to each file's
+         own section count beyond its guaranteed one (largest-remainder
+         method, deterministic -- bigger files legitimately get more of
+         the remaining budget, "prioritizing substantive content", but
+         never zero).
+      4. Within each file, its quota is even-stride sampled from that
+         file's OWN sections (never just the front) -- reusing the same
+         technique the single-document ceiling already uses.
+      5. Pathological case: more analyzable files than the ceiling
+         allows even one chunk each -- the `ceiling` largest files each
+         get one representative (middle) chunk; the rest get none
+         (fully present in `skipped`, which -- like any non-empty skip
+         list -- forces the caller's existing fail-closed incomplete-
+         audit path, never a silently degraded score).
+
+    Returns (kept_chunks, skipped_sections); each chunk/section dict is
+    tagged with source_file_id/source_filename, and kept_chunks carries
+    package-wide, contiguous index/total fields (order: by file in
+    package order, then by that file's own original section order --
+    fully deterministic)."""
+    files_with_sections = [(f, secs) for f, secs in per_file_sections if secs]
+    total = sum(len(secs) for _, secs in files_with_sections)
+
+    def _finalize(kept: list[dict]) -> list[dict]:
+        for i, c in enumerate(kept):
+            c["index"] = i
+        for c in kept:
+            c["total"] = len(kept)
+        return kept
+
+    if total <= ceiling:
+        kept = [
+            {**sec, "source_file_id": f["file_id"], "source_filename": f["filename"]}
+            for f, secs in files_with_sections for sec in secs
+        ]
+        return _finalize(kept), []
+
+    n_files = len(files_with_sections)
+
+    if n_files >= ceiling:
+        ordered = sorted(files_with_sections, key=lambda fs: -len(fs[1]))
+        kept, skipped = [], []
+        for f, secs in ordered[:ceiling]:
+            mid = secs[len(secs) // 2]
+            kept.append({**mid, "source_file_id": f["file_id"], "source_filename": f["filename"]})
+            skipped.extend(
+                {**s, "source_file_id": f["file_id"], "source_filename": f["filename"]}
+                for s in secs if s is not mid
+            )
+        for f, secs in ordered[ceiling:]:
+            skipped.extend(
+                {**s, "source_file_id": f["file_id"], "source_filename": f["filename"]}
+                for s in secs
+            )
+        return _finalize(kept), skipped
+
+    quota = {f["file_id"]: 1 for f, _ in files_with_sections}
+    remaining = ceiling - n_files
+    extra_pool = {f["file_id"]: len(secs) - 1 for f, secs in files_with_sections}
+    total_extra = sum(extra_pool.values())
+
+    if remaining > 0 and total_extra > 0:
+        raw_shares = {fid: remaining * (extra_pool[fid] / total_extra) for fid in extra_pool}
+        floors = {fid: min(int(raw_shares[fid]), extra_pool[fid]) for fid in raw_shares}
+        leftover = remaining - sum(floors.values())
+        # Largest-remainder method: hand out the leftover units to the
+        # files with the biggest fractional remainder first, deterministic
+        # tie-break on file_id.
+        remainder_order = sorted(
+            (fid for fid in raw_shares if floors[fid] < extra_pool[fid]),
+            key=lambda fid: (-(raw_shares[fid] - floors[fid]), fid),
+        )
+        i = 0
+        while leftover > 0 and remainder_order:
+            fid = remainder_order[i % len(remainder_order)]
+            if floors[fid] < extra_pool[fid]:
+                floors[fid] += 1
+                leftover -= 1
+            i += 1
+            if i > 10000:
+                break
+        for fid in quota:
+            quota[fid] += floors.get(fid, 0)
+
+    kept, skipped = [], []
+    for f, secs in files_with_sections:
+        fid = f["file_id"]
+        q = min(quota.get(fid, 1), len(secs))
+        keep_idx = set(_even_stride_sample_indices(len(secs), q))
+        for i, sec in enumerate(secs):
+            tagged = {**sec, "source_file_id": fid, "source_filename": f["filename"]}
+            (kept if i in keep_idx else skipped).append(tagged)
+
+    return _finalize(kept), skipped
 
 
 _ALIGN_CHUNK_SYSTEM = (
@@ -1300,7 +1473,16 @@ def _process_chunks_concurrently(chunks: list[dict], bid_header: str, procuremen
     failed: set[int] = set()
 
     def _run_one(chunk: dict):
-        chunk_label = f'{chunk["heading"]} (section {chunk["index"] + 1}/{chunk["total"]})'
+        # Package chunks (tagged by _allocate_package_chunk_budget with
+        # source_filename) always carry the source filename in their
+        # location label -- filename-qualified evidence locations are a
+        # hard requirement for the multi-file submission package.
+        # Legacy single-document chunks (no source_filename) keep their
+        # original label format unchanged, preserving existing tests.
+        if chunk.get("source_filename"):
+            chunk_label = f'{chunk["source_filename"]} — {chunk["heading"]}'
+        else:
+            chunk_label = f'{chunk["heading"]} (section {chunk["index"] + 1}/{chunk["total"]})'
         prompt = _align_chunk_prompt(bid_header, procurement_context, req_block, chunk)
         try:
             parsed = _call_alignment_chunk(prompt)
@@ -1446,6 +1628,273 @@ def analyze_proposal_alignment(
                 "no reliable score can be shown. The findings and requirement coverage "
                 "established from the sections that WERE successfully analyzed are preserved below."
             ),
+            "overall_score": None,
+            "score_basis": None,
+            "score_rationale": None,
+            "recommendation": None,
+            "executive_summary": None,
+            "strengths": [],
+            "findings": findings,
+            "mandatory_failures": [],
+            "requirement_coverage": requirement_coverage,
+            "next_steps": [],
+            "coverage_metadata": coverage_metadata,
+        }
+
+    weight_by_req = {r.get("req_id"): r.get("weight") for r in requirements}
+    for row in requirement_coverage:
+        row["_weight"] = weight_by_req.get(row["req_id"])
+
+    score_info = _compute_score(requirement_coverage)
+    mandatory_failures = _extract_mandatory_failures(requirement_coverage)
+    for row in requirement_coverage:
+        row.pop("_weight", None)
+        row.pop("_is_qualification_gate", None)
+    recommendation, score_rationale = _derive_recommendation(score_info["overall_score"], mandatory_failures)
+
+    narrative = _synthesize_narrative(
+        bid_header, score_info["overall_score"], recommendation, mandatory_failures,
+        requirement_coverage, findings, coverage_metadata,
+    )
+    if narrative is None:
+        executive_summary = (
+            "Narrative synthesis unavailable — the deterministic requirement-level audit "
+            "below is valid and complete."
+        )
+        strengths, next_steps = [], []
+    else:
+        executive_summary = narrative.get("executive_summary", "")
+        strengths = narrative.get("strengths", [])
+        next_steps = narrative.get("next_steps", [])
+
+    result = {
+        "status": "complete",
+        "overall_score": score_info["overall_score"],
+        "score_basis": score_info["score_basis"],
+        "score_rationale": score_rationale,
+        "recommendation": recommendation,
+        "executive_summary": executive_summary,
+        "strengths": strengths,
+        "findings": findings,
+        "mandatory_failures": mandatory_failures,
+        "requirement_coverage": requirement_coverage,
+        "next_steps": next_steps,
+        "coverage_metadata": coverage_metadata,
+    }
+
+    if not _validate_alignment_contract(result):
+        return {
+            "status": "incomplete",
+            "message": _ALIGN_INCOMPLETE_MESSAGE,
+            "reason": "Internal result failed contract validation.",
+            "coverage_metadata": coverage_metadata,
+        }
+
+    return result
+
+
+def analyze_proposal_alignment_package(
+    package_files: list[dict],
+    requirements: list[dict],
+    rfp_text: str,
+    bid_info: dict,
+) -> dict:
+    """Package-wide proposal alignment audit -- the multi-file Submission
+    Package extension of analyze_proposal_alignment() above (which
+    remains unchanged and is kept for any single-string caller).
+
+    `package_files` must contain ONLY files the caller has already
+    decided to INCLUDE (the user's include/exclude choice is applied by
+    the caller -- see extractor.build_alignment_submission_package();
+    duplicates and user-excluded files must never be passed here). Each
+    entry: {"file_id", "filename", "package_path", "file_type", "text",
+    "analyzable", "unusable_reason", "extraction_meta"}.
+
+    An INCLUDED file with analyzable=False (failed extraction, or a
+    format this version cannot parse) forces the whole audit incomplete
+    -- the same fail-closed contract a failed/sampled-out chunk already
+    has, just at the whole-file level (instruction 4: "Included
+    substantive files that fail extraction do make the audit
+    incomplete"). This function only decides completeness from what it's
+    given; the caller decides inclusion.
+
+    Chunking is per-file (XLSX/XLS split by worksheet via
+    _split_structured_sheets_into_sections(), everything else via the
+    existing prose splitter), merged/size-bounded per file (never across
+    a file boundary), then the package-wide _ALIGN_MAX_CHUNKS ceiling is
+    applied fairly across all included files via
+    _allocate_package_chunk_budget() -- never a single global stride that
+    could zero out a small file. Every downstream step (deterministic
+    aggregation, scoring, mandatory-failure detection, fail-closed
+    incomplete handling, narrative synthesis) reuses the exact same
+    helpers as the single-document path unchanged.
+    """
+    unusable_files = [f for f in package_files if not f.get("analyzable")]
+    analyzable_files = [f for f in package_files if f.get("analyzable") and (f.get("text") or "")]
+
+    per_file_chars_total = {f["file_id"]: len(f["text"]) for f in analyzable_files}
+    chars_total = sum(per_file_chars_total.values())
+
+    per_file_bounded_sections = []
+    for f in analyzable_files:
+        if f.get("file_type") in ("xlsx", "xls"):
+            raw = _split_structured_sheets_into_sections(f["text"])
+        else:
+            raw = _split_proposal_into_sections(f["text"])
+        bounded = _merge_and_size_bound_sections(raw)
+        per_file_bounded_sections.append((f, bounded))
+
+    kept_chunks, skipped_sections = _allocate_package_chunk_budget(per_file_bounded_sections, _ALIGN_MAX_CHUNKS)
+
+    if not kept_chunks:
+        return {
+            "status": "incomplete",
+            "message": _ALIGN_INCOMPLETE_MESSAGE,
+            "reason": "No proposal package text was available to analyze."
+                      if not unusable_files else
+                      f"{len(unusable_files)} included file(s) could not be analyzed and no other "
+                      "included file provided any analyzable text.",
+            "coverage_metadata": {
+                "chars_total": chars_total, "chars_processed": 0, "percentage_covered": 0.0,
+                "chunk_count": 0, "successful_chunks": 0, "failed_or_skipped_chunks": 0,
+                "sections": [], "coverage_complete": False,
+                "files": [
+                    {"file_id": f["file_id"], "filename": f["filename"], "char_count": len(f.get("text") or ""),
+                     "chars_processed": 0, "chunk_count": 0, "analyzable": f.get("analyzable"),
+                     "unusable_reason": f.get("unusable_reason")}
+                    for f in package_files
+                ],
+                "unusable_files": [
+                    {"filename": f["filename"], "reason": f.get("unusable_reason")} for f in unusable_files
+                ],
+                "skipped_files": [],
+                "sampled": False,
+            },
+        }
+
+    bid_header = f"BID: {bid_info.get('title', '')} | CLIENT: {bid_info.get('client', '')}"
+
+    req_lines = []
+    for r in requirements:
+        cat = r.get("category", "")
+        rid = r.get("req_id", "")
+        desc = (r.get("description") or "")[:120]
+        wt = f"{r['weight'] * 100:.0f}%" if r.get("weight") else ""
+        ev = (r.get("evidence") or "")[:60]
+        req_lines.append(f"[{cat}] {rid} {wt}: {desc} | Evidence: {ev}")
+    req_block = "\n".join(req_lines) if req_lines else "No requirements loaded."
+
+    procurement_context = (rfp_text or "")[:_ALIGN_MAX_PROCUREMENT_CONTEXT_CHARS] or \
+        "No canonical procurement intelligence has been extracted for this bid yet."
+
+    chunk_outputs, failed_indices = _process_chunks_concurrently(kept_chunks, bid_header, procurement_context, req_block)
+    chunk_results = [chunk_outputs[c["index"]] for c in kept_chunks if c["index"] in chunk_outputs]
+    successful_chunks = len(chunk_results)
+
+    per_file_chars_processed: dict[str, list[tuple[int, int]]] = {fid: [] for fid in per_file_chars_total}
+    for c in kept_chunks:
+        if c["index"] not in failed_indices:
+            per_file_chars_processed.setdefault(c["source_file_id"], []).append((c["start"], c["end"]))
+    per_file_chars_processed_totals = {
+        fid: _union_chars_covered(ranges) for fid, ranges in per_file_chars_processed.items()
+    }
+
+    chars_processed = sum(per_file_chars_processed_totals.values())
+    percentage_covered = round(min(chars_processed / chars_total, 1.0) * 100, 1) if chars_total else 0.0
+
+    coverage_complete = (
+        percentage_covered >= _ALIGN_COVERAGE_COMPLETE_THRESHOLD
+        and not failed_indices
+        and not skipped_sections
+        and not unusable_files
+    )
+
+    file_manifest_metrics = []
+    for f in package_files:
+        fid = f["file_id"]
+        file_chunk_count = sum(1 for c in kept_chunks if c.get("source_file_id") == fid)
+        file_manifest_metrics.append({
+            "file_id": fid, "filename": f["filename"],
+            "char_count": per_file_chars_total.get(fid, len(f.get("text") or "")),
+            "chars_processed": per_file_chars_processed_totals.get(fid, 0),
+            "chunk_count": file_chunk_count,
+            "analyzable": bool(f.get("analyzable")),
+            "unusable_reason": f.get("unusable_reason"),
+        })
+
+    # Explicit skipped-file visibility (never leave the user to infer
+    # which file was omitted from a >ceiling package): a file that HAD
+    # analyzable content but ended up with zero kept chunks after
+    # _allocate_package_chunk_budget()'s package-wide ceiling was
+    # applied -- e.g. the pathological "more analyzable files than the
+    # ceiling allows" case -- is named explicitly here, surfaced by both
+    # the CHECK UI and the exported PDF manifest.
+    skipped_files = [
+        {"file_id": m["file_id"], "filename": m["filename"]}
+        for m in file_manifest_metrics
+        if m["analyzable"] and m["char_count"] > 0 and m["chunk_count"] == 0
+    ]
+
+    coverage_metadata = {
+        "chars_total": chars_total,
+        "chars_processed": chars_processed,
+        "percentage_covered": percentage_covered,
+        "chunk_count": len(kept_chunks) + len(skipped_sections),
+        "successful_chunks": successful_chunks,
+        "failed_or_skipped_chunks": len(failed_indices) + len(skipped_sections),
+        "sections": [
+            {"index": c["index"], "heading": c["heading"], "chars": c["end"] - c["start"],
+             "filename": c.get("source_filename")}
+            for c in kept_chunks
+        ],
+        "coverage_complete": coverage_complete,
+        "files": file_manifest_metrics,
+        "unusable_files": [
+            {"filename": f["filename"], "reason": f.get("unusable_reason")} for f in unusable_files
+        ],
+        "skipped_files": skipped_files,
+        "sampled": bool(skipped_sections),
+    }
+
+    if successful_chunks == 0:
+        return {
+            "status": "incomplete",
+            "message": _ALIGN_INCOMPLETE_MESSAGE,
+            "reason": "Every analyzed section failed to process (malformed or truncated model responses).",
+            "coverage_metadata": coverage_metadata,
+        }
+
+    requirement_coverage = _aggregate_requirement_coverage(requirements, chunk_results, coverage_complete)
+    findings = _aggregate_findings(chunk_results)
+
+    if not coverage_complete:
+        for row in requirement_coverage:
+            row.pop("_is_qualification_gate", None)
+        reasons = []
+        if unusable_files:
+            reasons.append(
+                f"{len(unusable_files)} included file(s) could not be analyzed "
+                f"({', '.join(f['filename'] for f in unusable_files)})"
+            )
+        if failed_indices:
+            reasons.append(f"{len(failed_indices)} chunk(s) failed to analyze")
+        if skipped_sections:
+            reasons.append(f"{len(skipped_sections)} section(s) beyond the package analysis ceiling")
+        if skipped_files:
+            reasons.append(
+                f"{len(skipped_files)} included file(s) received NO analyzed sections at all due to the "
+                f"package ceiling ({', '.join(f['filename'] for f in skipped_files)})"
+            )
+        reason_text = (
+            f"Proposal package coverage did not reach the full-audit threshold ({percentage_covered}% analyzed)"
+            + (f" -- {'; '.join(reasons)}" if reasons else "")
+            + " -- no reliable score can be shown. The findings and requirement coverage established from "
+              "the sections that WERE successfully analyzed are preserved below."
+        )
+        return {
+            "status": "incomplete",
+            "message": _ALIGN_INCOMPLETE_MESSAGE,
+            "reason": reason_text,
             "overall_score": None,
             "score_basis": None,
             "score_rationale": None,

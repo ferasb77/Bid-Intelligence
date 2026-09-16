@@ -47,14 +47,28 @@ from config import get_app_base_url as _get_app_base_url
 _invite_result = _auth_session.handle_invite_callback()
 
 
+# Bid-scoped Proposal Alignment Analyzer session-state key prefixes
+# (pages/stage_check.py): Submission Package contents/metadata, primary-
+# file selection, include/exclude checkboxes, audit results, and report
+# metadata are all namespaced by bid_id (e.g. "align_result_42"), so a
+# fixed-name clear list can't remove them -- every key starting with one
+# of these prefixes is dropped on logout instead.
+_ALIGN_SESSION_KEY_PREFIXES = ("align_package_", "align_result_", "align_inc_", "align_primary_")
+
+
 def _clear_all_user_scoped_state():
-    """The complete logout contract (instruction 7): auth session/tokens,
-    resolved AuthContext, organization selection, active bid, and every
-    Package-3 UI selection key -- nothing user-scoped survives."""
+    """The complete logout contract (instruction 7, extended by the
+    Submission Package work): auth session/tokens, resolved AuthContext,
+    organization selection, active bid, every Package-3 UI selection key,
+    and every bid-scoped Alignment Analyzer package/result/report key --
+    nothing user-scoped survives."""
     _auth_session.sign_out()  # clears SESSION_KEY + AUTH_CONTEXT_KEY
     for _key in ("active_bid", "pkg3_selected_bid", "pkg3_org_choice",
                  "pkg3_login_email", "pkg3_bid_access_denied"):
         st.session_state.pop(_key, None)
+    for _key in list(st.session_state.keys()):
+        if _key.startswith(_ALIGN_SESSION_KEY_PREFIXES):
+            st.session_state.pop(_key, None)
 
 
 def _render_login_gate():

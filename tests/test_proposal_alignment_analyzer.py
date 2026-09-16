@@ -836,12 +836,14 @@ class TestStageCheckRendering(unittest.TestCase):
 
     def setUp(self):
         import streamlit as st
-        st.session_state.pop("align_result", None)
+        st.session_state.pop(stage_check._align_result_key(1), None)
+        st.session_state.pop(stage_check._align_result_snapshot_key(1), None)
 
     def _render(self, align_data):
         import streamlit as st
-        st.session_state["align_result"] = align_data
+        st.session_state[stage_check._align_result_key(1)] = align_data
         calls = []
+        self.download_calls = []
 
         def fake_markdown(text, *a, **k):
             calls.append(str(text))
@@ -852,10 +854,15 @@ class TestStageCheckRendering(unittest.TestCase):
                 col.markdown.side_effect = fake_markdown
             return cols
 
+        def fake_download_button(label, *args, **kwargs):
+            self.download_calls.append({"label": label, "file_name": kwargs.get("file_name"), "data": kwargs.get("data")})
+            return False
+
         with patch("streamlit.markdown", side_effect=fake_markdown), \
              patch("streamlit.columns", side_effect=mock_cols_capturing), \
              patch("streamlit.tabs", side_effect=_mock_tabs), \
              patch("streamlit.button", return_value=False), \
+             patch("streamlit.download_button", side_effect=fake_download_button), \
              patch("streamlit.file_uploader", return_value=None), \
              patch("pages.stage_check.tenancy.get_bid_authenticated") as mock_bid, \
              patch("pages.stage_check.tenancy.get_requirements_authenticated", return_value=[]), \
@@ -878,6 +885,9 @@ class TestStageCheckRendering(unittest.TestCase):
         self.assertIn("no reliable score available", rendered)
         self.assertIn("totally failed", rendered)
         self.assertNotIn("Alignment Score", rendered)
+        # Export must still be offered for an incomplete result.
+        self.assertEqual(len(self.download_calls), 1)
+        self.assertIn("Download Alignment Audit Report", self.download_calls[0]["label"])
 
     def test_incomplete_result_still_shows_preserved_partial_findings_and_coverage(self):
         """Instruction 2: partial positive findings/coverage established
@@ -895,6 +905,25 @@ class TestStageCheckRendering(unittest.TestCase):
         self.assertNotIn("Alignment Score", rendered)
         self.assertIn("Partial finding from analyzed section", rendered)
         self.assertIn("Fully Addressed", rendered)
+
+    def test_incomplete_result_names_files_skipped_by_the_package_ceiling(self):
+        """Pre-commit hardening item 4: a file the package-wide chunk
+        ceiling gave zero analyzed sections to must be named explicitly
+        in the CHECK UI -- never left for the user to infer from counts
+        alone."""
+        align_data = {
+            "status": "incomplete", "message": "x", "reason": "coverage below threshold",
+            "overall_score": None, "recommendation": None, "executive_summary": None,
+            "strengths": [], "next_steps": [], "mandatory_failures": [],
+            "findings": [], "requirement_coverage": [],
+            "coverage_metadata": {
+                "percentage_covered": 40.0, "chunk_count": 24, "successful_chunks": 24,
+                "skipped_files": [{"file_id": "f9", "filename": "Team CVs.pdf"}],
+            },
+        }
+        rendered = self._render(align_data)
+        self.assertIn("Not fully analyzed", rendered)
+        self.assertIn("Team CVs.pdf", rendered)
 
     def test_complete_result_renders_every_required_section(self):
         align_data = {
@@ -919,6 +948,11 @@ class TestStageCheckRendering(unittest.TestCase):
         self.assertIn("Fully Addressed", rendered)
         self.assertIn("Clear methodology", rendered)
         self.assertIn("Add insurance certificate", rendered)
+        self.assertEqual(len(self.download_calls), 1)
+        download_pdf_bytes = self.download_calls[0]["data"]
+        self.assertTrue(download_pdf_bytes.startswith(b"%PDF-"))
+        self.assertTrue(self.download_calls[0]["file_name"].startswith("Alignment_Audit_Test_Buyer"))
+        self.assertTrue(self.download_calls[0]["file_name"].endswith(".pdf"))
 
     def test_zero_evaluation_universe_renders_as_understandable_not_an_error(self):
         """Instruction 2: renders as a real 'complete' result -- score

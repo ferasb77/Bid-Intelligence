@@ -9,22 +9,139 @@ Consolidated quality gate answering:
 """
 import io
 import json
+from datetime import date
 import streamlit as st
 import auth_session
 import tenancy
-from analyst import (analyze_proposal_alignment, missing_evidence,
+from analyst import (analyze_proposal_alignment_package, missing_evidence,
                      compliance_review)
-from extractor import extract_text_from_file
+from extractor import build_alignment_submission_package, summarize_submission_package, build_report_manifest
 from config import api_key_configured
 from components.ui import (qual_badge, evidence_badge, status_badge, readiness_bar,
                            metric_card, QUAL_STATUSES)
 from requirement_semantics import select_qualification_requirements
+from pdf_alignment import generate_alignment_audit_pdf
 
 
 def _current_access_token_and_org():
     session = auth_session.current_session()
     ctx = auth_session.current_auth_context()
     return session["access_token"], ctx.organization_id
+
+
+def _sanitize_filename_component(text: str) -> str:
+    text = (text or "bid").strip()
+    cleaned = "".join(c if c.isalnum() or c in "-._" else "_" for c in text)
+    return cleaned.strip("_") or "bid"
+
+
+# ── ALIGNMENT SESSION-STATE KEYS (bid-scoped) ───────────────────────────────
+# Every Alignment Analyzer key below is namespaced by bid_id -- a
+# Submission Package, its manifest, primary-file selection, audit
+# result, and report metadata for Bid A must never leak into Bid B's
+# CHECK page. The full set of prefixes here is also what app.py's
+# logout handler clears (see _clear_all_user_scoped_state()).
+_ALIGN_STATE_PREFIXES = ("align_package_", "align_result_")
+
+
+def _align_package_key(bid_id) -> str:
+    return f"align_package_{bid_id}"
+
+
+def _align_result_key(bid_id) -> str:
+    return f"align_result_{bid_id}"
+
+
+def _align_result_snapshot_key(bid_id) -> str:
+    return f"align_result_package_snapshot_{bid_id}"
+
+
+_MANIFEST_STATUS_LABEL = {
+    "extracted": ("Included" , "#27AE60"),
+    "failed": ("Failed", "#C0392B"),
+    "unsupported": ("Unsupported", "#E67E22"),
+    "duplicate": ("Duplicate", "#6E6C66"),
+    "rejected": ("Rejected", "#C0392B"),
+}
+
+
+def _render_submission_package_manifest(package: dict, bid_id, editable: bool) -> None:
+    """Renders the Submission Package Manifest (instruction 9): summary
+    metrics plus a per-file row with type, primary indicator, include/
+    exclude control, extraction status, and character count. Mutates
+    `included`/`role` directly on the package dict's file records (the
+    caller re-stores the same dict object back into session_state) --
+    editable=True is used for the live pre-audit manifest; editable=False
+    renders a frozen snapshot without checkboxes."""
+    files = package.get("files", [])
+    summary = summarize_submission_package(files)
+
+    st.markdown("##### Submission Package Manifest")
+    m = st.columns(7)
+    m[0].markdown(metric_card("Supplied", summary["files_supplied"]), unsafe_allow_html=True)
+    m[1].markdown(metric_card("Included", summary["files_included"]), unsafe_allow_html=True)
+    m[2].markdown(metric_card("Excluded", summary["files_excluded"]), unsafe_allow_html=True)
+    m[3].markdown(metric_card("Extracted", summary["files_extracted"]), unsafe_allow_html=True)
+    m[4].markdown(metric_card("Unsupported", summary["files_unsupported"], color="#E67E22" if summary["files_unsupported"] else None), unsafe_allow_html=True)
+    m[5].markdown(metric_card("Failed", summary["files_failed"], color="#C0392B" if summary["files_failed"] else None), unsafe_allow_html=True)
+    m[6].markdown(metric_card("Duplicates", summary["files_duplicate"]), unsafe_allow_html=True)
+
+    if not files:
+        st.caption("No files supplied yet.")
+        return
+
+    hdr = st.columns([2.4, 0.7, 1.1, 1, 1.1, 2.2])
+    for col_w, label in zip(hdr, ["File / Package Path", "Type", "Status", "Include", "Content", "Notes"]):
+        col_w.markdown(f'<span style="font-size:.68rem;color:#6E6C66;text-transform:uppercase;font-weight:600">{label}</span>', unsafe_allow_html=True)
+    st.markdown('<hr class="section-divider" style="margin:.2rem 0">', unsafe_allow_html=True)
+
+    for f in files:
+        row = st.columns([2.4, 0.7, 1.1, 1, 1.1, 2.2])
+        primary_tag = " ⭐ Primary" if f.get("role") == "primary" else ""
+        row[0].markdown(
+            f'<span style="font-size:.8rem;color:#EDEAE3">{f["filename"]}{primary_tag}</span><br>'
+            f'<span style="font-size:.68rem;color:#6E6C66">{f["package_path"]}</span>',
+            unsafe_allow_html=True,
+        )
+        row[1].markdown(f'<span style="font-size:.76rem;color:#A9A69D">{f["file_type"].upper()}</span>', unsafe_allow_html=True)
+        label, colour = _MANIFEST_STATUS_LABEL.get(f["lifecycle_status"], (f["lifecycle_status"], "#A9A69D"))
+        row[2].markdown(f'<span style="font-size:.76rem;color:{colour};font-weight:600">{label}</span>', unsafe_allow_html=True)
+
+        if f["lifecycle_status"] in ("duplicate", "rejected"):
+            row[3].markdown('<span style="font-size:.72rem;color:#6E6C66">Excluded</span>', unsafe_allow_html=True)
+            f["included"] = False
+        elif editable:
+            f["included"] = row[3].checkbox("Include", value=f.get("included", True), key=f"align_inc_{bid_id}_{f['file_id']}", label_visibility="collapsed")
+        else:
+            row[3].markdown('<span style="font-size:.72rem">Included</span>' if f.get("included") else '<span style="font-size:.72rem;color:#6E6C66">Excluded</span>', unsafe_allow_html=True)
+
+        row[4].markdown(f'<span style="font-size:.76rem;color:#A9A69D">{f["char_count"]:,} chars</span>' if f["char_count"] else '<span style="font-size:.76rem;color:#6E6C66">—</span>', unsafe_allow_html=True)
+
+        note = f.get("unusable_reason") or ""
+        row[5].markdown(f'<span style="font-size:.72rem;color:#C0392B">{note}</span>' if note else "", unsafe_allow_html=True)
+
+    if editable:
+        eligible = [f for f in files if f["lifecycle_status"] == "extracted" and f.get("included")]
+        if len(eligible) == 1:
+            for f in files:
+                f["role"] = "primary" if f is eligible[0] else None
+            st.caption(f"⭐ Primary Technical Proposal (auto-selected, only included file): **{eligible[0]['filename']}**")
+        elif len(eligible) > 1:
+            id_to_file = {f["file_id"]: f for f in eligible}
+            options = ["(none selected)"] + list(id_to_file.keys())
+            current = next((fid for fid, f in id_to_file.items() if f.get("role") == "primary"), "(none selected)")
+            choice = st.selectbox(
+                "⭐ Primary Technical Proposal (affects presentation/provenance only -- every included file is still analyzed)",
+                options,
+                index=options.index(current) if current in options else 0,
+                format_func=lambda fid: "(none selected)" if fid == "(none selected)" else f'{id_to_file[fid]["filename"]} ({id_to_file[fid]["package_path"]})',
+                key=f"align_primary_{bid_id}",
+            )
+            for f in files:
+                f["role"] = "primary" if f["file_id"] == choice else None
+        else:
+            for f in files:
+                f["role"] = None
 
 
 def _build_procurement_context(brief_row: dict, requirements: list[dict]) -> str:
@@ -129,38 +246,85 @@ def page_check(bid_id: int):
         st.markdown("### Proposal Alignment & Compliance Audit")
         st.markdown(
             '<div style="font-size:.82rem;color:#A9A69D;margin-bottom:.8rem">'
-            'Upload a draft or final proposal document (PDF / Word / Text). Claude analyzes the entire proposal in '
-            'traceable sections against the compliance matrix and the canonical procurement intelligence already '
-            'extracted for this bid (qualification gates, evaluation criteria, commercial requirements) — not the '
-            'physical tender documents directly. Findings are classified into Proposal Submission, Negotiation, '
-            'Execution, or Delivery stages.'
+            'Upload the complete submission package — the main technical proposal plus any mandatory schedules, '
+            'response forms, pricing schedules, CV/team annexes, and declarations (as individual files and/or one '
+            'or more .zip archives). Claude analyzes every included file in traceable sections against the '
+            'compliance matrix and the canonical procurement intelligence already extracted for this bid '
+            '(qualification gates, evaluation criteria, commercial requirements) — not the physical tender '
+            'documents directly. A requirement satisfied anywhere in the package counts, not only in the main '
+            'proposal. Findings are classified into Proposal Submission, Negotiation, Execution, or Delivery stages.'
             '</div>',
             unsafe_allow_html=True
         )
 
-        c_up1, c_up2 = st.columns([2, 1])
-        prop_file = c_up1.file_uploader("Upload draft or final proposal (PDF, DOCX, TXT)", type=["pdf", "docx", "txt"], key="prop_align_file")
-        proposal_text = ""
-        if prop_file:
-            proposal_text = extract_text_from_file(prop_file.read(), prop_file.name)
-            st.info(f"Loaded proposal text: {len(proposal_text):,} characters.")
+        pkg_key = _align_package_key(bid_id)
+        fingerprint_key = f"{pkg_key}_fingerprint"
 
-        if c_up2.button("🚀 Run Alignment Audit", use_container_width=True, type="primary", key="btn_run_align"):
-            if not proposal_text:
-                st.error("Please upload a proposal file first.")
-            elif not (api_key_configured() or st.session_state.get("anthropic_api_key")):
+        uploaded = st.file_uploader(
+            "Upload submission package files (PDF, DOCX, XLSX, XLS, CSV, TXT, MD) and/or .zip archive(s). "
+            "PPTX is unsupported in this version.",
+            type=["pdf", "docx", "xlsx", "xls", "csv", "txt", "md", "zip"],
+            accept_multiple_files=True,
+            key="prop_align_files",
+        )
+        if uploaded:
+            fingerprint = tuple((f.name, f.size) for f in uploaded)
+            if st.session_state.get(fingerprint_key) != fingerprint:
+                raw_files = [(f.name, f.read()) for f in uploaded]
+                with st.spinner("Extracting submission package…"):
+                    st.session_state[pkg_key] = build_alignment_submission_package(raw_files)
+                st.session_state[fingerprint_key] = fingerprint
+
+        package = st.session_state.get(pkg_key)
+        if package:
+            _render_submission_package_manifest(package, bid_id, editable=True)
+            st.markdown("")
+
+        if package:
+            run_disabled = not any(
+                f["lifecycle_status"] == "extracted" and f.get("included") for f in package["files"]
+            )
+        else:
+            run_disabled = True
+
+        if st.button("🚀 Run Alignment Audit", use_container_width=True, type="primary", key="btn_run_align", disabled=run_disabled):
+            if not (api_key_configured() or st.session_state.get("anthropic_api_key")):
                 st.error("Configure Anthropic API key.")
             else:
-                with st.spinner("Analyzing full proposal in traceable sections against procurement intelligence… 30–90s"):
+                included_files = [
+                    f for f in package["files"]
+                    if f.get("included") and f["lifecycle_status"] in ("extracted", "failed", "unsupported")
+                ]
+                package_files_for_analysis = [
+                    {
+                        "file_id": f["file_id"], "filename": f["filename"], "package_path": f["package_path"],
+                        "file_type": f["file_type"], "text": f["text"], "analyzable": f["analyzable"],
+                        "unusable_reason": f["unusable_reason"], "extraction_meta": f["extraction_meta"],
+                    }
+                    for f in included_files
+                ]
+                with st.spinner(f"Analyzing {len(included_files)} included file(s) in traceable sections against procurement intelligence… 30–90s"):
                     try:
                         procurement_context = _build_procurement_context(brief_row, reqs)
-                        align_res = analyze_proposal_alignment(
-                            proposal_text=proposal_text,
+                        align_res = analyze_proposal_alignment_package(
+                            package_files=package_files_for_analysis,
                             requirements=reqs,
                             rfp_text=procurement_context,
                             bid_info=bid
                         )
-                        st.session_state["align_result"] = align_res
+                        st.session_state[_align_result_key(bid_id)] = align_res
+                        # Frozen, SLIM snapshot of the package manifest AS IT
+                        # WAS AUDITED -- the manifest shown in the exported
+                        # PDF (and any re-download without re-running) must
+                        # reflect what was actually analyzed, not whatever
+                        # the live, still-editable uploader/checkboxes show
+                        # afterward. Deliberately carries only report-safe
+                        # manifest fields (build_report_manifest), never the
+                        # raw extracted text/extraction_meta payloads the
+                        # live in-session package holds for analysis.
+                        st.session_state[_align_result_snapshot_key(bid_id)] = {
+                            "files": build_report_manifest(package["files"])
+                        }
                         if align_res.get("status") == "complete":
                             st.success("Audit complete.")
                         else:
@@ -170,9 +334,39 @@ def page_check(bid_id: int):
                         st.error(f"Audit failed: {e}")
 
         # Display alignment results
-        align_data = st.session_state.get("align_result")
+        align_data = st.session_state.get(_align_result_key(bid_id))
+        result_package_snapshot = st.session_state.get(_align_result_snapshot_key(bid_id))
         if align_data:
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+
+            # Export control -- near the top, always available once a
+            # result exists (including an incomplete one). Deterministic:
+            # renders exactly the already-computed align_data, no new LLM
+            # call, no re-analysis, no Storage write -- generated fresh
+            # in memory on every render so it can never drift from what's
+            # on screen, but nothing about the underlying audit reruns.
+            report_client = _sanitize_filename_component(bid.get("client"))
+            report_date = date.today().isoformat()
+            primary_filename = next(
+                (f["filename"] for f in (result_package_snapshot or {}).get("files", []) if f.get("role") == "primary"),
+                "",
+            )
+            st.download_button(
+                "📄 Download Alignment Audit Report",
+                data=generate_alignment_audit_pdf(
+                    bid, align_data,
+                    proposal_filename=primary_filename,
+                    package_manifest=(result_package_snapshot or {}).get("files", []),
+                ),
+                file_name=f"Alignment_Audit_{report_client}_{report_date}.pdf",
+                mime="application/pdf",
+                key="btn_download_alignment_pdf",
+            )
+            st.markdown("")
+
+            if result_package_snapshot:
+                with st.expander("Submission Package Manifest (as audited)", expanded=False):
+                    _render_submission_package_manifest(result_package_snapshot, bid_id, editable=False)
 
             is_complete = align_data.get("status") == "complete"
             cov = align_data.get("coverage_metadata") or {}
@@ -195,6 +389,14 @@ def page_check(bid_id: int):
                         f'Proposal coverage attempted: {cov.get("chars_processed",0):,}/{cov.get("chars_total",0):,} '
                         f'characters ({cov.get("percentage_covered",0)}%) across {cov.get("successful_chunks",0)}/'
                         f'{cov.get("chunk_count",0)} sections successfully analyzed.</div>',
+                        unsafe_allow_html=True
+                    )
+                skipped_files = cov.get("skipped_files") or []
+                if skipped_files:
+                    skipped_names = ", ".join(f["filename"] for f in skipped_files)
+                    st.markdown(
+                        f'<div style="font-size:.78rem;color:#C0392B;font-weight:600;margin-top:.4rem">'
+                        f'⚠️ Not fully analyzed (package ceiling): {skipped_names}</div>',
                         unsafe_allow_html=True
                     )
                 if req_coverage or findings:
