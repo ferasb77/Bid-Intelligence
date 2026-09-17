@@ -16,6 +16,7 @@ Coverage groups, each its own class:
   * TestRequirementsLifecycleFiltering  -- current-truth reads exclude retired rows
   * TestFastAnalysisAdvisoryOnly        -- Fast Analysis never writes bid_briefs
 """
+import hashlib
 import os
 import re
 import unittest
@@ -1518,6 +1519,128 @@ class TestFastAnalysisUnreviewedDocumentDisplay(unittest.TestCase):
         )
         self.assertIn("not yet been governed", rendered)
         self.assertNotIn("basis is unknown", rendered.lower())
+
+
+MIGRATION_011_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "migrations", "011_harden_procurement_trigger_functions.sql"
+)
+
+_TRIGGER_FUNCTION_NAMES = [
+    "prevent_applied_change_mutation",
+    "prevent_applied_review_mutation",
+    "prevent_applied_review_document_mutation",
+    "prevent_resolved_conflict_mutation",
+]
+
+
+def _migration_011_text() -> str:
+    with open(MIGRATION_011_PATH, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+class TestMigration011TriggerFunctionHardening(unittest.TestCase):
+    """Follow-up security hardening: migration 010's four BEFORE UPDATE OR
+    DELETE trigger functions kept PostgreSQL's default EXECUTE-to-PUBLIC
+    grant (never explicitly REVOKE/GRANT'd, unlike the six application
+    RPCs) -- Supabase's live security advisor flagged this. Migration 011
+    closes it without touching migration 010 or trigger semantics."""
+
+    def setUp(self):
+        self.raw_011 = _migration_011_text()
+        self.code_011 = _strip_sql_line_comments(self.raw_011).lower()
+        self.raw_010 = _migration_010_text()
+        self.code_010 = _strip_sql_line_comments(self.raw_010).lower()
+
+    # ── instruction 5: PUBLIC/anon/authenticated/service_role cannot ────
+    #    execute any trigger function directly ───────────────────────────
+    def test_every_trigger_function_revoked_from_public_anon_authenticated(self):
+        for name in _TRIGGER_FUNCTION_NAMES:
+            for role in ("public", "anon", "authenticated"):
+                self.assertIn(
+                    f"revoke all on function public.{name}() from {role};", self.code_011,
+                    msg=f"{name} missing revoke-from-{role}",
+                )
+
+    def test_service_role_direct_execute_also_revoked(self):
+        """Chosen design: service_role never calls these functions
+        directly either (only PostgreSQL's trigger executor does, which
+        per CREATE TRIGGER's own docs checks EXECUTE only once, at
+        CREATE TRIGGER time, against the creating role -- never against
+        the role that later fires the trigger via DML) -- so service_role
+        is revoked too, for the tightest correct policy."""
+        for name in _TRIGGER_FUNCTION_NAMES:
+            self.assertIn(
+                f"revoke all on function public.{name}() from service_role;", self.code_011,
+                msg=f"{name} missing revoke-from-service_role",
+            )
+
+    def test_no_grant_statement_anywhere_in_migration_011(self):
+        """This migration only ever revokes -- it grants nothing to
+        anyone, consistent with 'no application role should call these
+        directly, ever'."""
+        self.assertNotIn("grant ", self.code_011)
+
+    # ── instruction 4: migration 011 does not alter migration 010 ───────
+    def test_migration_010_file_is_untouched(self):
+        expected_sha256 = "d0090401627dd99ae224aa1db507e5c4390f20855420c07641b95124290f6801"
+        actual_sha256 = hashlib.sha256(self.raw_010.encode("utf-8")).hexdigest()
+        self.assertEqual(actual_sha256, expected_sha256,
+                          msg="migrations/010_procurement_revision_governance.sql must remain byte-identical")
+
+    def test_migration_011_does_not_redefine_or_drop_any_trigger(self):
+        """Trigger objects/logic stay exactly as migration 010 created
+        them -- 011 is grant-only."""
+        self.assertNotIn("create trigger", self.code_011)
+        self.assertNotIn("drop trigger", self.code_011)
+        self.assertNotIn("create or replace function", self.code_011)
+        self.assertNotIn("create table", self.code_011)
+        self.assertNotIn("alter table", self.code_011)
+
+    def test_migration_011_performs_no_application_data_mutation(self):
+        self.assertNotIn("insert into", self.code_011)
+        self.assertNotIn("update ", self.code_011)
+        self.assertNotIn("delete from", self.code_011)
+
+    # ── instruction 1: investigation findings, proven against migration ──
+    #    010's actual (untouched) source ────────────────────────────────
+    def test_all_four_trigger_functions_are_security_definer_in_migration_010(self):
+        for name in _TRIGGER_FUNCTION_NAMES:
+            fn_idx = self.code_010.index(f"create or replace function public.{name}()")
+            fn_header = self.code_010[fn_idx:fn_idx + 200]
+            self.assertIn("security definer", fn_header)
+
+    def test_all_four_trigger_functions_already_have_fixed_search_path_in_migration_010(self):
+        """No search_path hardening is missing -- migration 010 already
+        pins search_path on every one of these; migration 011 correctly
+        makes no search_path change."""
+        for name in _TRIGGER_FUNCTION_NAMES:
+            fn_idx = self.code_010.index(f"create or replace function public.{name}()")
+            fn_header = self.code_010[fn_idx:fn_idx + 200]
+            self.assertIn("set search_path = public, pg_temp", fn_header)
+        self.assertNotIn("alter function", self.code_011)
+
+    def test_only_one_trigger_function_touches_a_table_and_it_is_fully_qualified(self):
+        fn_idx = self.code_010.index("create or replace function public.prevent_applied_review_document_mutation()")
+        fn_body = self.code_010[fn_idx:self.code_010.index("$$;", fn_idx)]
+        self.assertIn("from public.procurement_update_reviews", fn_body)
+
+    # ── instruction 5: trigger objects still reference the same functions,
+    #    definitions remain BEFORE UPDATE OR DELETE (unchanged, since 011
+    #    never touches migration 010) ──────────────────────────────────
+    def test_trigger_definitions_in_migration_010_remain_before_update_or_delete(self):
+        expected = [
+            ("guard_applied_change_immutability", "procurement_changes", "prevent_applied_change_mutation"),
+            ("guard_applied_review_immutability", "procurement_update_reviews", "prevent_applied_review_mutation"),
+            ("guard_applied_review_document_immutability", "procurement_update_review_documents",
+             "prevent_applied_review_document_mutation"),
+            ("guard_resolved_conflict_immutability", "procurement_conflicts", "prevent_resolved_conflict_mutation"),
+        ]
+        for trigger_name, table_name, function_name in expected:
+            trigger_idx = self.code_010.index(f"create trigger {trigger_name}")
+            trigger_def = self.code_010[trigger_idx:trigger_idx + 250]
+            self.assertIn("before update or delete", trigger_def)
+            self.assertIn(f"on public.{table_name}", trigger_def)
+            self.assertIn(f"public.{function_name}()", trigger_def)
 
 
 if __name__ == "__main__":
