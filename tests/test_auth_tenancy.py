@@ -711,16 +711,23 @@ class TestFragmentSessionCallback(unittest.TestCase):
         bridge_end = source.index("def handle_fragment_session_callback")
         bridge_body = source[bridge_start:bridge_end]
         self.assertIn("access_token=", bridge_body)
-        self.assertIn("window.parent.location.replace", bridge_body)
+        self.assertIn("window.top.location.replace", bridge_body)
         self.assertIn("sb_at", bridge_body)
         self.assertIn("sb_rt", bridge_body)
 
-    def test_bridge_reads_and_writes_the_parent_frame_never_the_iframe(self):
-        """st.components.v1.html() renders inside a same-origin IFRAME --
-        every location read/write must target window.parent, never a bare
-        window.location, or the redirect would only ever affect the
-        invisible iframe and never the actual browser tab (the exact bug
-        caught live: the bridge never fired because of this)."""
+    def test_bridge_reads_and_writes_the_top_frame_never_a_nested_iframe(self):
+        """st.components.v1.html() renders inside a same-origin IFRAME,
+        and this project's Streamlit Cloud hosting nests a SECOND iframe
+        (its own "streamlitApp" wrapper) around the whole app on top of
+        that -- confirmed live via direct DOM inspection of the deployed
+        page. window.parent only reaches one level up (the streamlitApp
+        iframe, still not the real tab); window.top always reaches the
+        OUTERMOST frame regardless of nesting depth, which is the only
+        form robust to exactly how many levels Streamlit Cloud happens to
+        nest. Every location read/write must target window.top, never a
+        bare window.location or window.parent.location, or the redirect
+        only ever affects an inner iframe and never the actual browser
+        tab (the exact bug caught live, twice: the bridge never fired)."""
         source = open(
             os.path.join(os.path.dirname(__file__), "..", "auth_session.py"), "r", encoding="utf-8"
         ).read()
@@ -729,8 +736,9 @@ class TestFragmentSessionCallback(unittest.TestCase):
         script_start = source.index("<script>", bridge_start)
         script_end = source.index("</script>", bridge_start)
         script_body = source[script_start:script_end]
-        self.assertIn("window.parent.location", script_body)
+        self.assertIn("window.top.location", script_body)
         self.assertNotIn("window.location", script_body)
+        self.assertNotIn("window.parent", script_body)
 
     def test_callback_never_logs_or_prints_raw_fragment_token_values(self):
         source = open(

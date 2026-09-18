@@ -243,28 +243,37 @@ def render_fragment_session_bridge() -> None:
     fragment-token redirect happens before anything else renders.
 
     st.components.v1.html() renders this snippet inside a same-origin
-    IFRAME, not the top-level page -- a first version of this that read
-    plain `window.location` was silently reading the iframe's own blank
-    location (never the real tab URL) and would have redirected only the
-    iframe, not the browser tab, had it ever matched. Every reference
-    below is therefore explicitly `window.parent.location`, the actual
-    outer page Supabase's link landed on."""
+    IFRAME, not the top-level page -- and confirmed live, this project's
+    Streamlit Cloud hosting wraps the whole app in its OWN outer
+    "streamlitApp" iframe first, so our component actually sits TWO
+    levels deep (tab -> streamlitApp iframe -> this component's iframe).
+    A first version of this read plain `window.location` (the
+    component's own blank location -- fixed, but still wrong) and a
+    second read `window.parent.location`, which only reaches the
+    streamlitApp iframe, one level short of the real tab -- confirmed
+    live via direct DOM inspection of the deployed page (an <iframe
+    title="streamlitApp"> containing an <iframe title="st.iframe">, our
+    component). `window.top` always resolves to the OUTERMOST browsing
+    context no matter how many iframes are nested in between, so every
+    reference below is `window.top.location` -- the one form that is
+    correct regardless of exactly how many levels Streamlit Cloud's own
+    hosting happens to nest at any given time."""
     import streamlit.components.v1 as components
     components.html(
         """
         <script>
         (function() {
-            var hash = window.parent.location.hash;
+            var hash = window.top.location.hash;
             if (hash && hash.indexOf('access_token=') !== -1) {
                 var params = new URLSearchParams(hash.substring(1));
                 var accessToken = params.get('access_token');
                 var refreshToken = params.get('refresh_token');
                 if (accessToken && refreshToken) {
-                    var url = new URL(window.parent.location.href);
+                    var url = new URL(window.top.location.href);
                     url.hash = '';
                     url.searchParams.set('sb_at', accessToken);
                     url.searchParams.set('sb_rt', refreshToken);
-                    window.parent.location.replace(url.toString());
+                    window.top.location.replace(url.toString());
                 }
             }
         })();
