@@ -619,6 +619,111 @@ class TestInviteCallback(unittest.TestCase):
         self.assertNotIn("logger.", source)
 
 
+class TestFragmentSessionCallback(unittest.TestCase):
+    """auth_session.handle_fragment_session_callback() -- the bridge for
+    Supabase's implicit-flow #access_token=...&refresh_token=... links
+    (dashboard-triggered password recovery, and some magic-link
+    configurations), which a Streamlit server can never see directly
+    since a URL fragment is never sent in the HTTP request. Diagnosed
+    live via a real magic-link/recovery URL landing on staging as
+    #access_token=...&refresh_token=...&type=recovery -- the callback
+    below is the server-side half; render_fragment_session_bridge() is
+    the client-side JS half that moves the pair into sb_at/sb_rt query
+    params before this ever runs."""
+
+    def _mock_query_params(self, **kwargs):
+        return dict(kwargs)
+
+    @patch("auth_session.get_auth_client")
+    def test_no_callback_params_is_a_safe_no_op(self, mock_get_auth_client):
+        import streamlit as st
+        import auth_session
+        with patch.object(st, "query_params", self._mock_query_params()):
+            result = auth_session.handle_fragment_session_callback()
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error, "no fragment session callback present")
+        mock_get_auth_client.assert_not_called()
+
+    @patch("tenancy.resolve_organization_context")
+    @patch("auth_session.get_auth_client")
+    def test_successful_fragment_session_resolves_authcontext(self, mock_get_auth_client, mock_resolve):
+        import streamlit as st
+        import auth_session
+        from tenancy import AuthContext
+
+        mock_client = MagicMock()
+        mock_session = MagicMock(access_token="at-fragment", refresh_token="rt-fragment",
+                                  expires_at=time.time() + 3600)
+        mock_user = MagicMock(id="ed5ccf11-8f6e-4975-85db-f2d1cf84660b", email="feras@enablemygrowth.com")
+        mock_client.auth.set_session.return_value = MagicMock(session=mock_session, user=mock_user)
+        mock_get_auth_client.return_value = mock_client
+        mock_resolve.return_value = AuthContext(
+            user_id="ed5ccf11-8f6e-4975-85db-f2d1cf84660b", email="feras@enablemygrowth.com",
+            organization_id="4326b564-8cc5-4463-9304-9a589f08cc91",
+            organization_name="Enable My Growth Internal", role="owner",
+        )
+
+        qp = self._mock_query_params(sb_at="real-access-token", sb_rt="real-refresh-token")
+        st.session_state.clear()
+        with patch.object(st, "query_params", qp):
+            result = auth_session.handle_fragment_session_callback()
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.user_id, "ed5ccf11-8f6e-4975-85db-f2d1cf84660b")
+        # set_session(), NOT verify_otp() -- these are already-issued,
+        # already-valid tokens, not a one-time code to redeem.
+        mock_client.auth.set_session.assert_called_once_with("real-access-token", "real-refresh-token")
+        mock_client.auth.verify_otp.assert_not_called()
+        stored_session = st.session_state[auth_session.SESSION_KEY]
+        self.assertEqual(stored_session["access_token"], "at-fragment")
+        context = st.session_state[auth_session.AUTH_CONTEXT_KEY]
+        self.assertEqual(context.organization_id, "4326b564-8cc5-4463-9304-9a589f08cc91")
+        # one-time tokens stripped from the URL after processing
+        self.assertNotIn("sb_at", qp)
+        self.assertNotIn("sb_rt", qp)
+
+    @patch("auth_session.get_auth_client")
+    def test_invalid_or_expired_token_fails_closed_and_strips_url(self, mock_get_auth_client):
+        import streamlit as st
+        import auth_session
+
+        mock_client = MagicMock()
+        mock_client.auth.set_session.side_effect = Exception("Token has expired or is invalid")
+        mock_get_auth_client.return_value = mock_client
+
+        qp = self._mock_query_params(sb_at="stale-access-token", sb_rt="stale-refresh-token")
+        with patch.object(st, "query_params", qp):
+            result = auth_session.handle_fragment_session_callback()
+
+        self.assertFalse(result.ok)
+        self.assertIn("invalid or expired", result.error)
+        self.assertNotIn("sb_at", qp)
+        self.assertNotIn("sb_rt", qp)
+
+    def test_bridge_component_only_activates_on_a_real_fragment_token(self):
+        """The client-side JS snippet must gate its own redirect on the
+        fragment actually containing access_token= -- never an
+        unconditional redirect on every page load."""
+        source = open(
+            os.path.join(os.path.dirname(__file__), "..", "auth_session.py"), "r", encoding="utf-8"
+        ).read()
+        bridge_start = source.index("def render_fragment_session_bridge")
+        bridge_end = source.index("def handle_fragment_session_callback")
+        bridge_body = source[bridge_start:bridge_end]
+        self.assertIn("access_token=", bridge_body)
+        self.assertIn("window.location.replace", bridge_body)
+        self.assertIn("sb_at", bridge_body)
+        self.assertIn("sb_rt", bridge_body)
+
+    def test_callback_never_logs_or_prints_raw_fragment_token_values(self):
+        source = open(
+            os.path.join(os.path.dirname(__file__), "..", "auth_session.py"), "r", encoding="utf-8"
+        ).read()
+        self.assertNotIn("print(", source)
+        self.assertNotIn("logging.", source)
+        self.assertNotIn("logger.", source)
+
+
 class TestNoPublicSignUp(unittest.TestCase):
     """Instruction 6: no open self-registration in this package."""
 
@@ -627,6 +732,43 @@ class TestNoPublicSignUp(unittest.TestCase):
         self.assertFalse(hasattr(auth_session, "sign_up"))
         self.assertFalse(hasattr(auth_session, "register"))
         self.assertFalse(hasattr(auth_session, "create_account"))
+
+
+class TestAppWiresTheFragmentSessionBridge(unittest.TestCase):
+    """Static structural check that app.py actually calls the fragment
+    bridge -- and calls it BEFORE handle_invite_callback()/
+    handle_fragment_session_callback() -- since app.py's top-level
+    Streamlit script body isn't otherwise unit-testable the way a plain
+    function is (same constraint noted by this repo's other app.py
+    wiring checks)."""
+
+    def _app_source(self) -> str:
+        return open(
+            os.path.join(os.path.dirname(__file__), "..", "app.py"), "r", encoding="utf-8"
+        ).read()
+
+    def test_bridge_is_rendered(self):
+        source = self._app_source()
+        self.assertIn("_auth_session.render_fragment_session_bridge()", source)
+
+    def test_fragment_callback_is_invoked(self):
+        source = self._app_source()
+        self.assertIn("_auth_session.handle_fragment_session_callback()", source)
+
+    def test_bridge_renders_before_either_callback_is_read(self):
+        source = self._app_source()
+        bridge_idx = source.index("_auth_session.render_fragment_session_bridge()")
+        invite_idx = source.index("_auth_session.handle_invite_callback()")
+        fragment_idx = source.index("_auth_session.handle_fragment_session_callback()")
+        self.assertLess(bridge_idx, invite_idx)
+        self.assertLess(bridge_idx, fragment_idx)
+
+    def test_login_gate_surfaces_fragment_callback_errors(self):
+        source = self._app_source()
+        gate_idx = source.index("def _render_login_gate")
+        gate_body = source[gate_idx:gate_idx + 1500]
+        self.assertIn("_fragment_result", gate_body)
+        self.assertIn("no fragment session callback present", gate_body)
 
 
 if __name__ == "__main__":

@@ -215,6 +215,110 @@ def current_auth_context():
     return st.session_state.get(AUTH_CONTEXT_KEY)
 
 
+def render_fragment_session_bridge() -> None:
+    """Supabase can issue a session via the URL FRAGMENT
+    (#access_token=...&refresh_token=...&type=...) instead of the
+    token_hash query-param flow handle_invite_callback() expects -- this
+    happens for a Supabase-dashboard-triggered password-recovery link,
+    and can happen for a magic-link email too depending on this
+    project's currently configured Auth flow type. A browser's URL
+    fragment is never sent to the server (an HTTP fact, not a bug), so
+    Streamlit's server-side st.query_params can never see it directly --
+    without this bridge, such a link silently strands the user back at
+    the sign-in page with no error, no matter how Site URL/Redirect URLs
+    are configured (this was diagnosed live: the previously-documented
+    "tokens exposed in the browser's URL fragment during troubleshooting"
+    incident in this module's docstring is exactly this same gap
+    recurring).
+
+    Renders an invisible (zero-height), purely client-side JS snippet
+    that -- ONLY when the fragment actually contains `access_token=` --
+    moves the token pair into short-named query params (sb_at/sb_rt) and
+    reloads, so handle_fragment_session_callback() below can pick it up
+    server-side on the next run. A no-op on every ordinary page load:
+    the fragment check happens entirely in the browser, and nothing is
+    sent to the server unless a token was actually present. Call this
+    once, unconditionally, as early as possible in the script -- before
+    handle_invite_callback()/handle_fragment_session_callback() -- so a
+    fragment-token redirect happens before anything else renders."""
+    import streamlit.components.v1 as components
+    components.html(
+        """
+        <script>
+        (function() {
+            var hash = window.location.hash;
+            if (hash && hash.indexOf('access_token=') !== -1) {
+                var params = new URLSearchParams(hash.substring(1));
+                var accessToken = params.get('access_token');
+                var refreshToken = params.get('refresh_token');
+                if (accessToken && refreshToken) {
+                    var url = new URL(window.location.href);
+                    url.hash = '';
+                    url.searchParams.set('sb_at', accessToken);
+                    url.searchParams.set('sb_rt', refreshToken);
+                    window.location.replace(url.toString());
+                }
+            }
+        })();
+        </script>
+        """,
+        height=0,
+    )
+
+
+def handle_fragment_session_callback() -> AuthResult:
+    """Server-side half of the fragment-token bridge (see
+    render_fragment_session_bridge() above for why this exists). Once the
+    client-side JS has moved an already-issued access_token/refresh_token
+    pair from the URL fragment into sb_at/sb_rt query params and
+    reloaded, this establishes the session via Supabase's set_session()
+    -- NOT verify_otp(), since these are already-valid tokens, not a
+    one-time code to redeem. Immediately strips both params from the
+    visible URL, regardless of outcome, so neither token can be re-used,
+    bookmarked, or re-shared from the browser's address bar or history
+    (same discipline as handle_invite_callback()'s token_hash stripping).
+    Uses ONLY the anon/public auth client -- never the service-role
+    client. Never logs or prints either token anywhere. A safe no-op
+    (ok=False, error='no fragment session callback present') whenever the
+    expected query params are absent, so it never affects an ordinary
+    page load."""
+    import streamlit as st
+
+    access_token = st.query_params.get("sb_at")
+    refresh_token = st.query_params.get("sb_rt")
+    if not access_token or not refresh_token:
+        return AuthResult(ok=False, error="no fragment session callback present")
+
+    try:
+        client = get_auth_client()
+        resp = client.auth.set_session(access_token, refresh_token)
+    except Exception:
+        st.query_params.pop("sb_at", None)
+        st.query_params.pop("sb_rt", None)
+        return AuthResult(ok=False, error="session could not be established: invalid or expired link")
+
+    st.query_params.pop("sb_at", None)
+    st.query_params.pop("sb_rt", None)
+
+    session = getattr(resp, "session", None)
+    user = getattr(resp, "user", None)
+    if not session or not user:
+        return AuthResult(ok=False, error="fragment session callback did not return a valid session")
+
+    st.session_state[SESSION_KEY] = {
+        "access_token": session.access_token,
+        "refresh_token": session.refresh_token,
+        "user_id": user.id,
+        "email": user.email,
+        "expires_at": getattr(session, "expires_at", None),
+    }
+
+    import tenancy
+    st.session_state[AUTH_CONTEXT_KEY] = tenancy.resolve_organization_context(user.id, user.email)
+
+    return AuthResult(ok=True, user_id=user.id, email=user.email)
+
+
 def restore_session() -> AuthResult:
     """Best-effort restoration from Streamlit's own session_state -- see
     the module docstring for what this does and does not guarantee. Return

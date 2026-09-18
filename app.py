@@ -44,7 +44,9 @@ import auth_client as _auth_client
 import tenancy as _tenancy
 from config import get_app_base_url as _get_app_base_url
 
+_auth_session.render_fragment_session_bridge()
 _invite_result = _auth_session.handle_invite_callback()
+_fragment_result = _auth_session.handle_fragment_session_callback()
 
 
 # Bid-scoped Proposal Alignment Analyzer session-state key prefixes
@@ -76,6 +78,8 @@ def _render_login_gate():
     st.markdown("## Sign in")
     if _invite_result.error not in ("no invite callback present",) and not _invite_result.ok:
         st.error(f"Sign-in link could not be verified: {_invite_result.error}")
+    if _fragment_result.error not in ("no fragment session callback present",) and not _fragment_result.ok:
+        st.error(f"Sign-in link could not be verified: {_fragment_result.error}")
     st.markdown(
         '<div class="info-box">Enter your email to receive a one-time sign-in link. '
         'No password is required, and no account is created if the email is not already registered '
