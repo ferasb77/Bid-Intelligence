@@ -32,8 +32,8 @@ st.session_state["bi_auth_session"] = {
 }
 st.session_state["bi_auth_context"] = AuthContext(
     user_id=_FAKE_USER_ID, email="smoke-test@example.com",
-    organization_id="00000000-0000-0000-0000-000000000002",
-    organization_name="Smoke Test Org", role="owner",
+    organization_id="4326b564-8cc5-4463-9304-9a589f08cc91",
+    organization_name="Enable My Growth Internal", role="owner",
 )
 
 # The fake access_token above is not a real, signed Supabase JWT -- a real
@@ -87,6 +87,33 @@ class TestAllPagesRuntime(unittest.TestCase):
 
     def setUp(self):
         self.bid_id = 8
+        st.session_state["bi_auth_session"] = {
+            "access_token": "smoke-test-fake-access-token",
+            "refresh_token": "smoke-test-fake-refresh-token",
+            "user_id": _FAKE_USER_ID,
+            "email": "smoke-test@example.com",
+            "expires_at": time.time() + 3600,
+        }
+        st.session_state["bi_auth_context"] = AuthContext(
+            user_id=_FAKE_USER_ID, email="smoke-test@example.com",
+            organization_id="4326b564-8cc5-4463-9304-9a589f08cc91",
+            organization_name="Enable My Growth Internal", role="owner",
+        )
+        self._reset_streamlit_form_context()
+
+    def tearDown(self):
+        self._reset_streamlit_form_context()
+
+    def _reset_streamlit_form_context(self):
+        try:
+            from streamlit.delta_generator_singletons import context_dg_stack, get_default_dg_stack_value
+            context_dg_stack.set(get_default_dg_stack_value())
+        except Exception:
+            pass
+        try:
+            st._main._form_data = None
+        except Exception:
+            pass
 
     @patch("streamlit.markdown")
     @patch("streamlit.columns", side_effect=mock_cols)
@@ -112,7 +139,12 @@ class TestAllPagesRuntime(unittest.TestCase):
     @patch("streamlit.columns", side_effect=mock_cols)
     @patch("streamlit.button", return_value=False)
     @patch("streamlit.tabs", side_effect=mock_tabs)
+    @patch("streamlit.form")
     def test_stage_decide_page_executes(self, *args):
+        mock_form = MagicMock()
+        mock_form.__enter__.return_value = mock_form
+        mock_form.form_submit_button.return_value = False
+        args[0].return_value = mock_form
         decide.page_decide(self.bid_id)
 
     @patch("streamlit.markdown")

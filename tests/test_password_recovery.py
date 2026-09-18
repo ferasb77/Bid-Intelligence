@@ -13,8 +13,20 @@ import auth_session as auth
 @pytest.fixture(autouse=True)
 def isolated_session():
     st.session_state.clear()
+    try:
+        from streamlit.delta_generator_singletons import context_dg_stack, get_default_dg_stack_value
+        context_dg_stack.set(get_default_dg_stack_value())
+        st._main._form_data = None
+    except Exception:
+        pass
     yield
     st.session_state.clear()
+    try:
+        from streamlit.delta_generator_singletons import context_dg_stack, get_default_dg_stack_value
+        context_dg_stack.set(get_default_dg_stack_value())
+        st._main._form_data = None
+    except Exception:
+        pass
 
 
 @pytest.fixture
