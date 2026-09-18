@@ -240,23 +240,31 @@ def render_fragment_session_bridge() -> None:
     sent to the server unless a token was actually present. Call this
     once, unconditionally, as early as possible in the script -- before
     handle_invite_callback()/handle_fragment_session_callback() -- so a
-    fragment-token redirect happens before anything else renders."""
+    fragment-token redirect happens before anything else renders.
+
+    st.components.v1.html() renders this snippet inside a same-origin
+    IFRAME, not the top-level page -- a first version of this that read
+    plain `window.location` was silently reading the iframe's own blank
+    location (never the real tab URL) and would have redirected only the
+    iframe, not the browser tab, had it ever matched. Every reference
+    below is therefore explicitly `window.parent.location`, the actual
+    outer page Supabase's link landed on."""
     import streamlit.components.v1 as components
     components.html(
         """
         <script>
         (function() {
-            var hash = window.location.hash;
+            var hash = window.parent.location.hash;
             if (hash && hash.indexOf('access_token=') !== -1) {
                 var params = new URLSearchParams(hash.substring(1));
                 var accessToken = params.get('access_token');
                 var refreshToken = params.get('refresh_token');
                 if (accessToken && refreshToken) {
-                    var url = new URL(window.location.href);
+                    var url = new URL(window.parent.location.href);
                     url.hash = '';
                     url.searchParams.set('sb_at', accessToken);
                     url.searchParams.set('sb_rt', refreshToken);
-                    window.location.replace(url.toString());
+                    window.parent.location.replace(url.toString());
                 }
             }
         })();

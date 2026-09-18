@@ -711,9 +711,26 @@ class TestFragmentSessionCallback(unittest.TestCase):
         bridge_end = source.index("def handle_fragment_session_callback")
         bridge_body = source[bridge_start:bridge_end]
         self.assertIn("access_token=", bridge_body)
-        self.assertIn("window.location.replace", bridge_body)
+        self.assertIn("window.parent.location.replace", bridge_body)
         self.assertIn("sb_at", bridge_body)
         self.assertIn("sb_rt", bridge_body)
+
+    def test_bridge_reads_and_writes_the_parent_frame_never_the_iframe(self):
+        """st.components.v1.html() renders inside a same-origin IFRAME --
+        every location read/write must target window.parent, never a bare
+        window.location, or the redirect would only ever affect the
+        invisible iframe and never the actual browser tab (the exact bug
+        caught live: the bridge never fired because of this)."""
+        source = open(
+            os.path.join(os.path.dirname(__file__), "..", "auth_session.py"), "r", encoding="utf-8"
+        ).read()
+        bridge_start = source.index("def render_fragment_session_bridge")
+        bridge_end = source.index("def handle_fragment_session_callback")
+        script_start = source.index("<script>", bridge_start)
+        script_end = source.index("</script>", bridge_start)
+        script_body = source[script_start:script_end]
+        self.assertIn("window.parent.location", script_body)
+        self.assertNotIn("window.location", script_body)
 
     def test_callback_never_logs_or_prints_raw_fragment_token_values(self):
         source = open(
