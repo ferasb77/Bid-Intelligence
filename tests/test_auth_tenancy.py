@@ -757,6 +757,35 @@ class TestNoPublicSignUp(unittest.TestCase):
         self.assertFalse(hasattr(auth_session, "create_account"))
 
 
+class TestPasswordResetRequest(unittest.TestCase):
+
+    @patch("auth_session.get_auth_client")
+    def test_request_password_reset_success(self, mock_get_auth_client):
+        import auth_session
+        mock_client = MagicMock()
+        mock_get_auth_client.return_value = mock_client
+        result = auth_session.request_password_reset("user@example.com", redirect_to="https://app.example.com")
+        self.assertTrue(result.ok)
+        mock_client.auth.reset_password_for_email.assert_called_once_with(
+            "user@example.com", options={"redirect_to": "https://app.example.com"}
+        )
+
+    def test_request_password_reset_missing_email(self):
+        import auth_session
+        result = auth_session.request_password_reset("")
+        self.assertFalse(result.ok)
+
+    @patch("auth_session.get_auth_client")
+    def test_request_password_reset_provider_exception_does_not_leak(self, mock_get_auth_client):
+        import auth_session
+        mock_client = MagicMock()
+        mock_client.auth.reset_password_for_email.side_effect = Exception("User not found or rate limited")
+        mock_get_auth_client.return_value = mock_client
+        result = auth_session.request_password_reset("unknown@example.com")
+        self.assertTrue(result.ok)  # never reveals account existence
+
+
+
 class TestAppWiresTheFragmentSessionBridge(unittest.TestCase):
     """Static structural check that app.py actually calls the fragment
     bridge -- and calls it BEFORE handle_invite_callback()/

@@ -113,6 +113,24 @@ def sign_in(email: str, password: str) -> AuthResult:
     return AuthResult(ok=True, user_id=user.id, email=user.email)
 
 
+def request_password_reset(email: str, redirect_to: str | None = None) -> AuthResult:
+    """Request a Supabase password reset email.
+    Safe failure: never reveals whether the email exists.
+    Uses only the public anon client, never the service role client."""
+    if not email:
+        return AuthResult(ok=False, error="Email is required")
+    try:
+        client = get_auth_client()
+        options = {}
+        if redirect_to:
+            options["redirect_to"] = redirect_to
+        client.auth.reset_password_for_email(email, options=options)
+    except Exception:
+        # Never leak provider details or user existence
+        pass
+    return AuthResult(ok=True, email=email)
+
+
 def sign_out() -> None:
     """Clears local session state unconditionally, even if the remote
     sign-out call fails -- a failed remote call must never leave the UI
@@ -307,28 +325,32 @@ def render_fragment_session_bridge() -> None:
         <script>
         (function() {
             function attemptBridge() {
-                var hash = window.top.location.hash;
-                var errorParams = new URLSearchParams((hash || '').substring(1));
-                if (errorParams.has('error') || errorParams.has('error_code')) {
-                    var errorUrl = new URL(window.top.location.href);
-                    errorUrl.hash = '';
-                    errorUrl.searchParams.set('sb_error', 'invalid_link');
-                    window.top.location.replace(errorUrl.toString());
-                    return true;
-                }
-                if (hash && hash.indexOf('access_token=') !== -1) {
-                    var params = new URLSearchParams(hash.substring(1));
-                    var accessToken = params.get('access_token');
-                    var refreshToken = params.get('refresh_token');
-                    if (accessToken && refreshToken) {
-                        var url = new URL(window.top.location.href);
-                        url.hash = '';
-                        url.searchParams.set('sb_at', accessToken);
-                        url.searchParams.set('sb_rt', refreshToken);
-                        url.searchParams.set('sb_type', params.get('type') || '');
-                        window.top.location.replace(url.toString());
+                try {
+                    var hash = window.top.location.hash;
+                    var errorParams = new URLSearchParams((hash || '').substring(1));
+                    if (errorParams.has('error') || errorParams.has('error_code')) {
+                        var errorUrl = new URL(window.top.location.href);
+                        errorUrl.hash = '';
+                        errorUrl.searchParams.set('sb_error', 'invalid_link');
+                        window.top.location.replace(errorUrl.toString());
                         return true;
                     }
+                    if (hash && hash.indexOf('access_token=') !== -1) {
+                        var params = new URLSearchParams(hash.substring(1));
+                        var accessToken = params.get('access_token');
+                        var refreshToken = params.get('refresh_token');
+                        if (accessToken && refreshToken) {
+                            var url = new URL(window.top.location.href);
+                            url.hash = '';
+                            url.searchParams.set('sb_at', accessToken);
+                            url.searchParams.set('sb_rt', refreshToken);
+                            url.searchParams.set('sb_type', params.get('type') || '');
+                            window.top.location.replace(url.toString());
+                            return true;
+                        }
+                    }
+                } catch (e) {
+                    // In case window.top is inaccessible due to cross-origin sandbox, do not crash
                 }
                 return false;
             }
@@ -374,24 +396,23 @@ def handle_fragment_session_callback() -> AuthResult:
     access_token = st.query_params.get("sb_at")
     refresh_token = st.query_params.get("sb_rt")
     callback_type = st.query_params.get("sb_type")
-    if access_token or refresh_token or callback_type:
+    if not access_token and not refresh_token and not callback_type:
+        return AuthResult(ok=False, error="no fragment session callback present")
+    if not access_token or not refresh_token:
         for key in ("sb_at", "sb_rt", "sb_type"):
             st.query_params.pop(key, None)
-        if not access_token or not refresh_token:
-            return AuthResult(ok=False, error="incomplete authentication link; request a fresh link")
-    if not access_token or not refresh_token:
-        return AuthResult(ok=False, error="no fragment session callback present")
+        return AuthResult(ok=False, error="incomplete authentication link; request a fresh link")
 
     try:
         client = get_auth_client()
         resp = client.auth.set_session(access_token, refresh_token)
     except Exception:
-        st.query_params.pop("sb_at", None)
-        st.query_params.pop("sb_rt", None)
+        for key in ("sb_at", "sb_rt", "sb_type"):
+            st.query_params.pop(key, None)
         return AuthResult(ok=False, error="session could not be established: invalid or expired link")
 
-    st.query_params.pop("sb_at", None)
-    st.query_params.pop("sb_rt", None)
+    for key in ("sb_at", "sb_rt", "sb_type"):
+        st.query_params.pop(key, None)
 
     session = getattr(resp, "session", None)
     user = getattr(resp, "user", None)

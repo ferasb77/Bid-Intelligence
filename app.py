@@ -113,6 +113,16 @@ def _render_login_gate():
                 st.rerun()
             st.error(result.error)
 
+    with st.expander("Forgot your password? / Reset password"):
+        with st.form("password_reset_request", clear_on_submit=True):
+            reset_email = st.text_input("Account email", key="password_reset_req_email")
+            reset_submitted = st.form_submit_button("Send password reset link")
+        if reset_submitted:
+            if reset_email:
+                _base_url = _get_app_base_url()
+                _auth_session.request_password_reset(reset_email, redirect_to=_base_url)
+            st.success("If that email has an account, a password reset link has been sent. Check your inbox.")
+
 
 _session_result = _auth_session.restore_session()
 
