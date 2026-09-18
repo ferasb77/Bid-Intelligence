@@ -47,6 +47,8 @@ from config import get_app_base_url as _get_app_base_url
 _auth_session.render_fragment_session_bridge()
 _invite_result = _auth_session.handle_invite_callback()
 _fragment_result = _auth_session.handle_fragment_session_callback()
+if st.session_state.get(_auth_session.RECOVERY_SESSION_KEY):
+    _auth_session.render_password_recovery()
 
 
 # Bid-scoped Proposal Alignment Analyzer session-state key prefixes
@@ -76,6 +78,8 @@ def _clear_all_user_scoped_state():
 def _render_login_gate():
     st.markdown(sidebar_brand_html(), unsafe_allow_html=True)
     st.markdown("## Sign in")
+    if st.session_state.pop("bi_password_reset_complete", False):
+        st.success("Your password has been updated. You can now sign in with your new password.")
     if _invite_result.error not in ("no invite callback present",) and not _invite_result.ok:
         st.error(f"Sign-in link could not be verified: {_invite_result.error}")
     if _fragment_result.error not in ("no fragment session callback present",) and not _fragment_result.ok:
@@ -97,6 +101,17 @@ def _render_login_gate():
             except Exception:
                 pass  # never reveal whether the email exists
             st.success("If that email has an account, a sign-in link has been sent. Check your inbox.")
+
+    with st.expander("Sign in with a password"):
+        with st.form("password_sign_in", clear_on_submit=True):
+            email = st.text_input("Email", key="password_login_email")
+            password = st.text_input("Password", type="password")
+            submitted = st.form_submit_button("Sign in")
+        if submitted:
+            result = _auth_session.sign_in(email, password)
+            if result.ok:
+                st.rerun()
+            st.error(result.error)
 
 
 _session_result = _auth_session.restore_session()

@@ -474,10 +474,8 @@ class TestInviteCallback(unittest.TestCase):
     def test_unsupported_callback_type_rejected_without_processing(self, mock_get_auth_client):
         import streamlit as st
         import auth_session
-        # 'recovery' is a real EmailOtpType but not one this bootstrap
-        # accepts (only 'invite' and 'email' are -- see
-        # INVITE_CALLBACK_ACCEPTED_TYPES).
-        qp = self._mock_query_params(token_hash="abc123", type="recovery")
+        # Email changes are not an application sign-in/recovery callback.
+        qp = self._mock_query_params(token_hash="abc123", type="email_change")
         with patch.object(st, "query_params", qp):
             result = auth_session.handle_invite_callback()
         self.assertFalse(result.ok)

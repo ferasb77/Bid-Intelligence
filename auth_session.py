@@ -50,6 +50,7 @@ from auth_client import get_auth_client
 
 SESSION_KEY = "bi_auth_session"
 AUTH_CONTEXT_KEY = "bi_auth_context"
+RECOVERY_SESSION_KEY = "bi_recovery_session"
 # 'invite' -- the original Supabase Auth invite-acceptance flow, valid only
 # once per user (Supabase's invite endpoint refuses to re-send once an
 # account is confirmed -- see 'email' below for the fallback that covers
@@ -64,7 +65,7 @@ AUTH_CONTEXT_KEY = "bi_auth_context"
 # sign-in is the correct, still-token-hash-based, still-never-exposes-a-
 # raw-token-to-this-server mechanism for that case, and for every future
 # passwordless sign-in this real user performs.
-INVITE_CALLBACK_ACCEPTED_TYPES = ("invite", "email")
+INVITE_CALLBACK_ACCEPTED_TYPES = ("invite", "email", "recovery")
 
 
 @dataclass(frozen=True)
@@ -100,6 +101,8 @@ def sign_in(email: str, password: str) -> AuthResult:
         return AuthResult(ok=False, error="invalid credentials")
 
     import streamlit as st
+    st.session_state.pop(RECOVERY_SESSION_KEY, None)
+    st.session_state.pop(AUTH_CONTEXT_KEY, None)
     st.session_state[SESSION_KEY] = {
         "access_token": session.access_token,
         "refresh_token": session.refresh_token,
@@ -116,14 +119,19 @@ def sign_out() -> None:
     looking signed-in when the user asked to sign out. Clears the resolved
     AuthContext/organization context too -- no privileged or
     organization-scoped data may remain reachable after logout."""
+    import streamlit as st
+    stored = st.session_state.get(RECOVERY_SESSION_KEY) or current_session()
     try:
         client = get_auth_client()
+        if stored and stored.get("access_token") and stored.get("refresh_token"):
+            client.auth.set_session(stored["access_token"], stored["refresh_token"])
         client.auth.sign_out()
     except Exception:
         pass
     import streamlit as st
     st.session_state.pop(SESSION_KEY, None)
     st.session_state.pop(AUTH_CONTEXT_KEY, None)
+    st.session_state.pop(RECOVERY_SESSION_KEY, None)
 
 
 def current_session() -> dict | None:
@@ -146,9 +154,9 @@ def handle_invite_callback() -> AuthResult:
     expected query parameters are absent, so it never affects ordinary
     page loads.
 
-    Deliberately narrow: only the types in INVITE_CALLBACK_ACCEPTED_TYPES
-    are accepted -- a recovery/signup/email_change token_hash is rejected
-    without being processed. This uses ONLY the anon/public auth client
+    Only the types in INVITE_CALLBACK_ACCEPTED_TYPES are accepted.
+    Recovery sessions are isolated from ordinary application sessions.
+    This uses ONLY the anon/public auth client
     (auth_client.get_auth_client()) to call verify_otp -- never the
     service-role client. On success, resolves the real AuthContext via
     tenancy.resolve_organization_context() and stores both the session and
@@ -163,8 +171,12 @@ def handle_invite_callback() -> AuthResult:
     token_hash = params.get("token_hash")
     otp_type = params.get("type")
 
-    if not token_hash or not otp_type:
+    if not token_hash and not otp_type:
         return AuthResult(ok=False, error="no invite callback present")
+    if not token_hash or not otp_type:
+        st.query_params.pop("token_hash", None)
+        st.query_params.pop("type", None)
+        return AuthResult(ok=False, error="incomplete authentication link; request a fresh link")
 
     if otp_type not in INVITE_CALLBACK_ACCEPTED_TYPES:
         # Not an accepted bootstrap flow -- reject without processing, but
@@ -192,6 +204,10 @@ def handle_invite_callback() -> AuthResult:
     if not session or not user:
         return AuthResult(ok=False, error="invite verification did not return a valid session")
 
+    if otp_type == "recovery":
+        return _store_recovery_session(session, user)
+
+    st.session_state.pop(RECOVERY_SESSION_KEY, None)
     st.session_state[SESSION_KEY] = {
         "access_token": session.access_token,
         "refresh_token": session.refresh_token,
@@ -257,25 +273,64 @@ def render_fragment_session_bridge() -> None:
     context no matter how many iframes are nested in between, so every
     reference below is `window.top.location` -- the one form that is
     correct regardless of exactly how many levels Streamlit Cloud's own
-    hosting happens to nest at any given time."""
+    hosting happens to nest at any given time.
+
+    Confirmed live (2026-09-18) that a single `window.top.location.replace()`
+    call is NOT enough: with a synthetic fragment token, manually
+    re-running this exact logic via direct DOM access always redirects
+    correctly with no error, but the natural, unforced page load -- with
+    the identical fragment already present -- left the tab sitting on the
+    original fragment URL indefinitely. Streamlit reruns/re-hydrates its
+    own component tree several times in the first seconds after a fresh
+    load; the most likely explanation is that one of those early reruns
+    recreates this component's iframe (a fresh mount, fresh script
+    execution) before the browser finishes committing the previous
+    mount's replace() navigation, silently discarding it. Because each
+    fresh mount still sees the untouched fragment (nothing else removes
+    it) and re-attempts, the fix is to retry from WITHIN a single mount
+    across a short window rather than firing exactly once: this makes the
+    redirect succeed as soon as one attempt lands after Streamlit's
+    initial rerun churn has settled, however many attempts (from this
+    mount or a prior one) that takes."""
     import streamlit.components.v1 as components
     components.html(
         """
         <script>
         (function() {
-            var hash = window.top.location.hash;
-            if (hash && hash.indexOf('access_token=') !== -1) {
-                var params = new URLSearchParams(hash.substring(1));
-                var accessToken = params.get('access_token');
-                var refreshToken = params.get('refresh_token');
-                if (accessToken && refreshToken) {
-                    var url = new URL(window.top.location.href);
-                    url.hash = '';
-                    url.searchParams.set('sb_at', accessToken);
-                    url.searchParams.set('sb_rt', refreshToken);
-                    window.top.location.replace(url.toString());
+            function attemptBridge() {
+                var hash = window.top.location.hash;
+                var errorParams = new URLSearchParams((hash || '').substring(1));
+                if (errorParams.has('error') || errorParams.has('error_code')) {
+                    var errorUrl = new URL(window.top.location.href);
+                    errorUrl.hash = '';
+                    errorUrl.searchParams.set('sb_error', 'invalid_link');
+                    window.top.location.replace(errorUrl.toString());
+                    return true;
                 }
+                if (hash && hash.indexOf('access_token=') !== -1) {
+                    var params = new URLSearchParams(hash.substring(1));
+                    var accessToken = params.get('access_token');
+                    var refreshToken = params.get('refresh_token');
+                    if (accessToken && refreshToken) {
+                        var url = new URL(window.top.location.href);
+                        url.hash = '';
+                        url.searchParams.set('sb_at', accessToken);
+                        url.searchParams.set('sb_rt', refreshToken);
+                        url.searchParams.set('sb_type', params.get('type') || '');
+                        window.top.location.replace(url.toString());
+                        return true;
+                    }
+                }
+                return false;
             }
+            if (attemptBridge()) { return; }
+            var attempts = 0;
+            var intervalId = setInterval(function() {
+                attempts += 1;
+                if (attemptBridge() || attempts >= 20) {
+                    clearInterval(intervalId);
+                }
+            }, 250);
         })();
         </script>
         """,
@@ -301,8 +356,20 @@ def handle_fragment_session_callback() -> AuthResult:
     page load."""
     import streamlit as st
 
+    callback_error = st.query_params.get("sb_error") or st.query_params.get("error") or st.query_params.get("error_code")
+    if callback_error:
+        for key in ("sb_error", "error", "error_code", "error_description", "sb_at", "sb_rt", "sb_type", "token_hash", "type"):
+            st.query_params.pop(key, None)
+        return AuthResult(ok=False, error="This authentication link is invalid or expired. Request a fresh link.")
+
     access_token = st.query_params.get("sb_at")
     refresh_token = st.query_params.get("sb_rt")
+    callback_type = st.query_params.get("sb_type")
+    if access_token or refresh_token or callback_type:
+        for key in ("sb_at", "sb_rt", "sb_type"):
+            st.query_params.pop(key, None)
+        if not access_token or not refresh_token:
+            return AuthResult(ok=False, error="incomplete authentication link; request a fresh link")
     if not access_token or not refresh_token:
         return AuthResult(ok=False, error="no fragment session callback present")
 
@@ -322,6 +389,10 @@ def handle_fragment_session_callback() -> AuthResult:
     if not session or not user:
         return AuthResult(ok=False, error="fragment session callback did not return a valid session")
 
+    if callback_type == "recovery":
+        return _store_recovery_session(session, user)
+
+    st.session_state.pop(RECOVERY_SESSION_KEY, None)
     st.session_state[SESSION_KEY] = {
         "access_token": session.access_token,
         "refresh_token": session.refresh_token,
@@ -334,6 +405,78 @@ def handle_fragment_session_callback() -> AuthResult:
     st.session_state[AUTH_CONTEXT_KEY] = tenancy.resolve_organization_context(user.id, user.email)
 
     return AuthResult(ok=True, user_id=user.id, email=user.email)
+
+
+def _store_recovery_session(session, user) -> AuthResult:
+    """Only called after Supabase has authenticated the recovery credentials."""
+    import streamlit as st
+    st.session_state.pop(SESSION_KEY, None)
+    st.session_state.pop(AUTH_CONTEXT_KEY, None)
+    st.session_state[RECOVERY_SESSION_KEY] = {
+        "access_token": session.access_token,
+        "refresh_token": session.refresh_token,
+        "user_id": user.id,
+    }
+    return AuthResult(ok=True, user_id=user.id, email=user.email)
+
+
+def update_recovered_password(password: str, confirmation: str) -> AuthResult:
+    """Update only the verified recovery user, through the public auth client."""
+    import streamlit as st
+    stored = st.session_state.get(RECOVERY_SESSION_KEY)
+    if not stored:
+        return AuthResult(ok=False, error="Open a fresh password-reset link first.")
+    if not password or len(password) < 8:
+        return AuthResult(ok=False, error="Use a password with at least 8 characters.")
+    if password != confirmation:
+        return AuthResult(ok=False, error="The passwords do not match.")
+    try:
+        client = get_auth_client()
+        response = client.auth.set_session(stored["access_token"], stored["refresh_token"])
+        if not response.session or not response.user or response.user.id != stored["user_id"]:
+            raise ValueError("Invalid recovery session")
+        # Preserve rotated refresh credentials if the password update needs a retry.
+        stored["access_token"] = response.session.access_token
+        stored["refresh_token"] = response.session.refresh_token
+    except Exception:
+        st.session_state.pop(RECOVERY_SESSION_KEY, None)
+        return AuthResult(ok=False, error="Your reset session has expired. Request a fresh password-reset link.")
+    try:
+        response = client.auth.update_user({"password": password})
+        if not response.user or response.user.id != stored["user_id"]:
+            raise ValueError("Password update did not return the recovery user")
+    except Exception:
+        return AuthResult(ok=False, error="Password could not be updated. Use a different password that meets your organization's password policy, or request a fresh reset link.")
+    try:
+        client.auth.sign_out({"scope": "local"})
+    except Exception:
+        pass
+    st.session_state.pop(RECOVERY_SESSION_KEY, None)
+    st.session_state.pop(SESSION_KEY, None)
+    st.session_state.pop(AUTH_CONTEXT_KEY, None)
+    return AuthResult(ok=True)
+
+
+def render_password_recovery() -> None:
+    """Render before normal authentication/tenancy gates; survives form reruns."""
+    import streamlit as st
+    st.markdown("## Reset your password")
+    st.caption("Choose a new password for your account.")
+    with st.form("password_recovery", clear_on_submit=True):
+        password = st.text_input("New password", type="password")
+        confirmation = st.text_input("Confirm new password", type="password")
+        submitted = st.form_submit_button("Update password", type="primary")
+    if submitted:
+        result = update_recovered_password(password, confirmation)
+        if result.ok:
+            st.session_state["bi_password_reset_complete"] = True
+            st.rerun()
+        else:
+            st.error(result.error)
+    if st.button("Back to sign in"):
+        sign_out()
+        st.rerun()
+    st.stop()
 
 
 def restore_session() -> AuthResult:
