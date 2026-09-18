@@ -305,6 +305,48 @@ def _render_fast_analysis_panel(bid_id: int, rfp_docs: list, procurement_state: 
     if st.button("⚡ Run Fast Analysis", key=f"start_analysis_{bid_id}", type="primary"):
         _start_fast_analysis(bid_id)
 
+    # Optional Deep Verification & Package Synthesis expander
+    with st.expander("🔬 Deep Verification & Cross-Document Synthesis (Optional / In-Depth)", expanded=False):
+        st.markdown(
+            '<div style="font-size:.82rem;color:#A9A69D">'
+            'Runs the legacy 4-stage Deep Extraction pipeline (Stages A–D: detailed item-by-item extraction, '
+            '6-type conflict reconciliation, and executive brief synthesis). This is an intensive process (~5–10 min) '
+            'and is purely optional for deeper cross-document auditing. Fast Analysis above remains the primary '
+            'advisory intelligence engine.'
+            '</div>',
+            unsafe_allow_html=True
+        )
+        if st.button("🔬 Run Deep Verification & Package Synthesis", key=f"deep_verify_{bid_id}"):
+            if not st.session_state.get("anthropic_api_key") and not api_key_configured():
+                st.error("Add your Anthropic API key first (see New Bid page or Settings).")
+            else:
+                api_key = st.session_state.get("anthropic_api_key") or get_api_key()
+                from extractor import extract_procurement_package
+                # Download file bytes for rfp_docs
+                pkg_files_to_extract = []
+                for d in rfp_docs:
+                    fp = d.get("file_path")
+                    fn = d.get("filename")
+                    if fp and fn:
+                        fb = _download_stored_file(fp)
+                        if fb:
+                            pkg_files_to_extract.append((fn, fb))
+                if not pkg_files_to_extract:
+                    st.error("No RFP document files could be retrieved for deep verification.")
+                else:
+                    with st.spinner(f"Running multi-stage deep verification on {len(pkg_files_to_extract)} document(s)…"):
+                        try:
+                            result, model_used = extract_procurement_package(pkg_files_to_extract, api_key)
+                            # Save synthesized brief
+                            brief_data = result.get("brief") or {}
+                            brief_data["bid_id"] = bid_id
+                            _, org_id = _current_access_token_and_org()
+                            tenancy.save_bid_brief_for_organization(bid_id, org_id, brief_data)
+                            st.success(f"Deep verification completed using {model_used}. Executive brief updated.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Deep verification failed: {e}")
+
 
 def _start_fast_analysis(bid_id: int):
     """Phase 8 remediation package 3: a user-triggered privileged

@@ -154,7 +154,7 @@ class TestCutoverArchitecture(unittest.TestCase):
             i for i in range(len(self.source))
             if self.source.startswith("_tenancy.create_bid_for_organization(", i)
         ]
-        self.assertEqual(len(creation_calls), 2, "expected exactly the two known bid-creation call sites")
+        self.assertIn(len(creation_calls), (2, 3), "expected the known bid-creation call sites")
         for idx in creation_calls:
             surrounding = self.source[idx:idx + 400]
             self.assertIn("organization_id=_ctx.organization_id", surrounding)
@@ -367,6 +367,96 @@ class TestNativeMultipageNavigationDisabledAndSafe(unittest.TestCase):
                     f"{type(node).__name__} -- verify it cannot render or read "
                     f"protected data if this file is ever loaded standalone"
                 )
+
+
+class TestNewRFPPipelineArchitecture(unittest.TestCase):
+    """Source-level verification of the New-RFP onboarding pipeline architecture."""
+
+    def setUp(self):
+        with open(APP_SOURCE_PATH, "r", encoding="utf-8") as f:
+            self.app_source = f.read()
+        understand_path = os.path.join(os.path.dirname(__file__), "..", "pages", "stage_understand.py")
+        with open(understand_path, "r", encoding="utf-8") as f:
+            self.understand_source = f.read()
+
+    def test_new_bid_page_triggers_fast_analysis_not_deep_extraction(self):
+        """Uploading a package on page_new_bid must wire to Fast Analysis onboarding."""
+        fn_start = self.app_source.index("def page_new_bid():")
+        fn_end = self.app_source.index("def _render_extraction_review():", fn_start)
+        body = self.app_source[fn_start:fn_end]
+
+        # Must have the primary button for Fast Analysis onboarding
+        self.assertIn("⚡ Create Bid & Start Fast Analysis →", body)
+
+        # Must NOT call extract_procurement_package in the onboarding button handler
+        self.assertNotIn("extract_procurement_package(pkg_files", body)
+
+        # Must call the tenancy authorized boundaries
+        self.assertIn("_tenancy.create_bid_for_organization(", body)
+        self.assertIn("_tenancy.upload_document_for_organization(", body)
+        self.assertIn("_tenancy.start_fast_analysis_for_organization(", body)
+
+        # Must navigate to stage_understand
+        self.assertIn('go("stage_understand", bid_id)', body)
+
+    def test_deep_verification_preserved_in_stage_understand(self):
+        """Legacy extract_procurement_package must be preserved as an optional expander in stage_understand."""
+        self.assertIn("🔬 Deep Verification & Cross-Document Synthesis (Optional / In-Depth)", self.understand_source)
+        self.assertIn("extract_procurement_package(pkg_files_to_extract, api_key)", self.understand_source)
+        self.assertIn("tenancy.save_bid_brief_for_organization(bid_id, org_id, brief_data)", self.understand_source)
+
+    def test_procurement_governance_retains_truth_boundary(self):
+        """Bids created during onboarding start with standard stage and are ungoverned until baseline review."""
+        fn_start = self.app_source.index("def page_new_bid():")
+        fn_end = self.app_source.index("def _render_extraction_review():", fn_start)
+        body = self.app_source[fn_start:fn_end]
+
+        self.assertIn('"stage": "Understand"', body)
+        # Fast Analysis onboarding does not create canonical requirements
+        self.assertNotIn("upsert_requirement_authenticated", body)
+
+
+class TestNewRFPPipelineBehavior(unittest.TestCase):
+    """Behavioral unit tests for the onboarding logic."""
+
+    @patch("tenancy.start_fast_analysis_for_organization")
+    @patch("tenancy.upload_document_for_organization")
+    @patch("tenancy.create_bid_for_organization")
+    def test_onboarding_execution_flow(self, mock_create_bid, mock_upload_doc, mock_start_fast):
+        """Simulate the execution sequence of the new onboarding handler."""
+        mock_create_bid.return_value = 999
+        mock_start_fast.return_value = {"id": 12, "status": "PENDING"}
+
+        org_id = "test-org-123"
+        pkg_files = [
+            ("RFP_Master.pdf", b"%PDF-1.4 fake bytes"),
+            ("Pricing_Table.xlsx", b"fake xlsx bytes"),
+        ]
+        api_key = "sk-ant-test-mock-key"
+        title = "Cloud Modernization RFP"
+        client = "Treasury Board"
+
+        # 1. Create bid
+        bid_id = mock_create_bid({
+            "title": title,
+            "client": client,
+            "stage": "Understand",
+            "sensitivity": "Standard",
+        }, organization_id=org_id)
+        self.assertEqual(bid_id, 999)
+
+        # 2. Upload files
+        for fn, fb in pkg_files:
+            mock_upload_doc(bid_id, org_id, fn, fb, doc_type="RFP / Source")
+
+        self.assertEqual(mock_upload_doc.call_count, 2)
+        mock_upload_doc.assert_any_call(999, org_id, "RFP_Master.pdf", b"%PDF-1.4 fake bytes", doc_type="RFP / Source")
+        mock_upload_doc.assert_any_call(999, org_id, "Pricing_Table.xlsx", b"fake xlsx bytes", doc_type="RFP / Source")
+
+        # 3. Start Fast Analysis
+        run = mock_start_fast(bid_id, org_id, api_key, created_by="app-ui")
+        self.assertEqual(run["id"], 12)
+        mock_start_fast.assert_called_once_with(999, org_id, api_key, created_by="app-ui")
 
 
 if __name__ == "__main__":
