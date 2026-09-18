@@ -30,7 +30,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from config import get_anthropic_client
+from config import get_anthropic_client, execute_messages_create
 from extractor import (
     chunk_document_text as _deep_chunk_document_text,  # reused: pure, generic, marker-aware
     _safe_parse_json_with_status,                       # reused: pure JSON tolerance, no Deep Verify behavior
@@ -489,8 +489,9 @@ def _call_fast_chunk(route: str, filename: str, chunk_text: str, api_key: str, c
     started_at = datetime.now(timezone.utc)
     t0 = time.monotonic()
     try:
-        response = client.messages.create(
-            model=FAST_MODEL, max_tokens=FAST_MAX_OUTPUT_TOKENS, temperature=FAST_TEMPERATURE,
+        response = execute_messages_create(
+            client,
+            model=FAST_MODEL, max_tokens=FAST_MAX_OUTPUT_TOKENS,
             messages=[{"role": "user", "content": [{"type": "text", "text": request_text}]}],
         )
     except Exception as exc:
@@ -652,8 +653,9 @@ def extract_fast_batch(filenames: list[str], texts_by_name: dict[str, str], api_
     call_index = len(telemetry)
     started_at = datetime.now(timezone.utc)
     t0 = time.monotonic()
-    response = client.messages.create(
-        model=FAST_MODEL, max_tokens=FAST_MAX_OUTPUT_TOKENS, temperature=FAST_TEMPERATURE,
+    response = execute_messages_create(
+        client,
+        model=FAST_MODEL, max_tokens=FAST_MAX_OUTPUT_TOKENS,
         messages=[{"role": "user", "content": [{"type": "text", "text": request_text}]}],
     )
     usage = getattr(response, "usage", None)

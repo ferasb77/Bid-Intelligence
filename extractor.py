@@ -22,7 +22,7 @@ import zipfile
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 import anthropic
-from config import get_anthropic_client
+from config import get_anthropic_client, execute_messages_create
 from requirement_semantics import (
     resolve_requirement_type,
     is_supplier_qualification,
@@ -3180,10 +3180,10 @@ def _extract_chunk_facts(chunk_text: str, filename: str, api_key: str, client=No
     started_at = datetime.now(timezone.utc) if telemetry is not None else None
     _telemetry_started = time.monotonic() if telemetry is not None else None
     try:
-        response = client.messages.create(
+        response = execute_messages_create(
+            client,
             model=model,
             max_tokens=_STAGE_A_MAX_OUTPUT_TOKENS,
-            temperature=temperature,
             messages=[{"role": "user", "content": content}],
         )
     except Exception as exc:
@@ -4759,7 +4759,8 @@ def _synthesize_projected_bid_brief(normalized_facts, conflicts, api_key, checkp
             if client is None:
                 # Disable SDK retries only for D; a single loop owns the budget.
                 client = get_anthropic_client(api_key=api_key).with_options(max_retries=0)
-            response = client.messages.create(
+            response = execute_messages_create(
+                client,
                 model="claude-haiku-4-5-20251001", max_tokens=8000,
                 output_config=finalized["output_config"],
                 messages=[{"role": "user", "content": [{"type": "text", "text": finalized["request_text"]}]}],

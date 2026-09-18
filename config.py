@@ -90,3 +90,77 @@ def get_app_base_url() -> str | None:
     except Exception:
         pass
     return os.getenv("APP_BASE_URL") or None
+
+
+# Disallowed sampling parameters across modern Claude reasoning / custom gateway paths
+_DISALLOWED_SAMPLING_KEYS = {"temperature", "top_p", "top_k"}
+
+
+def sanitize_anthropic_kwargs(kwargs: dict) -> dict:
+    """Return a shallow copy of kwargs with unsupported sampling parameters removed."""
+    return {k: v for k, v in kwargs.items() if k not in _DISALLOWED_SAMPLING_KEYS}
+
+
+def execute_messages_create(client, **kwargs):
+    """Central invocation helper for Anthropic messages.create.
+    Strips unsupported sampling parameters (temperature, top_p, top_k)
+    before delegating to client.messages.create, ensuring consistent model
+    compatibility across all workflows.
+    """
+    clean_kwargs = sanitize_anthropic_kwargs(kwargs)
+    return client.messages.create(**clean_kwargs)
+
+
+def classify_anthropic_error(exc: Exception) -> dict:
+    """Classifies an API/model exception into user-safe categories without
+    leaking tokens, prompt texts, or customer document content.
+
+    Returns a dict with:
+      - category: "AUTHENTICATION", "INVALID_REQUEST", "RATE_LIMIT",
+                  "NOT_FOUND", "PROVIDER_UNAVAILABLE", or "PROCESSING_ERROR"
+      - message: User-safe summary message
+      - advice: Recommended next step or diagnostic hint
+    """
+    import anthropic
+
+    if isinstance(exc, anthropic.AuthenticationError):
+        return {
+            "category": "AUTHENTICATION",
+            "message": "Anthropic API authentication failed.",
+            "advice": "Verify that your Anthropic API key and workspace configuration are valid and active."
+        }
+    if isinstance(exc, anthropic.RateLimitError):
+        return {
+            "category": "RATE_LIMIT",
+            "message": "Anthropic API rate limit exceeded.",
+            "advice": "Please wait a moment before retrying this operation."
+        }
+    if isinstance(exc, anthropic.NotFoundError):
+        return {
+            "category": "NOT_FOUND",
+            "message": "Requested Anthropic model or endpoint was not found.",
+            "advice": "Check the configured model identifier."
+        }
+    if isinstance(exc, TypeError) and "temperature" in str(exc).lower():
+        return {
+            "category": "INVALID_REQUEST",
+            "message": "Unsupported model parameter in request configuration.",
+            "advice": "Ensure no disallowed sampling parameters (such as temperature) are supplied."
+        }
+    if isinstance(exc, anthropic.BadRequestError):
+        return {
+            "category": "INVALID_REQUEST",
+            "message": "Anthropic API rejected the request format or parameters.",
+            "advice": "Check the prompt size, document structure, or parameter compatibility."
+        }
+    if isinstance(exc, (anthropic.APIConnectionError, anthropic.InternalServerError)):
+        return {
+            "category": "PROVIDER_UNAVAILABLE",
+            "message": "Anthropic service is temporarily unavailable or unreachable.",
+            "advice": "Check network connectivity or retry after a brief pause."
+        }
+    return {
+        "category": "PROCESSING_ERROR",
+        "message": "Document extraction processing error.",
+        "advice": "Review the uploaded document format or try again."
+    }

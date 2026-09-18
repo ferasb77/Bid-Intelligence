@@ -134,5 +134,92 @@ class TestAnalystUsesCentralAnthropicClient(unittest.TestCase):
         mock_anthropic_cls.assert_not_called()
 
 
+class TestAnthropicRequestSanitizationAndClassification(unittest.TestCase):
+    """Guards against regressions in model parameter stripping and error classification."""
+
+    def test_sanitize_anthropic_kwargs_strips_sampling_parameters(self):
+        kwargs = {
+            "model": "claude-haiku-4-5-20251001",
+            "max_tokens": 4000,
+            "temperature": 0.0,
+            "top_p": 0.9,
+            "top_k": 40,
+            "messages": [{"role": "user", "content": "hello"}],
+        }
+        sanitized = config.sanitize_anthropic_kwargs(kwargs)
+        self.assertNotIn("temperature", sanitized)
+        self.assertNotIn("top_p", sanitized)
+        self.assertNotIn("top_k", sanitized)
+        self.assertEqual(sanitized["model"], "claude-haiku-4-5-20251001")
+        self.assertEqual(sanitized["max_tokens"], 4000)
+        self.assertEqual(sanitized["messages"], kwargs["messages"])
+
+    def test_execute_messages_create_delegates_without_sampling_keys(self):
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = MagicMock(id="msg_123")
+
+        resp = config.execute_messages_create(
+            mock_client,
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1000,
+            temperature=0.0,
+            top_p=1.0,
+            messages=[{"role": "user", "content": "ping"}],
+        )
+
+        self.assertEqual(resp.id, "msg_123")
+        mock_client.messages.create.assert_called_once()
+        _, passed_kwargs = mock_client.messages.create.call_args
+        self.assertNotIn("temperature", passed_kwargs)
+        self.assertNotIn("top_p", passed_kwargs)
+        self.assertEqual(passed_kwargs["model"], "claude-haiku-4-5-20251001")
+
+    def test_classify_anthropic_error_categories(self):
+        import anthropic
+        import httpx
+
+        fake_request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+        fake_response = httpx.Response(status_code=401, request=fake_request)
+
+        # 1. Authentication error
+        auth_err = anthropic.AuthenticationError(
+            message="Invalid API key", response=fake_response, body=None
+        )
+        res = config.classify_anthropic_error(auth_err)
+        self.assertEqual(res["category"], "AUTHENTICATION")
+        self.assertIn("authentication", res["message"].lower())
+
+        # 2. Rate limit error
+        rl_err = anthropic.RateLimitError(
+            message="Rate limit exceeded", response=fake_response, body=None
+        )
+        res = config.classify_anthropic_error(rl_err)
+        self.assertEqual(res["category"], "RATE_LIMIT")
+
+        # 3. Not found error
+        nf_err = anthropic.NotFoundError(
+            message="Model not found", response=fake_response, body=None
+        )
+        res = config.classify_anthropic_error(nf_err)
+        self.assertEqual(res["category"], "NOT_FOUND")
+
+        # 4. TypeError for temperature
+        type_err = TypeError("Messages.create() got an unexpected keyword argument 'temperature'")
+        res = config.classify_anthropic_error(type_err)
+        self.assertEqual(res["category"], "INVALID_REQUEST")
+
+        # 5. Generic Bad Request error
+        br_err = anthropic.BadRequestError(
+            message="Bad request", response=fake_response, body=None
+        )
+        res = config.classify_anthropic_error(br_err)
+        self.assertEqual(res["category"], "INVALID_REQUEST")
+
+        # 6. Generic unclassified error
+        other_err = ValueError("JSON corruption")
+        res = config.classify_anthropic_error(other_err)
+        self.assertEqual(res["category"], "PROCESSING_ERROR")
+
+
 if __name__ == "__main__":
     unittest.main()

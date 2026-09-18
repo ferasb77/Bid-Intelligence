@@ -15,13 +15,14 @@ import concurrent.futures
 import json
 import re
 from typing import Any
-from config import get_anthropic_client
+from config import get_anthropic_client, execute_messages_create
 from requirement_semantics import has_supplier_qualification_evidence
 
 
 def _call(system: str, user: str, max_tokens: int = 2048) -> str:
     client = get_anthropic_client()
-    response = client.messages.create(
+    response = execute_messages_create(
+        client,
         model="claude-haiku-4-5-20251001",
         max_tokens=max_tokens,
         system=system,

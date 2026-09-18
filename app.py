@@ -9,7 +9,7 @@ from database import (init_db, get_bid, update_bid, delete_bid,
                       get_document_versions, create_expected_document,
                       get_outline, upsert_section, delete_section,
                       get_readiness, get_bid_brief, upsert_bid_brief)
-from config import api_key_configured
+from config import api_key_configured, classify_anthropic_error
 from pages_extra import (page_content_library, page_proposal_analyzer,
     page_team_roster, page_clarifications, page_section_drafter,
     page_submission_assembler, page_exec_dashboard)
@@ -431,8 +431,9 @@ def page_new_bid():
                         st.session_state["model_used"] = model_used
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Package extraction failed: {e}")
-                        st.markdown('<div class="warn-box">Check that your Anthropic API key is valid (starts with sk-ant-).</div>', unsafe_allow_html=True)
+                        classified = classify_anthropic_error(e)
+                        st.error(f"Package extraction failed: {classified['message']}")
+                        st.markdown(f'<div class="warn-box">{classified["advice"]}</div>', unsafe_allow_html=True)
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
     with st.expander("✏️ Create bid manually instead"):
