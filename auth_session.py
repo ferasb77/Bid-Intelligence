@@ -275,23 +275,32 @@ def render_fragment_session_bridge() -> None:
     correct regardless of exactly how many levels Streamlit Cloud's own
     hosting happens to nest at any given time.
 
-    Confirmed live (2026-09-18) that a single `window.top.location.replace()`
-    call is NOT enough: with a synthetic fragment token, manually
-    re-running this exact logic via direct DOM access always redirects
-    correctly with no error, but the natural, unforced page load -- with
-    the identical fragment already present -- left the tab sitting on the
-    original fragment URL indefinitely. Streamlit reruns/re-hydrates its
-    own component tree several times in the first seconds after a fresh
-    load; the most likely explanation is that one of those early reruns
-    recreates this component's iframe (a fresh mount, fresh script
-    execution) before the browser finishes committing the previous
-    mount's replace() navigation, silently discarding it. Because each
-    fresh mount still sees the untouched fragment (nothing else removes
-    it) and re-attempts, the fix is to retry from WITHIN a single mount
-    across a short window rather than firing exactly once: this makes the
-    redirect succeed as soon as one attempt lands after Streamlit's
-    initial rerun churn has settled, however many attempts (from this
-    mount or a prior one) that takes."""
+    Confirmed live (2026-09-18), in order: (1) a single
+    `window.top.location.replace()` call was not enough -- manually
+    re-running the exact same logic via direct DOM access always
+    redirected correctly with no error, but the natural, unforced page
+    load left the tab sitting on the original fragment URL indefinitely,
+    even after several seconds; (2) adding a same-mount retry loop (up to
+    20 attempts, 250ms apart) did not help either -- continuous polling
+    of the top frame's URL across a 7-second natural load showed *zero*
+    navigation attempts, not even a brief flicker, meaning the script's
+    IIFE was never actually executing on its own at all, retried or not;
+    (3) a synthetic same-page test (two directly-created, non-Streamlit
+    srcdoc iframes, one height=0 and one height=20, both appended to
+    `document.body`) showed BOTH execute their script within 1.5s --
+    ruling out a generic browser rule against zero-height iframes ever
+    running script. The remaining, most likely explanation is specific to
+    Streamlit's OWN component-iframe wrapper: a component reporting
+    height=0 is plausibly treated by Streamlit's frontend as "not yet
+    sized" and its srcdoc activation delayed indefinitely under normal
+    (non-forced) conditions -- consistent with the fact that manually
+    reading `.contentDocument`/`.contentWindow` from outside (which
+    forces a layout/activation pass) is exactly what made the identical
+    script run correctly every time it was tried. Using `height=1`
+    (visually negligible, but never zero) avoids relying on that
+    internal Streamlit behavior entirely. The retry loop above is kept
+    regardless, since it is harmless and still guards against any
+    genuine remount-vs-navigation race on top of the height fix."""
     import streamlit.components.v1 as components
     components.html(
         """
@@ -334,7 +343,7 @@ def render_fragment_session_bridge() -> None:
         })();
         </script>
         """,
-        height=0,
+        height=1,
     )
 
 
