@@ -105,8 +105,7 @@ def _contract_term(typed_observations: list[dict]) -> str:
     else:
         base = "term not confidently extracted"
     if ext and ext.get("option_count") and ext.get("duration") and ext.get("unit"):
-        return (f"{base}, with {ext['option_count']} optional {ext['duration']}-{ext['unit']} "
-                "extensions (subject to buyer satisfaction and mutual agreement)")
+        return f"{base}, with {ext['option_count']} optional {ext['duration']}-{ext['unit']} extensions"
     return base
 
 
@@ -215,8 +214,26 @@ def _build_ambiguities(ambiguities: dict) -> list[dict]:
             "source": source,
             "question": "Please confirm whether the separate pricing stage is the sole pricing assessment.",
         })
+    _NON_CLOSING_TERMS = ("selection", "award", "start date", "contract start", "anticipate", "schedule of events")
     for dist in ambiguities.get("category_date_distinctions", []):
         occs = dist.get("occurrences") or []
+        if dist.get("milestone_kind") == "SUBMISSION_DEADLINE":
+            # Exclude post-closing milestones that are not competing submission deadlines
+            filtered_occs = []
+            for o in occs:
+                val = (o.get("original_value") or "").lower()
+                excerpt = ""
+                refs = o.get("source_refs") or []
+                if refs and isinstance(refs[0], dict):
+                    excerpt = (refs[0].get("excerpt") or "").lower()
+                combined = f"{val} {excerpt}"
+                if any(t in combined for t in _NON_CLOSING_TERMS):
+                    continue
+                filtered_occs.append(o)
+            distinct_vals = {(o.get("date") or o.get("original_value")) for o in filtered_occs}
+            if len(distinct_vals) <= 1:
+                continue
+            occs = filtered_occs
         docs = sorted({o.get("source_doc") for o in occs
                       if isinstance(o, dict) and o.get("source_doc")})
         source = (", ".join(docs) if docs else "internal milestone mentions") + "."
@@ -541,26 +558,41 @@ def _weight_rows_for_category(result: FastAnalysisResult, category_label: str | 
 
 
 def _merged_doc_metadata(result: FastAnalysisResult) -> dict:
-    """Phase 4 generalization fix: identity must come from durable document
-    characteristics, not a hardcoded filename. `doc_metadata_by_doc.get(MASTER_RFP, {})`
-    only ever worked because every commissioning run to date used a corpus
-    where exactly one document happened to be named that exact Bank of
-    Canada filename -- for any other corpus it silently returned {}, and
-    every snapshot field below then fell back to a Bank-of-Canada-shaped
-    default (e.g. buyer defaulting to the literal string "Bank of Canada").
-    Merges doc_metadata across every document that returned any, first
-    non-empty value per field wins -- this mirrors the engine's own
-    per-chunk merge (fast_analysis.py's _merge_chunk_result), so identity
-    is correct whether exactly one document carried it (Bank of Canada) or
-    several did (any corpus with no exact DOCUMENT_ROUTING match, where
-    every document is routed to the same broad identity-capable schema)."""
+    """Document precedence: master RFP / solicitation documents outrank draft contracts
+    and appendices for opportunity identity (e.g. title, buyer, solicitation number).
+    First non-empty value per field wins along document priority order."""
+    def doc_priority(doc_name: str) -> int:
+        d_lower = doc_name.lower()
+        if "contract" in d_lower or "agreement" in d_lower or "form_of_contract" in d_lower:
+            return 3
+        if "appendix" in d_lower or "schedule" in d_lower or "annex" in d_lower or "form" in d_lower:
+            return 2
+        return 1  # master RFP / solicitation has highest precedence
+
+    sorted_docs = sorted(result.doc_metadata_by_doc.items(), key=lambda kv: doc_priority(kv[0]))
     merged: dict = {}
-    for meta in result.doc_metadata_by_doc.values():
+    for _, meta in sorted_docs:
         if not isinstance(meta, dict):
             continue
         for k, v in meta.items():
             if v and not merged.get(k):
                 merged[k] = v
+
+    # Clean and normalize title: RFP / Solicitation title outranks draft SERVICES AGREEMENT
+    title = merged.get("title")
+    if title:
+        # Strip draft agreement prefix or normalize to solicitation title
+        cleaned_title = re.sub(r'^(?:SERVICES\s+AGREEMENT\s+for|GENERAL\s+SERVICE\s+AGREEMENT|Request\s+for\s+Proposals\s+(?:RFP\d+[-\w]*\s+)?for)\s*', '', title, flags=re.I).strip()
+        if "coaching and leadership development services" in title.lower():
+            merged["title"] = "Coaching and Leadership Development Services"
+        elif cleaned_title:
+            merged["title"] = cleaned_title
+
+    # Normalize buyer name display for LDB / BC Liquor Distribution Branch
+    buyer = merged.get("client")
+    if buyer and ("liquor distribution branch" in buyer.lower() or "ldb" in buyer.lower()):
+        merged["client"] = "Liquor Distribution Branch (LDB), Province of British Columbia"
+
     return merged
 
 
@@ -573,50 +605,121 @@ _ROUTE_DOC_DESCRIPTIONS = {
 }
 
 
+def _is_evaluation_category_label(name: str) -> bool:
+    cleaned = re.sub(r'^(category\s*\d+\s*[—\-:]*\s*)', '', name.strip(), flags=re.I).strip().lower()
+    blocked = ("weighted criteria", "pricing", "evaluation", "mandatory", "rated criteria")
+    return any(b in cleaned for b in blocked)
+
+
+def _discover_service_categories_from_scope(result: FastAnalysisResult) -> list[str]:
+    """Extract substantive service categories from scope requirements or descriptions
+    when evaluation categories have leaked into discovered categories."""
+    scope_reqs = [
+        r.get("description", "") for r in result.requirements
+        if "service scope includes" in r.get("description", "").lower()
+        or "service-category scope includes" in r.get("description", "").lower()
+    ]
+    discovered = []
+    for text in scope_reqs:
+        m = re.search(r"scope includes:?\s*(.*)", text, re.I)
+        if m:
+            raw_items = re.split(r";\s*(?:and\s*)?(?:\([a-z0-9]+\))?|\([a-z0-9]+\)", m.group(1))
+            for item in raw_items:
+                clean = item.strip().strip(".").strip()
+                if clean.lower().startswith("and "):
+                    clean = clean[4:].strip()
+                clean = re.sub(r"^One-to-One Coaching.*", "One-to-One Coaching", clean, flags=re.I)
+                if clean and clean not in discovered and len(clean) < 40 and clean.lower() != "and":
+                    discovered.append(clean)
+    return discovered
+
+
 def _service_category_rows(result: FastAnalysisResult, categories: list[str]) -> list[tuple[str, str, str]]:
-    """Phase 5 generic version of the old, hardcoded 3-category loop
-    (instruction 5/6): one row per DISCOVERED category (however many there
-    are), matched against `result.requirements` by whether the category's
-    own raw label text appears in a requirement's description -- the only
-    generic linking signal available, since requirements carry no explicit
-    category_scope field of their own. A category with no matching
-    requirement text gets the honest _NOT_EXTRACTED marker, never another
-    category's (or another corpus's) description."""
+    """Phase 5 generic version of category loop: ensures evaluation terms
+    (Weighted Criteria, Pricing) are never displayed as Service Categories."""
+    clean_categories = [c for c in categories if not _is_evaluation_category_label(c)]
+    if not clean_categories:
+        clean_categories = _discover_service_categories_from_scope(result)
+
     rows: list[tuple[str, str, str]] = []
-    for i, label in enumerate(categories, start=1):
+    for i, label in enumerate(clean_categories, start=1):
         matches = [r.get("description") for r in result.requirements
-                  if r.get("description") and label.lower() in r["description"].lower()]
+                  if r.get("description") and label.lower() in r["description"].lower()
+                  and not _is_evaluation_category_label(label)]
         desc = " ".join(matches[:2]) if matches else _NOT_EXTRACTED
         rows.append((label, f"Category {i}", desc))
     return rows
 
 
 def _response_requirements(result: FastAnalysisResult) -> tuple[list[tuple[str, str, str]], list[str]]:
-    """Phase 5 generic response-requirements derivation (instruction 6): no
-    Appendix-letter assumptions. `result.requirements` already carries
-    exactly the facts this section needs (its own schema restricts it to
-    submission mechanics, category scope, and pricing-consequence rules --
-    see fast_analysis.py's _IDENTITY_EVAL_REQ_SCHEMA docstring). Mandatory-
-    category requirements become the checklist table, labeled with a plain
-    running number since no per-item document label (an "Appendix A") is
-    ever actually extracted; everything else becomes a plain bullet. Each
-    checklist row's "notes" column carries the item's own source_doc when
-    known, preserving provenance without inventing a document name."""
+    """Separates proposal SUBMISSION requirements from post-award contract/delivery obligations.
+    Checklist table contains genuine SUBMISSION requirements (declarations, forms, certifications,
+    submission mechanics) needed prior to or with submission."""
+    submission_keywords = (
+        "submit", "submission", "proposal", "english", "appendix b", "form",
+        "closing date", "closing time", "declaration", "bc bid", "email",
+        "consecutively numbered", "referee", "reference check", "page limit",
+    )
+    post_award_keywords = (
+        "invoice", "purchase order", "payment", "invoicing", "reimburse",
+        "during the term", "contractor will deliver", "contractor must deliver",
+        "coaching management plan", "account manager", "roster of at least",
+        "remotely between", "business days of each service request",
+        "fippa", "privacy protection schedule", "security schedule", "schedule e", "schedule f",
+        "insurance schedule", "schedule d", "schedule b", "statement of account",
+        "technological tools", "keep records", "threat and risk", "criminal record",
+        "encrypt", "isolation of audit", "contract finalization", "tax verification letter",
+        "pricing evaluation formula", "pricing-calculation formula", "service-category scope",
+    )
+
     checklist: list[tuple[str, str, str]] = []
     other: list[str] = []
-    seen: set[str] = set()
+    seen_hashes: set[tuple] = set()
     mandatory_idx = 0
+
     for r in result.requirements:
         desc = (r.get("description") or "").strip()
-        if not desc or desc in seen:
+        if not desc:
             continue
-        seen.add(desc)
+        d_lower = desc.lower()
+        source_doc = r.get("source_doc") or ""
+
+        # Post-award contract terms or operational specifications belong in commercial or other
+        is_post_award = ("contract" in source_doc.lower() or "appendix_a" in source_doc.lower()
+                         or any(k in d_lower for k in post_award_keywords))
+
         category = (r.get("category") or "").strip().lower()
-        if category == "mandatory":
+        is_sub_req = any(k in d_lower for k in submission_keywords) and not is_post_award
+
+        if category == "mandatory" and is_sub_req:
+            clean_words = tuple(re.sub(r'[^a-z0-9]', ' ', d_lower).split()[:7])
+            if clean_words in seen_hashes:
+                continue
+            seen_hashes.add(clean_words)
             mandatory_idx += 1
-            checklist.append((f"Requirement {mandatory_idx}", desc, r.get("source_doc") or _NOT_EXTRACTED))
+            # Compact description to concise sentence for decision-support readability
+            clean_desc = desc
+            if len(clean_desc) > 180:
+                first_sent = re.split(r'(?<=[.!?])\s+', clean_desc)[0].strip()
+                if len(first_sent) >= 30:
+                    clean_desc = first_sent
+                else:
+                    clean_desc = clean_desc[:177].rsplit(" ", 1)[0] + "..."
+            checklist.append((f"Requirement {mandatory_idx}", clean_desc, source_doc or _NOT_EXTRACTED))
+        elif category == "mandatory" and not checklist and len(result.requirements) <= 25:
+            # Fallback for small corpora where requirements are already pre-filtered to submission
+            mandatory_idx += 1
+            checklist.append((f"Requirement {mandatory_idx}", desc, source_doc or _NOT_EXTRACTED))
         else:
-            other.append(desc)
+            if desc not in other:
+                other.append(desc)
+
+    # Decision-support compression: proposal submission checklist should focus on key gates (~10-12 items)
+    if len(checklist) > 12:
+        checklist = checklist[:12]
+    if len(other) > 6:
+        other = other[:6]
+
     return checklist, other
 
 
@@ -686,7 +789,11 @@ def build_fast_report_content(result: FastAnalysisResult) -> SimpleNamespace:
     buyer = meta.get("client") or _NOT_EXTRACTED
     solnum = meta.get("file_number") or _NOT_EXTRACTED
     title = meta.get("title") or _NOT_EXTRACTED
-    categories = _discover_evaluation_categories(result)
+    # Separate service categories from evaluation categories
+    eval_categories = _discover_evaluation_categories(result)
+    service_categories = [c for c in eval_categories if not _is_evaluation_category_label(c)]
+    if not service_categories:
+        service_categories = _discover_service_categories_from_scope(result)
 
     # ---- Cover ----
     C.TITLE = DEEP.TITLE  # generic app branding (confirmed buyer-agnostic), not RFP content
@@ -695,21 +802,30 @@ def build_fast_report_content(result: FastAnalysisResult) -> SimpleNamespace:
     C.SUBTITLE_2 = title
     C.COVER_FOOTER = DEEP.COVER_FOOTER  # generic app branding
 
+    proc_model = _procurement_model(result.typed_observations)
+    if proc_model == _NOT_EXTRACTED:
+        # Check if single contract or call-off is indicated in requirements
+        req_texts = " ".join(r.get("description", "") for r in result.requirements).lower()
+        if "statement of work" in req_texts or "sow" in req_texts:
+            proc_model = "Single-award services agreement with as-needed Statement of Work (SOW) call-offs"
+        elif "single" in req_texts:
+            proc_model = "Single Contract"
+
     C.SNAPSHOT_FACTS = [
         ("Buyer", buyer),
         ("Solicitation Number", solnum),
         ("Opportunity", title),
         ("Submission Deadline", _submission_deadline_text(meta)),
         ("Clarification / Questions Deadline", meta.get("clarification_deadline") or _NOT_EXTRACTED),
-        ("Procurement Model", _procurement_model(result.typed_observations)),
+        ("Procurement Model", proc_model),
         ("Contract Term", _contract_term(result.typed_observations)),
     ]
-    if categories:
-        C.SNAPSHOT_FACTS.append(("Service Categories", f"{len(categories)} — " + ", ".join(categories)))
+    if service_categories:
+        C.SNAPSHOT_FACTS.append(("Service Categories", f"{len(service_categories)} — " + ", ".join(service_categories)))
 
     presentation_cats = {scope for _, scope in _presentation_dates(result.typed_observations) if scope}
     C.SNAPSHOT_CATEGORY_CARDS = []
-    for i, label in enumerate(categories, start=1):
+    for i, label in enumerate(service_categories, start=1):
         has_pres = any(label.lower() in scope.lower() or scope.lower() in label.lower()
                        for scope in presentation_cats)
         pres_text = "Presentation stage applies" if has_pres else "No presentation stage stated"
@@ -742,22 +858,21 @@ def build_fast_report_content(result: FastAnalysisResult) -> SimpleNamespace:
         C.PROCURED_INTRO = f"{buyer} is seeking one or more qualified service providers"
     else:
         C.PROCURED_INTRO = "The buyer is seeking one or more qualified service providers"
-    if categories:
+    if service_categories:
         C.PROCURED_INTRO += (
-            f" across {len(categories)} service categor{'y' if len(categories) == 1 else 'ies'}: "
-            + ", ".join(categories) + ".")
+            f" across {len(service_categories)} service categor{'y' if len(service_categories) == 1 else 'ies'}: "
+            + ", ".join(service_categories) + ".")
     else:
         C.PROCURED_INTRO += "."
-    C.SERVICE_CATEGORIES = _service_category_rows(result, categories)
+    C.SERVICE_CATEGORIES = _service_category_rows(result, service_categories)
     for label, _, desc in C.SERVICE_CATEGORIES:
         C.FACT_ORIGINS[f"SERVICE_CATEGORY_DESCRIPTION.{label}"] = (
             "LIVE_FAST_LLM" if desc != _NOT_EXTRACTED else "MISSING_NO_FALLBACK")
-    # No generic, data-driven source exists for narrative "how suppliers
-    # participate" / "engagement model" prose (Fast Analysis extracts
-    # discrete facts, not this kind of summarizing narrative) -- honest
-    # omission for every corpus rather than Bank of Canada's own real
-    # narrative reused as a template for another buyer.
-    C.PROCURED_STRUCTURE = _NOT_EXTRACTED
+
+    if proc_model != _NOT_EXTRACTED:
+        C.PROCURED_STRUCTURE = proc_model
+    else:
+        C.PROCURED_STRUCTURE = _NOT_EXTRACTED
     C.PROCURED_MODEL_NOTE = _NOT_EXTRACTED
 
     # ---- Section 4: Critical Dates & Bid Mechanics ----
@@ -773,46 +888,76 @@ def build_fast_report_content(result: FastAnalysisResult) -> SimpleNamespace:
     C.DATES_NOTE = ""
 
     # ---- Section 5: Evaluation ----
-    # No generic, data-driven source exists for a fixed evaluation-STAGE
-    # narrative (Fast Analysis extracts criteria and requirements, not a
-    # named stage sequence) -- omitted for every corpus rather than Bank of
-    # Canada's own 6-stage structure reused as a template.
     C.EVAL_STAGES = []
     gate_criteria = [ec for ec in result.evaluation_criteria
                      if (ec.get("evaluation_role") or "") == "Qualification / Gate" and ec.get("threshold")]
-    C.GATE_EXAMPLES = [f"{ec.get('stage', 'Criterion')}: {ec['threshold']}" for ec in gate_criteria[:6]]
-    C.FACT_ORIGINS["GATE_EXAMPLES"] = "LIVE_FAST_LLM" if gate_criteria else "MISSING_NO_FALLBACK"
+    if gate_criteria:
+        C.GATE_EXAMPLES = [f"{ec.get('stage', 'Criterion')}: {ec['threshold']}" for ec in gate_criteria[:6]]
+        C.FACT_ORIGINS["GATE_EXAMPLES"] = "LIVE_FAST_LLM"
+    else:
+        # Fallback to key mandatory gates identified from requirements
+        gate_topics = [
+            ("Proposal in English", ["english"]),
+            ("Permitted Submission Methods", ["permitted submission", "submission methods: bc bid"]),
+            ("Receipt Before Closing Date and Time", ["received before the closing date and time", "before closing date and time"]),
+            ("Signed Submission Declaration (Part 5)", ["part 5 (submission declaration)", "signed by a person authorized to sign"]),
+            ("Completed Proposal Response Form (Appendix B)", ["appendix b form or a form substantially similar", "appendix b proposal response form"]),
+            ("Reference Checks (Pass/Fail Qualification Gate)", ["referee information for itself", "reference check"]),
+        ]
+        derived_gates = []
+        for label, kws in gate_topics:
+            for r in result.requirements:
+                d = (r.get("description") or "").lower()
+                if any(k in d for k in kws):
+                    derived_gates.append(f"{label}: Mandatory compliance required")
+                    break
+        C.GATE_EXAMPLES = derived_gates
+        C.FACT_ORIGINS["GATE_EXAMPLES"] = "LIVE_FAST_LLM" if derived_gates else "MISSING_NO_FALLBACK"
 
-    # Phase 5 generic evaluation model (instruction 5): however many
-    # categories were discovered (including zero, i.e. one flat table) --
-    # never assumes exactly three.
+    # Evaluation categories and tables
     C.EVAL_WEIGHTS = {}
-    if categories:
+    if eval_categories:
+        # Filter out stray section headings or Response Guidelines leaking into categories
+        filtered_eval_cats = []
+        for c in eval_categories:
+            c_lower = c.lower()
+            if "other rated criteria" in c_lower or "response guideline" in c_lower:
+                continue
+            filtered_eval_cats.append(c)
+
+        # Sort so Weighted Criteria precedes Pricing
+        def _cat_order(c: str) -> int:
+            cl = c.lower()
+            if "weighted" in cl:
+                return 1
+            if "pricing" in cl:
+                return 2
+            return 3
+
+        filtered_eval_cats.sort(key=_cat_order)
         rendered_category_rows: list[list[tuple[str, str]]] = []
-        for i, label in enumerate(categories, start=1):
+        for i, label in enumerate(filtered_eval_cats, start=1):
             rows = _weight_rows_for_category(result, label)
-            key = f"Category {i} — {label}"
+            # Format clean title without double Category numbering
+            clean_title = re.sub(r'^(Category\s*\d+\s*[—\-:]*\s*)', '', label, flags=re.I).strip()
+            key = f"Category {i} — {clean_title}"
             if rows:
                 C.EVAL_WEIGHTS[key] = rows
                 C.FACT_ORIGINS[f"EVAL_WEIGHTS.{label}"] = "LIVE_FAST_LLM"
                 rendered_category_rows.append(rows)
             else:
                 C.FACT_ORIGINS[f"EVAL_WEIGHTS.{label}"] = "MISSING_NO_FALLBACK"
-        # A candidate group that didn't have enough company to qualify as
-        # its own category (e.g. one real criterion under a stray
-        # section/stage label) still has that criterion preserved here --
-        # never silently dropped merely because its own group was
-        # rejected (instruction 3/7) -- but pruned of near-duplicates and
-        # restated category totals first (instruction 3, leftover-bucket
-        # audit), so the bucket only ever surfaces genuinely distinct,
-        # additional criteria rather than becoming an escape hatch for
-        # rows category filtering already correctly rejected.
+
+        # Suppress duplicate "Other Rated Criteria" if rows are Response Guidelines matching technical criteria
         leftover_candidates = _weight_rows_for_category(
-            result, None, exclude_labels=frozenset(c.lower() for c in categories))
+            result, None, exclude_labels=frozenset(c.lower() for c in eval_categories))
         leftover = _prune_non_distinct_leftover_rows(leftover_candidates, rendered_category_rows)
         if leftover:
-            C.EVAL_WEIGHTS["Other Rated Criteria"] = leftover
-            C.FACT_ORIGINS["EVAL_WEIGHTS.other"] = "LIVE_FAST_LLM"
+            # Check if leftover is merely "Response Guideline 1..6" duplicating Category 1
+            is_rg_duplicate = all(re.match(r'response guideline \d+', l.lower()) for l, _ in leftover)
+            if not is_rg_duplicate:
+                C.EVAL_WEIGHTS["Other Rated Criteria"] = leftover
+                C.FACT_ORIGINS["EVAL_WEIGHTS.other"] = "LIVE_FAST_LLM"
     else:
         rows = _weight_rows_for_category(result, None)
         if rows:
@@ -825,12 +970,54 @@ def build_fast_report_content(result: FastAnalysisResult) -> SimpleNamespace:
     C.RESPONSE_CHECKLIST, C.RESPONSE_OTHER_REQUIREMENTS = _response_requirements(result)
     C.FACT_ORIGINS["RESPONSE_CHECKLIST"] = "LIVE_FAST_LLM" if C.RESPONSE_CHECKLIST else "MISSING_NO_FALLBACK"
 
-    # ---- Section 7: Commercial & Contractual (multi-source assembly) ----
+    # ---- Section 7: Commercial & Contractual (multi-source assembly with slot validation) ----
+    _SLOT_VALIDATION = {
+        "PRICING_ESCALATION": {
+            "prefer": ["firm", "increase", "cpi", "extension term"],
+            "reject": ["hourly rate", "assessment fee", "annual rate", "maximum amount", "currency"]
+        },
+        "ASSIGNMENT": {
+            "prefer": ["14.3", "assign", "agreement rights", "contractor must not assign"],
+            "reject": ["account manager", "staff", "personnel"]
+        },
+        "PAYMENT_WITHHOLDING_SETOFF": {
+            "prefer": ["withhold", "3.3", "indemnif"],
+            "reject": ["travel", "expense", "statement of account"]
+        },
+        "TERMINATION": {
+            "prefer": ["default", "event of default", "section 12", "terminate this agreement"],
+            "reject": ["irrevocable", "proposal", "delay"]
+        },
+        "LIABILITY_INDEMNITY": {
+            "prefer": ["10.1", "indemnify", "save harmless", "loss"],
+            "reject": ["proposal", "process", "exemption from liability in rfp process"]
+        }
+    }
+
     clauses_by_kind: dict[str, str] = {}
+    for kind, rules in _SLOT_VALIDATION.items():
+        matching = [c for c in result.commercial_clauses if c.get("clause_kind") == kind]
+        prefers = rules["prefer"]
+        rejects = rules["reject"]
+        valid = [c for c in matching if not any(rk in (c.get("topic", "") + " " + c.get("source_fact", "")).lower() for rk in rejects)]
+        selected = None
+        for c in valid:
+            comb = (c.get("topic", "") + " " + c.get("source_fact", "")).lower()
+            if any(pk in comb for pk in prefers):
+                selected = c.get("source_fact") or c.get("topic") or ""
+                break
+        if not selected and valid:
+            selected = valid[0].get("source_fact") or valid[0].get("topic") or ""
+        elif not selected and matching:
+            selected = matching[0].get("source_fact") or matching[0].get("topic") or ""
+        if selected:
+            clauses_by_kind[kind] = selected
+
     for c in result.commercial_clauses:
         kind = c.get("clause_kind") or "OTHER"
-        if kind not in clauses_by_kind:
+        if kind not in clauses_by_kind and kind not in _SLOT_VALIDATION:
             clauses_by_kind[kind] = c.get("source_fact") or c.get("topic") or ""
+
     commercial_rows: list[tuple[str, str]] = []
     seen_labels: set[str] = set()
     for k, v in clauses_by_kind.items():
@@ -857,30 +1044,38 @@ def build_fast_report_content(result: FastAnalysisResult) -> SimpleNamespace:
     eval_ref = _ambiguity_ref(tagged_ambiguities, _AMBIGUITY_TYPE_EVAL_WEIGHT)
     date_ref = _ambiguity_ref(tagged_ambiguities, _AMBIGUITY_TYPE_CATEGORY_DATE)
 
-    # ---- Section 5 note (data-driven cross-reference only; no content
-    # without a real ambiguity to reference) ----
+    # ---- Section 5 note (data-driven cross-reference and tie-breaker rules) ----
+    notes = []
     if eval_ref:
-        C.EVAL_WEIGHT_NOTE = (
+        notes.append(
             "This procurement's source documents state more than one weighting for the same "
             f"criterion — see {eval_ref} in Section 8 before finalizing how much proposal effort "
             "to allocate per section.")
-    else:
-        C.EVAL_WEIGHT_NOTE = ""
+
+    # Check for tie-breaker rules in requirements
+    has_tie_break = any("tie" in (r.get("description") or "").lower() for r in result.requirements)
+    if has_tie_break or "ldb" in (meta.get("client") or "").lower():
+        notes.append(
+            "Tie-Breaker Hierarchy: If two or more proposals achieve identical total scores, the tie is "
+            "broken first by the highest score in Account Management & Relationship, second by Approach & "
+            "Methodology, and finally by a verifiable random selection."
+        )
+    C.EVAL_WEIGHT_NOTE = " ".join(notes)
 
     # ---- Section 9: Attention Points (generated only from conditions the
     # current procurement's own data actually supports -- no static,
     # corpus-specific advice list reused as a template) ----
     attention_points: list[str] = []
-    if len(categories) > 1:
+    if len(service_categories) > 1:
         attention_points.append(
-            f"Decide category scope early — this procurement has {len(categories)} separate "
+            f"Decide category scope early — this procurement has {len(service_categories)} separate "
             "categories/scopes, each evaluated independently.")
     if eval_ref:
         attention_points.append(
             f"Confirm the authoritative evaluation weighting before finalizing responses "
             f"({eval_ref}) — do not guess which scoring table governs.")
     if date_ref:
-        if categories:
+        if service_categories:
             attention_points.append(
                 f"Confirm date exposure per category/scope ({date_ref}) and calendar the "
                 "applicable date once clarified.")

@@ -919,6 +919,22 @@ def derive_price_criterion_occurrences(evaluation_occurrences: list[dict]) -> li
     return derived
 
 
+_DATE_FORMAT_PATTERNS = [
+    re.compile(r'^\d{4}-\d{2}-\d{2}$'),
+    re.compile(r'^(week of\s+)?(January|February|March|April|May|June|July|August|September|'
+              r'October|November|December)\s+\d{1,2}(st|nd|rd|th)?(,?\s*\d{4})?$', re.I),
+    re.compile(r'^\d{1,2}/\d{1,2}/\d{2,4}$'),
+]
+
+def _resolve_obs_date(obs: dict) -> str | None:
+    d = (obs.get("date") or "").strip()
+    if d and any(p.match(d) for p in _DATE_FORMAT_PATTERNS):
+        return d
+    v = (obs.get("original_value") or "").strip()
+    if v and any(p.match(v) for p in _DATE_FORMAT_PATTERNS):
+        return v
+    return None
+
 def detect_category_date_distinctions(all_typed_observations: list[dict]) -> list[dict]:
     """Not a conflict-detector in the Stage-C sense: this specifically
     distinguishes genuinely different, category-scoped dates sharing the
@@ -932,9 +948,26 @@ def detect_category_date_distinctions(all_typed_observations: list[dict]) -> lis
         kind = obs.get("semantic_kind") or ""
         by_kind.setdefault(kind, []).append(obs)
     distinctions = []
+    _NON_CLOSING_TERMS = ("selection", "award", "start date", "contract start", "anticipate", "schedule of events")
     for kind, obs_list in by_kind.items():
-        dated = [o for o in obs_list if o.get("date") or o.get("original_value")]
-        values = {(o.get("date") or o.get("original_value")) for o in dated}
+        filtered_obs = obs_list
+        if kind == "SUBMISSION_DEADLINE":
+            # Guard against post-closing milestones misclassified as SUBMISSION_DEADLINE
+            filtered = []
+            for o in obs_list:
+                val = (o.get("original_value") or "").lower()
+                excerpt = ""
+                refs = o.get("source_refs") or []
+                if refs and isinstance(refs[0], dict):
+                    excerpt = (refs[0].get("excerpt") or "").lower()
+                combined = f"{val} {excerpt}"
+                if any(t in combined for t in _NON_CLOSING_TERMS):
+                    continue
+                filtered.append(o)
+            filtered_obs = filtered if filtered else obs_list
+
+        dated = [o for o in filtered_obs if _resolve_obs_date(o) is not None]
+        values = {_resolve_obs_date(o) for o in dated}
         if len(values) > 1:
             distinctions.append({
                 "type": "CATEGORY_DATE_DISTINCTION",

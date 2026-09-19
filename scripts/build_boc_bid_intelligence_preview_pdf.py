@@ -397,21 +397,22 @@ def build(content=None, out_path=None):
     story.append(PageBreak())
 
     # ---------------- 8. IMPORTANT AMBIGUITIES ----------------
-    section_header("Section 8", "Important Ambiguities / Items to Clarify", story)
-    for i, amb in enumerate(C.AMBIGUITIES, 1):
-        block = [
-            Paragraph(f"Ambiguity {i}", styles["amb_label"]),
-            Paragraph(amb["issue"], styles["amb_issue"]),
-            Paragraph("WHY IT MATTERS", styles["amb_label"]),
-            Paragraph(amb["why"], styles["amb_body"]),
-            Paragraph("SOURCE", styles["amb_label"]),
-            Paragraph(amb["source"], styles["amb_body"]),
-            Paragraph("SUGGESTED CLARIFICATION QUESTION", styles["amb_label"]),
-            Paragraph(f"“{amb['question']}”", styles["amb_body"]),
-            Spacer(1, 4), hr(RULE, 0.6, 2, 10),
-        ]
-        story.append(KeepTogether(block))
-    story.append(PageBreak())
+    if getattr(C, "AMBIGUITIES", None):
+        section_header("Section 8", "Important Ambiguities / Items to Clarify", story)
+        for i, amb in enumerate(C.AMBIGUITIES, 1):
+            block = [
+                Paragraph(f"Ambiguity {i}", styles["amb_label"]),
+                Paragraph(amb["issue"], styles["amb_issue"]),
+                Paragraph("WHY IT MATTERS", styles["amb_label"]),
+                Paragraph(amb["why"], styles["amb_body"]),
+                Paragraph("SOURCE", styles["amb_label"]),
+                Paragraph(amb["source"], styles["amb_body"]),
+                Paragraph("SUGGESTED CLARIFICATION QUESTION", styles["amb_label"]),
+                Paragraph(f"“{amb['question']}”", styles["amb_body"]),
+                Spacer(1, 4), hr(RULE, 0.6, 2, 10),
+            ]
+            story.append(KeepTogether(block))
+        story.append(Spacer(1, 10))
 
     # ---------------- 9. BID TEAM ATTENTION POINTS ----------------
     section_header("Section 9", "Bid Team Attention Points", story)
