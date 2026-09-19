@@ -1,0 +1,120 @@
+{
+  "buyer_identity": "Liquor Distribution Branch (LDB), Province of British Columbia",
+  "buyer_short_name": "LDB",
+  "researched_at": "2026-09-19",
+  "intro": "This section profiles the British Columbia Liquor Distribution Branch (LDB) using publicly available Crown enterprise disclosures, provincial statutes, and public service reporting. All information is external context to inform proposal tone and operational awareness; it does not alter the authoritative RFP evaluation criteria.",
+  "external_facts": [
+    {
+      "topic": "Mandate & Authority",
+      "statement": "Commercial Crown entity operating under the Liquor Distribution Act (RSBC 1996, c. 268) with exclusive authority for the importation, wholesaling, and public retail distribution of beverage alcohol and non-medical cannabis in British Columbia.",
+      "source_title": "Province of British Columbia — Liquor Distribution Act",
+      "source_url": "https://www.bclaws.gov.bc.ca/civix/document/id/complete/statreg/96268_01",
+      "source_date": "Consolidated Statutes",
+      "accessed_at": "2026-09-19"
+    },
+    {
+      "topic": "Operational Scale & Network",
+      "statement": "Employs more than 5,500 full- and part-time employees, and operates 198 BCLIQUOR stores and 39 BC Cannabis Stores (237 stores combined) across the province, headquartered in Burnaby, BC.",
+      "source_title": "BC Liquor Distribution Branch — About the LDB",
+      "source_url": "https://www.bcldb.com/about/about-ldb",
+      "source_date": "current as published",
+      "accessed_at": "2026-09-19"
+    },
+    {
+      "topic": "Workforce & Labour Governance",
+      "statement": "Operational retail and warehouse workforce is unionized under the B.C. General Employees' Union (BCGEU), governed by the Public Service Master Agreement and Retail Stores & Warehouse Component Agreement.",
+      "source_title": "BC Public Service Agency & BCGEU — Public Service Collective Agreement",
+      "source_url": "https://www2.gov.bc.ca/gov/content/careers-myhr/about-the-bc-public-service/union-bargaining/collective-agreements",
+      "source_date": "2022–2025 Master Agreement",
+      "accessed_at": "2026-09-19"
+    },
+    {
+      "topic": "Workplace Recognition & Culture",
+      "statement": "Recognized as one of BC's Top Employers by Mediacorp Canada for the 18th consecutive year (2026 designation), reflecting sustained investment in workplace culture and employee development.",
+      "source_title": "LDB named one of BC's Top Employers for 2026",
+      "source_url": "https://www.bcldb.com/about/communications/news/ldb-named-one-bc%E2%80%99s-top-employers-2026",
+      "source_date": "2026",
+      "accessed_at": "2026-09-19"
+    }
+  ],
+  "relevant_signals": [
+    {
+      "signal": "Public service governance & merit principle",
+      "statement": "As a BC public service organization, hiring and personnel decisions are governed by the merit principle -- selection based on ability to perform the job, not political or personal connection.",
+      "source_title": "Office of the Merit Commissioner — Merit Principle",
+      "source_url": "https://meritcomm.bc.ca/index.php/about/merit-principle",
+      "source_date": "current as published",
+      "accessed_at": "2026-09-19"
+    },
+    {
+      "signal": "Provincial privacy & information security standards",
+      "statement": "Subject to the Freedom of Information and Protection of Privacy Act (FIPPA), which sets public-sector requirements for the collection, use, disclosure, and safeguarding of personal information.",
+      "source_title": "Freedom of Information and Protection of Privacy Act (RSBC 1996, c. 165)",
+      "source_url": "https://www.bclaws.gov.bc.ca/civix/document/id/complete/statreg/96165_01",
+      "source_date": "Consolidated Statutes",
+      "accessed_at": "2026-09-19"
+    }
+  ],
+  "bid_implications": [
+    {
+      "topic": "Operational leader resonance",
+      "implication": "Analysis: Tailor coaching frameworks and coaching cases to retail store managers and warehouse shift supervisors rather than corporate-only executive profiles. Grounding coaching in operational realities will better align with LDB's workforce structure.",
+      "supporting_fact_ids": [
+        "Mandate & Authority",
+        "Operational Scale & Network"
+      ]
+    },
+    {
+      "topic": "Union-environment sensitivity",
+      "implication": "Analysis: Ensure leadership development methodologies demonstrate awareness of collective agreement boundaries (BCGEU) and constructive labor-management relations.",
+      "supporting_fact_ids": [
+        "Workforce & Labour Governance"
+      ]
+    },
+    {
+      "topic": "Technology privacy readiness",
+      "implication": "Analysis: Ensure any contractor-provided digital coaching platforms, scheduling tools, or portals explicitly address BC FIPPA compliance and support SSO/MFA/RBAC controls to avoid security review delays.",
+      "supporting_fact_ids": [
+        "Provincial privacy & information security standards"
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "source_title": "BC Liquor Distribution Branch — About the LDB",
+      "source_url": "https://www.bcldb.com/about/about-ldb",
+      "source_date": "current as published",
+      "accessed_at": "2026-09-19"
+    },
+    {
+      "source_title": "Province of British Columbia — Liquor Distribution Act (RSBC 1996, c. 268)",
+      "source_url": "https://www.bclaws.gov.bc.ca/civix/document/id/complete/statreg/96268_01",
+      "source_date": "Consolidated Statutes",
+      "accessed_at": "2026-09-19"
+    },
+    {
+      "source_title": "BC Public Service Agency & BCGEU — Public Service Collective Agreement",
+      "source_url": "https://www2.gov.bc.ca/gov/content/careers-myhr/about-the-bc-public-service/union-bargaining/collective-agreements",
+      "source_date": "2022–2025",
+      "accessed_at": "2026-09-19"
+    },
+    {
+      "source_title": "Freedom of Information and Protection of Privacy Act (RSBC 1996, c. 165)",
+      "source_url": "https://www.bclaws.gov.bc.ca/civix/document/id/complete/statreg/96165_01",
+      "source_date": "Consolidated Statutes",
+      "accessed_at": "2026-09-19"
+    },
+    {
+      "source_title": "LDB named one of BC's Top Employers for 2026",
+      "source_url": "https://www.bcldb.com/about/communications/news/ldb-named-one-bc%E2%80%99s-top-employers-2026",
+      "source_date": "2026",
+      "accessed_at": "2026-09-19"
+    },
+    {
+      "source_title": "Office of the Merit Commissioner — Merit Principle",
+      "source_url": "https://meritcomm.bc.ca/index.php/about/merit-principle",
+      "source_date": "current as published",
+      "accessed_at": "2026-09-19"
+    }
+  ]
+}

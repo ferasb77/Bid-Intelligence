@@ -215,8 +215,15 @@ def build(content=None, out_path=None):
     story.append(NextPageTemplate("Body"))
     story.append(PageBreak())
 
-    # ---------------- 2. EXECUTIVE OPPORTUNITY SNAPSHOT ----------------
-    section_header("Section 1", "Executive Opportunity Snapshot", story)
+    sec_num = 0
+
+    def emit_section(title: str):
+        nonlocal sec_num
+        sec_num += 1
+        section_header(f"Section {sec_num}", title, story)
+
+    # ---------------- EXECUTIVE OPPORTUNITY SNAPSHOT ----------------
+    emit_section("Executive Opportunity Snapshot")
     story.append(fact_card_table(C.SNAPSHOT_FACTS))
     story.append(Spacer(1, 14))
     cat_rows = []
@@ -250,77 +257,86 @@ def build(content=None, out_path=None):
     # tolerate an empty reportlab Table) only exists as real content for one
     # buyer today -- for any other buyer the adapter sets
     # BUYER_INTEL_AVAILABLE=False and supplies none of these fields, so the
+    # ---------------- BUYER INTELLIGENCE ----------------
+    # Phase 5: this section (and its underlying VERIFIED_BUYER_FACTS /
+    # RELEVANT_BUYER_SIGNALS / BID_TEAM_PANEL_ITEMS tables, none of which
+    # tolerate an empty reportlab Table) only exists as real content for one
+    # buyer today -- for any other buyer the adapter sets
+    # BUYER_INTEL_AVAILABLE=False and supplies none of these fields, so the
     # whole section is skipped rather than rendered empty or with another
     # buyer's real content.
     if getattr(C, "BUYER_INTEL_AVAILABLE", True):
-        section_header("Section 2", "Buyer Intelligence", story)
+        emit_section("Buyer Intelligence")
         story.append(Paragraph(C.BUYER_INTEL_INTRO, styles["body_tight"]))
-        story.append(Spacer(1, 6))
+        story.append(Spacer(1, 3))
 
-        story.append(Paragraph("Verified Buyer Facts", styles["h2"]))
+        story.append(Paragraph("Buyer at a Glance", styles["h2"]))
         rows = [[Paragraph(f"<b>{label}</b>", styles["table_cell_b"]),
                  Paragraph(detail, styles["table_cell"]),
-                 Paragraph(f"<font color='#6B675F' size='7.6'>{src}</font>", styles["table_cell"])]
+                 Paragraph(f"<font color='#6B675F' size='7.4'>{src}</font>", styles["table_cell"])]
                 for label, detail, src in C.VERIFIED_BUYER_FACTS]
         story.append(styled_table(["Topic", "Verified Fact", "Source"], rows,
-                                  [1.15 * inch, 3.85 * inch, 1.5 * inch], pad=4.2))
-        story.append(Spacer(1, 3))
+                                  [1.15 * inch, 3.85 * inch, 1.5 * inch], pad=2.8))
+        story.append(Spacer(1, 2))
         story.append(Paragraph(C.BUYER_FACTS_NOTE, styles["note"]))
-        story.append(Spacer(1, 8))
+        story.append(Spacer(1, 4))
 
-        story.append(Paragraph("Relevant Buyer Signals", styles["h2"]))
+        story.append(Paragraph("Relevant Public Signals", styles["h2"]))
         rows = [[Paragraph(f"<b>{label}</b>", styles["table_cell_b"]), Paragraph(detail, styles["table_cell"])]
                 for label, detail in C.RELEVANT_BUYER_SIGNALS]
-        story.append(styled_table(["Signal", "What the Bank Has Publicly Stated"], rows,
-                                  [1.85 * inch, 4.65 * inch], header_bg=GOLD, pad=4.2))
-        story.append(Spacer(1, 10))
+        story.append(styled_table(
+            ["Signal", getattr(C, "BUYER_SIGNALS_COL_HEADER", "What the Buyer Has Publicly Stated")],
+            rows, [1.85 * inch, 4.65 * inch], header_bg=GOLD, pad=2.8))
+        story.append(Spacer(1, 4))
 
-        story.append(Paragraph("Bid Relevance / Interpretation", styles["h2"]))
+        story.append(Paragraph("What This May Mean for the Bid", styles["h2"]))
         story.append(Paragraph(
-            "<i>Interpretation only — not a statement of the Bank's evaluation intent.</i>",
+            getattr(C, "BUYER_INTEL_DISCLAIMER",
+                    "<i>Interpretation only — not a statement of the Bank's evaluation intent.</i>"),
             styles["note"]))
-        story.append(Spacer(1, 3))
-        tight_body = ParagraphStyle("bi_body", fontName="Body", fontSize=9, leading=12.2, textColor=INK,
-                                    spaceAfter=2)
+        story.append(Spacer(1, 2))
+        tight_body = ParagraphStyle("bi_body", fontName="Body", fontSize=8.3, leading=10.6, textColor=INK,
+                                    spaceAfter=1.5)
         for label, text in C.BID_RELEVANCE_ITEMS:
             story.append(KeepTogether([
-                Paragraph(label, ParagraphStyle("bi_lbl", fontName="BodyMed", fontSize=8.6, leading=11,
+                Paragraph(label, ParagraphStyle("bi_lbl", fontName="BodyMed", fontSize=8.0, leading=9.8,
                                                 textColor=GOLD, spaceAfter=1)),
                 Paragraph(text, tight_body),
             ]))
-        story.append(Spacer(1, 5))
+        story.append(Spacer(1, 3))
 
-        panel_rows = [[Paragraph(f"{i}.", ParagraphStyle("pnl_num", fontName="BodyMed", fontSize=8.8,
-                                                          leading=12.5, textColor=INK)),
-                      Paragraph(item, styles["table_cell"])]
-                      for i, item in enumerate(C.BID_TEAM_PANEL_ITEMS, 1)]
-        panel_header = Table([[Paragraph(C.BID_TEAM_PANEL_TITLE.upper(), styles["table_head"])]],
-                            colWidths=[6.4 * inch])
-        panel_header.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), NIGHT),
-                                          ("TOPPADDING", (0, 0), (-1, -1), 6),
-                                          ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                                          ("LEFTPADDING", (0, 0), (-1, -1), 9)]))
-        panel_body = Table(panel_rows, colWidths=[0.42 * inch, 5.98 * inch])
-        panel_body.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("TOPPADDING", (0, 0), (-1, -1), 3.2),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3.2),
-            ("LEFTPADDING", (0, 0), (0, -1), 9),
-            ("BACKGROUND", (0, 0), (-1, -1), BAND),
-        ]))
-        panel_wrap = Table([[panel_header], [panel_body]], colWidths=[6.4 * inch])
-        panel_wrap.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.9, GOLD),
-                                        ("TOPPADDING", (0, 0), (-1, -1), 0),
-                                        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-                                        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                                        ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
-        story.append(panel_wrap)
-        story.append(Spacer(1, 5))
+        if getattr(C, "BID_TEAM_PANEL_ITEMS", None):
+            panel_rows = [[Paragraph(f"{i}.", ParagraphStyle("pnl_num", fontName="BodyMed", fontSize=8.8,
+                                                              leading=12.5, textColor=INK)),
+                          Paragraph(item, styles["table_cell"])]
+                          for i, item in enumerate(C.BID_TEAM_PANEL_ITEMS, 1)]
+            panel_header = Table([[Paragraph(C.BID_TEAM_PANEL_TITLE.upper(), styles["table_head"])]],
+                                colWidths=[6.4 * inch])
+            panel_header.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), NIGHT),
+                                              ("TOPPADDING", (0, 0), (-1, -1), 6),
+                                              ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                                              ("LEFTPADDING", (0, 0), (-1, -1), 9)]))
+            panel_body = Table(panel_rows, colWidths=[0.42 * inch, 5.98 * inch])
+            panel_body.setStyle(TableStyle([
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 3.2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3.2),
+                ("LEFTPADDING", (0, 0), (0, -1), 9),
+                ("BACKGROUND", (0, 0), (-1, -1), BAND),
+            ]))
+            panel_wrap = Table([[panel_header], [panel_body]], colWidths=[6.4 * inch])
+            panel_wrap.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.9, GOLD),
+                                            ("TOPPADDING", (0, 0), (-1, -1), 0),
+                                            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                                            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                                            ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+            story.append(panel_wrap)
+            story.append(Spacer(1, 3))
         story.append(Paragraph(C.BUYER_INTEL_SOURCES_NOTE, styles["note"]))
-        story.append(Spacer(1, 10))
+        story.append(Spacer(1, 8))
 
-    # ---------------- 3. WHAT IS BEING PROCURED ----------------
-    section_header("Section 3", "What Is Being Procured?", story)
+    # ---------------- WHAT IS BEING PROCURED ----------------
+    emit_section("What Is Being Procured?")
     story.append(Paragraph(C.PROCURED_INTRO, styles["body"]))
     story.append(Spacer(1, 6))
     for name, tag, desc in C.SERVICE_CATEGORIES:
@@ -336,8 +352,8 @@ def build(content=None, out_path=None):
     story.append(Paragraph(C.PROCURED_MODEL_NOTE, styles["body"]))
     story.append(Spacer(1, 10))
 
-    # ---------------- 4. CRITICAL DATES & BID MECHANICS ----------------
-    section_header("Section 4", "Critical Dates & Bid Mechanics", story)
+    # ---------------- CRITICAL DATES & BID MECHANICS ----------------
+    emit_section("Critical Dates & Bid Mechanics")
     date_rows = [[Paragraph(f"<b>{d}</b>", styles["table_cell_b"]), Paragraph(m, styles["table_cell"])]
                  for d, m in C.KEY_DATES]
     t = Table(date_rows, colWidths=[2.15 * inch, 4.25 * inch])
@@ -352,18 +368,21 @@ def build(content=None, out_path=None):
     ]))
     story.append(t)
     story.append(Spacer(1, 6))
-    story.append(Paragraph(C.DATES_NOTE, styles["note"]))
-    story.append(Paragraph("Submission Mechanics", styles["h2"]))
-    for item in C.BID_MECHANICS:
-        story.append(Paragraph(f"•&nbsp;&nbsp;{item}", styles["bullet"]))
+    if getattr(C, "DATES_NOTE", None):
+        story.append(Paragraph(C.DATES_NOTE, styles["note"]))
+    if getattr(C, "BID_MECHANICS", None):
+        story.append(Paragraph("Submission Mechanics", styles["h2"]))
+        for item in C.BID_MECHANICS:
+            story.append(Paragraph(f"•&nbsp;&nbsp;{item}", styles["bullet"]))
     story.append(Spacer(1, 10))
 
-    # ---------------- 5. EVALUATION ----------------
-    section_header("Section 5", "Evaluation — How the Bid Will Be Judged", story)
-    story.append(styled_table(
-        ["Stage", "Component", "Basis"],
-        C.EVAL_STAGES, [0.85 * inch, 2.55 * inch, 3.0 * inch]))
-    story.append(Spacer(1, 10))
+    # ---------------- EVALUATION ----------------
+    emit_section("Evaluation — How the Bid Will Be Judged")
+    if getattr(C, "EVAL_STAGES", None):
+        story.append(styled_table(
+            ["Stage", "Component", "Basis"],
+            C.EVAL_STAGES, [0.85 * inch, 2.55 * inch, 3.0 * inch]))
+        story.append(Spacer(1, 10))
     story.append(Paragraph("Minimum-Qualification Gates (examples)", styles["h2"]))
     for item in C.GATE_EXAMPLES:
         story.append(Paragraph(f"•&nbsp;&nbsp;{item}", styles["bullet"]))
@@ -377,8 +396,8 @@ def build(content=None, out_path=None):
     story.append(Paragraph(C.EVAL_WEIGHT_NOTE, styles["note"]))
     story.append(PageBreak())
 
-    # ---------------- 6. RESPONSE REQUIREMENTS ----------------
-    section_header("Section 6", "Response Requirements", story)
+    # ---------------- RESPONSE REQUIREMENTS ----------------
+    emit_section("Response Requirements")
     rows = [[Paragraph(f"<b>{a}</b>", styles["table_cell_b"]), Paragraph(n, styles["table_cell"]),
              Paragraph(d, styles["table_cell"])] for a, n, d in C.RESPONSE_CHECKLIST]
     story.append(styled_table(["Item", "Description", "Notes"], rows,
@@ -389,16 +408,16 @@ def build(content=None, out_path=None):
         story.append(Paragraph(f"•&nbsp;&nbsp;{item}", styles["bullet"]))
     story.append(PageBreak())
 
-    # ---------------- 7. COMMERCIAL & CONTRACTUAL ----------------
-    section_header("Section 7", "Commercial & Contractual Considerations", story)
+    # ---------------- COMMERCIAL & CONTRACTUAL ----------------
+    emit_section("Commercial & Contractual Considerations")
     rows = [[Paragraph(f"<b>{label}</b>", styles["table_cell_b"]), Paragraph(text, styles["table_cell"])]
             for label, text in C.COMMERCIAL_POINTS]
     story.append(styled_table(["Topic", "What to Know"], rows, [1.55 * inch, 4.85 * inch]))
     story.append(PageBreak())
 
-    # ---------------- 8. IMPORTANT AMBIGUITIES ----------------
+    # ---------------- IMPORTANT AMBIGUITIES ----------------
     if getattr(C, "AMBIGUITIES", None):
-        section_header("Section 8", "Important Ambiguities / Items to Clarify", story)
+        emit_section("Important Ambiguities / Items to Clarify")
         for i, amb in enumerate(C.AMBIGUITIES, 1):
             block = [
                 Paragraph(f"Ambiguity {i}", styles["amb_label"]),
@@ -414,11 +433,11 @@ def build(content=None, out_path=None):
             story.append(KeepTogether(block))
         story.append(Spacer(1, 10))
 
-    # ---------------- 9. BID TEAM ATTENTION POINTS ----------------
-    section_header("Section 9", "Bid Team Attention Points", story)
+    # ---------------- BID TEAM ATTENTION POINTS ----------------
+    emit_section("Bid Team Attention Points")
     story.append(Paragraph("<i>Things I would resolve first if preparing this bid</i>",
                            ParagraphStyle("sub", fontName="DisplayReg", fontSize=13, textColor=GOLD,
-                                         spaceAfter=10)))
+                                          spaceAfter=10)))
     for i, item in enumerate(C.ATTENTION_POINTS, 1):
         row = Table([[Paragraph(str(i), styles["attn_num"]), Paragraph(item, styles["body"])]],
                     colWidths=[0.35 * inch, 5.65 * inch])
@@ -428,20 +447,29 @@ def build(content=None, out_path=None):
         story.append(row)
     story.append(PageBreak())
 
-    # ---------------- 10. SOURCE MAP ----------------
-    section_header("Section 10", "Source Map / Reference Appendix", story)
-    story.append(Paragraph("Primary Documents Used", styles["h2"]))
+    # ---------------- SOURCE MAP ----------------
+    emit_section("Source Map / Reference Appendix")
+    story.append(Paragraph("Procurement Documents Used", styles["h2"]))
     rows = [[Paragraph(f"<b>{a}</b>", styles["table_cell_b"]), Paragraph(b, styles["table_cell"])]
             for a, b in C.SOURCE_DOCUMENTS]
-    story.append(styled_table(["Document", "Content"], rows, [2.3 * inch, 4.1 * inch], pad=4))
-    story.append(Spacer(1, 8))
+    story.append(styled_table(["Document", "Content"], rows, [2.5 * inch, 3.9 * inch], pad=2.2))
+    story.append(Spacer(1, 3))
+
+    if getattr(C, "EXTERNAL_BUYER_SOURCES", None):
+        story.append(Paragraph("External Buyer Intelligence Sources", styles["h2"]))
+        ext_rows = [[Paragraph(f"<b>{a}</b>", styles["table_cell_b"]), Paragraph(b, styles["table_cell"])]
+                    for a, b in C.EXTERNAL_BUYER_SOURCES]
+        story.append(styled_table(["External Source / Publication", "Reference & Provenance"],
+                                  ext_rows, [2.5 * inch, 3.9 * inch], pad=2.2))
+        story.append(Spacer(1, 3))
     story.append(Paragraph("Selected Source References for Key Findings", styles["h2"]))
     rows = [[Paragraph(f"<b>{a}</b>", styles["table_cell_b"]), Paragraph(b, styles["table_cell"])]
             for a, b in C.SOURCE_REF_TABLE]
-    story.append(styled_table(["Finding", "Reference"], rows, [2.3 * inch, 4.1 * inch], pad=4))
-    story.append(Spacer(1, 8))
-    story.append(hr(space_before=2, space_after=6))
-    story.append(Paragraph(C.VALIDATION_FOOTER_NOTE, styles["note"]))
+    story.append(styled_table(["Finding", "Reference"], rows, [2.5 * inch, 3.9 * inch], pad=2.2))
+    story.append(Spacer(1, 3))
+    story.append(hr(space_before=1, space_after=3))
+    val_note_style = ParagraphStyle("val_note", parent=styles["note"], fontSize=7.2, leading=8.8)
+    story.append(Paragraph(C.VALIDATION_FOOTER_NOTE, val_note_style))
 
     doc.build(story)
     return out_path or OUT_PDF

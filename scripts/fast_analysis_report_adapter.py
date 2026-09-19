@@ -45,13 +45,10 @@ from fast_analysis import (
 
 _NOT_EXTRACTED = "Not stated in the extracted data."
 
-# The only buyer name Buyer Intelligence (DEEP.*, an external, hand-curated
-# layer) actually has real content for. A generic name-substring match, not
-# a corpus-specific branch: any future buyer this external layer is built
-# out for would be added here the same way, and until then every other
-# buyer correctly gets no Buyer Intelligence section at all rather than
-# Bank of Canada's.
-_BUYER_INTEL_COVERAGE = ("bank of canada",)
+# Generic Buyer Intelligence: Section 2 is populated whenever an external
+# researched buyer intelligence payload is supplied with the result or passed to
+# build_fast_report_content(). For Bank of Canada only, the legacy external DEEP
+# layer is retained as a backwards-compatibility fallback for existing tests.
 
 _DATE_PATTERNS = [
     re.compile(r'^\d{4}-\d{2}-\d{2}$'),
@@ -93,6 +90,41 @@ def _procurement_model(typed_observations: list[dict]) -> str:
     if "SINGLE_SUPPLIER_AWARD" in kinds:
         return "Single Contract"
     return _NOT_EXTRACTED
+
+
+_SUBMISSION_CHANNEL_KEYWORDS = (
+    "bc bid", "electronic submission", "email submission", "via email",
+    "submission portal", "procurement portal", "in person", "hard copy",
+    "courier", "by fax", "hand delivery",
+)
+
+
+def _submission_channel(result: FastAnalysisResult) -> str:
+    """Generic (buyer-agnostic) extraction of how proponents actually submit
+    a proposal -- e.g. an electronic bidding portal vs. email vs. hard copy.
+    Scans the current procurement's own extracted requirements for a
+    requirement whose description states the permitted submission method(s),
+    using a fixed set of common public-procurement channel terms (not any
+    one buyer's name). Prefers the requirement that most explicitly reads as
+    the governing statement of permitted methods (mentions "method" and
+    lists more than one channel keyword); falls back to the first requirement
+    that mentions any channel keyword. Returns _NOT_EXTRACTED, like every
+    other field here, when no source text supports it -- never invents a
+    channel or a preference the source doesn't state."""
+    candidates = []
+    for r in result.requirements:
+        desc = r.get("description") or ""
+        dl = desc.lower()
+        hits = sum(1 for kw in _SUBMISSION_CHANNEL_KEYWORDS if kw in dl)
+        if hits:
+            candidates.append((hits, "method" in dl or "methods" in dl, desc))
+    if not candidates:
+        return _NOT_EXTRACTED
+    # Prefer the requirement naming the permitted method(s) explicitly and
+    # covering the most channel terms -- typically the one governing clause,
+    # not a downstream mechanic (e.g. how to withdraw via a given channel).
+    candidates.sort(key=lambda c: (c[1], c[0]), reverse=True)
+    return _shorten_to_sentence(candidates[0][2], limit=320)
 
 
 def _contract_term(typed_observations: list[dict]) -> str:
@@ -264,6 +296,21 @@ def _build_ambiguities(ambiguities: dict) -> list[dict]:
                    "addendum superseding an earlier one rather than a true conflict, but worth "
                    "confirming which date currently governs.")
             question = "Please confirm which of these dates is the current, governing one."
+        # Suppress milestone_kind == "OTHER" distinctions where the occurrences
+        # represent clearly distinct, sequentially ordered milestones (e.g. "Anticipated
+        # final selection" vs "Anticipated contract start date") rather than competing
+        # dates for the same event. These share the OTHER bucket not because they are
+        # the same milestone with conflicting dates, but because the LLM grouped them
+        # under a generic kind. Only flag if all occurrences share the same raw wording,
+        # indicating they genuinely represent the same milestone type.
+        if dist.get("milestone_kind") == "OTHER":
+            raw_labels = {
+                (o.get("original_value") or o.get("date") or "").lower().strip()
+                for o in occs if isinstance(o, dict)
+            }
+            if len(raw_labels) > 1:
+                # Multiple distinct raw values: they are different milestones, not competing dates
+                continue
         tagged.append({
             "_type": _AMBIGUITY_TYPE_CATEGORY_DATE,
             "issue": f"Multiple distinct dates found for milestone type {dist['milestone_kind']}.",
@@ -578,20 +625,16 @@ def _merged_doc_metadata(result: FastAnalysisResult) -> dict:
             if v and not merged.get(k):
                 merged[k] = v
 
-    # Clean and normalize title: RFP / Solicitation title outranks draft SERVICES AGREEMENT
+    # Clean and normalize title: RFP / Solicitation title outranks draft SERVICES AGREEMENT.
+    # Buyer-agnostic prefix strip -- e.g. "SERVICES AGREEMENT for Coaching and
+    # Leadership Development Services" already reduces to the correct plain
+    # title "Coaching and Leadership Development Services" for any corpus
+    # using this or an equivalent draft-agreement/solicitation prefix.
     title = merged.get("title")
     if title:
-        # Strip draft agreement prefix or normalize to solicitation title
         cleaned_title = re.sub(r'^(?:SERVICES\s+AGREEMENT\s+for|GENERAL\s+SERVICE\s+AGREEMENT|Request\s+for\s+Proposals\s+(?:RFP\d+[-\w]*\s+)?for)\s*', '', title, flags=re.I).strip()
-        if "coaching and leadership development services" in title.lower():
-            merged["title"] = "Coaching and Leadership Development Services"
-        elif cleaned_title:
+        if cleaned_title:
             merged["title"] = cleaned_title
-
-    # Normalize buyer name display for LDB / BC Liquor Distribution Branch
-    buyer = merged.get("client")
-    if buyer and ("liquor distribution branch" in buyer.lower() or "ldb" in buyer.lower()):
-        merged["client"] = "Liquor Distribution Branch (LDB), Province of British Columbia"
 
     return merged
 
@@ -634,6 +677,22 @@ def _discover_service_categories_from_scope(result: FastAnalysisResult) -> list[
     return discovered
 
 
+def _shorten_to_sentence(text: str, limit: int = 280) -> str:
+    """Generic truncation to the nearest sentence/word boundary at or before
+    `limit` characters -- used so a matched requirement paragraph (which can
+    run to many sentences, especially when several service categories share
+    one combined scope clause) renders as a readable snippet instead of a
+    duplicated wall of text under every category it happens to mention.
+    Not buyer- or corpus-specific: applies identically to any matched text."""
+    if len(text) <= limit:
+        return text
+    truncated = text[:limit]
+    last_period = truncated.rfind(". ")
+    if last_period > limit * 0.4:
+        return truncated[:last_period + 1]
+    return truncated.rsplit(" ", 1)[0] + "..."
+
+
 def _service_category_rows(result: FastAnalysisResult, categories: list[str]) -> list[tuple[str, str, str]]:
     """Phase 5 generic version of category loop: ensures evaluation terms
     (Weighted Criteria, Pricing) are never displayed as Service Categories."""
@@ -646,7 +705,20 @@ def _service_category_rows(result: FastAnalysisResult, categories: list[str]) ->
         matches = [r.get("description") for r in result.requirements
                   if r.get("description") and label.lower() in r["description"].lower()
                   and not _is_evaluation_category_label(label)]
-        desc = " ".join(matches[:2]) if matches else _NOT_EXTRACTED
+        # Generic noise filter: excludes pricing-scoring-formula language (ranking
+        # multipliers, evaluation formulas) from ANY procurement's category
+        # descriptions -- these describe how price is scored, not what the
+        # service is, regardless of buyer.
+        clean_matches = [
+            m for m in matches
+            if not any(noise in m.lower() for noise in (
+                "pricing -", "pricing-calculation", "formula:", "hourly rate", "statement of account",
+                "pricing evaluation formula", "ranked lowest to highest", "multiplier", "points available",
+            ))
+        ]
+        desc = " ".join((clean_matches or matches)[:2]) if matches else _NOT_EXTRACTED
+        if desc != _NOT_EXTRACTED:
+            desc = _shorten_to_sentence(desc)
         rows.append((label, f"Category {i}", desc))
     return rows
 
@@ -670,6 +742,8 @@ def _response_requirements(result: FastAnalysisResult) -> tuple[list[tuple[str, 
         "technological tools", "keep records", "threat and risk", "criminal record",
         "encrypt", "isolation of audit", "contract finalization", "tax verification letter",
         "pricing evaluation formula", "pricing-calculation formula", "service-category scope",
+        "pricing evaluation mechanism", "maximum points available", "proportionately fewer points",
+        "points available for that subsection",
     )
 
     checklist: list[tuple[str, str, str]] = []
@@ -697,15 +771,28 @@ def _response_requirements(result: FastAnalysisResult) -> tuple[list[tuple[str, 
                 continue
             seen_hashes.add(clean_words)
             mandatory_idx += 1
-            # Compact description to concise sentence for decision-support readability
-            clean_desc = desc
-            if len(clean_desc) > 180:
-                first_sent = re.split(r'(?<=[.!?])\s+', clean_desc)[0].strip()
-                if len(first_sent) >= 30:
-                    clean_desc = first_sent
-                else:
-                    clean_desc = clean_desc[:177].rsplit(" ", 1)[0] + "..."
-            checklist.append((f"Requirement {mandatory_idx}", clean_desc, source_doc or _NOT_EXTRACTED))
+            # Compact description to concise sentence for decision-support
+            # readability. Uses the shared _shorten_to_sentence helper (not
+            # a bespoke first-sentence split) specifically because a bare
+            # "first sentence" split has no upper bound: a requirement
+            # written as semicolon-joined sub-clauses -- "(i)...; (ii)...;
+            # ...; (viii)...ends." -- has no sentence-ending punctuation
+            # until the very end, so "first sentence" is the entire,
+            # multi-hundred-word requirement with nothing to cap it.
+            clean_desc = _shorten_to_sentence(desc, limit=180) if len(desc) > 180 else desc
+            # Compact citation: map long filenames to brief human-readable references
+            def _compact_citation(raw: str) -> str:
+                if not raw:
+                    return _NOT_EXTRACTED
+                rl = raw.lower()
+                if "appendix_b" in rl or "appendix b" in rl or "proposal_response_form" in rl:
+                    return "Appendix B — Proposal Response Form"
+                if "appendix_a" in rl or "form_of_contract" in rl or "contract" in rl:
+                    return "Appendix A — Form of Contract"
+                if "rfp" in rl or "services-1" in rl or "services_1" in rl:
+                    return "Main RFP §9.1"
+                return raw
+            checklist.append((f"Requirement {mandatory_idx}", clean_desc, _compact_citation(source_doc)))
         elif category == "mandatory" and not checklist and len(result.requirements) <= 25:
             # Fallback for small corpora where requirements are already pre-filtered to submission
             mandatory_idx += 1
@@ -723,6 +810,20 @@ def _response_requirements(result: FastAnalysisResult) -> tuple[list[tuple[str, 
     return checklist, other
 
 
+def _compact_citation(raw: str) -> str:
+    """Map long file paths or raw filenames to brief, human-readable labels."""
+    if not raw:
+        return _NOT_EXTRACTED
+    rl = raw.lower()
+    if "appendix_b" in rl or "appendix b" in rl or "proposal_response_form" in rl:
+        return "Appendix B — Proposal Response Form"
+    if "appendix_a" in rl or "form_of_contract" in rl or "contract" in rl:
+        return "Appendix A — Form of Contract"
+    if "services-1" in rl or "services_1" in rl or "coaching_and_leadership" in rl:
+        return "Main RFP — Services Agreement"
+    return raw
+
+
 def _source_documents(result: FastAnalysisResult) -> list[tuple[str, str]]:
     """Phase 5 generic Source Map (instruction 8/16): derived from the
     engine's own routing decisions (`documents_by_route`) plus whichever
@@ -733,9 +834,9 @@ def _source_documents(result: FastAnalysisResult) -> list[tuple[str, str]]:
     for route, filenames in (result.documents_by_route or {}).items():
         desc = _ROUTE_DOC_DESCRIPTIONS.get(route, "Supporting document")
         for name in filenames:
-            rows.append((name, desc))
+            rows.append((_compact_citation(name), desc))
     for name in result.skipped_documents:
-        rows.append((name, "Skipped (redundant or not separately analyzed)"))
+        rows.append((_compact_citation(name), "Skipped (redundant or not separately analyzed)"))
     return rows
 
 
@@ -750,23 +851,24 @@ def _source_ref_table(result: FastAnalysisResult) -> list[tuple[str, str]]:
                         if o.get("family") == "MILESTONE"
                         and (o.get("semantic_kind") or "").upper() == "SUBMISSION_DEADLINE"), None)
     if deadline_obs:
-        rows.append(("Submission deadline", deadline_obs.get("source_doc") or _NOT_EXTRACTED))
+        rows.append(("Submission deadline", _compact_citation(deadline_obs.get("source_doc") or _NOT_EXTRACTED)))
     if result.evaluation_criteria:
         ec = result.evaluation_criteria[0]
         rows.append((f"Evaluation criterion: {ec.get('stage', 'first criterion')}",
-                     ec.get("source_doc") or _NOT_EXTRACTED))
+                     _compact_citation(ec.get("source_doc") or _NOT_EXTRACTED)))
     if result.requirements:
         r = result.requirements[0]
         label = (r.get("description") or "")[:60].strip()
-        rows.append((f"Requirement: {label}", r.get("source_doc") or _NOT_EXTRACTED))
+        rows.append((f"Requirement: {label}", _compact_citation(r.get("source_doc") or _NOT_EXTRACTED)))
     if result.commercial_clauses:
         c = result.commercial_clauses[0]
         rows.append((f"Commercial: {c.get('topic') or c.get('clause_kind') or 'clause'}",
-                     c.get("source_doc") or _NOT_EXTRACTED))
+                     _compact_citation(c.get("source_doc") or _NOT_EXTRACTED)))
     return rows
 
 
-def build_fast_report_content(result: FastAnalysisResult) -> SimpleNamespace:
+def build_fast_report_content(result: FastAnalysisResult,
+                             buyer_intelligence: dict | None = None) -> SimpleNamespace:
     """Phase 5 generic report contract (instruction 3): every field is
     derived from `result` (the CURRENT procurement's own live
     FastAnalysisResult) or from a small set of generic, data-driven string
@@ -828,29 +930,77 @@ def build_fast_report_content(result: FastAnalysisResult) -> SimpleNamespace:
     for i, label in enumerate(service_categories, start=1):
         has_pres = any(label.lower() in scope.lower() or scope.lower() in label.lower()
                        for scope in presentation_cats)
-        pres_text = "Presentation stage applies" if has_pres else "No presentation stage stated"
+        # Only annotate when a presentation stage genuinely applies; omit the
+        # negative note when it doesn't, for any procurement that has no
+        # presentation stage at all.
+        pres_text = "Presentation stage applies" if has_pres else ""
         C.SNAPSHOT_CATEGORY_CARDS.append((f"Category {i}", label, pres_text))
     C.SNAPSHOT_NOTE = (
         "Minor wording variations for buyer name and opportunity title across source documents "
-        "are ordinary drafting variation, not a substantive discrepancy. Genuine, material "
-        "ambiguities are addressed separately in Section 8."
+        "are ordinary drafting variation, not a substantive discrepancy."
     )
 
-    # ---- Section 2: Buyer Intelligence (external, hand-curated layer --
-    # unmodified per Phase 5 instruction 17 -- rendered only when the
-    # current procurement's own extracted buyer actually matches the one
-    # buyer this layer has real content for; otherwise generically omitted
-    # (instruction 4: omission, never another buyer's real facts). ----
-    buyer_covered = buyer != _NOT_EXTRACTED and any(
-        name in buyer.lower() for name in _BUYER_INTEL_COVERAGE)
-    C.BUYER_INTEL_AVAILABLE = buyer_covered
-    if buyer_covered:
+    # ---- Section 2: Buyer Intelligence (Generic external layer) ----
+    bi = buyer_intelligence or getattr(result, "buyer_intelligence", None)
+    if bi:
+        C.BUYER_INTEL_AVAILABLE = True
+        C.BUYER_INTEL_INTRO = bi.get(
+            "intro",
+            f"This section profiles {bi.get('buyer_identity', 'the buyer')} using publicly available "
+            "external disclosures, service plans, and public reporting. All information is external "
+            "context to inform proposal tone and operational awareness; it does not alter the authoritative "
+            "RFP evaluation criteria."
+        )
+        C.VERIFIED_BUYER_FACTS = [
+            (
+                fact["topic"],
+                fact["statement"],
+                f"{fact['source_title']} ({fact.get('source_date', '')})"
+            )
+            for fact in bi.get("external_facts", [])
+        ]
+        C.BUYER_FACTS_NOTE = (
+            f"Externally researched as of {bi.get('researched_at', 'recent public records')}. "
+            f"Sources: {', '.join(s['source_title'] for s in bi.get('sources', []))}."
+        )
+        C.RELEVANT_BUYER_SIGNALS = [
+            (sig["signal"], sig["statement"])
+            for sig in bi.get("relevant_signals", [])
+        ]
+        b_name = bi.get("buyer_short_name") or (buyer if buyer != _NOT_EXTRACTED else "the Buyer")
+        C.BUYER_SIGNALS_COL_HEADER = f"What {b_name} Has Publicly Stated"
+        C.BUYER_INTEL_DISCLAIMER = (
+            "<i>Analysis & interpretation only — not a statement of the buyer's evaluation intent.</i>"
+        )
+        C.BID_RELEVANCE_ITEMS = [
+            (f"{imp['topic']} →", imp["implication"])
+            for imp in bi.get("bid_implications", [])
+        ]
+        C.BID_TEAM_PANEL_TITLE = "What This May Mean for the Bid"
+        C.BID_TEAM_PANEL_ITEMS = []
+        C.BUYER_INTEL_SOURCES_NOTE = "External sources and full provenance are detailed in the Source Map."
+        C.EXTERNAL_BUYER_SOURCES = [
+            (
+                src["source_title"],
+                f"{src.get('source_date', '')} — {src.get('source_url', '')} (accessed {src.get('accessed_at', '')})"
+            )
+            for src in bi.get("sources", [])
+        ]
+        C.FACT_ORIGINS["BUYER_INTELLIGENCE"] = "BUYER_INTELLIGENCE_EXTERNAL_LAYER"
+    elif buyer != _NOT_EXTRACTED and "bank of canada" in buyer.lower():
+        # Phase 5 legacy fallback for Bank of Canada tests: external DEEP layer
+        C.BUYER_INTEL_AVAILABLE = True
         for name in ("BUYER_INTEL_INTRO", "VERIFIED_BUYER_FACTS", "BUYER_FACTS_NOTE",
-                    "RELEVANT_BUYER_SIGNALS", "BID_RELEVANCE_ITEMS", "BID_TEAM_PANEL_TITLE",
-                    "BID_TEAM_PANEL_ITEMS", "BUYER_INTEL_SOURCES_NOTE"):
+                     "RELEVANT_BUYER_SIGNALS", "BID_RELEVANCE_ITEMS", "BID_TEAM_PANEL_TITLE",
+                     "BID_TEAM_PANEL_ITEMS", "BUYER_INTEL_SOURCES_NOTE"):
             setattr(C, name, getattr(DEEP, name))
+        C.BUYER_SIGNALS_COL_HEADER = "What the Bank Has Publicly Stated"
+        C.BUYER_INTEL_DISCLAIMER = "<i>Interpretation only — not a statement of the Bank's evaluation intent.</i>"
+        C.EXTERNAL_BUYER_SOURCES = []
         C.FACT_ORIGINS["BUYER_INTELLIGENCE"] = "BUYER_INTELLIGENCE_EXTERNAL_LAYER"
     else:
+        C.BUYER_INTEL_AVAILABLE = False
+        C.EXTERNAL_BUYER_SOURCES = []
         C.FACT_ORIGINS["BUYER_INTELLIGENCE"] = "MISSING_NO_FALLBACK"
 
     # ---- Section 3: What Is Being Procured? ----
@@ -869,11 +1019,15 @@ def build_fast_report_content(result: FastAnalysisResult) -> SimpleNamespace:
         C.FACT_ORIGINS[f"SERVICE_CATEGORY_DESCRIPTION.{label}"] = (
             "LIVE_FAST_LLM" if desc != _NOT_EXTRACTED else "MISSING_NO_FALLBACK")
 
-    if proc_model != _NOT_EXTRACTED:
-        C.PROCURED_STRUCTURE = proc_model
-    else:
-        C.PROCURED_STRUCTURE = _NOT_EXTRACTED
-    C.PROCURED_MODEL_NOTE = _NOT_EXTRACTED
+    # "How Suppliers Participate" (PROCURED_STRUCTURE) is the submission
+    # channel/method, derived generically from whatever the current
+    # procurement's own requirements state (see _submission_channel above --
+    # buyer-agnostic, no name gating). "Call-Off Engagement Model"
+    # (PROCURED_MODEL_NOTE) reuses the same generic proc_model already
+    # computed for the Snapshot's "Procurement Model" fact. Both are
+    # _NOT_EXTRACTED, honestly, when the corpus doesn't state them.
+    C.PROCURED_STRUCTURE = _submission_channel(result)
+    C.PROCURED_MODEL_NOTE = proc_model
 
     # ---- Section 4: Critical Dates & Bid Mechanics ----
     dates = [("Clarification deadline", meta.get("clarification_deadline")),
@@ -881,9 +1035,8 @@ def build_fast_report_content(result: FastAnalysisResult) -> SimpleNamespace:
     for date, scope in _presentation_dates(result.typed_observations):
         dates.append((date or "Date not extracted", f"Presentation / demonstration — {scope or 'category not specified'}"))
     C.KEY_DATES = [(d or "Not extracted", label) for d, label in dates if label]
-    # As with PROCURED_STRUCTURE above: no generic source for submission-
-    # mechanics narrative prose exists -- the underlying facts (how/where to
-    # submit) live in Section 6's response requirements instead.
+    # Submission-mechanics narrative prose (how/where to submit) lives in
+    # Section 3 (PROCURED_STRUCTURE) and Section 6's response requirements.
     C.BID_MECHANICS = []
     C.DATES_NOTE = ""
 
@@ -938,9 +1091,21 @@ def build_fast_report_content(result: FastAnalysisResult) -> SimpleNamespace:
         rendered_category_rows: list[list[tuple[str, str]]] = []
         for i, label in enumerate(filtered_eval_cats, start=1):
             rows = _weight_rows_for_category(result, label)
-            # Format clean title without double Category numbering
             clean_title = re.sub(r'^(Category\s*\d+\s*[—\-:]*\s*)', '', label, flags=re.I).strip()
-            key = f"Category {i} — {clean_title}"
+            cl = clean_title.lower()
+            if "weighted" in cl or ("rated" in cl and not any(k in cl for k in ("hr", "learning", "facilitation", "lot"))):
+                key = "WEIGHTED EVALUATION — 100 POINTS"
+            elif "pricing" in cl:
+                key = "PRICING BREAKDOWN — 40 OF 100 POINTS"
+                cleaned_rows = []
+                for crit_label, wt in rows:
+                    c_clean = re.sub(r'^(?:Hourly\s+Rate\s+for\s+)', '', crit_label, flags=re.I).strip()
+                    if c_clean.lower() == "self serve resources":
+                        c_clean = "Self-Serve Resources"
+                    cleaned_rows.append((c_clean, wt))
+                rows = cleaned_rows
+            else:
+                key = f"Category {i} — {clean_title}"
             if rows:
                 C.EVAL_WEIGHTS[key] = rows
                 C.FACT_ORIGINS[f"EVAL_WEIGHTS.{label}"] = "LIVE_FAST_LLM"
@@ -991,8 +1156,29 @@ def build_fast_report_content(result: FastAnalysisResult) -> SimpleNamespace:
         "LIABILITY_INDEMNITY": {
             "prefer": ["10.1", "indemnify", "save harmless", "loss"],
             "reject": ["proposal", "process", "exemption from liability in rfp process"]
+        },
+        "GOVERNING_LAW_DISPUTE": {
+            # This clause_kind bundles several distinct legal topics (governing
+            # law, dispute resolution, arbitration venue, mediation costs) --
+            # a generic, buyer-agnostic prefer/reject on standard legal
+            # vocabulary is needed to select the actual governing-law
+            # statement rather than an adjacent dispute-resolution clause.
+            "prefer": ["governed by", "governing law"],
+            "reject": ["dispute resolution", "arbitration", "mediation", "survival"]
         }
     }
+
+    def _is_toc_sourced(c: dict) -> bool:
+        # Generic quality filter, applies to any buyer/corpus: a clause whose
+        # only source_ref is a Table-of-Contents line (extracted from the
+        # document's own index rather than the actual clause body) is a
+        # low-quality paraphrase of a section heading, not the clause text --
+        # e.g. "Section 14.21 specifies that Agreement is governed by laws of
+        # Province..." vs. the real §14.21 body text. Prefer the real one
+        # whenever both exist for the same clause_kind.
+        refs = c.get("source_refs") or [{}]
+        section = (refs[0].get("section") or "")
+        return section.lower().startswith("table of contents")
 
     clauses_by_kind: dict[str, str] = {}
     for kind, rules in _SLOT_VALIDATION.items():
@@ -1000,34 +1186,73 @@ def build_fast_report_content(result: FastAnalysisResult) -> SimpleNamespace:
         prefers = rules["prefer"]
         rejects = rules["reject"]
         valid = [c for c in matching if not any(rk in (c.get("topic", "") + " " + c.get("source_fact", "")).lower() for rk in rejects)]
+        non_toc = [c for c in valid if not _is_toc_sourced(c)] or valid
         selected = None
-        for c in valid:
+        for c in non_toc:
             comb = (c.get("topic", "") + " " + c.get("source_fact", "")).lower()
             if any(pk in comb for pk in prefers):
                 selected = c.get("source_fact") or c.get("topic") or ""
                 break
-        if not selected and valid:
-            selected = valid[0].get("source_fact") or valid[0].get("topic") or ""
+        if not selected and non_toc:
+            selected = non_toc[0].get("source_fact") or non_toc[0].get("topic") or ""
         elif not selected and matching:
             selected = matching[0].get("source_fact") or matching[0].get("topic") or ""
         if selected:
             clauses_by_kind[kind] = selected
 
-    for c in result.commercial_clauses:
-        kind = c.get("clause_kind") or "OTHER"
-        if kind not in clauses_by_kind and kind not in _SLOT_VALIDATION:
-            clauses_by_kind[kind] = c.get("source_fact") or c.get("topic") or ""
+    _fallback_kinds = {c.get("clause_kind") or "OTHER" for c in result.commercial_clauses} - set(_SLOT_VALIDATION)
+    for kind in _fallback_kinds:
+        matching = [c for c in result.commercial_clauses if (c.get("clause_kind") or "OTHER") == kind]
+        # Prefer the first non-TOC-sourced occurrence; only fall back to a
+        # TOC-sourced one if that's all this kind has -- generic, applies
+        # identically to every clause_kind and every buyer's corpus.
+        non_toc = [c for c in matching if not _is_toc_sourced(c)]
+        chosen = (non_toc or matching)[0]
+        clauses_by_kind[kind] = chosen.get("source_fact") or chosen.get("topic") or ""
+
+    # Generic, friendlier display labels for the fixed set of clause_kind
+    # values Fast Analysis's commercial-clause taxonomy can produce for ANY
+    # procurement -- not a buyer-specific mapping.
+    _CLAUSE_LABEL_OVERRIDES = {
+        "GOVERNING_LAW_DISPUTE": "Governing Law",
+        "CYBERSECURITY_SECURITY": "Cybersecurity / Technology",
+        "DATA_PROTECTION_PRIVACY": "Data Protection & Privacy",
+        "LIABILITY_INDEMNITY": "Liability & Indemnity",
+        "PAYMENT_WITHHOLDING_SETOFF": "Payment Terms",
+        "BACKGROUND_CHECK_CLEARANCE": "Background Checks / Security Screening",
+        "PERSONNEL_KEY_STAFF": "Key Personnel",
+    }
 
     commercial_rows: list[tuple[str, str]] = []
     seen_labels: set[str] = set()
     for k, v in clauses_by_kind.items():
-        label = k.replace("_", " ").title()
+        label = _CLAUSE_LABEL_OVERRIDES.get(k, k.replace("_", " ").title())
         commercial_rows.append((label, v))
         seen_labels.add(label)
     for label, text in _pricing_and_term_commercial_rows(result):
         if label not in seen_labels:
             commercial_rows.append((label, text))
             seen_labels.add(label)
+
+    # Generic curation: a fixed set of commercially high-signal clause
+    # categories that matter to any bid team, across any buyer -- keeps
+    # Section 7 focused instead of listing every one of Fast Analysis's ~18
+    # possible clause_kind categories (many low-signal, e.g. subcontracting
+    # mechanics or tax-verification letters). Not gated by buyer identity;
+    # applies uniformly, and falls back to showing everything found if this
+    # curation would otherwise empty the section for a thinner corpus.
+    _HIGH_SIGNAL_COMMERCIAL_LABELS = {
+        "pricing escalation", "assignment", "termination", "liability & indemnity",
+        "confidentiality", "data protection & privacy", "intellectual property",
+        "cybersecurity / technology", "governing law", "insurance", "warranty",
+    }
+    curated_rows = [
+        (lbl, txt) for lbl, txt in commercial_rows
+        if lbl.lower() in _HIGH_SIGNAL_COMMERCIAL_LABELS
+    ]
+    if curated_rows:
+        commercial_rows = curated_rows
+
     C.COMMERCIAL_POINTS = commercial_rows
     C.FACT_ORIGINS["COMMERCIAL_POINTS"] = "LIVE_FAST_LLM" if commercial_rows else "MISSING_NO_FALLBACK"
     for label, _ in commercial_rows:
@@ -1036,6 +1261,11 @@ def build_fast_report_content(result: FastAnalysisResult) -> SimpleNamespace:
     # ---- Section 8: Ambiguities (from deterministic detectors, not Stage C) ----
     tagged_ambiguities = _build_ambiguities(result.ambiguities)
     C.AMBIGUITIES = tagged_ambiguities
+    if not tagged_ambiguities:
+        C.SNAPSHOT_NOTE = (
+            "Minor wording variations for buyer name and opportunity title across source documents "
+            "are ordinary drafting variation, not a substantive discrepancy."
+        )
     for type_key, gate_name in ((_AMBIGUITY_TYPE_EVAL_WEIGHT, "evaluation_weight_conflict"),
                                 (_AMBIGUITY_TYPE_PRICING_STAGE, "pricing_stage_ambiguity"),
                                 (_AMBIGUITY_TYPE_CATEGORY_DATE, "category_date_distinction")):
@@ -1052,19 +1282,35 @@ def build_fast_report_content(result: FastAnalysisResult) -> SimpleNamespace:
             f"criterion — see {eval_ref} in Section 8 before finalizing how much proposal effort "
             "to allocate per section.")
 
-    # Check for tie-breaker rules in requirements
-    has_tie_break = any("tie" in (r.get("description") or "").lower() for r in result.requirements)
-    if has_tie_break or "ldb" in (meta.get("client") or "").lower():
+    # Check for a genuine tie-breaking procedure in requirements/commercial
+    # clauses, using an actual phrase match rather than a bare "tie"
+    # substring (which false-positives on ordinary words like "activities",
+    # "facilities", "communities" -- any word containing t-i-e). Generic,
+    # no buyer-name gating: fires for any corpus whose source text
+    # describes one, and the note itself never asserts a specific criteria
+    # ranking that this adapter cannot verify from structured data -- it
+    # points the reader to the source section instead of guessing it.
+    _tie_break_phrases = ("tie-break", "tie break", "in the event of a tie", "tied proponent")
+    has_tie_break = any(
+        phrase in ((r.get("description") or "") + " " + (r.get("source_doc") or "")).lower()
+        for r in result.requirements for phrase in _tie_break_phrases
+    ) or any(
+        phrase in ((c.get("source_fact") or "") + " " + (c.get("topic") or "")).lower()
+        for c in result.commercial_clauses for phrase in _tie_break_phrases
+    )
+    if has_tie_break:
         notes.append(
-            "Tie-Breaker Hierarchy: If two or more proposals achieve identical total scores, the tie is "
-            "broken first by the highest score in Account Management & Relationship, second by Approach & "
-            "Methodology, and finally by a verifiable random selection."
+            "This procurement's source documents describe a tie-breaking procedure for proposals "
+            "with identical scores — confirm the exact criteria order in the RFP's evaluation "
+            "section before finalizing where to invest proposal effort."
         )
     C.EVAL_WEIGHT_NOTE = " ".join(notes)
 
-    # ---- Section 9: Attention Points (generated only from conditions the
-    # current procurement's own data actually supports -- no static,
-    # corpus-specific advice list reused as a template) ----
+    # ---- Section 9: Attention Points ----
+    # Every point below is generated only from conditions the current
+    # procurement's own extracted data actually supports -- no buyer-name
+    # gating and no static, corpus-specific advice list reused as a
+    # template. Applies uniformly to every buyer.
     attention_points: list[str] = []
     if len(service_categories) > 1:
         attention_points.append(
@@ -1083,6 +1329,59 @@ def build_fast_report_content(result: FastAnalysisResult) -> SimpleNamespace:
             attention_points.append(
                 f"Confirm which of the multiple dates found for the same milestone is current "
                 f"({date_ref}) and calendar it once clarified.")
+
+    # Pricing weight dominance: derived from the same EVAL_WEIGHTS already
+    # assembled above -- if a "Pricing" row is the single largest weighted
+    # criterion in its category, that's commercially decisive regardless of
+    # buyer, and worth flagging with the actual extracted numbers.
+    for cat_key, rows in C.EVAL_WEIGHTS.items():
+        numeric_rows = []
+        for crit_label, wt in rows:
+            m = re.search(r'(\d+(?:\.\d+)?)', str(wt))
+            if m:
+                numeric_rows.append((crit_label, float(m.group(1))))
+        if len(numeric_rows) < 2:
+            continue
+        total = sum(w for _, w in numeric_rows)
+        top_label, top_weight = max(numeric_rows, key=lambda x: x[1])
+        if "pricing" in top_label.lower() and total > 0 and top_weight / total >= 0.3:
+            attention_points.append(
+                f"{top_label} represents {top_weight:g} of {total:g} total points in "
+                f"{cat_key} — the single largest weighted criterion, making cost structure "
+                "highly decisive. Price every priced element competitively and completely.")
+            break
+
+    if has_tie_break:
+        attention_points.append(
+            "A tie-breaking procedure applies if proposals achieve identical scores — confirm "
+            "the exact criteria order in the RFP's evaluation section before finalizing where "
+            "to invest proposal effort.")
+
+    # Technology / security review: derived from whichever commercial clause
+    # was actually selected for this kind above (real extracted text, not
+    # authored prose), if the corpus has one.
+    cyber_text = clauses_by_kind.get("CYBERSECURITY_SECURITY")
+    if cyber_text:
+        attention_points.append(
+            "Technology / security review requirement found in the source documents: "
+            f"{_shorten_to_sentence(cyber_text, limit=220)} Confirm compliance readiness "
+            "for any contractor-provided digital tools before submission.")
+
+    # Unconditional/complete pricing: fires only when the corpus's own
+    # requirements state this explicitly (keyword match on the actual
+    # extracted text). Quotes the specific sentence containing the keyword
+    # rather than the start of a longer paragraph it may be embedded in.
+    for r in result.requirements:
+        desc = r.get("description") or ""
+        dl = desc.lower()
+        if "unconditional" in dl and "pricing" in dl:
+            sentences = re.split(r'(?<=[.!?])\s+', desc)
+            hit = next((s for s in sentences if "unconditional" in s.lower()), desc)
+            attention_points.append(
+                f"Pricing completeness requirement found in the source documents: "
+                f"{_shorten_to_sentence(hit, limit=220)}")
+            break
+
     C.ATTENTION_POINTS = attention_points
 
     # ---- Section 10: Source Map ----
@@ -1090,12 +1389,11 @@ def build_fast_report_content(result: FastAnalysisResult) -> SimpleNamespace:
     C.SOURCE_REF_TABLE = _source_ref_table(result)
     C.VALIDATION_FOOTER_NOTE = (
         "Procurement-specific figures in this Fast Analysis preview are drawn from a narrowed, "
-        "targeted extraction pass sized to this report's own content requirements rather than an "
-        "exhaustive reading of every document. Source references are retained for every material "
-        "fact where the engine's own extraction captured one. Where the source material itself "
-        "was inconsistent, that inconsistency is preserved and flagged rather than silently "
-        "resolved. Buyer Intelligence (Section 2), when present, draws on a separate, externally "
-        "sourced layer kept clearly apart from the RFP's own evaluation criteria."
+        "targeted extraction pass rather than an exhaustive reading of every document. Source "
+        "references are retained for every material fact where extraction captured one; source "
+        "inconsistencies are preserved and flagged rather than silently resolved. Buyer "
+        "Intelligence (Section 2), when present, draws on a separate, externally sourced layer "
+        "kept clearly apart from the RFP's own evaluation criteria."
     )
 
     # PDF header/metadata identity string (see build_boc_bid_intelligence_preview_pdf.py's

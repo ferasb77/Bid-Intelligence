@@ -42,8 +42,18 @@ tests/fixtures/local/
 
 # Commissioning/evaluation evidence and generated report artifacts --
 # large, regenerable, run-specific output, not implementation (release
-# hygiene, commissioned baseline freeze).
-evaluation/
+# hygiene, commissioned baseline freeze). Uses `evaluation/*` (not
+# `evaluation/`) so the negation below can still re-include a subdirectory --
+# a fully-excluded parent directory blocks git from ever traversing into it,
+# which would make any `!evaluation/...` negation a silent no-op.
+evaluation/*
+# Exception: evaluation/buyer_intelligence/ holds hand-researched, source-
+# cited external Buyer Intelligence payloads (e.g. ldb_buyer_intelligence.json)
+# that the generic Fast Analysis report adapter reads at runtime (see
+# scripts/run_phoenix_client_ready_acceptance.py). These are small, curated
+# evidence fixtures with real provenance, not regenerable run output --
+# implementation the generic architecture depends on, so they're versioned.
+!evaluation/buyer_intelligence/
 output/
 tmp/
 

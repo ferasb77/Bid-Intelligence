@@ -1011,6 +1011,7 @@ class FastAnalysisResult:
     telemetry: list = field(default_factory=list)
     wall_seconds: float = 0.0
     deterministic_seconds: float = 0.0
+    buyer_intelligence: dict | None = None
 
 
 def run_fast_analysis_corpus(documents: list[tuple[str, str]], api_key: str,
