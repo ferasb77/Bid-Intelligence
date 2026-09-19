@@ -172,6 +172,294 @@ def extract_page_limit_deterministic(doc_text: str) -> int | None:
 
 
 # ---------------------------------------------------------------------------
+# Deterministic enumerated-scope and Response-Guideline parsing -- no LLM
+# call, pure text/structure parsing over the same deterministically-
+# extracted document text every other deterministic function here already
+# operates on. Generic to any procurement document using either of these
+# two common structuring conventions; never keyed to a specific buyer's
+# wording or a specific set of expected service names/criteria.
+# ---------------------------------------------------------------------------
+
+# A trigger sentence that introduces an enumerated scope-of-services list.
+# Several common phrasings, all generic procurement-document conventions,
+# not any one buyer's exact wording.
+_SCOPE_ENUM_TRIGGER_RE = re.compile(
+    r'(?:services?\s+(?:will|shall)?\s*(?:include|comprise)(?:\s+providing)?\s+the\s+following|'
+    r'scope\s+(?:of\s+services?\s+)?includes?|'
+    r'the\s+following\s+services?)\s*[:,]?\s*(?:as\s+and\s+when\s+requested[^:]*)?:?\s*$',
+    re.IGNORECASE)
+
+# A line consisting of ONLY a lettered or numbered list marker, e.g. "(a)",
+# "(b)", "a)", "1)" -- the marker and its item text are on separate lines
+# in this deterministic PDF-text extraction's own layout (confirmed live
+# against a real RFP: the marker alone on one line, the item text on the
+# next). Also matches a marker sharing its line with the item text, for
+# documents laid out that way instead.
+_LIST_MARKER_ONLY_RE = re.compile(r'^\(?([a-z]|[ivx]+)\)\s*$', re.IGNORECASE)
+_LIST_MARKER_LEADING_RE = re.compile(r'^\(?([a-z]|[ivx]+)\)\s*(.+)$', re.IGNORECASE)
+
+
+def extract_enumerated_service_scope(doc_text: str) -> dict | None:
+    """Deterministically locate an explicitly enumerated list of services
+    following a generic scope-introduction sentence (e.g. "The Services
+    will include providing the following:" then "(a) ... (b) ... (c)
+    ..."), and return its items with provenance. Returns None when no
+    such trigger sentence is found anywhere in the text -- this is a
+    fallback for a specific, common RFP structuring convention, not a
+    general-purpose list extractor, and it must never guess a list exists
+    when the text doesn't actually introduce one this way.
+
+    Each returned item is trimmed of trailing list punctuation ("; and",
+    "; or", ".") and, when a marker's item text runs on into a longer
+    descriptive clause the source's own line-wrapping didn't cleanly
+    separate (e.g. "Coaching Services for the following roles: Director,
+    ..."), is generically shortened to the leading name portion using the
+    same technique already used for LLM-extracted scope text (truncate at
+    the first colon, then at a leading preposition if still long) --
+    never a hardcoded item name.
+
+    Return shape: {"trigger_sentence": str, "items": [str, ...],
+    "source_page": int | None} or None."""
+    lines = doc_text.splitlines()
+    trigger_idx = None
+    trigger_sentence = None
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if _SCOPE_ENUM_TRIGGER_RE.search(stripped):
+            trigger_idx = i
+            trigger_sentence = stripped
+            break
+    if trigger_idx is None:
+        return None
+
+    # Determine the nearest preceding [[SOURCE: ... | PAGE: N]] marker for
+    # provenance.
+    source_page = None
+    for j in range(trigger_idx, -1, -1):
+        m = re.search(r'\[\[SOURCE:[^\]]*PAGE:\s*(\d+)[^\]]*\]\]', lines[j])
+        if m:
+            source_page = int(m.group(1))
+            break
+
+    def _next_letter(letter: str) -> str:
+        return chr(ord(letter) + 1)
+
+    def _finalize(raw: str) -> str:
+        clean = raw.strip()
+        clean = re.sub(r'\s*;?\s*(?:and|or)?\s*\.?\s*$', '', clean, flags=re.IGNORECASE).strip()
+        clean = clean.rstrip(';,.').strip()
+        if ":" in clean:
+            clean = clean.split(":", 1)[0].strip()
+        if len(clean) >= 45:
+            m2 = re.match(r'^(.{1,44}?)\s+(?:of|for|in|including|covering)\s+', clean, re.IGNORECASE)
+            if m2:
+                clean = m2.group(1).strip()
+        return clean
+
+    # Accumulate each item's RAW text across however many physical lines
+    # it spans, and call _finalize exactly once per item at the end --
+    # calling it repeatedly while folding continuation lines in would
+    # re-truncate an already-salvaged short name (e.g. re-processing a
+    # short item name plus a further continuation line could regrow or
+    # corrupt it); accumulating first avoids that entirely.
+    raw_items: list[str] = []
+    pending_marker = None
+    expected_next = "a"
+
+    for k in range(trigger_idx + 1, min(trigger_idx + 200, len(lines))):
+        raw_line = lines[k]
+        stripped = raw_line.strip()
+        if _SOURCE_MARKER_RE.match(stripped):
+            continue
+        if _ANY_HEADING_RE.match(raw_line) and raw_items:
+            # A new numbered section starts -- the enumerated list is over.
+            break
+        if not stripped:
+            continue
+        only_m = _LIST_MARKER_ONLY_RE.match(stripped)
+        leading_m = _LIST_MARKER_LEADING_RE.match(stripped)
+        if only_m:
+            marker = only_m.group(1).lower()
+            if marker != expected_next:
+                break
+            if pending_marker is not None:
+                # A marker-only line following another marker-only line
+                # with no content in between -- stop rather than silently
+                # drop data.
+                break
+            pending_marker = marker
+            continue
+        if leading_m and leading_m.group(1).lower() == expected_next and pending_marker is None:
+            raw_items.append(leading_m.group(2))
+            expected_next = _next_letter(expected_next)
+            continue
+        if pending_marker is not None:
+            raw_items.append(stripped)
+            pending_marker = None
+            expected_next = _next_letter(expected_next)
+            continue
+        if raw_items:
+            # A continuation line belonging to the last collected item
+            # (the source line-wrapped mid-sentence) -- only fold it in
+            # when it doesn't itself look like the start of unrelated
+            # prose (heuristic: short lines or lines ending mid-clause).
+            if len(stripped) < 120 and not stripped.endswith('.'):
+                raw_items[-1] = raw_items[-1] + " " + stripped
+                continue
+            break
+        break
+
+    if not raw_items:
+        return None
+    items = [_finalize(r) for r in raw_items]
+    return {"trigger_sentence": trigger_sentence, "items": items, "source_page": source_page}
+
+
+_SOURCE_MARKER_FULL_RE = re.compile(r'^\[\[SOURCE:\s*([^|]+?)\s*\|(.*?)\]\]\s*(.*)$')
+
+_RG_HEADER_ROW_RE = re.compile(
+    r'^Response Guideline\s+(\d+)\s*\|\s*Points Available\s*\|\s*Minimum Score\s*$', re.IGNORECASE)
+_RG_DATA_ROW_RE = re.compile(
+    r'^Response Guideline\s+(\d+)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*$', re.IGNORECASE)
+
+# Short table-row labels that are response-FORM structure (a field to fill
+# in) rather than an evidence prompt -- generic to any proposal-response
+# form using this common reference/example-table layout, not tied to any
+# specific buyer's field names.
+_RG_FORM_FIELD_NOISE_RE = re.compile(
+    r'^(?:example\s+\d+|client\s*\(?organization\)?\s*name|reference\s+name(?:\s+and\s+title)?|'
+    r'reference\s+email|reference\s+phone\s+number|start\s+date|end\s+date)\s*:?\s*$',
+    re.IGNORECASE)
+
+# A genuine evidence-prompt sentence generically contains an instructional
+# verb ("Describe...", "Provide...", "Using the tables below...") -- a
+# common convention across proposal response forms, not specific wording
+# from any one buyer's form.
+_RG_PROMPT_VERB_RE = re.compile(
+    r'\b(describe|provide|identify|explain|list|using|outline|summarize|detail|indicate)\b',
+    re.IGNORECASE)
+
+
+def extract_response_guideline_sections(doc_text: str) -> list[dict]:
+    """Deterministically parse a Response-Guideline-structured proposal
+    response form into one section per guideline, using the document's
+    own repeating "Response Guideline N | <weight> | <minimum score>"
+    table row as the section boundary -- generic to any corpus using this
+    common RFP response-form convention (a numbered "Response Guideline"/
+    "Rated Criteria" table per criterion), not hardcoded to any specific
+    guideline count, criterion name, or prompt wording. Everything after
+    a guideline's data row, up to the next guideline's data row (or the
+    end of text), is collected as that guideline's evidence_prompts --
+    filtered generically to exclude short response-FORM field labels
+    ("Client (Organization) Name:", "Example 1", etc.) that are proposal
+    form structure, not evidence prompts, and deduplicated against
+    identical repeated table-cell content.
+
+    Returns [] when no "Response Guideline N | ... | ..." data row is
+    found anywhere -- never fabricates guideline structure for a corpus
+    that doesn't have this table layout.
+
+    Each section: {"id": "RG<n>", "weight": str | None,
+    "minimum_score": str | None, "evidence_prompts": [str, ...],
+    "source_doc": str | None}."""
+    lines = doc_text.splitlines()
+
+    # Group lines into "table row" blocks: each starts at a
+    # [[SOURCE: ...]] marker of any kind and continues until the next one.
+    blocks: list[tuple[str | None, list[str]]] = []
+    current_doc: str | None = None
+    current_content: list[str] = []
+    have_block = False
+    for line in lines:
+        m = _SOURCE_MARKER_FULL_RE.match(line)
+        if m:
+            if have_block:
+                blocks.append((current_doc, current_content))
+            current_doc = m.group(1).strip()
+            current_content = [m.group(3)] if m.group(3) else []
+            have_block = True
+        elif have_block:
+            current_content.append(line)
+    if have_block:
+        blocks.append((current_doc, current_content))
+
+    sections: list[dict] = []
+    current: dict | None = None
+    for source_doc, content_lines in blocks:
+        joined = ' '.join(l.strip() for l in content_lines if l.strip())
+        raw_cells = [p.strip() for p in joined.split('|') if p.strip()]
+        distinct_cells: list[str] = []
+        for c in raw_cells:
+            if c not in distinct_cells:
+                distinct_cells.append(c)
+        text = ' | '.join(distinct_cells)
+        if not text:
+            continue
+
+        if _RG_HEADER_ROW_RE.match(text):
+            continue  # column-header row, no data yet
+
+        data_m = _RG_DATA_ROW_RE.match(text)
+        if data_m:
+            if current is not None:
+                current.pop("past_boundary", None)
+                sections.append(current)
+            weight = data_m.group(2).strip()
+            min_score = data_m.group(3).strip()
+            current = {
+                "id": f"RG{int(data_m.group(1))}",
+                "weight": weight or None,
+                "minimum_score": None if not min_score or min_score.upper() == "N/A" else min_score,
+                "evidence_prompts": [],
+                "source_doc": source_doc,
+            }
+            continue
+
+        if current is None:
+            continue
+        # A block that deduplicates down to 3+ genuinely distinct cell
+        # values is a raw multi-column table row (e.g. a nested sub-
+        # table's own column-header row, "ICF Certification Level | Total
+        # Number in roster | ...") rather than a single evidence-prompt
+        # sentence -- a real prompt's identical text simply gets repeated
+        # across flattened columns and collapses to exactly one value.
+        # Generic to any corpus's response-form table layout.
+        if len(distinct_cells) >= 3:
+            continue
+        if _RG_FORM_FIELD_NOISE_RE.match(text) or len(text) < 25:
+            continue
+        # The last guideline in the document has no following "Response
+        # Guideline N+1" row to bound it, so its content can otherwise run
+        # on into an unrelated following section (confirmed live: a
+        # "Pricing Rules and Requirements | Points Available" table
+        # header bled into the final guideline's prompt list). A genuine
+        # evidence prompt consistently contains an instructional verb
+        # ("Describe...", "Provide...", "Using...") or is the
+        # "Instructions for Proponents:" line itself; once a block stops
+        # looking like that after at least one real prompt has already
+        # been collected, treat it as the start of the next, unrelated
+        # section and stop collecting for this guideline.
+        looks_like_prompt = (
+            current["evidence_prompts"] == [] or
+            text.lower().startswith("instructions for proponents") or
+            _RG_PROMPT_VERB_RE.search(text) is not None
+        )
+        if not looks_like_prompt:
+            current["past_boundary"] = True
+        if current.get("past_boundary"):
+            continue
+        if text not in current["evidence_prompts"]:
+            current["evidence_prompts"].append(text)
+
+    if current is not None:
+        current.pop("past_boundary", None)
+        sections.append(current)
+    return sections
+
+
+# ---------------------------------------------------------------------------
 # Section-targeted extraction (V4) -- deterministic location of small,
 # semantically coherent regions of a document by generic procurement-
 # document heading structure (numbered sections, "Stage N." labels), never
@@ -1073,6 +1361,10 @@ class FastAnalysisResult:
     wall_seconds: float = 0.0
     deterministic_seconds: float = 0.0
     buyer_intelligence: dict | None = None
+    # Deterministic (no-LLM) structural parsing results -- see
+    # extract_enumerated_service_scope / extract_response_guideline_sections.
+    deterministic_service_scope: dict | None = None
+    deterministic_response_guidelines: list = field(default_factory=list)
 
 
 def run_fast_analysis_corpus(documents: list[tuple[str, str]], api_key: str,
@@ -1108,6 +1400,23 @@ def run_fast_analysis_corpus(documents: list[tuple[str, str]], api_key: str,
             limit = extract_page_limit_deterministic(doc_text)
             if limit is not None:
                 result.page_limits[name] = limit
+
+    # 1b. Deterministic enumerated-scope and Response-Guideline structural
+    # parsing -- no LLM, runs generically across every document in the
+    # corpus (not restricted to a validated filename list like
+    # PAGE_LIMIT_DOCUMENTS above, since both parsers already return
+    # None/[] honestly whenever their trigger pattern isn't present, so
+    # there is nothing unsafe about checking every document). Keeps the
+    # first genuinely non-empty result found, in corpus order.
+    for name, doc_text in documents:
+        if result.deterministic_service_scope is None:
+            scope = extract_enumerated_service_scope(doc_text)
+            if scope:
+                result.deterministic_service_scope = scope
+        if not result.deterministic_response_guidelines:
+            rgs = extract_response_guideline_sections(doc_text)
+            if rgs:
+                result.deterministic_response_guidelines = rgs
     result.deterministic_seconds = round(time.monotonic() - det_start, 6)
 
     # 2. Route every document.

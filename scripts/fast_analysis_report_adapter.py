@@ -1093,6 +1093,22 @@ def _response_requirements(result: FastAnalysisResult) -> tuple[list[tuple[str, 
     return checklist, other
 
 
+def _summarize_evidence_prompts(prompts: list[str], max_prompts: int = 3) -> str:
+    """Summarize -- not dump -- a guideline's evidence prompts: the
+    "Instructions for Proponents:" general framing line is skipped in
+    favour of the more specific asks that follow it when any exist (it's
+    still used alone if it's literally all the section has), and at most
+    a few prompts are shown, each shortened for compact display. All
+    wording is the source's own; nothing here is authored or corpus-
+    specific."""
+    if not prompts:
+        return _NOT_EXTRACTED
+    specific = [p for p in prompts if not p.lower().startswith("instructions for proponents")]
+    chosen = (specific or prompts)[:max_prompts]
+    shortened = [_shorten_to_sentence(p, limit=140) for p in chosen]
+    return " • ".join(shortened)
+
+
 def _rg_evidence_map(result: FastAnalysisResult, weighted_criteria: list[tuple[str, str]]) -> list[tuple[str, str, str]]:
     """An ordered 'RG1, RG2, ...' evidence map built from the weighted-
     criteria table's own criterion order (excluding Pricing, which has its
@@ -1103,20 +1119,36 @@ def _rg_evidence_map(result: FastAnalysisResult, weighted_criteria: list[tuple[s
     rows in table order). Not assumed true for a corpus where it
     doesn't hold -- this only affects the RG1/RG2/... LABEL, never the
     criterion name or evidence text, both of which are the corpus's own
-    extracted data either way. Each row's "requested evidence" text comes
-    from requirements whose description mentions that criterion's own
-    name (same technique _service_category_rows uses); a criterion with
-    no matching requirement text shows _NOT_EXTRACTED rather than
-    inventing one."""
+    extracted data either way.
+
+    Each row's "requested evidence" text prefers
+    result.deterministic_response_guidelines (structural, no-LLM parsing
+    of the response form's own "Response Guideline N" table -- see
+    extract_response_guideline_sections) when available, by ordinal
+    position matching the same generic RG-numbers-match-table-order
+    convention above; this is materially more reliable than substring-
+    matching a criterion's own name against requirements text (confirmed
+    live: that substring match found nothing for any of this corpus's six
+    criteria, since the actual evidence-prompt text doesn't repeat the
+    criterion's exact name). Falls back to the substring-match technique
+    _service_category_rows also uses for a corpus with no deterministic
+    RG sections; a criterion with neither shows _NOT_EXTRACTED rather
+    than inventing one."""
     rows: list[tuple[str, str, str]] = []
+    det_rgs = getattr(result, "deterministic_response_guidelines", None) or []
     rg_num = 0
     for label, _weight in weighted_criteria:
         if "pricing" in label.lower():
             continue
         rg_num += 1
-        matches = [r.get("description") for r in result.requirements
-                  if r.get("description") and label.lower() in r["description"].lower()]
-        evidence = _shorten_to_sentence(" ".join(matches[:2]), limit=280) if matches else _NOT_EXTRACTED
+        if rg_num <= len(det_rgs):
+            evidence = _summarize_evidence_prompts(det_rgs[rg_num - 1].get("evidence_prompts") or [])
+        else:
+            evidence = _NOT_EXTRACTED
+        if evidence == _NOT_EXTRACTED:
+            matches = [r.get("description") for r in result.requirements
+                      if r.get("description") and label.lower() in r["description"].lower()]
+            evidence = _shorten_to_sentence(" ".join(matches[:2]), limit=280) if matches else _NOT_EXTRACTED
         rows.append((f"RG{rg_num}", label, evidence))
     return rows
 
@@ -1252,6 +1284,18 @@ def build_fast_report_content(result: FastAnalysisResult,
     # Separate service categories from evaluation categories
     eval_categories = _discover_evaluation_categories(result)
     service_categories = [c for c in eval_categories if not _is_evaluation_category_label(c)]
+    if not service_categories:
+        # Deterministic (no-LLM) structural parsing of an explicitly
+        # enumerated scope-of-services list -- see
+        # extract_enumerated_service_scope in fast_analysis.py. Preferred
+        # over the LLM-requirements substring match below because it does
+        # not depend on the LLM's own, variable requirement-text wording
+        # (confirmed live: this deterministic parse reliably finds all
+        # five of this corpus's service types on every run, where the
+        # substring-match path sometimes finds none).
+        det_scope = getattr(result, "deterministic_service_scope", None)
+        if det_scope and det_scope.get("items"):
+            service_categories = list(det_scope["items"])
     if not service_categories:
         service_categories = _discover_service_categories_from_scope(result)
     if not service_categories:

@@ -682,5 +682,159 @@ class TestGenericEvaluationSchemaExtensions(unittest.TestCase):
         self.assertEqual(route_document("Appendix B - Response Form.docx"), ROUTE_IDENTITY_EVAL_REQ)
 
 
+class TestDeterministicStructuralParsing(unittest.TestCase):
+    """Regression coverage for the offline-closure deterministic (zero-LLM)
+    parsers: extract_enumerated_service_scope and
+    extract_response_guideline_sections. Every fixture here is synthetic
+    and buyer-neutral (no Phoenix/LDB-specific names in the test data
+    itself) except where explicitly noted as reproducing the exact
+    structural shape confirmed live against the real Phoenix documents --
+    proving genericity, not overfitting to one corpus."""
+
+    def test_enumerated_scope_generic_trigger_and_lettered_list(self):
+        from fast_analysis import extract_enumerated_service_scope
+        text = (
+            "[[SOURCE: test.pdf | PAGE: 4]]\n"
+            "4.2\n"
+            "The Services will include providing the following, as and when requested:\n"
+            "(a)\n"
+            "Alpha Coaching of Leaders in the following roles: Director, Manager,\n"
+            "and such other roles as may be identified from time to time;\n"
+            "(b)\n"
+            "Beta Resources;\n"
+            "(c)\n"
+            "Gamma Sessions;\n"
+            "4.3\n"
+            "Unrelated next section.\n"
+        )
+        result = extract_enumerated_service_scope(text)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["items"], ["Alpha Coaching", "Beta Resources", "Gamma Sessions"])
+        self.assertEqual(result["source_page"], 4)
+
+    def test_enumerated_scope_reproduces_real_phoenix_structure(self):
+        """Reproduces the exact line-wrapped, marker-on-its-own-line shape
+        confirmed live in RFP2026-09-28_...Services-1.pdf, with the real
+        item names, to prove the parser handles that specific real-world
+        layout -- not just a simplified synthetic shape."""
+        from fast_analysis import extract_enumerated_service_scope
+        text = (
+            "[[SOURCE: real.pdf | PAGE: 15]]\n"
+            "4.2 \n"
+            "The Services will include providing the following, as and when requested by LDB: \n"
+            "(a) \n"
+            "One-to-One Coaching of Leaders in the following LDB roles: Executive Director, Director, \n"
+            "Manager, Regional Manager, Senior Managers, Supervisors, and such other roles as may \n"
+            "be identified by LDB from time to time; \n"
+            "(b) \n"
+            "Self-Serve Resources; \n"
+            "(c) \n"
+            "Group Coaching;  \n"
+            "(d) \n"
+            "Team Interventions; and \n"
+            "(e) \n"
+            "Consultation Services. \n"
+            "4.3 \n"
+            "The Contractor will maintain a roster...\n"
+        )
+        result = extract_enumerated_service_scope(text)
+        self.assertEqual(result["items"], [
+            "One-to-One Coaching", "Self-Serve Resources", "Group Coaching",
+            "Team Interventions", "Consultation Services",
+        ])
+
+    def test_enumerated_scope_returns_none_when_no_trigger(self):
+        from fast_analysis import extract_enumerated_service_scope
+        self.assertIsNone(extract_enumerated_service_scope("No scope enumeration in this text at all."))
+
+    def test_response_guideline_sections_generic_table_structure(self):
+        from fast_analysis import extract_response_guideline_sections
+        text = (
+            "[[SOURCE: test.docx | TABLE]] Response Guideline 1 | Points Available | Minimum Score\n"
+            "[[SOURCE: test.docx | TABLE]] Response Guideline 1 | 20 | 12\n"
+            "[[SOURCE: test.docx | TABLE]] Instructions for Proponents:\n"
+            "Describe your firm's relevant experience. | Instructions for Proponents:\n"
+            "Describe your firm's relevant experience.\n"
+            "[[SOURCE: test.docx | TABLE]] Provide three references from similar engagements. | "
+            "Provide three references from similar engagements.\n"
+            "[[SOURCE: test.docx | TABLE]] Response Guideline 2 | Points Available | Minimum Score\n"
+            "[[SOURCE: test.docx | TABLE]] Response Guideline 2 | 10 | N/A\n"
+            "[[SOURCE: test.docx | TABLE]] Describe your proposed methodology. | "
+            "Describe your proposed methodology.\n"
+        )
+        sections = extract_response_guideline_sections(text)
+        self.assertEqual(len(sections), 2)
+        self.assertEqual(sections[0]["id"], "RG1")
+        self.assertEqual(sections[0]["weight"], "20")
+        self.assertEqual(sections[0]["minimum_score"], "12")
+        self.assertEqual(sections[0]["evidence_prompts"], [
+            "Instructions for Proponents: Describe your firm's relevant experience.",
+            "Provide three references from similar engagements.",
+        ])
+        self.assertEqual(sections[1]["id"], "RG2")
+        self.assertIsNone(sections[1]["minimum_score"])
+
+    def test_response_guideline_sections_returns_empty_when_no_table(self):
+        from fast_analysis import extract_response_guideline_sections
+        self.assertEqual(extract_response_guideline_sections("No table structure here."), [])
+
+    def test_response_guideline_filters_nested_subtable_noise(self):
+        """A nested sub-table's own column-header row (3+ genuinely
+        distinct pipe-separated cells, e.g. a roster-composition table)
+        must not be treated as an evidence prompt."""
+        from fast_analysis import extract_response_guideline_sections
+        text = (
+            "[[SOURCE: test.docx | TABLE]] Response Guideline 1 | Points Available | Minimum Score\n"
+            "[[SOURCE: test.docx | TABLE]] Response Guideline 1 | 10 | 5\n"
+            "[[SOURCE: test.docx | TABLE]] Provide an overview of the Proponent's available roster. | "
+            "Provide an overview of the Proponent's available roster.\n"
+            "[[SOURCE: test.docx | TABLE]] Certification Level | Total Number | Number with Experience\n"
+        )
+        sections = extract_response_guideline_sections(text)
+        self.assertEqual(len(sections), 1)
+        self.assertEqual(sections[0]["evidence_prompts"],
+                         ["Provide an overview of the Proponent's available roster."])
+
+    def test_response_guideline_last_section_boundary_does_not_bleed(self):
+        """The last guideline in a document has no following 'Response
+        Guideline N+1' row to bound it -- content from an unrelated
+        following section (here, a pricing-rules table with no
+        instructional verb) must not bleed into its evidence prompts."""
+        from fast_analysis import extract_response_guideline_sections
+        text = (
+            "[[SOURCE: test.docx | TABLE]] Response Guideline 1 | Points Available | Minimum Score\n"
+            "[[SOURCE: test.docx | TABLE]] Response Guideline 1 | 5 | N/A\n"
+            "[[SOURCE: test.docx | TABLE]] Describe your business continuity plan. | "
+            "Describe your business continuity plan.\n"
+            "[[SOURCE: test.docx | TABLE]] Pricing Rules and Requirements | Points Available\n"
+            "[[SOURCE: test.docx | TABLE]] All pricing must be unconditional. | "
+            "All pricing must be unconditional.\n"
+        )
+        sections = extract_response_guideline_sections(text)
+        self.assertEqual(len(sections), 1)
+        self.assertEqual(sections[0]["evidence_prompts"], ["Describe your business continuity plan."])
+
+    def test_response_guideline_provenance_retained(self):
+        from fast_analysis import extract_response_guideline_sections
+        text = (
+            "[[SOURCE: my_appendix.docx | TABLE]] Response Guideline 1 | Points Available | Minimum Score\n"
+            "[[SOURCE: my_appendix.docx | TABLE]] Response Guideline 1 | 10 | 5\n"
+            "[[SOURCE: my_appendix.docx | TABLE]] Describe your approach. | Describe your approach.\n"
+        )
+        sections = extract_response_guideline_sections(text)
+        self.assertEqual(sections[0]["source_doc"], "my_appendix.docx")
+
+    def test_no_buyer_specific_hardcoding_in_deterministic_parsers(self):
+        """The deterministic parsers' own source code must not name this
+        buyer or its specific service/criterion names."""
+        import inspect
+        import fast_analysis
+        src = inspect.getsource(fast_analysis.extract_enumerated_service_scope)
+        src += inspect.getsource(fast_analysis.extract_response_guideline_sections)
+        for forbidden in ("ldb", "liquor distribution", "one-to-one coaching",
+                          "proponent experience", "phoenix"):
+            self.assertNotIn(forbidden, src.lower())
+
+
 if __name__ == "__main__":
     unittest.main()
