@@ -31,7 +31,7 @@ from scripts.build_boc_bid_intelligence_preview_pdf import build
 import pypdf
 
 PHOENIX_BID_ID = 1083
-OUT_PDF_NAME = "PHOENIX_RFP2026_09_28_BID_INTELLIGENCE_PREVIEW_CLIENT_READY_V2.pdf"
+OUT_PDF_NAME = "PHOENIX_RFP2026_09_28_BID_INTELLIGENCE_PREVIEW_CLIENT_READY_V3.pdf"
 BI_PATH = Path("evaluation/buyer_intelligence/ldb_buyer_intelligence.json")
 
 

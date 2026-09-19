@@ -289,20 +289,31 @@ def build(content=None, out_path=None):
             rows, [1.85 * inch, 4.65 * inch], header_bg=GOLD, pad=2.8))
         story.append(Spacer(1, 4))
 
-        story.append(Paragraph("What This May Mean for the Bid", styles["h2"]))
-        story.append(Paragraph(
-            getattr(C, "BUYER_INTEL_DISCLAIMER",
-                    "<i>Interpretation only — not a statement of the Bank's evaluation intent.</i>"),
-            styles["note"]))
-        story.append(Spacer(1, 2))
         tight_body = ParagraphStyle("bi_body", fontName="Body", fontSize=8.3, leading=10.6, textColor=INK,
                                     spaceAfter=1.5)
-        for label, text in C.BID_RELEVANCE_ITEMS:
-            story.append(KeepTogether([
-                Paragraph(label, ParagraphStyle("bi_lbl", fontName="BodyMed", fontSize=8.0, leading=9.8,
-                                                textColor=GOLD, spaceAfter=1)),
-                Paragraph(text, tight_body),
-            ]))
+        bi_lbl_style = ParagraphStyle("bi_lbl", fontName="BodyMed", fontSize=8.0, leading=9.8,
+                                      textColor=GOLD, spaceAfter=1)
+        # The heading + disclaimer are kept together with at least the
+        # FIRST bid-relevance item (a real fix for a real widow seen live:
+        # the heading and disclaimer alone can otherwise render at the
+        # bottom of one page while every item flows to the next). Later
+        # items keep their own independent KeepTogether so they can still
+        # break normally between each other.
+        header_block = [
+            Paragraph("What This May Mean for the Bid", styles["h2"]),
+            Paragraph(
+                getattr(C, "BUYER_INTEL_DISCLAIMER",
+                        "<i>Interpretation only — not a statement of the Bank's evaluation intent.</i>"),
+                styles["note"]),
+        ]
+        if C.BID_RELEVANCE_ITEMS:
+            first_label, first_text = C.BID_RELEVANCE_ITEMS[0]
+            header_block += [Paragraph(first_label, bi_lbl_style), Paragraph(first_text, tight_body)]
+            story.append(KeepTogether(header_block))
+            for label, text in C.BID_RELEVANCE_ITEMS[1:]:
+                story.append(KeepTogether([Paragraph(label, bi_lbl_style), Paragraph(text, tight_body)]))
+        else:
+            story.append(KeepTogether(header_block))
         story.append(Spacer(1, 3))
 
         if getattr(C, "BID_TEAM_PANEL_ITEMS", None):
@@ -383,29 +394,76 @@ def build(content=None, out_path=None):
             ["Stage", "Component", "Basis"],
             C.EVAL_STAGES, [0.85 * inch, 2.55 * inch, 3.0 * inch]))
         story.append(Spacer(1, 10))
-    story.append(Paragraph("Minimum-Qualification Gates (examples)", styles["h2"]))
+    story.append(Paragraph("Mandatory Submission Gates", styles["h2"]))
     for item in C.GATE_EXAMPLES:
         story.append(Paragraph(f"•&nbsp;&nbsp;{item}", styles["bullet"]))
     story.append(Spacer(1, 8))
 
     story.append(Paragraph("Rated-Criteria Weighting by Category", styles["h2"]))
+    eval_min_scores = getattr(C, "EVAL_MINIMUM_SCORES", {}) or {}
     for cat, rows in C.EVAL_WEIGHTS.items():
         story.append(Paragraph(cat, styles["h2"]))
-        story.append(styled_table(["Criterion", "Weight"], rows, [4.6 * inch, 1.8 * inch], header_bg=GOLD))
+        min_scores = eval_min_scores.get(cat)
+        if min_scores:
+            # A third "Minimum Score" column only for categories where at
+            # least one criterion has a stated per-criterion minimum --
+            # rows without one show "N/A" (the source table's own
+            # convention for a criterion with no minimum-score gate).
+            rows3 = [(label, weight, min_scores.get(label, "N/A")) for label, weight in rows]
+            story.append(styled_table(["Criterion", "Weight", "Minimum Score"], rows3,
+                                      [3.4 * inch, 1.3 * inch, 1.7 * inch], header_bg=GOLD))
+        else:
+            story.append(styled_table(["Criterion", "Weight"], rows, [4.6 * inch, 1.8 * inch], header_bg=GOLD))
         story.append(Spacer(1, 8))
+
+    if getattr(C, "TIE_BREAK_RULES", None):
+        story.append(Paragraph("Tie-Break Order", styles["h2"]))
+        for i, rule in enumerate(C.TIE_BREAK_RULES, 1):
+            story.append(Paragraph(f"{i}.&nbsp;&nbsp;{rule}", styles["bullet"]))
+        story.append(Spacer(1, 8))
+
+    if getattr(C, "QUALIFICATION_MECHANISMS", None):
+        story.append(Paragraph("Reference Checks / Other Qualification Mechanisms", styles["h2"]))
+        for item in C.QUALIFICATION_MECHANISMS:
+            story.append(Paragraph(f"•&nbsp;&nbsp;{item}", styles["bullet"]))
+        story.append(Spacer(1, 8))
+
     story.append(Paragraph(C.EVAL_WEIGHT_NOTE, styles["note"]))
     story.append(PageBreak())
 
     # ---------------- RESPONSE REQUIREMENTS ----------------
     emit_section("Response Requirements")
+    story.append(Paragraph("Mandatory Submission Gates", styles["h2"]))
+    story.append(Paragraph(
+        "See Mandatory Submission Gates in the Evaluation section above for the full pass/fail "
+        "gate list.", styles["note"]))
+    story.append(Spacer(1, 8))
+
+    if getattr(C, "RG_EVIDENCE_MAP", None):
+        story.append(Paragraph("Key Evaluated Response / Evidence Requirements", styles["h2"]))
+        rg_rows = [[Paragraph(f"<b>{rg} — {crit}</b>", styles["table_cell_b"]),
+                    Paragraph(evidence, styles["table_cell"])]
+                   for rg, crit, evidence in C.RG_EVIDENCE_MAP]
+        story.append(styled_table(["Criterion", "Requested Evidence"], rg_rows,
+                                  [2.2 * inch, 4.2 * inch]))
+        story.append(Spacer(1, 10))
+
+    if getattr(C, "PRICING_SUBMISSION_RULES", None):
+        story.append(Paragraph("Pricing Submission Rules", styles["h2"]))
+        for item in C.PRICING_SUBMISSION_RULES:
+            story.append(Paragraph(f"•&nbsp;&nbsp;{item}", styles["bullet"]))
+        story.append(Spacer(1, 10))
+
+    story.append(Paragraph("Additional Submission Mechanics", styles["h2"]))
     rows = [[Paragraph(f"<b>{a}</b>", styles["table_cell_b"]), Paragraph(n, styles["table_cell"]),
              Paragraph(d, styles["table_cell"])] for a, n, d in C.RESPONSE_CHECKLIST]
     story.append(styled_table(["Item", "Description", "Notes"], rows,
                               [1.1 * inch, 2.55 * inch, 2.75 * inch]))
     story.append(Spacer(1, 10))
-    story.append(Paragraph("Also Required", styles["h2"]))
-    for item in C.RESPONSE_OTHER_REQUIREMENTS:
-        story.append(Paragraph(f"•&nbsp;&nbsp;{item}", styles["bullet"]))
+    if getattr(C, "RESPONSE_OTHER_REQUIREMENTS", None):
+        story.append(Paragraph("Also Required", styles["h2"]))
+        for item in C.RESPONSE_OTHER_REQUIREMENTS:
+            story.append(Paragraph(f"•&nbsp;&nbsp;{item}", styles["bullet"]))
     story.append(PageBreak())
 
     # ---------------- COMMERCIAL & CONTRACTUAL ----------------

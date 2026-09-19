@@ -145,14 +145,24 @@ class TestPhoenixProcurementTaxonomy(unittest.TestCase):
         self.assertEqual(len(cat2_items), 4)
 
     def test_mandatory_gates_and_reference_checks(self):
-        """5 mandatory gates and reference checks must be represented in GATE_EXAMPLES."""
+        """Exactly the 5 real mandatory gates are in GATE_EXAMPLES (reference
+        checks are a separate pass/fail qualification mechanism, evaluated
+        on its own basis -- QUALIFICATION_MECHANISMS -- not a submission
+        gate; they must NOT be listed among the mandatory gates)."""
         gates_str = " ".join(self.content.GATE_EXAMPLES).lower()
         self.assertIn("english", gates_str)
         self.assertIn("submission method", gates_str)
         self.assertIn("closing date and time", gates_str)
         self.assertIn("part 5", gates_str)
         self.assertIn("appendix b", gates_str)
-        self.assertIn("reference check", gates_str)
+        self.assertEqual(len(self.content.GATE_EXAMPLES), 5)
+        self.assertNotIn("reference check", gates_str)
+        # Note: QUALIFICATION_MECHANISMS (structured reference-check
+        # capture) requires a QUALIFICATION_MECHANISM typed_observation,
+        # which this test's cached fixture (extracted before that schema
+        # field existed) doesn't carry -- covered by
+        # TestGenericEvaluationSchemaExtensions below against synthetic
+        # data instead.
 
     def test_tie_breaker_detection_is_generic_not_hardcoded(self):
         """Tie-breaker note is a genuine, buyer-agnostic phrase detector -- it
@@ -305,14 +315,19 @@ class TestPhoenixProcurementTaxonomy(unittest.TestCase):
         self.assertNotIn("privacy protection schedule", checklist_titles)
 
     def test_pdf_compression_page_count(self):
-        """Generated decision-support preview PDF must be within 8-13 pages."""
+        """Generated decision-support preview PDF must be within 8-15 pages.
+        Raised from 8-13: this corpus's report now legitimately carries more
+        structured content than before (minimum-score column, tie-break
+        order, reference checks, an RG1-RG6 evidence map, and pricing
+        submission rules), all explicitly requested source-truth additions,
+        not incidental bloat."""
         pdf_path = Path("test_phoenix_test_suite_out.pdf")
         try:
             build(self.content, str(pdf_path))
             reader = pypdf.PdfReader(str(pdf_path))
             num_pages = len(reader.pages)
             self.assertGreaterEqual(num_pages, 8, f"PDF page count {num_pages} is below 8 pages")
-            self.assertLessEqual(num_pages, 13, f"PDF page count {num_pages} exceeds 13 pages")
+            self.assertLessEqual(num_pages, 15, f"PDF page count {num_pages} exceeds 15 pages")
         finally:
             if pdf_path.exists():
                 pdf_path.unlink()
@@ -368,6 +383,303 @@ class TestGenericBuyerAgnosticArchitecture(unittest.TestCase):
         boc_fallback_idx = self.source.index('"bank of canada" in buyer.lower()')
         self.assertLess(bi_idx, boc_fallback_idx,
                          "Generic buyer_intelligence payload must be checked before any buyer-name fallback")
+
+
+class TestGenericEvaluationSchemaExtensions(unittest.TestCase):
+    """Regression coverage for the generic (buyer-agnostic) evaluation-
+    schema extensions added for client-delivery pass 2: minimum-score
+    thresholds, reference-check / qualification mechanisms, ordered
+    tie-break rules, term normalization, the external-reference
+    clarification-deadline fallback, broadened service-scope discovery,
+    exactly-five mandatory gates, the RG evidence map, proposal-stage vs.
+    execution-stage separation, and document-role routing. Every test here
+    uses synthetic data -- deliberately NOT dependent on any live API call
+    -- so it runs fast and deterministically in CI, and every test is
+    phrased generically (no buyer name in any assertion)."""
+
+    def test_contract_term_handles_duplicated_unit_in_duration_field(self):
+        """A duration field that already embeds its own unit word (e.g.
+        Fast Analysis returning "2 years" instead of a bare "2") must not
+        render as "2 years years"."""
+        from scripts.fast_analysis_report_adapter import _contract_term
+        obs = [
+            {"family": "CONTRACT_TERM", "semantic_kind": "INITIAL_DURATION",
+             "duration": "2 years", "unit": "years", "scope": {}},
+            {"family": "CONTRACT_TERM", "semantic_kind": "EXTENSION_OPTION",
+             "duration": "3 years per option", "unit": "years", "option_count": "2",
+             "original_value": "two (2) additional three (3) year options to extend "
+                                "at the discretion of the buyer"},
+        ]
+        result = _contract_term(obs)
+        self.assertEqual(result, "2 years, with 2 optional 3-year extensions at the buyer's discretion")
+        self.assertNotIn("years years", result)
+        self.assertNotIn("year years", result)
+
+    def test_contract_term_handles_clean_bare_number_duration(self):
+        from scripts.fast_analysis_report_adapter import _contract_term
+        obs = [
+            {"family": "CONTRACT_TERM", "semantic_kind": "INITIAL_DURATION",
+             "duration": "2", "unit": "years", "scope": {}},
+            {"family": "CONTRACT_TERM", "semantic_kind": "EXTENSION_OPTION",
+             "duration": "3", "unit": "years", "option_count": "2"},
+        ]
+        self.assertEqual(_contract_term(obs), "2 years, with 2 optional 3-year extensions")
+
+    def test_contract_term_singular_unit(self):
+        from scripts.fast_analysis_report_adapter import _contract_term
+        obs = [{"family": "CONTRACT_TERM", "semantic_kind": "INITIAL_DURATION",
+               "duration": "1 year", "unit": "year", "scope": {}}]
+        self.assertEqual(_contract_term(obs), "1 year")
+
+    def test_clarification_deadline_falls_back_to_portal_referral_text(self):
+        """A buyer that points suppliers to an external portal page (no
+        concrete date) must render that referral text, not a bare
+        'not stated' that would misrepresent an explicit instruction as
+        silence."""
+        from scripts.fast_analysis_report_adapter import _clarification_deadline_text
+        obs = [{"family": "MILESTONE", "semantic_kind": "CLARIFICATION_DEADLINE", "date": None,
+               "original_value": "Enquiries Deadline: Refer to the \"overview\" tab within BC Bid"}]
+        self.assertEqual(_clarification_deadline_text({}, obs),
+                         'Refer to the "overview" tab within BC Bid')
+
+    def test_clarification_deadline_prefers_explicit_date(self):
+        from scripts.fast_analysis_report_adapter import _clarification_deadline_text
+        self.assertEqual(_clarification_deadline_text({"clarification_deadline": "2026-09-20"}, []),
+                         "2026-09-20")
+
+    def test_clarification_deadline_honestly_not_stated_when_neither_exists(self):
+        from scripts.fast_analysis_report_adapter import _clarification_deadline_text, _NOT_EXTRACTED
+        self.assertEqual(_clarification_deadline_text({}, []), _NOT_EXTRACTED)
+
+    def test_service_scope_discovery_handles_varied_trigger_phrasing(self):
+        """The scope-enumeration trigger must not depend on one exact
+        phrase -- several common phrasings must all be recognized."""
+        from fast_analysis import FastAnalysisResult
+        from scripts.fast_analysis_report_adapter import _discover_service_categories_from_scope
+        variants = [
+            "Service-category scope includes Alpha Services; Beta Services; and Gamma Services.",
+            "The scope of services includes: Alpha Services; Beta Services; and Gamma Services.",
+            "Service categories include Alpha Services; Beta Services; and Gamma Services.",
+            "The following service categories: Alpha Services; Beta Services; and Gamma Services.",
+        ]
+        for text in variants:
+            result = FastAnalysisResult(requirements=[{"description": text}])
+            found = _discover_service_categories_from_scope(result)
+            self.assertEqual(found, ["Alpha Services", "Beta Services", "Gamma Services"],
+                             f"failed for phrasing: {text!r}")
+
+    def test_service_scope_discovery_salvages_long_first_item_generically(self):
+        """A category name followed by a long descriptive clause the
+        splitter didn't fully separate must still be recovered -- not via
+        any hardcoded category name."""
+        from fast_analysis import FastAnalysisResult
+        from scripts.fast_analysis_report_adapter import _discover_service_categories_from_scope
+        text = ("Service-category scope includes Zeta Consulting of Leaders in the following "
+                "roles: Director, Manager, and such other roles as may be identified from time "
+                "to time; Omega Resources; Delta Coaching.")
+        result = FastAnalysisResult(requirements=[{"description": text}])
+        self.assertEqual(_discover_service_categories_from_scope(result),
+                         ["Zeta Consulting", "Omega Resources", "Delta Coaching"])
+
+    def test_minimum_score_surfaced_per_criterion(self):
+        from fast_analysis import FastAnalysisResult
+        from scripts.fast_analysis_report_adapter import _minimum_scores_for_category
+        occs = [
+            {"criterion_label": "Experience", "weight": "15 points", "minimum_score": "10 points",
+             "category_scope": "Weighted Criteria"},
+            {"criterion_label": "Capabilities", "weight": "5 points", "minimum_score": None,
+             "category_scope": "Weighted Criteria"},
+        ]
+        result = FastAnalysisResult(evaluation_occurrences=occs)
+        scores = _minimum_scores_for_category(result, "Weighted Criteria")
+        self.assertEqual(scores, {"Experience": "10 points"})
+        self.assertNotIn("Capabilities", scores)
+
+    def test_minimum_score_never_guessed_when_absent(self):
+        from fast_analysis import FastAnalysisResult
+        from scripts.fast_analysis_report_adapter import _minimum_scores_for_category
+        occs = [{"criterion_label": "Price", "weight": "40 points", "category_scope": "Weighted Criteria"}]
+        result = FastAnalysisResult(evaluation_occurrences=occs)
+        self.assertEqual(_minimum_scores_for_category(result, "Weighted Criteria"), {})
+
+    def test_minimum_score_falls_back_to_evaluation_criteria_threshold(self):
+        """Confirmed live: the focused rated-criteria task's section-finder
+        (which looks for a line reading exactly "Rated criteria") does not
+        match every corpus's own heading vocabulary (e.g. "Weighted
+        Criteria") -- for such a corpus evaluation_occurrences is ALWAYS
+        empty, and _weight_rows_for_category itself already falls back to
+        evaluation_criteria/"stage"/"threshold" to render the weight table
+        at all. Minimum-score must fall back the exact same way, or it
+        would silently never surface for exactly the corpora that need
+        this path -- this is not a hypothetical, it's what this corpus's
+        real weight table already depends on."""
+        from fast_analysis import FastAnalysisResult
+        from scripts.fast_analysis_report_adapter import _minimum_scores_for_category
+        ec = [
+            {"stage": "Proponent Experience", "parent_stage": "Weighted Criteria",
+             "weight": "15 points", "threshold": "10 points", "evaluation_role": "Award Criterion"},
+            {"stage": "Proponent Capabilities", "parent_stage": "Weighted Criteria",
+             "weight": "5 points", "threshold": None, "evaluation_role": "Award Criterion"},
+        ]
+        result = FastAnalysisResult(evaluation_occurrences=[], evaluation_criteria=ec)
+        scores = _minimum_scores_for_category(result, "Weighted Criteria")
+        self.assertEqual(scores, {"Proponent Experience": "10 points"})
+
+    def test_qualification_mechanism_reference_check_surfaced(self):
+        from scripts.fast_analysis_report_adapter import _qualification_mechanisms
+        obs = [{"family": "QUALIFICATION_MECHANISM", "semantic_kind": "REFERENCE_CHECK",
+               "original_value": "References are evaluated pass/fail; an unsatisfactory "
+                                  "reference may result in rejection."}]
+        result = _qualification_mechanisms(obs)
+        self.assertEqual(len(result), 1)
+        self.assertIn("pass/fail", result[0])
+
+    def test_qualification_mechanism_absent_when_not_stated(self):
+        from scripts.fast_analysis_report_adapter import _qualification_mechanisms
+        self.assertEqual(_qualification_mechanisms([]), [])
+
+    def test_tie_break_rules_ordered_by_rank_not_list_order(self):
+        """Order must come from each observation's own stated rank, not
+        the order the LLM happened to emit them in."""
+        from scripts.fast_analysis_report_adapter import _tie_break_rules
+        obs = [
+            {"family": "TIE_BREAK_RULE", "original_value": "Random selection", "rank": 3},
+            {"family": "TIE_BREAK_RULE", "original_value": "Criterion A", "rank": 1},
+            {"family": "TIE_BREAK_RULE", "original_value": "Criterion B", "rank": 2},
+        ]
+        self.assertEqual(_tie_break_rules(obs), ["Criterion A", "Criterion B", "Random selection"])
+
+    def test_tie_break_rules_skips_entries_missing_rank_or_text(self):
+        from scripts.fast_analysis_report_adapter import _tie_break_rules
+        obs = [
+            {"family": "TIE_BREAK_RULE", "original_value": "Criterion A", "rank": None},
+            {"family": "TIE_BREAK_RULE", "original_value": "", "rank": 1},
+            {"family": "TIE_BREAK_RULE", "original_value": "Criterion B", "rank": 1},
+        ]
+        self.assertEqual(_tie_break_rules(obs), ["Criterion B"])
+
+    def test_tie_break_rules_collapse_near_duplicate_restatements(self):
+        """Confirmed live: the same final tie-break step was captured
+        twice with the shared content positioned differently ("List
+        Randomizer (www.random.org)" vs "Random selection via List
+        Randomizer (www.random.org)") -- these must collapse to one
+        entry, while genuinely distinct steps are preserved."""
+        from scripts.fast_analysis_report_adapter import _tie_break_rules
+        obs = [
+            {"family": "TIE_BREAK_RULE", "original_value": "Account Management and Relationship", "rank": 1},
+            {"family": "TIE_BREAK_RULE", "original_value": "Approach and Methodology", "rank": 2},
+            {"family": "TIE_BREAK_RULE", "original_value": "List Randomizer (www.random.org)", "rank": 3},
+            {"family": "TIE_BREAK_RULE",
+             "original_value": "Random selection via List Randomizer (www.random.org)", "rank": 4},
+        ]
+        result = _tie_break_rules(obs)
+        self.assertEqual(len(result), 3)
+        self.assertEqual(result[0], "Account Management and Relationship")
+        self.assertEqual(result[1], "Approach and Methodology")
+
+    def test_qualification_mechanisms_collapse_near_duplicate_restatements(self):
+        from scripts.fast_analysis_report_adapter import _qualification_mechanisms
+        obs = [
+            {"family": "QUALIFICATION_MECHANISM",
+             "original_value": "Reference checks will be conducted on a pass-fail basis, on the "
+                                "Proponent and Proponent resource, if applicable. The Province "
+                                "reserves the right to reject the Proponent whose references, in "
+                                "the Province's sole opinion, are deemed to be unsatisfactory. "
+                                "In addition, further detail here."},
+            {"family": "QUALIFICATION_MECHANISM",
+             "original_value": "Reference checks will be conducted on a pass-fail basis, on the "
+                                "Proponent and Proponent resource, if applicable. The Province "
+                                "reserves the right to reject the Proponent whose references, in "
+                                "the Province's sole opinion, are deemed to be unsatisfactory. "
+                                "Failure to provide referee info."},
+        ]
+        self.assertEqual(len(_qualification_mechanisms(obs)), 1)
+
+    def test_exactly_five_mandatory_gates_no_reference_check(self):
+        """The 5-gates/no-reference-check assertion against real corpus
+        data lives in test_mandatory_gates_and_reference_checks above;
+        here, confirm the gate_topics list has no reference-check topic
+        by construction (a structural guarantee, independent of any
+        particular corpus's data)."""
+        import inspect
+        from scripts import fast_analysis_report_adapter as adapter
+        src = inspect.getsource(adapter.build_fast_report_content)
+        gate_topics_block = src[src.index("gate_topics = ["):src.index("derived_gates = []")]
+        self.assertNotIn("Reference Check", gate_topics_block)
+        self.assertEqual(gate_topics_block.count('("'), 5)
+
+    def test_rg_evidence_map_excludes_pricing_and_numbers_sequentially(self):
+        from fast_analysis import FastAnalysisResult
+        from scripts.fast_analysis_report_adapter import _rg_evidence_map
+        weighted = [("Experience", "15 points"), ("Capabilities", "5 points"), ("Pricing", "40 points")]
+        result = FastAnalysisResult(requirements=[
+            {"description": "Proponents must describe their Experience delivering similar services."},
+        ])
+        rg_map = _rg_evidence_map(result, weighted)
+        self.assertEqual([rg for rg, _, _ in rg_map], ["RG1", "RG2"])
+        self.assertEqual(rg_map[0][1], "Experience")
+        self.assertIn("Experience", rg_map[0][2])
+        self.assertEqual(rg_map[1][2], "Not stated in the extracted data.")
+
+    def test_pricing_submission_rules_generic_keyword_match(self):
+        from fast_analysis import FastAnalysisResult
+        from scripts.fast_analysis_report_adapter import _pricing_submission_rules
+        result = FastAnalysisResult(requirements=[
+            {"description": "All pricing must be unconditional and unqualified."},
+            {"description": "Pricing should not be expressed as a range; the lowest numerical "
+                            "value will be used for evaluation."},
+            {"description": "The Contractor must deliver services during the term."},
+        ])
+        rules = _pricing_submission_rules(result)
+        self.assertEqual(len(rules), 2)
+        self.assertTrue(any("unconditional" in r.lower() for r in rules))
+        self.assertFalse(any("during the term" in r.lower() for r in rules))
+
+    def test_post_award_items_dropped_not_appended_to_other(self):
+        """Contract-execution obligations (assignment, subcontracting, key
+        personnel, conflict of interest, billing) must not leak into
+        RESPONSE_OTHER_REQUIREMENTS -- they belong in Commercial &
+        Contractual Considerations instead."""
+        from scripts.fast_analysis_report_adapter import _response_requirements
+        from fast_analysis import FastAnalysisResult
+        result = FastAnalysisResult(requirements=[
+            {"description": "The Contractor must not assign any of the Contractor's rights.",
+             "category": "supporting"},
+            {"description": "If one or more individuals are specified as Key Personnel, the "
+                            "Contractor must cause those individuals to perform the Services.",
+             "category": "supporting"},
+            {"description": "The Contractor must not provide services in circumstances giving "
+                            "rise to a conflict of interest.", "category": "supporting"},
+            {"description": "A genuinely relevant supporting note about proposal formatting.",
+             "category": "supporting"},
+        ])
+        _, other = _response_requirements(result)
+        other_text = " ".join(other).lower()
+        self.assertNotIn("key personnel", other_text)
+        self.assertNotIn("assign", other_text)
+        self.assertNotIn("conflict of interest", other_text)
+
+    def test_route_document_backward_compatible_for_validated_corpus(self):
+        """The new generic contract-instrument fallback must never change
+        routing for any filename already in DOCUMENT_ROUTING."""
+        from fast_analysis import route_document, DOCUMENT_ROUTING
+        for filename, expected_route in DOCUMENT_ROUTING.items():
+            self.assertEqual(route_document(filename), expected_route,
+                             f"regression for validated filename {filename!r}")
+
+    def test_route_document_generic_contract_instrument_fallback(self):
+        """A document outside the validated corpus whose own filename
+        names it as the contract/agreement instrument routes to
+        COMMERCIAL_ONLY generically -- not via any buyer-specific
+        filename match."""
+        from fast_analysis import route_document, ROUTE_COMMERCIAL_ONLY, ROUTE_IDENTITY_EVAL_REQ
+        self.assertEqual(route_document("Appendix A - Form of Contract.pdf"), ROUTE_COMMERCIAL_ONLY)
+        self.assertEqual(route_document("RFP_Appendix_A_-Form_of_Contract.pdf"), ROUTE_COMMERCIAL_ONLY)
+        self.assertEqual(route_document("Draft Contract.docx"), ROUTE_COMMERCIAL_ONLY)
+        # A document that is NOT a contract instrument keeps the prior
+        # safe default.
+        self.assertEqual(route_document("Main RFP Document.pdf"), ROUTE_IDENTITY_EVAL_REQ)
+        self.assertEqual(route_document("Appendix B - Response Form.docx"), ROUTE_IDENTITY_EVAL_REQ)
 
 
 if __name__ == "__main__":

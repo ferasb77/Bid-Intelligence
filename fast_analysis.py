@@ -114,12 +114,38 @@ BATCH_GROUP = [
 ]
 
 
+_CONTRACT_INSTRUMENT_FILENAME_RE = re.compile(
+    r'\bform[\s_-]+of[\s_-]+(contract|agreement)\b|'
+    r'\b(draft|general[\s_-]+service)[\s_-]+(contract|agreement)\b', re.IGNORECASE)
+
+
 def route_document(filename: str) -> str:
     """Deterministic routing per the audit's matrix (S D). Unknown documents
     (outside the validated corpus) fall back to the broadest narrow mode
-    rather than being silently skipped or sent the universal Deep Verify
-    schema."""
-    return DOCUMENT_ROUTING.get(filename, ROUTE_IDENTITY_EVAL_REQ)
+    (IDENTITY_EVAL_REQ) rather than being silently skipped or sent the
+    universal Deep Verify schema -- EXCEPT for the one narrow, generic
+    pattern this fallback already special-cases within the validated
+    corpus itself (compare DOCUMENT_ROUTING's own
+    "...Appendix G - Form of Agreement.docx" -> ROUTE_COMMERCIAL_ONLY): a
+    filename that names itself as the contract/agreement instrument
+    (e.g. "Appendix A - Form of Contract.pdf", "Draft Contract.docx") is
+    generically a commercial-terms document, not an opportunity-identity
+    or evaluation-criteria source -- confirmed live for a corpus outside
+    DOCUMENT_ROUTING's validated set, where such a document was still
+    falling back to IDENTITY_EVAL_REQ and consequently (a) getting the
+    same generic Source Map role label as the master RFP and every other
+    document, instead of its own "commercial and contractual terms" role,
+    and (b) being asked for its own doc_metadata (title/client), which can
+    then compete with the real solicitation's identity in merge precedence
+    (a contract instrument's "client" field is often a formal legal party
+    name, not the solicitation's stated buyer name). This never changes
+    the route for any filename actually present in DOCUMENT_ROUTING --
+    that exact-match table is always checked first."""
+    if filename in DOCUMENT_ROUTING:
+        return DOCUMENT_ROUTING[filename]
+    if _CONTRACT_INSTRUMENT_FILENAME_RE.search(filename):
+        return ROUTE_COMMERCIAL_ONLY
+    return ROUTE_IDENTITY_EVAL_REQ
 
 
 # ---------------------------------------------------------------------------
@@ -243,6 +269,17 @@ procurement's requirements or pricing/commercial content, capture the weighting 
 When genuinely uncertain whether a weight scores the bidder or only computes their price, prefer
 NOT extracting it here.
 
+For an Award Criterion specifically (as opposed to a Qualification / Gate), also capture, when
+explicitly stated, the minimum score/points a bidder must achieve on THAT SPECIFIC criterion to
+remain under consideration -- distinct from the criterion's own weight/points-available value,
+e.g. a table with columns "Weight" and "Minimum Score", or "proponents not meeting the minimum
+score requirement in any category will be excluded." Put this in "threshold" verbatim (e.g. "10
+points"); use null when no per-criterion minimum is stated for that criterion (most criteria will
+have none -- do not infer one from the overall mandatory pass mark or from another criterion's
+minimum). "threshold" still also covers a Qualification/Gate's own pass/fail bar (e.g. "5 years
+experience") exactly as before -- the two uses don't conflict, since a single criterion is either
+one role or the other.
+
 Return ONLY valid JSON:
 {
   "evaluation_criteria": [
@@ -252,7 +289,7 @@ Return ONLY valid JSON:
       "weight": "Exact weight/points string as stated, e.g. '35 points' or '25%', or null",
       "weight_unit": "Points|Percent|Other|None",
       "weight_basis": "Overall|Within Parent|Unknown",
-      "threshold": "Minimum passing threshold as stated (e.g. '5 years experience'), or null",
+      "threshold": "Minimum passing threshold/minimum score as stated (e.g. '5 years experience' or '10 points'), or null",
       "evaluation_role": "Award Criterion|Qualification / Gate|Structural Container|Unknown",
       "source_refs": []
     }
@@ -274,7 +311,22 @@ requirement in the document; extract only what is listed below.
      since more than one category-specific presentation date may exist under this same label),
    CONTRACT_TERM (kinds: INITIAL_DURATION, EXTENSION_OPTION, MAXIMUM_TERM, TERM_STATEMENT),
    PROCUREMENT_MECHANIC (kinds: RFP, MULTIPLE_SUPPLIER_AWARD, SINGLE_SUPPLIER_AWARD, CALL_OFF,
-     FRAMEWORK, LOTS).
+     FRAMEWORK, LOTS),
+   QUALIFICATION_MECHANISM (kinds: REFERENCE_CHECK, BACKGROUND_CHECK, OTHER -- a pass/fail
+     qualification mechanism applied to a bidder or its proposed resources that is separate from
+     both the mandatory submission gates and the weighted/rated criteria, e.g. "references will
+     be contacted and evaluated on a pass/fail basis; an unsatisfactory reference may result in
+     rejection of the Proposal." Capture the full pass/fail and consequence wording in
+     "original_value"; leave "rank" null.),
+   TIE_BREAK_RULE (kind: TIE_BREAK_CRITERION -- ONE entry per step of an explicitly stated,
+     ordered tie-breaking procedure used when two or more proposals achieve the same score,
+     e.g. "if scores are tied, the proposal with the highest score in Criterion X governs; if
+     still tied, Criterion Y governs; if still tied, a random-selection method is used." Emit
+     one typed_observation per step, each with "rank" set to that step's 1-based order (1 for
+     the first tie-breaker applied, 2 for the next, etc.) and "original_value" holding that
+     step's exact criterion name or method (e.g. the criterion name, or "Random selection" /
+     the named randomizer method for the final step). Only emit this when the source text
+     actually states an explicit, ordered procedure -- never infer or guess one.).
    Preserve every distinct occurrence (do not merge repeats into one).
 3. evaluation_criteria: """ + _EVAL_SCHEMA.strip() + """
 4. requirements, restricted to exactly four topics -- do not extract any other requirement:
@@ -298,7 +350,7 @@ Return ONLY valid JSON:
   "typed_observations": [
     {"family": "...", "semantic_kind": "...", "original_value": "...", "source_refs": [],
      "scope": {"component": null, "lot": null, "category": null}, "date": null, "duration": null,
-     "unit": null, "option_count": null}
+     "unit": null, "option_count": null, "rank": null}
   ],
   "evaluation_criteria": [ ... same shape as above ... ],
   "requirements": [
@@ -371,12 +423,21 @@ occurrence, even when it appears in a table with a column literally named "Weigh
 Cost." When genuinely uncertain whether a weight scores the bidder or only computes their
 price, prefer NOT extracting it here.
 
+Also capture, when explicitly stated for a criterion, the minimum score/points a bidder must
+achieve on THAT SPECIFIC criterion to remain under consideration (distinct from the criterion's
+own weight/points-available value) -- e.g. a table with columns "Weight" and "Minimum Score", or
+text such as "proponents not meeting the minimum score requirement in any category will be
+excluded." Capture it verbatim in "minimum_score"; use null when no per-criterion minimum is
+stated for that criterion (most criteria will have none -- do not infer one from the overall
+mandatory pass mark or from another criterion's minimum).
+
 Return ONLY valid JSON:
 {
   "evaluation_occurrences": [
     {
       "criterion_label": "Exact criterion or line-item name as stated (e.g. 'Corporate Profile', 'Price')",
       "weight": "Exact weight/points value as stated, e.g. '35 points' or '25%', or null",
+      "minimum_score": "Exact minimum-score/points value stated for THIS criterion, e.g. '10 points', or null",
       "category_scope": "The named category/appendix this occurrence belongs to (e.g. 'Appendix D1 - Learning & Development Programs and Assessments'), or null if not category-specific",
       "evaluation_stage": "The stage/table heading this occurrence sits under, or null",
       "parent_heading": "The nearest explicit heading directly above this occurrence, if any, or null",

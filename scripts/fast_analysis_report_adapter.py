@@ -127,18 +127,104 @@ def _submission_channel(result: FastAnalysisResult) -> str:
     return _shorten_to_sentence(candidates[0][2], limit=320)
 
 
+_LEADING_NUMBER_RE = re.compile(r'^\s*(\d+(?:\.\d+)?)')
+_TIME_UNIT_RE = re.compile(r'\b(year|month|week|day)s?\b', re.I)
+
+
+def _term_phrase(number_text, *unit_sources) -> str | None:
+    """Builds a clean 'N unit(s)' phrase from a number and one or more text
+    sources that may or may not contain the unit word. Fast Analysis's
+    CONTRACT_TERM extraction sometimes returns `duration` as a bare number
+    ("2") and sometimes as a phrase that already embeds its own unit
+    ("2 years", or even "3 years per option"), with the `unit` field
+    separately holding the same unit word again -- naively concatenating
+    both then duplicates the unit ("2 years years"). This searches every
+    given source for a standard calendar-time unit word and uses the FIRST
+    one found, so the unit is never rendered twice regardless of which
+    field it actually landed in. Generic to any CONTRACT_TERM observation;
+    not tied to a specific unit vocabulary beyond year/month/week/day, and
+    not specific to any corpus or buyer."""
+    m = _LEADING_NUMBER_RE.match(str(number_text or ""))
+    if not m:
+        return None
+    number = m.group(1)
+    unit_word = None
+    for src in unit_sources:
+        um = _TIME_UNIT_RE.search(str(src or ""))
+        if um:
+            unit_word = um.group(1).lower()
+            break
+    if not unit_word:
+        return None
+    try:
+        plural = float(number) != 1
+    except ValueError:
+        plural = True
+    n_display = number[:-2] if number.endswith(".0") else number
+    return f"{n_display} {unit_word}{'s' if plural else ''}"
+
+
 def _contract_term(typed_observations: list[dict]) -> str:
     terms = [o for o in typed_observations if o.get("family") == "CONTRACT_TERM"]
     initial = next((o for o in terms if (o.get("semantic_kind") or "").upper() == "INITIAL_DURATION"
                     and not (o.get("scope") or {}).get("component")), None)
     ext = next((o for o in terms if (o.get("semantic_kind") or "").upper() == "EXTENSION_OPTION"), None)
-    if initial and initial.get("duration") and initial.get("unit"):
-        base = f"{initial['duration']} {initial['unit']}"
-    else:
-        base = "term not confidently extracted"
-    if ext and ext.get("option_count") and ext.get("duration") and ext.get("unit"):
-        return f"{base}, with {ext['option_count']} optional {ext['duration']}-{ext['unit']} extensions"
+
+    base = None
+    if initial and initial.get("duration"):
+        base = _term_phrase(initial["duration"], initial.get("unit"), initial["duration"])
+    if not base:
+        return "term not confidently extracted"
+
+    if ext and ext.get("option_count") and ext.get("duration"):
+        ext_phrase = _term_phrase(ext["duration"], ext.get("unit"), ext["duration"])
+        if ext_phrase:
+            count_m = _LEADING_NUMBER_RE.match(str(ext.get("option_count") or ""))
+            count = count_m.group(1) if count_m else str(ext["option_count"])
+            ext_number, ext_unit = ext_phrase.split(" ", 1)
+            # Singular unit for the hyphenated compound adjective before
+            # "extensions" ("3-year extensions", not "3-years extensions").
+            ext_unit_singular = re.sub(r's$', '', ext_unit)
+            discretion = ""
+            for src in (ext.get("original_value"),
+                        initial.get("original_value") if initial else None):
+                if src and "discretion" in str(src).lower():
+                    discretion = " at the buyer's discretion"
+                    break
+            return f"{base}, with {count} optional {ext_number}-{ext_unit_singular} extensions{discretion}"
     return base
+
+
+def _clarification_deadline_text(meta: dict, typed_observations: list[dict]) -> str:
+    """Distinguishes 'not stated anywhere in the source documents' from
+    'the buyer explicitly directs suppliers to an external procurement
+    portal for this date' -- generic to any buyer's portal/referral
+    phrasing, not just BC Bid. doc_metadata.clarification_deadline holds a
+    concrete date when one was stated; when the buyer instead points
+    suppliers to a portal tab/page rather than stating a date, that
+    referral is still captured as a MILESTONE/CLARIFICATION_DEADLINE
+    typed_observation (with date=null but a descriptive original_value) --
+    this surfaces that text rather than falling back to a bare
+    "not stated" that would misrepresent an explicit buyer instruction as
+    silence."""
+    explicit = meta.get("clarification_deadline")
+    if explicit:
+        return explicit
+    obs = next((o for o in typed_observations
+                if o.get("family") == "MILESTONE"
+                and (o.get("semantic_kind") or "").upper() == "CLARIFICATION_DEADLINE"), None)
+    if obs:
+        raw = (obs.get("original_value") or "").strip()
+        if raw:
+            # Strip a redundant leading "<label> Deadline:" prefix -- the
+            # report's own row label already says "Clarification /
+            # Questions Deadline", so repeating a differently-worded label
+            # here is noise, not new information.
+            cleaned = re.sub(r'^.*?\bdeadline\s*:\s*', '', raw, flags=re.I).strip() or raw
+            if not re.match(r'^(refer to|see\b)', cleaned, re.I):
+                cleaned = f"See {cleaned[0].lower()}{cleaned[1:]}" if cleaned else cleaned
+            return cleaned
+    return _NOT_EXTRACTED
 
 
 def _submission_deadline_text(meta: dict) -> str:
@@ -168,6 +254,98 @@ def _presentation_dates(typed_observations: list[dict]) -> list[tuple[str, str]]
         seen.add(key)
         out.append((date, scope))
     return out
+
+
+_FUZZY_DEDUP_STOPWORDS = frozenset((
+    "the", "and", "for", "any", "that", "this", "will", "may", "with", "from",
+    "are", "was", "were", "been", "have", "has", "had", "its", "their",
+))
+
+
+def _fuzzy_word_set(text: str) -> frozenset:
+    words = re.sub(r'[^a-z0-9]', ' ', text.lower()).split()
+    return frozenset(w for w in words if len(w) >= 4 and w not in _FUZZY_DEDUP_STOPWORDS)
+
+
+def _is_near_duplicate(text_a: str, words_a: frozenset, text_b: str, words_b: frozenset,
+                       threshold: float = 0.7) -> bool:
+    """Word-set overlap (not just leading-word matching): extraction
+    non-determinism can restate the same fact with the shared content
+    positioned differently across occurrences -- confirmed live, the same
+    final tie-break step captured once as "List Randomizer
+    (www.random.org)" and again as "Random selection via List Randomizer
+    (www.random.org)", where the overlap is in the middle, not the start,
+    so comparing only leading words misses it. Two values are near-
+    duplicates when the smaller one's significant words are mostly (>=70%)
+    contained in the other's -- gated to sets of at least 3 significant
+    words each, so two short, genuinely distinct labels that happen to
+    reduce to the same one or two words after stopword filtering (e.g.
+    "Criterion A" vs. "Criterion B", both reducing to just {"criterion"})
+    are compared by their actual text instead, never falsely collapsed
+    merely because their reduced word-sets coincide."""
+    if len(words_a) < 3 or len(words_b) < 3:
+        return text_a.strip().lower() == text_b.strip().lower()
+    smaller, larger = (words_a, words_b) if len(words_a) <= len(words_b) else (words_b, words_a)
+    return len(smaller & larger) / len(smaller) >= threshold
+
+
+def _qualification_mechanisms(typed_observations: list[dict]) -> list[str]:
+    """Pass/fail qualification mechanisms (e.g. reference checks) that are
+    distinct from both the mandatory submission gates and the weighted/
+    rated criteria -- generic to any QUALIFICATION_MECHANISM typed
+    observation Fast Analysis's extraction captured, not tied to any
+    specific buyer's reference-check wording. Returns the raw stated
+    text verbatim; never synthesizes a mechanism the source didn't state.
+    Near-duplicate restatements (see _is_near_duplicate) are collapsed to
+    the first occurrence."""
+    items: list[str] = []
+    seen: list[tuple[str, frozenset]] = []
+    for o in typed_observations:
+        if o.get("family") != "QUALIFICATION_MECHANISM":
+            continue
+        val = (o.get("original_value") or "").strip()
+        if not val:
+            continue
+        words = _fuzzy_word_set(val)
+        if any(_is_near_duplicate(val, words, sv, sw) for sv, sw in seen):
+            continue
+        seen.append((val, words))
+        items.append(val)
+    return items
+
+
+def _tie_break_rules(typed_observations: list[dict]) -> list[str]:
+    """Ordered tie-break rules, sorted by each observation's stated
+    "rank" (1 = first tie-breaker applied, 2 = next, etc.) -- generic to
+    any TIE_BREAK_RULE typed observation; never fabricates an order the
+    source didn't state. An observation missing either its rank or text
+    is skipped rather than guessed into a position. Near-duplicate
+    restatements of the same step under a different rank (see
+    _is_near_duplicate) are collapsed to whichever occurrence sorts
+    first."""
+    entries: list[tuple[float, str]] = []
+    for o in typed_observations:
+        if o.get("family") != "TIE_BREAK_RULE":
+            continue
+        val = (o.get("original_value") or "").strip()
+        rank = o.get("rank")
+        if not val or rank is None:
+            continue
+        try:
+            rank_num = float(rank)
+        except (TypeError, ValueError):
+            continue
+        entries.append((rank_num, val))
+    entries.sort(key=lambda x: x[0])
+    seen: list[tuple[str, frozenset]] = []
+    ordered: list[str] = []
+    for _, val in entries:
+        words = _fuzzy_word_set(val)
+        if any(_is_near_duplicate(val, words, sv, sw) for sv, sw in seen):
+            continue
+        seen.append((val, words))
+        ordered.append(val)
+    return ordered
 
 
 def _pricing_and_term_commercial_rows(result: FastAnalysisResult) -> list[tuple[str, str]]:
@@ -604,6 +782,70 @@ def _weight_rows_for_category(result: FastAnalysisResult, category_label: str | 
     return rows
 
 
+def _minimum_scores_for_category(result: FastAnalysisResult, category_label: str | None,
+                                 exclude_labels: frozenset[str] = frozenset()) -> dict[str, str]:
+    """Per-criterion minimum-score thresholds for one discovered category
+    (mirrors _weight_rows_for_category's own category-matching AND its
+    occurrences-vs-evaluation_criteria fallback rule, kept as a separate
+    lookup rather than widening that function's row shape -- every
+    existing caller of _weight_rows_for_category assumes a 2-tuple
+    (label, weight), and several of them mutate/rebuild rows from that
+    exact shape -- so a parallel {criterion_label: minimum_score} dict is
+    the safer, additive way to surface this new field).
+
+    The fallback to evaluation_criteria's own "threshold" field is not
+    optional polish: confirmed live, the focused rated-criteria task's
+    section-finder (which looks for a line reading exactly "Rated
+    criteria") never matches a corpus whose own heading vocabulary is
+    different (e.g. "Weighted Criteria") -- for such a corpus,
+    evaluation_occurrences is ALWAYS empty and _weight_rows_for_category
+    itself already falls back to evaluation_criteria/"stage"/"threshold"
+    to render the weight table at all; minimum-score must fall back the
+    same way for the same corpora, via the same field the general
+    extraction schema has always had, or it would silently never surface
+    for exactly the corpora that need this fallback path.
+
+    Only an occurrence/criterion whose extraction actually populated a
+    minimum value contributes an entry; a criterion with no stated
+    minimum is simply absent from the returned dict, never guessed."""
+    def _clean(v) -> str | None:
+        v = v.strip() if isinstance(v, str) else v
+        return str(v) if v else None
+
+    scores: dict[str, str] = {}
+    occs = carry_forward_category_scope(result.evaluation_occurrences)
+    for occ in occs:
+        min_score = _clean(occ.get("minimum_score"))
+        label = occ.get("criterion_label")
+        if not min_score or not label:
+            continue
+        scope = (occ.get("category_scope") or "").strip()
+        if category_label is not None:
+            if scope.lower() != category_label.lower():
+                continue
+        elif scope.lower() in exclude_labels:
+            continue
+        scores[label] = min_score
+    if scores or occs:
+        # Focused task ran for this corpus -- trust its result (mirrors
+        # _weight_rows_for_category's own rule for the weight rows
+        # themselves).
+        return scores
+    for ec in result.evaluation_criteria:
+        min_score = _clean(ec.get("threshold"))
+        label = ec.get("stage")
+        if not min_score or not label:
+            continue
+        parent = (ec.get("parent_stage") or "").strip()
+        if category_label is not None:
+            if parent.lower() != category_label.lower():
+                continue
+        elif parent.lower() in exclude_labels:
+            continue
+        scores[label] = min_score
+    return scores
+
+
 def _merged_doc_metadata(result: FastAnalysisResult) -> dict:
     """Document precedence: master RFP / solicitation documents outrank draft contracts
     and appendices for opportunity identity (e.g. title, buyer, solicitation number).
@@ -654,26 +896,51 @@ def _is_evaluation_category_label(name: str) -> bool:
     return any(b in cleaned for b in blocked)
 
 
+_SCOPE_TRIGGER_RE = re.compile(
+    r'(?:service[\s\-]?(?:category\s+)?scope\s+includes?|'
+    r'scope\s+of\s+services?\s+includes?|'
+    r'services?\s+(?:categories|types)\s+(?:are|include)s?|'
+    r'the\s+following\s+service\s+categories)\s*:?\s*(.*)', re.I)
+
+
 def _discover_service_categories_from_scope(result: FastAnalysisResult) -> list[str]:
-    """Extract substantive service categories from scope requirements or descriptions
-    when evaluation categories have leaked into discovered categories."""
-    scope_reqs = [
-        r.get("description", "") for r in result.requirements
-        if "service scope includes" in r.get("description", "").lower()
-        or "service-category scope includes" in r.get("description", "").lower()
-    ]
+    """Extract substantive service categories from scope requirements or
+    descriptions when evaluation categories have leaked into discovered
+    categories. The trigger regex accepts several generic phrasings a
+    scope-enumeration sentence commonly uses (not tied to any one buyer's
+    exact wording) so this doesn't depend on the extraction happening to
+    reproduce one specific phrase verbatim."""
     discovered = []
-    for text in scope_reqs:
-        m = re.search(r"scope includes:?\s*(.*)", text, re.I)
-        if m:
-            raw_items = re.split(r";\s*(?:and\s*)?(?:\([a-z0-9]+\))?|\([a-z0-9]+\)", m.group(1))
-            for item in raw_items:
-                clean = item.strip().strip(".").strip()
-                if clean.lower().startswith("and "):
-                    clean = clean[4:].strip()
-                clean = re.sub(r"^One-to-One Coaching.*", "One-to-One Coaching", clean, flags=re.I)
-                if clean and clean not in discovered and len(clean) < 40 and clean.lower() != "and":
-                    discovered.append(clean)
+    for r in result.requirements:
+        text = r.get("description", "")
+        m = _SCOPE_TRIGGER_RE.search(text)
+        if not m:
+            continue
+        raw_items = re.split(r";\s*(?:and\s*)?(?:\([a-z0-9]+\))?|\([a-z0-9]+\)", m.group(1))
+        for item in raw_items:
+            clean = item.strip().strip(".").strip()
+            if clean.lower().startswith("and "):
+                clean = clean[4:].strip()
+            # An item can run on with trailing descriptive clauses the
+            # split above didn't fully separate (e.g. "X of Leaders in
+            # the following roles: A, B, C"); generically salvage just
+            # the leading name by truncating at the first colon before
+            # applying the length gate below -- not tied to any specific
+            # category name.
+            if ":" in clean:
+                clean = clean.split(":", 1)[0].strip()
+            if len(clean) >= 40:
+                # Still too long after colon-truncation: a short category
+                # name is often followed by a descriptive clause joined by
+                # a preposition ("X of Leaders in the following roles",
+                # "X for..."); generically recover just the name portion
+                # rather than dropping the category entirely. Not tied to
+                # any specific category name.
+                m2 = re.match(r'^(.{1,39}?)\s+(?:of|for|in|including|covering)\s+', clean, re.I)
+                if m2:
+                    clean = m2.group(1).strip()
+            if clean and clean not in discovered and len(clean) < 40 and clean.lower() != "and":
+                discovered.append(clean)
     return discovered
 
 
@@ -744,6 +1011,18 @@ def _response_requirements(result: FastAnalysisResult) -> tuple[list[tuple[str, 
         "pricing evaluation formula", "pricing-calculation formula", "service-category scope",
         "pricing evaluation mechanism", "maximum points available", "proportionately fewer points",
         "points available for that subsection",
+        # Contract-execution obligations (as opposed to proposal-stage
+        # submission requirements) that showed up leaking into the
+        # response-requirements section in review: assignment,
+        # subcontracting, key-personnel, conflict-of-interest, and
+        # billing/time-of-performance clauses. These are genuine
+        # commercial/contractual facts, not "what must the bid team
+        # submit, answer, evidence, or price" -- Commercial &
+        # Contractual Considerations (built from the same corpus's
+        # commercial_clauses) is their correct home, not this section.
+        "must not assign", "must not subcontract", "key personnel",
+        "conflict of interest", "time is of the essence", "billing period",
+        "billing date", "province's rights", "province may assign",
     )
 
     checklist: list[tuple[str, str, str]] = []
@@ -797,7 +1076,11 @@ def _response_requirements(result: FastAnalysisResult) -> tuple[list[tuple[str, 
             # Fallback for small corpora where requirements are already pre-filtered to submission
             mandatory_idx += 1
             checklist.append((f"Requirement {mandatory_idx}", desc, source_doc or _NOT_EXTRACTED))
-        else:
+        elif not is_post_award:
+            # Post-award items are dropped here entirely, not appended --
+            # they belong in Commercial & Contractual Considerations
+            # (already populated from this same corpus's commercial_clauses),
+            # not in a section answering "what must the bid team submit?"
             if desc not in other:
                 other.append(desc)
 
@@ -808,6 +1091,81 @@ def _response_requirements(result: FastAnalysisResult) -> tuple[list[tuple[str, 
         other = other[:6]
 
     return checklist, other
+
+
+def _rg_evidence_map(result: FastAnalysisResult, weighted_criteria: list[tuple[str, str]]) -> list[tuple[str, str, str]]:
+    """An ordered 'RG1, RG2, ...' evidence map built from the weighted-
+    criteria table's own criterion order (excluding Pricing, which has its
+    own pricing-submission-rules section) -- generic to any corpus that
+    numbers its response-guideline sections sequentially to match its
+    weighted-criteria table order, a common RFP convention (confirmed for
+    this corpus: RG1..RG6 map 1:1 to the first six WEIGHTED EVALUATION
+    rows in table order). Not assumed true for a corpus where it
+    doesn't hold -- this only affects the RG1/RG2/... LABEL, never the
+    criterion name or evidence text, both of which are the corpus's own
+    extracted data either way. Each row's "requested evidence" text comes
+    from requirements whose description mentions that criterion's own
+    name (same technique _service_category_rows uses); a criterion with
+    no matching requirement text shows _NOT_EXTRACTED rather than
+    inventing one."""
+    rows: list[tuple[str, str, str]] = []
+    rg_num = 0
+    for label, _weight in weighted_criteria:
+        if "pricing" in label.lower():
+            continue
+        rg_num += 1
+        matches = [r.get("description") for r in result.requirements
+                  if r.get("description") and label.lower() in r["description"].lower()]
+        evidence = _shorten_to_sentence(" ".join(matches[:2]), limit=280) if matches else _NOT_EXTRACTED
+        rows.append((f"RG{rg_num}", label, evidence))
+    return rows
+
+
+_PRICING_SUBMISSION_KEYWORDS = (
+    "unconditional", "unqualified pricing", "pricing must be", "pricing should not be expressed as a range",
+    "not be expressed as a range", "lowest numerical value", "enter \"$0\"", "enter '$0'",
+    "entering \"$0\"", "entering '$0'", "$zero", "elimination from competition", "rejection of the proposal",
+)
+
+
+_PRICING_FORMULA_REJECT_KEYWORDS = (
+    "multiplier", "points available", "ranked lowest to highest", "pricing evaluation formula",
+    "pricing-calculation formula", "resulting in a multiplier", "divided by the number of",
+)
+
+
+def _pricing_submission_rules(result: FastAnalysisResult) -> list[str]:
+    """Proposal-stage pricing COMPLIANCE rules -- what makes a submitted
+    price valid/complete (unconditional/unqualified, no ranges, the
+    consequence of a prohibited zero/blank/range entry) -- as distinct
+    from (a) the pricing-scoring FORMULA (a sentence can mention "$0"/
+    "$zero" purely as part of describing how a scoring multiplier counts
+    distinct prices, which is evaluation mechanics, not a submission
+    compliance rule -- rejected generically via the same pricing-formula
+    noise terms _service_category_rows already screens for) and (b)
+    contract-execution pricing terms like escalation (already covered in
+    Commercial & Contractual Considerations). Generic keyword set
+    describing common RFP pricing-compliance phrasing, not tied to any
+    specific buyer."""
+    rules = []
+    for r in result.requirements:
+        desc = (r.get("description") or "").strip()
+        dl = desc.lower()
+        if not desc or "pricing" not in dl and "price" not in dl and "$" not in desc:
+            continue
+        if not any(kw in dl for kw in _PRICING_SUBMISSION_KEYWORDS):
+            continue
+        sentences = re.split(r'(?<=[.!?])\s+', desc)
+        hit = next((s for s in sentences
+                   if any(kw in s.lower() for kw in _PRICING_SUBMISSION_KEYWORDS)
+                   and not any(rk in s.lower() for rk in _PRICING_FORMULA_REJECT_KEYWORDS)),
+                   None)
+        if not hit:
+            continue
+        hit = _shorten_to_sentence(hit, limit=220)
+        if hit not in rules:
+            rules.append(hit)
+    return rules
 
 
 def _compact_citation(raw: str) -> str:
@@ -896,6 +1254,22 @@ def build_fast_report_content(result: FastAnalysisResult,
     service_categories = [c for c in eval_categories if not _is_evaluation_category_label(c)]
     if not service_categories:
         service_categories = _discover_service_categories_from_scope(result)
+    if not service_categories:
+        # Last-resort fallback: on a run where no clean "service scope
+        # includes..." sentence was captured, the Pricing category's own
+        # sub-criteria are still reliably extracted (they're what gets
+        # priced) and substantially overlap with the real service
+        # categories for a corpus that prices each service separately --
+        # an approximate but far more useful proxy than no scope detail
+        # at all. Generic: uses whatever pricing category this corpus's
+        # own evaluation table has, never a hardcoded label.
+        pricing_cat = next((c for c in eval_categories if "pricing" in c.lower()), None)
+        if pricing_cat:
+            pricing_rows = _weight_rows_for_category(result, pricing_cat)
+            service_categories = [
+                re.sub(r'^(?:Hourly\s+Rate\s+for\s+)', '', label, flags=re.I).strip()
+                for label, _ in pricing_rows
+            ]
 
     # ---- Cover ----
     C.TITLE = DEEP.TITLE  # generic app branding (confirmed buyer-agnostic), not RFP content
@@ -918,7 +1292,8 @@ def build_fast_report_content(result: FastAnalysisResult,
         ("Solicitation Number", solnum),
         ("Opportunity", title),
         ("Submission Deadline", _submission_deadline_text(meta)),
-        ("Clarification / Questions Deadline", meta.get("clarification_deadline") or _NOT_EXTRACTED),
+        ("Clarification / Questions Deadline",
+         _clarification_deadline_text(meta, result.typed_observations)),
         ("Procurement Model", proc_model),
         ("Contract Term", _contract_term(result.typed_observations)),
     ]
@@ -1004,16 +1379,24 @@ def build_fast_report_content(result: FastAnalysisResult,
         C.FACT_ORIGINS["BUYER_INTELLIGENCE"] = "MISSING_NO_FALLBACK"
 
     # ---- Section 3: What Is Being Procured? ----
-    if buyer != _NOT_EXTRACTED:
-        C.PROCURED_INTRO = f"{buyer} is seeking one or more qualified service providers"
-    else:
-        C.PROCURED_INTRO = "The buyer is seeking one or more qualified service providers"
+    who = buyer if buyer != _NOT_EXTRACTED else "The buyer"
+    # "one or more qualified service providers" presupposes a multi-award
+    # outcome; for a single-award procurement that's a real, avoidable
+    # contradiction (derived generically from the same proc_model already
+    # computed above from typed_observations -- not a buyer-specific check).
+    is_single_award = proc_model != _NOT_EXTRACTED and "single" in proc_model.lower()
     if service_categories:
-        C.PROCURED_INTRO += (
-            f" across {len(service_categories)} service categor{'y' if len(service_categories) == 1 else 'ies'}: "
-            + ", ".join(service_categories) + ".")
+        count_word = f"{len(service_categories)} service type{'s' if len(service_categories) != 1 else ''}"
+        if is_single_award:
+            C.PROCURED_INTRO = f"{who} is procuring {count_word}: " + ", ".join(service_categories) + "."
+        else:
+            C.PROCURED_INTRO = (
+                f"{who} is seeking one or more qualified service providers across {count_word}: "
+                + ", ".join(service_categories) + ".")
+    elif is_single_award:
+        C.PROCURED_INTRO = f"{who} is procuring services under a single award."
     else:
-        C.PROCURED_INTRO += "."
+        C.PROCURED_INTRO = f"{who} is seeking one or more qualified service providers."
     C.SERVICE_CATEGORIES = _service_category_rows(result, service_categories)
     for label, _, desc in C.SERVICE_CATEGORIES:
         C.FACT_ORIGINS[f"SERVICE_CATEGORY_DESCRIPTION.{label}"] = (
@@ -1030,7 +1413,8 @@ def build_fast_report_content(result: FastAnalysisResult,
     C.PROCURED_MODEL_NOTE = proc_model
 
     # ---- Section 4: Critical Dates & Bid Mechanics ----
-    dates = [("Clarification deadline", meta.get("clarification_deadline")),
+    _clar_text = _clarification_deadline_text(meta, result.typed_observations)
+    dates = [("Clarification deadline", _clar_text if _clar_text != _NOT_EXTRACTED else None),
             ("Submission deadline", _submission_deadline_text(meta))]
     for date, scope in _presentation_dates(result.typed_observations):
         dates.append((date or "Date not extracted", f"Presentation / demonstration — {scope or 'category not specified'}"))
@@ -1048,14 +1432,26 @@ def build_fast_report_content(result: FastAnalysisResult,
         C.GATE_EXAMPLES = [f"{ec.get('stage', 'Criterion')}: {ec['threshold']}" for ec in gate_criteria[:6]]
         C.FACT_ORIGINS["GATE_EXAMPLES"] = "LIVE_FAST_LLM"
     else:
-        # Fallback to key mandatory gates identified from requirements
+        # Fallback to key mandatory gates identified from requirements.
+        # Exactly the mandatory-gate topics (reference checks are a
+        # separate pass/fail qualification mechanism -- see
+        # QUALIFICATION_MECHANISMS above -- not a submission gate).
+        # Each topic's keyword list includes more than one common phrasing
+        # so a single run's extraction wording doesn't cause a real gate
+        # to silently disappear from the table.
         gate_topics = [
-            ("Proposal in English", ["english"]),
-            ("Permitted Submission Methods", ["permitted submission", "submission methods: bc bid"]),
-            ("Receipt Before Closing Date and Time", ["received before the closing date and time", "before closing date and time"]),
-            ("Signed Submission Declaration (Part 5)", ["part 5 (submission declaration)", "signed by a person authorized to sign"]),
-            ("Completed Proposal Response Form (Appendix B)", ["appendix b form or a form substantially similar", "appendix b proposal response form"]),
-            ("Reference Checks (Pass/Fail Qualification Gate)", ["referee information for itself", "reference check"]),
+            ("Proposal in English", ["must be in english", "proposals must be in english", "in english"]),
+            ("Permitted Submission Methods", ["permitted submission", "submission methods: bc bid",
+                                              "using one of the following submission methods"]),
+            ("Receipt Before Closing Date and Time", ["received before the closing date and time",
+                                                       "before closing date and time",
+                                                       "before the closing date and time"]),
+            ("Signed Submission Declaration (Part 5)", ["part 5 (submission declaration)",
+                                                         "signed by a person authorized to sign",
+                                                         "submission declaration"]),
+            ("Completed Proposal Response Form (Appendix B)", ["appendix b form or a form substantially similar",
+                                                                "appendix b proposal response form",
+                                                                "substantially similar to this template"]),
         ]
         derived_gates = []
         for label, kws in gate_topics:
@@ -1069,6 +1465,7 @@ def build_fast_report_content(result: FastAnalysisResult,
 
     # Evaluation categories and tables
     C.EVAL_WEIGHTS = {}
+    C.EVAL_MINIMUM_SCORES = {}
     if eval_categories:
         # Filter out stray section headings or Response Guidelines leaking into categories
         filtered_eval_cats = []
@@ -1110,6 +1507,9 @@ def build_fast_report_content(result: FastAnalysisResult,
                 C.EVAL_WEIGHTS[key] = rows
                 C.FACT_ORIGINS[f"EVAL_WEIGHTS.{label}"] = "LIVE_FAST_LLM"
                 rendered_category_rows.append(rows)
+                min_scores = _minimum_scores_for_category(result, label)
+                if min_scores:
+                    C.EVAL_MINIMUM_SCORES[key] = min_scores
             else:
                 C.FACT_ORIGINS[f"EVAL_WEIGHTS.{label}"] = "MISSING_NO_FALLBACK"
 
@@ -1128,12 +1528,28 @@ def build_fast_report_content(result: FastAnalysisResult,
         if rows:
             C.EVAL_WEIGHTS["Rated Criteria"] = rows
             C.FACT_ORIGINS["EVAL_WEIGHTS.flat"] = "LIVE_FAST_LLM"
+            min_scores = _minimum_scores_for_category(result, None)
+            if min_scores:
+                C.EVAL_MINIMUM_SCORES["Rated Criteria"] = min_scores
         else:
             C.FACT_ORIGINS["EVAL_WEIGHTS.flat"] = "MISSING_NO_FALLBACK"
 
     # ---- Section 6: Response Requirements ----
     C.RESPONSE_CHECKLIST, C.RESPONSE_OTHER_REQUIREMENTS = _response_requirements(result)
     C.FACT_ORIGINS["RESPONSE_CHECKLIST"] = "LIVE_FAST_LLM" if C.RESPONSE_CHECKLIST else "MISSING_NO_FALLBACK"
+
+    # Key Evaluated Response / Evidence Requirements: an RG1, RG2, ...
+    # evidence map built from the WEIGHTED EVALUATION category's own
+    # criterion order, whichever key it was assigned above (generic --
+    # not a hardcoded "WEIGHTED EVALUATION — 100 POINTS" lookup).
+    _weighted_key = next((k for k in C.EVAL_WEIGHTS if "pricing" not in k.lower()), None)
+    C.RG_EVIDENCE_MAP = (
+        _rg_evidence_map(result, C.EVAL_WEIGHTS[_weighted_key]) if _weighted_key else [])
+    C.FACT_ORIGINS["RG_EVIDENCE_MAP"] = "LIVE_FAST_LLM" if C.RG_EVIDENCE_MAP else "NOT_PRESENT"
+
+    C.PRICING_SUBMISSION_RULES = _pricing_submission_rules(result)
+    C.FACT_ORIGINS["PRICING_SUBMISSION_RULES"] = (
+        "LIVE_FAST_LLM" if C.PRICING_SUBMISSION_RULES else "NOT_PRESENT")
 
     # ---- Section 7: Commercial & Contractual (multi-source assembly with slot validation) ----
     _SLOT_VALIDATION = {
@@ -1282,29 +1698,55 @@ def build_fast_report_content(result: FastAnalysisResult,
             f"criterion — see {eval_ref} in Section 8 before finalizing how much proposal effort "
             "to allocate per section.")
 
-    # Check for a genuine tie-breaking procedure in requirements/commercial
-    # clauses, using an actual phrase match rather than a bare "tie"
-    # substring (which false-positives on ordinary words like "activities",
-    # "facilities", "communities" -- any word containing t-i-e). Generic,
-    # no buyer-name gating: fires for any corpus whose source text
-    # describes one, and the note itself never asserts a specific criteria
-    # ranking that this adapter cannot verify from structured data -- it
-    # points the reader to the source section instead of guessing it.
-    _tie_break_phrases = ("tie-break", "tie break", "in the event of a tie", "tied proponent")
-    has_tie_break = any(
-        phrase in ((r.get("description") or "") + " " + (r.get("source_doc") or "")).lower()
-        for r in result.requirements for phrase in _tie_break_phrases
-    ) or any(
-        phrase in ((c.get("source_fact") or "") + " " + (c.get("topic") or "")).lower()
-        for c in result.commercial_clauses for phrase in _tie_break_phrases
-    )
-    if has_tie_break:
+    # Structured tie-break rules (generic TIE_BREAK_RULE typed_observations,
+    # ordered by each one's own stated rank -- never a buyer-specific
+    # hardcoded ranking). Rendered as its own ordered list beneath the
+    # weighted-evaluation tables; falls back to a phrase-based, non-
+    # specific reminder (below) only when the structured extraction found
+    # nothing, so a corpus whose tie-break procedure wasn't captured
+    # structurally still gets an honest pointer rather than silence.
+    C.TIE_BREAK_RULES = _tie_break_rules(result.typed_observations)
+    C.FACT_ORIGINS["TIE_BREAK_RULES"] = "LIVE_FAST_LLM" if C.TIE_BREAK_RULES else "NOT_PRESENT"
+
+    if C.TIE_BREAK_RULES:
+        has_tie_break = True
+    else:
+        # Check for a genuine tie-breaking procedure mentioned in requirements/
+        # commercial clauses even though it wasn't captured as structured
+        # TIE_BREAK_RULE data, using an actual phrase match rather than a bare
+        # "tie" substring (which false-positives on ordinary words like
+        # "activities", "facilities", "communities" -- any word containing
+        # t-i-e). Generic, no buyer-name gating: fires for any corpus whose
+        # source text describes one, and the note itself never asserts a
+        # specific criteria ranking this adapter cannot verify -- it points
+        # the reader to the source section instead of guessing it.
+        _tie_break_phrases = ("tie-break", "tie break", "in the event of a tie", "tied proponent")
+        has_tie_break = any(
+            phrase in ((r.get("description") or "") + " " + (r.get("source_doc") or "")).lower()
+            for r in result.requirements for phrase in _tie_break_phrases
+        ) or any(
+            phrase in ((c.get("source_fact") or "") + " " + (c.get("topic") or "")).lower()
+            for c in result.commercial_clauses for phrase in _tie_break_phrases
+        )
+    if C.TIE_BREAK_RULES:
+        notes.append(
+            "This procurement states an ordered tie-breaking procedure for proposals with "
+            "identical scores — see the tie-break order below."
+        )
+    elif has_tie_break:
         notes.append(
             "This procurement's source documents describe a tie-breaking procedure for proposals "
             "with identical scores — confirm the exact criteria order in the RFP's evaluation "
             "section before finalizing where to invest proposal effort."
         )
     C.EVAL_WEIGHT_NOTE = " ".join(notes)
+
+    # Reference checks / other pass-fail qualification mechanisms, distinct
+    # from both the mandatory submission gates and the weighted criteria --
+    # generic to any QUALIFICATION_MECHANISM typed_observation.
+    C.QUALIFICATION_MECHANISMS = _qualification_mechanisms(result.typed_observations)
+    C.FACT_ORIGINS["QUALIFICATION_MECHANISMS"] = (
+        "LIVE_FAST_LLM" if C.QUALIFICATION_MECHANISMS else "NOT_PRESENT")
 
     # ---- Section 9: Attention Points ----
     # Every point below is generated only from conditions the current
@@ -1351,11 +1793,26 @@ def build_fast_report_content(result: FastAnalysisResult,
                 "highly decisive. Price every priced element competitively and completely.")
             break
 
-    if has_tie_break:
+    if C.TIE_BREAK_RULES:
+        first_rule = C.TIE_BREAK_RULES[0]
+        attention_points.append(
+            f"If proposals achieve identical scores, {first_rule} is the first tie-breaker — "
+            "treat it as a priority section, not boilerplate.")
+    elif has_tie_break:
         attention_points.append(
             "A tie-breaking procedure applies if proposals achieve identical scores — confirm "
             "the exact criteria order in the RFP's evaluation section before finalizing where "
             "to invest proposal effort.")
+
+    # Reference checks: a pass/fail qualification mechanism distinct from
+    # mandatory gates and weighted criteria -- only fires when the source
+    # documents genuinely state one (structured QUALIFICATION_MECHANISM
+    # extraction, not a buyer-specific assumption).
+    if C.QUALIFICATION_MECHANISMS:
+        attention_points.append(
+            "Reference checks apply and are evaluated separately from the weighted criteria: "
+            f"{_shorten_to_sentence(C.QUALIFICATION_MECHANISMS[0], limit=220)} Prepare credible, "
+            "responsive references in advance.")
 
     # Technology / security review: derived from whichever commercial clause
     # was actually selected for this kind above (real extracted text, not
