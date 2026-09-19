@@ -52,6 +52,7 @@ from extractor import extract_document_with_metadata
 from fast_analysis import (
     run_fast_analysis_corpus, FastAnalysisResult, route_document, find_section,
     BATCH_GROUP, ROUTE_SKIP, ROUTE_EVAL_ONLY, ROUTE_IDENTITY_EVAL_REQ, ROUTE_COMMERCIAL_ONLY,
+    serialize_fast_analysis_result, deserialize_fast_analysis_result, RawSnapshotSchemaError,
 )
 from fast_analysis_app_adapter import build_opportunity_intelligence
 from scripts.fast_analysis_report_adapter import build_fast_report_content
@@ -62,6 +63,14 @@ from scripts.build_boc_bid_intelligence_preview_pdf import build as _render_pdf
 # of what source code is deployed when they're later read back
 # (instruction 9).
 FAST_ANALYSIS_ENGINE_VERSION = "fast-analysis-v4"
+
+# Sentinel explicit state for load_raw_fast_analysis_result() when a run has
+# no durably persisted raw snapshot at all -- e.g. any run created before
+# migrations/012_fast_analysis_result_snapshot.sql existed (Phoenix run 13
+# is the concrete example that motivated this feature). Never conflate this
+# with an incompatible-schema snapshot that IS present (see
+# RawSnapshotSchemaError) -- those are different failure modes.
+RAW_FAST_ANALYSIS_SNAPSHOT_UNAVAILABLE = "RAW_FAST_ANALYSIS_SNAPSHOT_UNAVAILABLE"
 
 # Frozen V4 accepted behavior (instruction 2) -- do not change.
 MAX_DOCUMENT_CONCURRENCY = 2
@@ -488,6 +497,15 @@ def _execute_fast_analysis_run(run_id: int, bid_id: int, docs: list[dict], api_k
         # completion event, not a guess.
         progress.mark(MILESTONE_AMBIGUITIES_READY)
 
+        # Durability: serialize the raw analytical result BEFORE the lossy
+        # structured_intelligence/report_content transformation below, so a
+        # future report-layout revision or acceptance run can regenerate
+        # this run's PDF from durable storage with zero LLM calls, even
+        # after today's adapter logic changes (see
+        # fast_analysis.serialize_fast_analysis_result and
+        # regenerate_report_from_raw_snapshot below).
+        raw_snapshot = serialize_fast_analysis_result(result, engine_version=FAST_ANALYSIS_ENGINE_VERSION)
+
         db.update_analysis_run(run_id, {"status": "ASSEMBLING"})
         opportunity_intelligence = build_opportunity_intelligence(result)
 
@@ -496,10 +514,22 @@ def _execute_fast_analysis_run(run_id: int, bid_id: int, docs: list[dict], api_k
         report_storage_path = db.upload_analysis_report(bid_id, run_id, pdf_bytes)
         progress.mark(MILESTONE_REPORT_ASSEMBLED)
 
-        db.create_analysis_result(
+        created_result = db.create_analysis_result(
             run_id, bid_id, opportunity_intelligence,
             opportunity_intelligence.get("fact_origins"),
-            report_content_snapshot=_content_to_dict(content))
+            report_content_snapshot=_content_to_dict(content),
+            fast_analysis_result_snapshot=raw_snapshot)
+
+        # Fail closed (instruction 6): a run whose raw analytical snapshot
+        # did not durably persist must not be marked COMPLETE -- a future
+        # report regeneration or audit for it would otherwise be silently
+        # lossy (or force re-running the LLM) with no visible sign anything
+        # was ever wrong. This reuses the existing FAILED lifecycle path
+        # (the except block below) rather than inventing a new state.
+        if not created_result or not created_result.get("fast_analysis_result_snapshot"):
+            raise RuntimeError(
+                "failed to durably persist the raw Fast Analysis snapshot for "
+                "this run; refusing to mark it COMPLETE")
 
         # Fast Analysis is advisory-only (Procurement Revision & Addendum
         # Governance, migration 010): it renders exclusively from its own
@@ -572,6 +602,65 @@ def regenerate_report(run_id: int) -> bytes:
         raise ValueError(f"analysis run {run_id} has no persisted report content snapshot")
 
     content = _dict_to_content(stored["report_content_snapshot"])
+    return _render_pdf_bytes(content)
+
+
+def load_raw_fast_analysis_result(run_id: int):
+    """Returns a reconstructed FastAnalysisResult if a compatible raw
+    snapshot is durably persisted for this run (see
+    fast_analysis.serialize_fast_analysis_result /
+    migrations/012_fast_analysis_result_snapshot.sql), or the sentinel
+    string RAW_FAST_ANALYSIS_SNAPSHOT_UNAVAILABLE if none exists at all --
+    e.g. any run created before that column existed, such as Phoenix run
+    13. Never fabricated, never silently reconstructed from
+    structured_intelligence/report_content_snapshot (those use a
+    different, lossy, downstream schema).
+
+    A snapshot that IS present but uses an incompatible schema version
+    raises fast_analysis.RawSnapshotSchemaError (fail closed) rather than
+    being treated the same as "absent" -- those are different failure
+    modes and callers must not conflate them."""
+    stored = db.get_analysis_result(run_id)
+    if not stored or not stored.get("fast_analysis_result_snapshot"):
+        return RAW_FAST_ANALYSIS_SNAPSHOT_UNAVAILABLE
+    return deserialize_fast_analysis_result(stored["fast_analysis_result_snapshot"])
+
+
+def regenerate_report_from_raw_snapshot(run_id: int, buyer_intelligence: dict | None = None) -> bytes:
+    """Deterministic, zero-LLM-call report regeneration from a durably
+    persisted raw FastAnalysisResult snapshot: load -> deserialize ->
+    optionally attach/override a Buyer Intelligence payload ->
+    build_fast_report_content -> render PDF, using the exact same adapter
+    and renderer a live run uses. This is the path for future report-layout
+    revisions and acceptance testing -- it never reruns analysis, even when
+    a valid, compatible snapshot exists.
+
+    `buyer_intelligence`, when given, overrides whatever the snapshot's own
+    `buyer_intelligence` field holds (which may be None -- the live app-UI
+    run path does not currently attach one; only the standalone acceptance
+    script does, as an external enrichment layer). When omitted, whatever
+    was already embedded in the snapshot at serialization time is used
+    as-is.
+
+    Raises ValueError if the run isn't COMPLETE or has no durably persisted
+    raw snapshot (message includes RAW_FAST_ANALYSIS_SNAPSHOT_UNAVAILABLE).
+    Raises fast_analysis.RawSnapshotSchemaError if a snapshot IS present
+    but incompatible (fail closed) -- never silently substitutes a
+    reconstruction from structured_intelligence/report_content_snapshot."""
+    run = db.get_analysis_run(run_id)
+    if not run or run.get("status") != "COMPLETE":
+        raise ValueError(f"analysis run {run_id} is not COMPLETE; cannot regenerate its report")
+
+    result = load_raw_fast_analysis_result(run_id)
+    if isinstance(result, str):
+        raise ValueError(
+            f"analysis run {run_id} has no durably persisted raw Fast Analysis "
+            f"snapshot ({result})")
+
+    if buyer_intelligence is not None:
+        result.buyer_intelligence = buyer_intelligence
+
+    content = build_fast_report_content(result)
     return _render_pdf_bytes(content)
 
 

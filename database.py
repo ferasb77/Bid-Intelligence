@@ -808,12 +808,22 @@ def update_analysis_run(run_id: int, data: dict) -> None:
 
 def create_analysis_result(run_id: int, bid_id: int, structured_intelligence: dict,
                            fact_origins: dict | None = None,
-                           report_content_snapshot: dict | None = None) -> dict | None:
+                           report_content_snapshot: dict | None = None,
+                           fast_analysis_result_snapshot: dict | None = None) -> dict | None:
+    """fast_analysis_result_snapshot: the durable, JSON-safe raw-result
+    envelope from fast_analysis.serialize_fast_analysis_result(), or None
+    for a caller that hasn't produced one (e.g. Deep Verify runs, which
+    don't use FastAnalysisResult at all). This is ANALYTICAL OUTPUT, kept
+    on the same row as -- not a replacement for -- structured_intelligence/
+    report_content_snapshot, and inherits this table's existing
+    bid_id-scoped RLS policy; no new policy or table was introduced for it
+    (migrations/012_fast_analysis_result_snapshot.sql)."""
     return _one(get_client().table("analysis_results").insert({
         "run_id": run_id, "bid_id": bid_id,
         "structured_intelligence": structured_intelligence,
         "fact_origins": fact_origins or {},
         "report_content_snapshot": report_content_snapshot,
+        "fast_analysis_result_snapshot": fast_analysis_result_snapshot,
     }).execute())
 
 

@@ -263,6 +263,28 @@ def get_report_for_organization(bid_id: int, run_id: int, organization_id: str) 
     return analysis_service.regenerate_report(run_id)
 
 
+def get_raw_snapshot_report_for_organization(
+    bid_id: int, run_id: int, organization_id: str, buyer_intelligence: dict | None = None
+) -> bytes:
+    """Authorization boundary in front of
+    analysis_service.regenerate_report_from_raw_snapshot() -- the raw-
+    FastAnalysisResult-snapshot regeneration path added for durability.
+    Same two checks as get_report_for_organization() above, in the same
+    order, before any privileged (service-role) read: the caller's
+    organization must own bid_id, AND run_id must actually belong to
+    bid_id (never trust a guessed/adjacent run_id from a different bid the
+    caller legitimately owns). This is the only sanctioned way for
+    request-scoped/interactive code to reach the raw snapshot -- it must
+    never call analysis_service.regenerate_report_from_raw_snapshot() or
+    database.get_analysis_result() directly."""
+    require_bid_access(bid_id, organization_id)
+    run = db.get_analysis_run(run_id)
+    if not run or int(run.get("bid_id")) != int(bid_id):
+        raise AccessDeniedError(f"run {run_id} does not belong to bid {bid_id}")
+    import analysis_service
+    return analysis_service.regenerate_report_from_raw_snapshot(run_id, buyer_intelligence=buyer_intelligence)
+
+
 def upload_document_for_organization(
     bid_id: int, organization_id: str, filename: str, file_bytes: bytes,
     doc_type: str = "RFP / Source", owner: str | None = None, doc_id: int | None = None,

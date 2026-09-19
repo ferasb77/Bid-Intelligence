@@ -1,0 +1,81 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Migration 012: Fast Analysis raw-result snapshot persistence
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Additive only. Does NOT modify any earlier migration, does not touch
+-- bids/requirements/bid_briefs or any other canonical-procurement table,
+-- and does not change RLS -- analysis_results already has RLS enabled with
+-- policy analysis_results_select_bid_access (migration 008), scoped by this
+-- same row's bid_id. A new nullable column on an already-RLS-scoped table
+-- needs no new policy.
+--
+-- Per this repo's existing convention (migrations 001-011), this file is
+-- NOT auto-applied by any code path and is NOT executed as part of this
+-- authorization. Apply it manually via the Supabase SQL editor / dashboard,
+-- after separate review, the same way migrations 004-011 were applied.
+--
+-- ── Why this column exists ───────────────────────────────────────────────
+-- The Phoenix offline-closure task (feature/evidence-explainability)
+-- surfaced a durability gap: analysis_service.py computes a full
+-- FastAnalysisResult (fast_analysis.py) for a completed run, uses it to
+-- build structured_intelligence and a rendered report_content_snapshot,
+-- and then discards it. Neither of those two existing columns can
+-- reconstruct a FastAnalysisResult -- they use an entirely different,
+-- lossy, downstream schema (see fast_analysis.py's
+-- serialize_fast_analysis_result docstring) and were never designed to.
+-- The only persisted Phoenix run (id 13) proves this concretely: its
+-- report_content_snapshot predates minimum-score thresholds, qualification
+-- mechanisms, tie-break ranks, and deterministic service-scope/Response-
+-- Guideline parsing entirely -- reconstructing those from it is not
+-- possible, only re-running the LLM or fabricating values would "fix" it,
+-- and both are unacceptable.
+--
+-- This column lets a completed run's raw analytical result be durably
+-- persisted BEFORE that lossy transformation, so a future report-layout
+-- revision or acceptance run can regenerate the PDF from state alone, with
+-- zero LLM calls -- see analysis_service.py's
+-- regenerate_report_from_raw_snapshot().
+--
+-- ── Shape ─────────────────────────────────────────────────────────────────
+-- Written only via fast_analysis.serialize_fast_analysis_result() /
+-- read only via fast_analysis.deserialize_fast_analysis_result() -- no
+-- other code path should construct or parse this column's contents.
+--
+--   {
+--     "schema_version": "1.0",
+--     "created_at": "<ISO 8601 UTC>",
+--     "analysis_engine_version": "fast-analysis-v4",
+--     "telemetry_summary": { "total_calls": ..., "input_tokens": ..., ... },
+--     "result": {
+--       "doc_metadata_by_doc": {...}, "typed_observations": [...],
+--       "evaluation_criteria": [...], "requirements": [...],
+--       "commercial_clauses": [...], "evaluation_occurrences": [...],
+--       "pricing_occurrences": [...], "focused_sections_found": {...},
+--       "page_limits": {...}, "skipped_documents": [...],
+--       "batched_documents": [...], "documents_by_route": {...},
+--       "ambiguities": {...}, "wall_seconds": ..., "deterministic_seconds": ...,
+--       "buyer_intelligence": {...} | null,
+--       "deterministic_service_scope": {...} | null,
+--       "deterministic_response_guidelines": [...]
+--     }
+--   }
+--
+-- Deliberately excluded: raw per-call `telemetry` (timings/token counts per
+-- LLM call -- reduced to telemetry_summary; it is operational detail, not
+-- analytical output, and no report adapter consumes it), API keys, and any
+-- other credential/secret (none ever flow through FastAnalysisResult).
+--
+-- ── Backward compatibility ───────────────────────────────────────────────
+-- NULL for every analysis_results row created before this column existed
+-- (e.g. Phoenix run 13). Those rows are NOT backfilled and their existing
+-- structured_intelligence/report_content_snapshot are NOT used to
+-- reconstruct a synthetic value for this column -- application code must
+-- treat NULL here as the explicit, honest state
+-- RAW_FAST_ANALYSIS_SNAPSHOT_UNAVAILABLE, never silently substitute or
+-- guess (see analysis_service.py).
+-- ═══════════════════════════════════════════════════════════════════════════
+
+alter table analysis_results
+    add column if not exists fast_analysis_result_snapshot jsonb;
+
+comment on column analysis_results.fast_analysis_result_snapshot is
+    'Durable, JSON-safe, schema-versioned snapshot of the raw FastAnalysisResult that produced this row -- see fast_analysis.serialize_fast_analysis_result/deserialize_fast_analysis_result. NULL for runs created before this column existed (e.g. Phoenix run 13); never backfilled or reconstructed from structured_intelligence/report_content_snapshot.';

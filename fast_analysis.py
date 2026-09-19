@@ -27,7 +27,7 @@ import re
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields as _dataclass_fields
 from datetime import datetime, timezone
 
 from config import get_anthropic_client, execute_messages_create
@@ -1365,6 +1365,131 @@ class FastAnalysisResult:
     # extract_enumerated_service_scope / extract_response_guideline_sections.
     deterministic_service_scope: dict | None = None
     deterministic_response_guidelines: list = field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Raw-result durability: FastAnalysisResult <-> a JSON-safe, schema-versioned
+# snapshot that can be persisted and later reconstructed for report
+# regeneration or audit WITHOUT re-invoking the LLM.
+#
+# This closes a gap discovered during the Phoenix offline closure task: a
+# completed run's FastAnalysisResult was used to build structured_intelligence
+# and a rendered report_content_snapshot, then discarded -- with no durable
+# way to reconstruct it once a newer report adapter needed fields (minimum
+# scores, tie-break ranks, deterministic service scope/Response Guidelines)
+# that a run's downstream, lossy structured_intelligence/report_content
+# never captured in the first place. This boundary is the ONLY supported way
+# to produce or consume that snapshot -- callers must not scatter
+# dataclasses.asdict(result) / FastAnalysisResult(**payload) elsewhere.
+# ---------------------------------------------------------------------------
+
+# Bump the MAJOR component whenever a change could make an older
+# deserializer reconstruct an incorrect/incomplete FastAnalysisResult (e.g.
+# a field is removed, renamed, or its meaning changes). Bump MINOR for a
+# purely additive change (a new optional field) -- deserialize_fast_analysis_result
+# tolerates a payload from any MINOR version within the same MAJOR.
+FAST_ANALYSIS_RAW_SNAPSHOT_SCHEMA_VERSION = "1.0"
+
+# Every FastAnalysisResult field EXCEPT `telemetry`, which is deliberately
+# reduced to a compact audit summary rather than stored verbatim -- see
+# serialize_fast_analysis_result's docstring.
+_RAW_SNAPSHOT_RESULT_FIELDS = tuple(
+    f.name for f in _dataclass_fields(FastAnalysisResult) if f.name != "telemetry"
+)
+
+
+class RawSnapshotSchemaError(ValueError):
+    """Raised by deserialize_fast_analysis_result when a payload is not a
+    genuine raw Fast Analysis snapshot produced by
+    serialize_fast_analysis_result -- missing envelope, unsupported major
+    schema version, or a malformed 'result' body. This includes the case of
+    a structured_intelligence or report_content_snapshot dict passed by
+    mistake: those use an entirely different, downstream schema and must
+    never be silently accepted as if they were a raw snapshot (fail closed,
+    per this module's durability contract -- never guess, never partially
+    reconstruct)."""
+
+
+def _telemetry_audit_summary(telemetry: list, wall_seconds: float) -> dict:
+    """A compact, JSON-safe summary of per-call telemetry for audit
+    purposes -- never the raw per-call list (which is operational detail,
+    not analytical output, and is not consumed by any report adapter)."""
+    recovery_calls = [c for c in telemetry if isinstance(c, dict)
+                      and c.get("call_kind") not in ("initial", "batch")]
+    return {
+        "total_calls": len(telemetry),
+        "recovery_or_retry_calls": len(recovery_calls),
+        "input_tokens": sum((c.get("input_tokens") or 0) for c in telemetry if isinstance(c, dict)),
+        "output_tokens": sum((c.get("output_tokens") or 0) for c in telemetry if isinstance(c, dict)),
+        "wall_seconds": wall_seconds,
+    }
+
+
+def serialize_fast_analysis_result(result: FastAnalysisResult, *, engine_version: str) -> dict:
+    """The one supported way to turn a completed FastAnalysisResult into a
+    durable, JSON-safe payload. Every dataclass field already holds only
+    plain str/int/float/bool/list/dict/None values, so this is a direct,
+    lossless field-by-field copy for everything except `telemetry` (reduced
+    to a compact summary -- see _telemetry_audit_summary). Deliberately not
+    dataclasses.asdict(result): an explicit field list means a future new
+    field is a conscious decision (add it to _RAW_SNAPSHOT_RESULT_FIELDS and
+    bump the schema version if needed), not a silent, unreviewed inclusion.
+
+    Returns the full envelope: {schema_version, created_at,
+    analysis_engine_version, telemetry_summary, result}."""
+    return {
+        "schema_version": FAST_ANALYSIS_RAW_SNAPSHOT_SCHEMA_VERSION,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "analysis_engine_version": engine_version,
+        "telemetry_summary": _telemetry_audit_summary(result.telemetry, result.wall_seconds),
+        "result": {name: getattr(result, name) for name in _RAW_SNAPSHOT_RESULT_FIELDS},
+    }
+
+
+def deserialize_fast_analysis_result(payload: dict) -> FastAnalysisResult:
+    """Inverse of serialize_fast_analysis_result. Reconstructs a
+    FastAnalysisResult from a persisted snapshot envelope.
+
+    Fails closed (raises RawSnapshotSchemaError) rather than guessing when:
+      - `payload` isn't a dict, or is missing the 'schema_version'/'result'
+        envelope keys entirely (this is exactly the shape a
+        structured_intelligence or report_content_snapshot dict would have
+        -- neither carries either key -- so this also rejects those).
+      - `schema_version`'s MAJOR component doesn't match this code's
+        supported major version.
+      - `payload['result']` isn't a dict.
+
+    Tolerant, by design, of:
+      - Extra/unknown keys in `payload['result']` (a newer MINOR-version
+        payload) -- silently ignored, never raises.
+      - Missing optional keys in `payload['result']` (an older MINOR-version
+        payload) -- the dataclass's own defaults apply.
+
+    `telemetry` is intentionally NOT reconstructed (it was never stored
+    verbatim); the returned result's `telemetry` is always the dataclass
+    default (empty list)."""
+    if not isinstance(payload, dict) or "schema_version" not in payload or "result" not in payload:
+        raise RawSnapshotSchemaError(
+            "payload is not a raw Fast Analysis snapshot: missing the "
+            "'schema_version'/'result' envelope. A structured_intelligence "
+            "or report_content_snapshot dict cannot be used here -- those "
+            "use a different, downstream schema.")
+
+    version = payload.get("schema_version")
+    supported_major = FAST_ANALYSIS_RAW_SNAPSHOT_SCHEMA_VERSION.split(".")[0]
+    version_major = str(version).split(".")[0] if version else None
+    if version_major != supported_major:
+        raise RawSnapshotSchemaError(
+            f"unsupported raw snapshot schema_version {version!r}; this code "
+            f"only supports major version {supported_major}.x")
+
+    raw_result = payload.get("result")
+    if not isinstance(raw_result, dict):
+        raise RawSnapshotSchemaError("payload['result'] is missing or not an object")
+
+    known_fields = set(_RAW_SNAPSHOT_RESULT_FIELDS)
+    filtered = {k: v for k, v in raw_result.items() if k in known_fields}
+    return FastAnalysisResult(**filtered)
 
 
 def run_fast_analysis_corpus(documents: list[tuple[str, str]], api_key: str,
