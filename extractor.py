@@ -1125,7 +1125,7 @@ def summarize_submission_package(files: list[dict]) -> dict:
 
 
 _REPORT_MANIFEST_FIELDS = (
-    "file_id", "filename", "package_path", "file_type", "role", "included",
+    "file_id", "content_hash", "filename", "package_path", "file_type", "role", "included",
     "lifecycle_status", "duplicate_of_file_id", "char_count", "unusable_reason",
 )
 
@@ -1139,7 +1139,17 @@ def build_report_manifest(files: list[dict]) -> list[dict]:
     package carries for analysis -- the report only ever needs to know
     WHAT was in the package and its status, never the extracted content
     itself (that already went into the audit result's own findings/
-    coverage, which the report renders separately)."""
+    coverage, which the report renders separately).
+
+    `content_hash` (PI-1.2) is safe metadata -- a SHA-256 digest, never
+    proposal text or extraction content -- and is included so the
+    persisted proposal_package_snapshots.manifest (built from this same
+    projection, see proposal_intelligence.py) can expose the exact
+    physical content identity that contributed to its own package_digest
+    (proposal_intelligence.compute_package_digest reads content_hash per
+    file); without it, a historical audit could show a file's presence
+    and role but not the content identity that made it part of this
+    specific package_digest."""
     return [{k: f.get(k) for k in _REPORT_MANIFEST_FIELDS} for f in files]
 
 

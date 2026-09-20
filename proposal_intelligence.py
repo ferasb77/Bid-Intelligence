@@ -98,12 +98,32 @@ _PACKAGE_IDENTITY_FIELDS = ("file_id", "content_hash", "included", "role")
 
 def compute_package_digest(files: list[dict]) -> str:
     """Deterministic sha256 over every file's (file_id, content_hash,
-    included, role) tuple, sorted by file_id for input-order independence.
-    Changing a file's bytes (-> new content_hash -> new file_id, since
-    file_id is itself derived from content_hash), its inclusion state, or
-    its role always changes the digest. Never includes raw extracted text
-    -- the digest represents identity, not content, exactly like every
-    other content-hash identity already established in this codebase
+    included, role) tuple, sorted by file_id.
+
+    PI-1.2: this sort makes the digest computation itself order-INSENSITIVE
+    (feeding the same files in a different sequence produces the same
+    sorted rows and the same digest), but that is not the same as the
+    underlying identity being upload/discovery-order independent. file_id
+    is derived from (occurrence_index, package_path, content_hash) in
+    extractor.build_alignment_submission_package -- so re-uploading the
+    exact same physical bytes in a different order legitimately produces
+    different file_ids and therefore a different digest. This is
+    intentional, not a defect: package ordering is analysis-relevant to
+    analyze_proposal_alignment_package's chunk-budget allocation
+    (analyst.py's _allocate_package_chunk_budget assigns package-wide
+    chunk index/total by package order, and its ceiling-exceeded and
+    largest-remainder-distribution branches can select different files/
+    chunks depending on package order, including via file_id tie-breaks).
+    Since ordering can change what the analyzer actually saw, ordering is
+    deliberately part of Proposal Intelligence's input identity -- two
+    uploads of the same bytes in a different order are treated as
+    genuinely different package identities, matching that they can
+    genuinely produce different analysis. Changing a file's bytes (-> new
+    content_hash -> new file_id, since file_id is itself derived from
+    content_hash), its inclusion state, or its role always changes the
+    digest. Never includes raw extracted text -- the digest represents
+    identity, not content, exactly like every other content-hash identity
+    already established in this codebase
     (extractor.build_alignment_submission_package's own file_id/
     content_hash).
 

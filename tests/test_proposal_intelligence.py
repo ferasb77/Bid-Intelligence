@@ -58,6 +58,50 @@ class TestPackageDigestDeterminism:
         assert len(digest) == 64  # sha256 hex
 
 
+class TestPackageDigestOrderSemantics:
+    """PI-1.2: compute_package_digest's own sort-by-file_id makes the
+    digest COMPUTATION insensitive to the order files are passed in this
+    call (test_digest_is_independent_of_input_order above), but file_id
+    itself is occurrence-derived upstream in
+    extractor.build_alignment_submission_package. Package upload/
+    discovery order is analysis-relevant (analyst.py's
+    _allocate_package_chunk_budget assigns chunk index/total by package
+    order and its ceiling-exceeded/largest-remainder branches can pick
+    different files depending on order, including via file_id tie-
+    breaks), so a real reorder that produces different file_ids must
+    produce a different package identity -- these tests exercise that
+    contract at this module's boundary (the file_id values themselves,
+    as an upstream re-upload in a different order would produce them)."""
+
+    def test_same_file_ids_reordered_at_this_boundary_give_same_digest(self):
+        """Restating test_digest_is_independent_of_input_order's contract
+        explicitly under the PI-1.2 order-semantics decision: GIVEN the
+        same file_id values (i.e. the same occurrence positions), the
+        order they're passed to compute_package_digest itself doesn't
+        matter -- the sort inside the function is what does the work."""
+        a = _file("occ0", "hash-a")
+        b = _file("occ1", "hash-b")
+        assert pi.compute_package_digest([a, b]) == pi.compute_package_digest([b, a])
+
+    def test_different_occurrence_derived_file_ids_give_different_digest(self):
+        """A real re-upload of the identical bytes in a different order
+        changes file_id (occurrence_index is part of its derivation), so
+        even though content_hash is unchanged, the resulting package
+        identity must differ -- this is the intentional consequence of
+        Option A (order is analysis-relevant)."""
+        first_upload_order = [
+            _file("occ0-fileA", "hash-a"),
+            _file("occ1-fileB", "hash-b"),
+        ]
+        second_upload_order_same_bytes = [
+            _file("occ0-fileB", "hash-b"),
+            _file("occ1-fileA", "hash-a"),
+        ]
+        assert pi.compute_package_digest(first_upload_order) != pi.compute_package_digest(
+            second_upload_order_same_bytes
+        )
+
+
 class TestStaleness:
 
     def _run(self, procurement_revision=3, snapshot_id=10, analysis_version=None):

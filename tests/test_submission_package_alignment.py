@@ -314,10 +314,20 @@ class TestReportSnapshotIsLightweight(unittest.TestCase):
         pkg = extractor.build_alignment_submission_package([("A.txt", b"content")])
         manifest = extractor.build_report_manifest(pkg["files"])
         record = manifest[0]
-        for field in ("file_id", "filename", "package_path", "file_type", "role",
+        for field in ("file_id", "content_hash", "filename", "package_path", "file_type", "role",
                       "included", "lifecycle_status", "duplicate_of_file_id",
                       "char_count", "unusable_reason"):
             self.assertIn(field, record)
+
+    def test_report_manifest_content_hash_matches_live_package(self):
+        """PI-1.2: the persisted manifest's content_hash must be the SAME
+        identity value proposal_intelligence.compute_package_digest()
+        reads -- not merely present, but the real SHA-256 the live
+        package already carries."""
+        pkg = extractor.build_alignment_submission_package([("A.txt", b"content")])
+        manifest = extractor.build_report_manifest(pkg["files"])
+        self.assertEqual(manifest[0]["content_hash"], pkg["files"][0]["content_hash"])
+        self.assertEqual(len(manifest[0]["content_hash"]), 64)  # sha256 hex
 
     def test_report_manifest_is_dramatically_smaller_than_the_live_package(self):
         big_text = ("Long methodology narrative sentence. " * 20000).encode()
