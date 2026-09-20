@@ -72,7 +72,38 @@ Where to look, not what everything means. Read
 **CHECK / Proposal Alignment**
 - `pages/stage_check.py`.
 - `analyst.py`'s `analyze_proposal_alignment` / `analyze_proposal_alignment_package`
-  / `submission_readiness_check`.
+  / `submission_readiness_check` — the analytical engine itself, unchanged
+  by Proposal Intelligence (no new LLM call, no prompt/schema/scoring
+  change).
+
+**Proposal Intelligence (PI-1)** — durable persistence for CHECK's
+Proposal Alignment output
+- `proposal_intelligence.py` — the pure, deterministic adapter: package
+  digest (`compute_package_digest`), the current-alignment-result → PI
+  adapter (`adapt_requirement_assessments`/`adapt_findings`/
+  `build_run_payload`/`build_failed_run_payload`), the inverse adapter for
+  CHECK reload (`reconstruct_legacy_align_result`), and staleness helpers
+  (`staleness_reasons`/`is_current`). `PROPOSAL_INTELLIGENCE_ANALYSIS_VERSION`
+  is the PI analytical-contract version, not the model name.
+- `migrations/015_proposal_intelligence.sql` — `proposal_package_snapshots`,
+  `proposal_intelligence_runs`, `proposal_requirement_assessments`,
+  `proposal_intelligence_findings` (written, **not applied** — see
+  SYSTEM_STATE.md). RLS: authenticated SELECT only (transitive
+  `can_access_bid`), no authenticated INSERT/UPDATE/DELETE policy —
+  writes are service-role only, reached exclusively through
+  `tenancy.run_proposal_intelligence_for_organization`.
+- `database.py`'s `create_proposal_package_snapshot`/
+  `create_proposal_intelligence_run`/`create_proposal_requirement_assessments`/
+  `create_proposal_intelligence_findings` (privileged, insert-only — no
+  update/delete function exists on purpose) and their `get_*` counterparts.
+- `tenancy.py`'s `run_proposal_intelligence_for_organization` (the
+  authorization boundary + orchestration: `require_bid_access` first, then
+  package-snapshot identity, the existing analyzer, the PI-1 adapter, then
+  persistence) and the `get_*_authenticated` read functions CHECK uses on
+  page reload.
+- Tests: `tests/test_proposal_intelligence.py` (adapter),
+  `tests/test_proposal_intelligence_tenancy.py` (authorization boundary),
+  `tests/test_proposal_intelligence_database.py` (persistence helpers).
 
 **Tenancy / RLS / auth boundary**
 - `tenancy.py` — every `*_for_organization` (service-role, ownership-checked)

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 import auth_client
 import database as db
@@ -1208,3 +1209,120 @@ def upsert_coach_authenticated(access_token: str, organization_id: str, data: di
 
 def delete_coach_authenticated(access_token: str, coach_id: int) -> None:
     auth_client.get_authenticated_client(access_token).table("coaches").delete().eq("id", coach_id).execute()
+
+
+# ── Proposal Intelligence (PI-1, migrations/015_proposal_intelligence.sql) ────
+# Authorization boundary in front of the EXISTING Proposal Alignment
+# Analyzer -- adds NO new LLM call, does not touch analyst.py's prompts,
+# schema, scoring, chunking, or recovery behavior. Writes are privileged
+# (service-role, via database.py) and only ever reached through
+# run_proposal_intelligence_for_organization() below -- never exposed
+# directly to UI code. Reads are split the usual way: an
+# authenticated/RLS-scoped path for pages/stage_check.py, and this same
+# privileged path also available for service-side use.
+
+def run_proposal_intelligence_for_organization(
+    bid_id: int, organization_id: str, package_files: list[dict],
+    requirements: list[dict], rfp_text: str, bid_info: dict,
+    user_id: str | None = None,
+) -> dict:
+    """Establishes/reuses the proposal package snapshot identity, runs the
+    existing analyst.analyze_proposal_alignment_package() unchanged, adapts
+    its result into durable Proposal Intelligence rows
+    (proposal_intelligence.py's adapter), and persists all of it. Returns
+    {"run", "assessments", "findings", "alignment_result"}.
+
+    `package_files` must be the caller's CURRENT, already-filtered
+    (included-only) list in analyze_proposal_alignment_package's own
+    expected shape -- extractor.build_alignment_submission_package's file
+    record already carries every field proposal_intelligence.py's package
+    digest needs (file_id, content_hash, included, role).
+
+    On a genuine provider/model exception from the analyzer, persists a
+    FAILED run (the package snapshot identity already exists by that
+    point, so this satisfies instruction 13's "only where sufficient run
+    identity already exists") with no fabricated findings, then re-raises
+    -- callers must not treat a FAILED run as a silently-swallowed error."""
+    require_bid_access(bid_id, organization_id)
+    import analyst
+    import extractor
+    import proposal_intelligence as pi
+
+    procurement_state = db.get_bid_procurement_state(bid_id)
+
+    digest = pi.compute_package_digest(package_files)
+    snapshot = db.get_proposal_package_snapshot_by_digest(bid_id, digest)
+    if snapshot is None:
+        manifest = extractor.build_report_manifest(package_files)
+        next_version = db.get_latest_proposal_package_version(bid_id) + 1
+        snapshot = db.create_proposal_package_snapshot({
+            "bid_id": bid_id, "package_version": next_version,
+            "package_digest": digest, "manifest": manifest,
+            "created_by_user_id": user_id,
+        })
+
+    try:
+        alignment_result = analyst.analyze_proposal_alignment_package(
+            package_files=package_files, requirements=requirements,
+            rfp_text=rfp_text, bid_info=bid_info,
+        )
+    except Exception as exc:
+        failed_payload = pi.build_failed_run_payload(
+            procurement_state=procurement_state, failure_reason=f"{type(exc).__name__}: {exc}")
+        failed_payload.update({
+            "bid_id": bid_id, "proposal_package_snapshot_id": snapshot["id"],
+            "created_by_user_id": user_id,
+        })
+        db.create_proposal_intelligence_run(failed_payload)
+        raise
+
+    run_payload = pi.build_run_payload(alignment_result, procurement_state=procurement_state)
+    run_payload.update({
+        "bid_id": bid_id, "proposal_package_snapshot_id": snapshot["id"],
+        "completed_at": datetime.now(timezone.utc).isoformat(), "created_by_user_id": user_id,
+    })
+    run = db.create_proposal_intelligence_run(run_payload)
+
+    assessments = pi.adapt_requirement_assessments(alignment_result, requirements)
+    for a in assessments:
+        a["run_id"], a["bid_id"] = run["id"], bid_id
+    persisted_assessments = db.create_proposal_requirement_assessments(assessments)
+
+    findings = pi.adapt_findings(alignment_result)
+    for f in findings:
+        f["run_id"], f["bid_id"] = run["id"], bid_id
+    persisted_findings = db.create_proposal_intelligence_findings(findings)
+
+    return {"run": run, "assessments": persisted_assessments, "findings": persisted_findings,
+           "alignment_result": alignment_result}
+
+
+def get_latest_proposal_intelligence_run_authenticated(access_token: str, bid_id: int) -> dict | None:
+    client = auth_client.get_authenticated_client(access_token)
+    rows = (client.table("proposal_intelligence_runs").select("*")
+           .eq("bid_id", bid_id).order("created_at", desc=True).limit(1).execute().data or [])
+    return rows[0] if rows else None
+
+
+def get_proposal_intelligence_runs_authenticated(access_token: str, bid_id: int) -> list[dict]:
+    client = auth_client.get_authenticated_client(access_token)
+    return (client.table("proposal_intelligence_runs").select("*")
+           .eq("bid_id", bid_id).order("created_at", desc=True).execute().data or [])
+
+
+def get_proposal_requirement_assessments_authenticated(access_token: str, run_id: int) -> list[dict]:
+    client = auth_client.get_authenticated_client(access_token)
+    return (client.table("proposal_requirement_assessments").select("*")
+           .eq("run_id", run_id).execute().data or [])
+
+
+def get_proposal_intelligence_findings_authenticated(access_token: str, run_id: int) -> list[dict]:
+    client = auth_client.get_authenticated_client(access_token)
+    return (client.table("proposal_intelligence_findings").select("*")
+           .eq("run_id", run_id).execute().data or [])
+
+
+def get_proposal_package_snapshots_authenticated(access_token: str, bid_id: int) -> list[dict]:
+    client = auth_client.get_authenticated_client(access_token)
+    return (client.table("proposal_package_snapshots").select("*")
+           .eq("bid_id", bid_id).order("package_version", desc=True).execute().data or [])

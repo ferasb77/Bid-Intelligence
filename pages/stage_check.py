@@ -13,8 +13,8 @@ from datetime import date
 import streamlit as st
 import auth_session
 import tenancy
-from analyst import (analyze_proposal_alignment_package, missing_evidence,
-                     compliance_review)
+import proposal_intelligence
+from analyst import missing_evidence, compliance_review
 from extractor import build_alignment_submission_package, summarize_submission_package, build_report_manifest
 from config import api_key_configured
 from components.ui import (qual_badge, evidence_badge, status_badge, readiness_bar,
@@ -41,7 +41,7 @@ def _sanitize_filename_component(text: str) -> str:
 # result, and report metadata for Bid A must never leak into Bid B's
 # CHECK page. The full set of prefixes here is also what app.py's
 # logout handler clears (see _clear_all_user_scoped_state()).
-_ALIGN_STATE_PREFIXES = ("align_package_", "align_result_")
+_ALIGN_STATE_PREFIXES = ("align_package_", "align_result_", "align_pi_run_")
 
 
 def _align_package_key(bid_id) -> str:
@@ -54,6 +54,16 @@ def _align_result_key(bid_id) -> str:
 
 def _align_result_snapshot_key(bid_id) -> str:
     return f"align_result_package_snapshot_{bid_id}"
+
+
+def _align_pi_run_key(bid_id) -> str:
+    """Holds the PERSISTED Proposal Intelligence run dict (migrations/
+    015_proposal_intelligence.sql) once one has been created or
+    discovered on reload -- distinct from _align_result_key's legacy-
+    shaped rendering dict, so the staleness indicator always has the
+    real run row (procurement_revision/package_snapshot_id/
+    analysis_version) to compare against, not just its reconstruction."""
+    return f"align_pi_run_{bid_id}"
 
 
 _MANIFEST_STATUS_LABEL = {
@@ -294,6 +304,44 @@ def page_check(bid_id: int):
         else:
             run_disabled = True
 
+        # ── PROPOSAL INTELLIGENCE: discover a persisted run on reload ───────
+        # Session state is not the durable owner of a completed audit
+        # anymore (PI-1) -- if this browser session has no in-memory
+        # result yet (a reload, a new tab, a different device), recover
+        # the most recent PERSISTED Proposal Intelligence run instead of
+        # forcing a re-run. Never overwrites an in-memory result from a
+        # run just completed THIS session.
+        if _align_result_key(bid_id) not in st.session_state:
+            _token, _org_id = _current_access_token_and_org()
+            try:
+                latest_run = tenancy.get_latest_proposal_intelligence_run_authenticated(_token, bid_id)
+            except Exception:
+                latest_run = None
+            if latest_run and latest_run.get("status") in ("COMPLETE", "INCOMPLETE"):
+                assessments = tenancy.get_proposal_requirement_assessments_authenticated(_token, latest_run["id"])
+                findings = tenancy.get_proposal_intelligence_findings_authenticated(_token, latest_run["id"])
+                st.session_state[_align_result_key(bid_id)] = proposal_intelligence.reconstruct_legacy_align_result(
+                    latest_run, assessments, findings)
+                st.session_state[_align_pi_run_key(bid_id)] = latest_run
+
+        pi_run = st.session_state.get(_align_pi_run_key(bid_id))
+        if pi_run:
+            stale_reasons = proposal_intelligence.staleness_reasons(
+                pi_run, current_procurement_revision=procurement_state.get("procurement_revision"),
+                current_package_snapshot_id=pi_run.get("proposal_package_snapshot_id"))
+            # PROCUREMENT_CHANGED is the only reason detectable here without
+            # re-fingerprinting the currently-selected package (PROPOSAL_
+            # CHANGED would need a fresh digest of `package`, only available
+            # once one is uploaded this session) -- report what's known
+            # rather than silently omitting the check.
+            proc_stale = proposal_intelligence.STALE_PROCUREMENT_CHANGED in stale_reasons
+            badge_color = "#E67E22" if proc_stale else "#6E6C66"
+            badge_text = "⚠️ Procurement basis changed since this audit" if proc_stale else "✅ Current procurement basis"
+            st.markdown(
+                f'<div style="font-size:.74rem;color:{badge_color};margin-bottom:.4rem">'
+                f'Proposal Intelligence run #{pi_run["id"]} · {pi_run.get("status")} · {badge_text}</div>',
+                unsafe_allow_html=True)
+
         if st.button("🚀 Run Alignment Audit", use_container_width=True, type="primary", key="btn_run_align", disabled=run_disabled):
             if not (api_key_configured() or st.session_state.get("anthropic_api_key")):
                 st.error("Configure Anthropic API key.")
@@ -307,18 +355,34 @@ def page_check(bid_id: int):
                         "file_id": f["file_id"], "filename": f["filename"], "package_path": f["package_path"],
                         "file_type": f["file_type"], "text": f["text"], "analyzable": f["analyzable"],
                         "unusable_reason": f["unusable_reason"], "extraction_meta": f["extraction_meta"],
+                        # Analysis-input identity fields (not read by the
+                        # analyzer itself) -- proposal_intelligence.py's
+                        # compute_package_digest() needs these to establish
+                        # the exact proposal package snapshot this run is
+                        # tied to.
+                        "content_hash": f["content_hash"], "included": f.get("included"), "role": f.get("role"),
                     }
                     for f in included_files
                 ]
                 with st.spinner(f"Analyzing {len(included_files)} included file(s) in traceable sections against procurement intelligence… 30–90s"):
                     try:
                         procurement_context = _build_procurement_context(brief_row, reqs)
-                        align_res = analyze_proposal_alignment_package(
-                            package_files=package_files_for_analysis,
-                            requirements=reqs,
-                            rfp_text=procurement_context,
-                            bid_info=bid
+                        _token, _org_id = _current_access_token_and_org()
+                        session = auth_session.current_session()
+                        # Authorization boundary + persistence (PI-1) in
+                        # front of the EXISTING, unchanged Proposal
+                        # Alignment Analyzer -- see
+                        # tenancy.run_proposal_intelligence_for_organization.
+                        # Establishes/reuses the proposal package snapshot
+                        # identity, runs analyze_proposal_alignment_package
+                        # exactly as before, and persists the durable
+                        # Proposal Intelligence run/assessments/findings.
+                        pi_result = tenancy.run_proposal_intelligence_for_organization(
+                            bid_id, _org_id, package_files=package_files_for_analysis,
+                            requirements=reqs, rfp_text=procurement_context, bid_info=bid,
+                            user_id=session.get("user_id"),
                         )
+                        align_res = pi_result["alignment_result"]
                         # Stamped at analysis time (migration 010) so the
                         # exported PDF can later compare "what revision was
                         # this audit run against" to whatever the bid's
@@ -327,6 +391,7 @@ def page_check(bid_id: int):
                         # current compliance matrix by construction.
                         align_res["based_on_procurement_revision"] = procurement_state.get("procurement_revision")
                         st.session_state[_align_result_key(bid_id)] = align_res
+                        st.session_state[_align_pi_run_key(bid_id)] = pi_result["run"]
                         # Frozen, SLIM snapshot of the package manifest AS IT
                         # WAS AUDITED -- the manifest shown in the exported
                         # PDF (and any re-download without re-running) must
@@ -344,6 +409,8 @@ def page_check(bid_id: int):
                         else:
                             st.warning(align_res.get("message", "Alignment audit incomplete — no reliable score available"))
                         st.rerun()
+                    except tenancy.AccessDeniedError as e:
+                        st.error(f"Not authorized: {e}")
                     except Exception as e:
                         st.error(f"Audit failed: {e}")
 

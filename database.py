@@ -1171,3 +1171,115 @@ def get_model_usage_events(*, bid_id: int | None = None, analysis_run_id: int | 
         q = q.lte("created_at", until)
     return _rows(q.order("created_at", desc=True).limit(limit).execute())
 
+
+# ── Proposal Intelligence (migrations/015_proposal_intelligence.sql) ──────────
+# PI-1, Proposal Intelligence. Every write here is privileged (service-role)
+# and must only ever be reached through tenancy.py's authorization-boundary
+# wrappers (require_bid_access() first) -- see proposal_intelligence.py for
+# the adapter that builds the dicts these functions persist verbatim.
+# Immutable/append-only: no update_*/delete_* function exists for any of
+# the four tables on purpose (mirrors section_reviews/model_usage_events).
+
+_PROPOSAL_PACKAGE_SNAPSHOT_KEYS = [
+    "bid_id", "package_version", "package_digest", "manifest", "created_by_user_id",
+]
+_PROPOSAL_INTELLIGENCE_RUN_KEYS = [
+    "bid_id", "proposal_package_snapshot_id", "based_on_procurement_revision",
+    "based_on_procurement_truth_status", "analysis_version", "status", "failure_reason",
+    "coverage_metadata", "legacy_result", "completed_at", "created_by_user_id",
+]
+_PROPOSAL_REQUIREMENT_ASSESSMENT_KEYS = [
+    "run_id", "bid_id", "requirement_id", "req_id", "category", "description",
+    "assessment_status", "confidence", "explanation", "proposal_source_refs",
+    "procurement_source_refs", "evidence_strength",
+]
+_PROPOSAL_INTELLIGENCE_FINDING_KEYS = [
+    "run_id", "bid_id", "finding_type", "severity", "title", "message", "explanation",
+    "related_requirement_id", "related_req_id", "proposal_source_refs",
+    "procurement_source_refs", "payload",
+]
+
+
+def get_proposal_package_snapshot_by_digest(bid_id: int, package_digest: str) -> dict | None:
+    """Idempotent-reuse lookup (instruction 6: reuse only when the digest
+    is exactly identical) -- callers check this BEFORE inserting a new
+    snapshot."""
+    return _one(get_client().table("proposal_package_snapshots").select("*")
+               .eq("bid_id", bid_id).eq("package_digest", package_digest).execute())
+
+
+def get_latest_proposal_package_version(bid_id: int) -> int:
+    """0 if this bid has no snapshot yet -- callers compute the next
+    version as this + 1."""
+    row = _one(get_client().table("proposal_package_snapshots").select("package_version")
+              .eq("bid_id", bid_id).order("package_version", desc=True).limit(1).execute())
+    return row["package_version"] if row else 0
+
+
+def create_proposal_package_snapshot(data: dict) -> dict | None:
+    """Insert-only. Callers (tenancy.py) must call
+    get_proposal_package_snapshot_by_digest() first and reuse an existing
+    row rather than call this a second time for the same (bid_id,
+    package_digest) -- the migration's own unique constraint is the final
+    backstop, not the primary mechanism."""
+    clean = {k: data.get(k) for k in _PROPOSAL_PACKAGE_SNAPSHOT_KEYS}
+    return _one(get_client().table("proposal_package_snapshots").insert(clean).execute())
+
+
+def get_proposal_package_snapshots(bid_id: int) -> list[dict]:
+    """Full history, most recent version first."""
+    return _rows(get_client().table("proposal_package_snapshots").select("*")
+                .eq("bid_id", bid_id).order("package_version", desc=True).execute())
+
+
+def create_proposal_intelligence_run(data: dict) -> dict | None:
+    """Insert-only -- proposal_intelligence_runs rows are immutable
+    (instruction 6: append-only history); no update_*/delete_* function
+    exists on purpose."""
+    clean = {k: data.get(k) for k in _PROPOSAL_INTELLIGENCE_RUN_KEYS}
+    return _one(get_client().table("proposal_intelligence_runs").insert(clean).execute())
+
+
+def get_proposal_intelligence_runs(bid_id: int, *, limit: int = 50) -> list[dict]:
+    """Full run history for one bid, most recent first."""
+    return _rows(get_client().table("proposal_intelligence_runs").select("*")
+                .eq("bid_id", bid_id).order("created_at", desc=True).limit(limit).execute())
+
+
+def get_latest_proposal_intelligence_run(bid_id: int) -> dict | None:
+    row = get_proposal_intelligence_runs(bid_id, limit=1)
+    return row[0] if row else None
+
+
+def get_proposal_intelligence_run(run_id: int) -> dict | None:
+    return _one(get_client().table("proposal_intelligence_runs").select("*")
+               .eq("id", run_id).execute())
+
+
+def create_proposal_requirement_assessments(rows: list[dict]) -> list[dict]:
+    """Bulk insert-only. Returns [] for an empty input rather than issuing
+    a no-op insert call."""
+    if not rows:
+        return []
+    clean = [{k: row.get(k) for k in _PROPOSAL_REQUIREMENT_ASSESSMENT_KEYS} for row in rows]
+    return _rows(get_client().table("proposal_requirement_assessments").insert(clean).execute())
+
+
+def get_proposal_requirement_assessments(run_id: int) -> list[dict]:
+    return _rows(get_client().table("proposal_requirement_assessments").select("*")
+                .eq("run_id", run_id).execute())
+
+
+def create_proposal_intelligence_findings(rows: list[dict]) -> list[dict]:
+    """Bulk insert-only. Returns [] for an empty input rather than issuing
+    a no-op insert call."""
+    if not rows:
+        return []
+    clean = [{k: row.get(k) for k in _PROPOSAL_INTELLIGENCE_FINDING_KEYS} for row in rows]
+    return _rows(get_client().table("proposal_intelligence_findings").insert(clean).execute())
+
+
+def get_proposal_intelligence_findings(run_id: int) -> list[dict]:
+    return _rows(get_client().table("proposal_intelligence_findings").select("*")
+                .eq("run_id", run_id).execute())
+

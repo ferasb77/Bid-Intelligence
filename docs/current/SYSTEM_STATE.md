@@ -39,6 +39,16 @@ needs that history).
   distinct from the later, holistic CHECK-stage audit below.
 - **CHECK / Proposal Alignment** (`analyst.py`'s `analyze_proposal_alignment*`
   family) — the holistic, whole-package submission-readiness audit.
+- **Proposal Intelligence** (PI-1, `proposal_intelligence.py` +
+  `migrations/015_proposal_intelligence.sql`, **not applied** — see below)
+  — the durable, immutable, provenance-aware persistence layer for CHECK's
+  Proposal Alignment output: what the proposal actually says,
+  demonstrates, covers, contradicts, fails to evidence, or omits relative
+  to the procurement. Advisory intelligence, never canonical procurement
+  truth. Adds NO new LLM call — a pure adapter over the existing
+  `analyze_proposal_alignment_package()` result, persisted via
+  `tenancy.run_proposal_intelligence_for_organization()`. See
+  [NAVIGATION.md](NAVIGATION.md) for the full file map.
 
 ## Architectural fact-type separation
 
@@ -49,27 +59,38 @@ procurement truth** (`requirements`, governed once a bid is `governed`) →
 to fact). See `AGENT.md` / `MANIFESTO.md` for the full doctrine if a task
 requires it.
 
-## Current development freeze
+## Current development state
 
-A **context/token optimization program is active** on this branch
-(`feature/evidence-explainability`). Do not start new BI product features,
-Section Analyzer refinement, Organizational Memory, or Fast Analysis
-runtime changes unless a task explicitly lifts the freeze. This file itself
-was created under that program (Phase 2).
+The **BI Token/Context Optimization Program is complete for now** (Phases
+2–5E.1) — its development freeze on BI product features no longer applies.
+Live A/B experiments identified by that program (density-aware chunking,
+the compact provenance wire format) remain **not activated**, pending paid
+credits; do not activate them without a task explicitly requesting it.
+
+**Proposal Intelligence development is explicitly active** (PI-1
+established the durable domain foundation on this branch). PI-2+ work
+should build on it, not re-litigate PI-1's schema/adapter without cause.
+
+Absent an explicit task instruction otherwise, still do not: apply
+migration 013 or 015, activate the compact-wire prototype, change chunk
+sizes/max_tokens/model routing/caching, or merge `main`/deploy.
 
 ## Migrations known in this repository (files, not live-database state)
 
-Highest migration file present: **013** (`013_section_analyzer.sql`).
-Files 001–013 exist in `migrations/`. This describes what's **written in
+Highest migration file present: **015** (`015_proposal_intelligence.sql`).
+Files 001–015 exist in `migrations/`. This describes what's **written in
 the repo**, not what's applied to any Supabase project — see the note
 below.
 
 > **LAST VERIFIED EXTERNAL STATE** (as of the audit that wrote this file):
 > migration 012 was applied to the project's Supabase database by the repo
-> owner. Migration 013 was written but explicitly NOT applied. Treat any
-> "is migration N live" question as requiring a fresh check — `git log`
-> and this file are not a substitute for asking or checking the live
-> database when a task depends on it.
+> owner. Migration 013 (Section Analyzer) was written but explicitly NOT
+> applied — still true. Migration 014 (`model_usage_events`, telemetry)
+> was found already live during Phase 5's commissioning work. Migration
+> 015 (Proposal Intelligence, PI-1) was written this phase and explicitly
+> NOT applied. Treat any "is migration N live" question as requiring a
+> fresh check — `git log` and this file are not a substitute for asking or
+> checking the live database when a task depends on it.
 
 ## Where NOT to look first
 
