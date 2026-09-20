@@ -1,9 +1,0 @@
-{
-  "llm_calls": 0,
-  "phase1_run_id": "phase1-boc-2026-026-corrected16-20260912T080929Z-9fd9e5",
-  "phase2_run_id": "phase2-boc-2026-026-stageb-canonterm-fix-20260912T142551Z-34a031",
-  "phase3_run_id": "phase3-boc-2026-026-stagec-refresh-20260912T144353Z-3194c8",
-  "stage_a_rerun": false,
-  "stage_b_regenerated_here": false,
-  "timestamp_utc": "2026-09-12T14:43:56.142768+00:00"
-}

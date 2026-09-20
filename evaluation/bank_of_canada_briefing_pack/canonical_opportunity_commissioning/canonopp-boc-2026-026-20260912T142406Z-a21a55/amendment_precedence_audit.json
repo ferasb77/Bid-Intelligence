@@ -1,9 +1,0 @@
-{
-  "document_role_used_in_field_resolution": false,
-  "explicit_supersession_mechanism_present": true,
-  "explicit_supersession_requires": "raw.supersession.basis in SUPERSESSION_BASES AND verified provenance AND matching old/new value text -- never filename/doc-role inference",
-  "finding": "No filename-based, doc-role-based, or 'latest document wins' precedence exists anywhere in canonical_opportunity.py. The only mechanism that lets one observation override another is _apply_supersession(), gated exclusively on an explicit Stage-A-asserted supersession statement with verified provenance and an exact old-value/new-value text match -- never on whether a document is an amendment/revision by name or role.",
-  "keyword_scan_in_canonical_opportunity_py": [
-    "REVISED"
-  ]
-}
