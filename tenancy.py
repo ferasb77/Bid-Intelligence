@@ -1302,7 +1302,7 @@ def run_proposal_intelligence_for_organization(
         "created_by_user_id": user_id,
     })
     assessments = pi.adapt_requirement_assessments(alignment_result, requirements)
-    findings = pi.adapt_findings(alignment_result)
+    findings = pi.adapt_findings(alignment_result, requirements)
     run = db.create_proposal_intelligence_bundle(run_payload, assessments, findings)
 
     return {"run": run, "alignment_result": alignment_result}

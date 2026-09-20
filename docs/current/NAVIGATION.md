@@ -70,14 +70,29 @@ Where to look, not what everything means. Read
   `*_authenticated` mapping/history CRUD functions.
 
 **CHECK / Proposal Alignment**
-- `pages/stage_check.py`.
+- `pages/stage_check.py` — including the PI-2A "Proposal Intelligence"
+  surface (Evidence Quality / Commitments & Commercial Exposure / Typed
+  Findings), rendered from the same persisted PI result CHECK already
+  reloads, never a new model call.
 - `analyst.py`'s `analyze_proposal_alignment` / `analyze_proposal_alignment_package`
-  / `submission_readiness_check` — the analytical engine itself, unchanged
-  by Proposal Intelligence (no new LLM call, no prompt/schema/scoring
-  change).
+  / `submission_readiness_check` — the analytical engine itself. Core
+  scoring/coverage-classification/mandatory-failure logic is unchanged by
+  Proposal Intelligence; PI-2A additively enriched the EXISTING per-chunk
+  request/response schema only (no new LLM call, no chunk-count/topology
+  change) — see `_align_chunk_prompt`, `_build_proposal_source_ref`,
+  `_attach_chunk_provenance`, `_aggregate_proposal_observations`.
 
-**Proposal Intelligence (PI-1, hardened in PI-1.1)** — durable persistence
-for CHECK's Proposal Alignment output
+**Proposal Intelligence (PI-1, hardened in PI-1.1/PI-1.2, deepened in
+PI-2A)** — durable persistence for CHECK's Proposal Alignment output.
+PI-2A added structured proposal/procurement provenance (`ProposalSourceRef`
+built deterministically from chunk metadata, never the model), an
+evidence-strength rating, locally-safe typed findings, and
+`proposal_observations` (DELIVERY_COMMITMENT/COMMERCIAL_EXPOSURE) — all as
+additive fields on the EXISTING per-chunk analyzer call/schema (zero new
+model calls). `analysis_version` is `proposal-intelligence-v2`.
+PI-2B (cross-document contradiction, package-wide unsupported-claim
+adjudication, Response Guideline coverage, a proposal quality score, win
+probability, proposal rewriting) is explicitly deferred, not started.
 - `proposal_intelligence.py` — the pure, deterministic adapter: package
   digest over the FULL submitted package, included and excluded alike
   (`compute_package_digest`), the current-alignment-result → PI adapter
@@ -94,7 +109,10 @@ for CHECK's Proposal Alignment output
   `20260920205721 proposal_intelligence`; a second ledger-only
   `20260920211025 proposal_intelligence_commissioning` records the
   disposable commissioning assertions and made no lasting schema/data
-  changes), each child table tied
+  changes; do not reapply or alter — PI-2A populates columns this schema
+  already had (proposal_source_refs/procurement_source_refs/
+  evidence_strength/finding_type/payload), no migration 016 needed),
+  each child table tied
   to its parent by a COMPOSITE foreign key against `(id, bid_id)` (never a
   same-table `bid_id` column trusted independently — a run/assessment/
   finding cannot cross-link to another bid's parent row). Two SQL
@@ -119,6 +137,9 @@ for CHECK's Proposal Alignment output
   (what CHECK reload uses) and `get_proposal_package_snapshot_authenticated`
   (restores the historical manifest on reload).
 - Tests: `tests/test_proposal_intelligence.py` (adapter),
+  `tests/test_proposal_intelligence_pi2a.py` (PI-2A: structured provenance,
+  evidence strength, procurement provenance, typed findings, observations,
+  incomplete-coverage fail-closed behavior, versioning, legacy reload),
   `tests/test_proposal_intelligence_tenancy.py` (authorization boundary +
   atomic persistence), `tests/test_proposal_intelligence_database.py`
   (RPC-boundary persistence + migration DDL-intent checks).

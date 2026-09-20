@@ -38,7 +38,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-PROPOSAL_INTELLIGENCE_ANALYSIS_VERSION = "proposal-intelligence-v1"
+PROPOSAL_INTELLIGENCE_ANALYSIS_VERSION = "proposal-intelligence-v2"
 
 # ---------------------------------------------------------------------------
 # Section 3: finding taxonomy -- bounded, sufficient to normalize CURRENT
@@ -81,6 +81,31 @@ _NO_EVIDENCE_NOTES = (
     "No supporting evidence found anywhere in the analyzed proposal.",
     "Proposal coverage is incomplete -- absence cannot be confirmed.",
 )
+
+# ---------------------------------------------------------------------------
+# PI-2A: closed vocabularies for the richer analyzer output. Any value
+# outside these sets is treated as absent (fail-closed), never guessed.
+# ---------------------------------------------------------------------------
+EVIDENCE_STRENGTH_VALUES = ("STRONG", "MODERATE", "WEAK")
+
+# The chunk-level deficiency vocabulary a single chunk can safely
+# establish (analyst.py's _CHUNK_DEFICIENCY_TYPES) -- maps 1:1 onto this
+# module's existing bounded FINDING_TYPES taxonomy (already had
+# WEAK_EVIDENCE/UNSUPPORTED_CLAIM/CONTRADICTION/INTERNAL_INCONSISTENCY/
+# OTHER from PI-1's forward-looking taxonomy design; PI-2A is the first
+# phase to actually populate them from analyzer output).
+_CHUNK_DEFICIENCY_TYPE_MAP = {
+    "WEAK_EVIDENCE": FINDING_TYPE_WEAK_EVIDENCE,
+    "UNSUPPORTED_CLAIM": FINDING_TYPE_UNSUPPORTED_CLAIM,
+    "CONTRADICTION": FINDING_TYPE_CONTRADICTION,
+    "INTERNAL_INCONSISTENCY": FINDING_TYPE_INTERNAL_INCONSISTENCY,
+    "OTHER": FINDING_TYPE_OTHER,
+}
+
+_OBSERVATION_TYPE_TO_FINDING_TYPE = {
+    "DELIVERY_COMMITMENT": FINDING_TYPE_DELIVERY_COMMITMENT,
+    "COMMERCIAL_EXPOSURE": FINDING_TYPE_COMMERCIAL_EXPOSURE,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -228,14 +253,63 @@ def _requirement_id_lookup(requirements: list[dict]) -> dict[str, int]:
     return lookup
 
 
+def _requirement_source_refs_lookup(requirements: list[dict]) -> dict[str, list]:
+    """req_id -> that requirement's own canonical `source_refs` (PI-2A
+    step 8) -- the procurement-side provenance Fast Analysis extraction
+    already attaches to a requirement. Exact req_id identity only, never
+    fuzzy matching. A requirement with no source_refs (or none at all)
+    yields []; never synthesized from description text."""
+    lookup = {}
+    for r in requirements:
+        req_id = r.get("req_id")
+        if not req_id:
+            continue
+        refs = r.get("source_refs")
+        lookup[req_id] = list(refs) if isinstance(refs, list) else []
+    return lookup
+
+
+def _proposal_source_refs_for_assessment(row: dict) -> list[dict]:
+    """PI-2A step 13A: prefer the richer, structured `proposal_source_refs`
+    analyst.py's aggregation now attaches directly to a coverage row (a
+    list of ProposalSourceRef dicts already carrying file_id/content_hash/
+    section/char coordinates + excerpt where known). Falls back to PI-1's
+    free-text evidence_location/notes reconstruction for a legacy-shaped
+    (PI-1) analyzer result that doesn't carry the new field at all -- this
+    keeps old-shaped input from crashing (backward compatibility)."""
+    refs = row.get("proposal_source_refs")
+    if isinstance(refs, list) and refs:
+        return refs
+    if isinstance(refs, list):
+        # Key present but genuinely empty (e.g. Not Addressed/Cannot
+        # Assess) -- an empty structured list, not a legacy-shaped input;
+        # do not fall back to the free-text reconstruction, which would
+        # only ever be [] anyway for those rows.
+        return []
+    return _proposal_source_refs_from_coverage_row(row)
+
+
+def _valid_evidence_strength(value) -> str | None:
+    return value if value in EVIDENCE_STRENGTH_VALUES else None
+
+
 def adapt_requirement_assessments(alignment_result: dict, requirements: list[dict]) -> list[dict]:
     """analyst.analyze_proposal_alignment_package()'s `requirement_coverage`
     list -> one proposal_requirement_assessments row per item, using
     analyst.py's EXISTING coverage/confidence vocabulary unchanged (see
     ASSESSMENT_STATUSES). requirement_id is populated only when the
     caller's requirements list actually carries a numeric id for that
-    req_id -- otherwise left None, never guessed."""
+    req_id -- otherwise left None, never guessed.
+
+    PI-2A: proposal_source_refs now prefers the analyzer's structured,
+    multi-evidence ProposalSourceRef list (falling back to PI-1's
+    free-text reconstruction for legacy-shaped input); procurement_source_
+    refs is resolved from the SAME canonical requirement's own existing
+    `source_refs` (never synthesized); evidence_strength comes from the
+    winning coverage row's own field, fail-closed to None when missing or
+    not one of STRONG/MODERATE/WEAK."""
     id_lookup = _requirement_id_lookup(requirements)
+    procurement_refs_lookup = _requirement_source_refs_lookup(requirements)
     rows = []
     for row in alignment_result.get("requirement_coverage") or []:
         req_id = row.get("req_id")
@@ -249,17 +323,14 @@ def adapt_requirement_assessments(alignment_result: dict, requirements: list[dic
             "explanation": None,  # analyzer does not currently produce a
                                   # per-requirement narrative distinct from
                                   # notes/evidence -- never fabricated here
-            "proposal_source_refs": _proposal_source_refs_from_coverage_row(row),
-            "procurement_source_refs": [],  # PI-2 gap: analyzer does not
-                                            # currently return which
-                                            # procurement evidence/source
-                                            # produced the requirement text
-            "evidence_strength": None,  # not yet supported by the analyzer
+            "proposal_source_refs": _proposal_source_refs_for_assessment(row),
+            "procurement_source_refs": procurement_refs_lookup.get(req_id, []),
+            "evidence_strength": _valid_evidence_strength(row.get("evidence_strength")),
         })
     return rows
 
 
-def adapt_findings(alignment_result: dict) -> list[dict]:
+def adapt_findings(alignment_result: dict, requirements: list[dict] | None = None) -> list[dict]:
     """analyst.py's `mandatory_failures` and `findings` (plus
     coverage_metadata's `unusable_files`) -> proposal_intelligence_findings
     rows. Only classifications the CURRENT analyzer output genuinely
@@ -284,17 +355,22 @@ def adapt_findings(alignment_result: dict) -> list[dict]:
     confirmed against the live analyzer during PI-1's audit, and guessing
     a mapping would risk fabricating structure. They remain available,
     unmodified, in the run's `legacy_result` (see build_run_payload)."""
+    id_lookup = _requirement_id_lookup(requirements) if requirements else {}
+    procurement_refs_lookup_top = _requirement_source_refs_lookup(requirements) if requirements else {}
+
     rows = []
     for mf in alignment_result.get("mandatory_failures") or []:
+        mf_req_id = mf.get("req_id")
         rows.append({
             "finding_type": FINDING_TYPE_MISSING_REQUIREMENT,
             "severity": "Critical",
-            "title": f"Mandatory requirement not met: {mf.get('req_id', '')}".strip(),
+            "title": f"Mandatory requirement not met: {mf_req_id or ''}".strip(),
             "message": mf.get("reason"),
             "explanation": mf.get("description"),
-            "related_req_id": mf.get("req_id"),
+            "related_req_id": mf_req_id,
+            "related_requirement_id": id_lookup.get(mf_req_id),
             "proposal_source_refs": [],
-            "procurement_source_refs": [],
+            "procurement_source_refs": procurement_refs_lookup_top.get(mf_req_id, []) if mf_req_id else [],
             "payload": dict(mf),
         })
 
@@ -312,19 +388,59 @@ def adapt_findings(alignment_result: dict) -> list[dict]:
             "payload": dict(uf),
         })
 
+    procurement_refs_lookup = _requirement_source_refs_lookup(requirements) if requirements else {}
+
     for f in alignment_result.get("findings") or []:
+        # PI-2A step 13B: map the chunk-level deficiency_type the analyzer
+        # emitted (already validated fail-closed to OTHER-or-absent by
+        # analyst._attach_chunk_provenance) into this module's existing
+        # bounded taxonomy. Never guessed from title/message keywords --
+        # missing/unrecognized always falls back to OTHER.
+        deficiency_type = f.get("deficiency_type")
+        finding_type = _CHUNK_DEFICIENCY_TYPE_MAP.get(deficiency_type, FINDING_TYPE_OTHER)
+        req_id = f.get("req_id")
+        proposal_refs = f.get("proposal_source_refs")
+        if not isinstance(proposal_refs, list):
+            proposal_refs = (
+                [{"evidence_location": f["proposal_location"]}] if f.get("proposal_location") else []
+            )
         rows.append({
-            "finding_type": FINDING_TYPE_OTHER,
+            "finding_type": finding_type,
             "severity": f.get("severity"),
             "title": f.get("title") or "Finding",
             "message": f.get("issue"),
             "explanation": f.get("recommendation"),
-            "related_req_id": f.get("req_id"),
-            "proposal_source_refs": (
-                [{"evidence_location": f["proposal_location"]}] if f.get("proposal_location") else []
-            ),
-            "procurement_source_refs": [],
+            "related_req_id": req_id,
+            "related_requirement_id": id_lookup.get(req_id),
+            "proposal_source_refs": proposal_refs,
+            "procurement_source_refs": procurement_refs_lookup.get(req_id, []) if req_id else [],
             "payload": dict(f),
+        })
+
+    # PI-2A step 13C: proposal_observations (DELIVERY_COMMITMENT /
+    # COMMERCIAL_EXPOSURE) -> their own finding rows. These are NOT
+    # deficiencies -- persisted as findings purely because migration 015's
+    # findings table is the durable home for any typed, provenance-bearing
+    # PI observation; CHECK's rendering keeps them in their own
+    # "Commitments & Commercial Exposure" section, never mixed into Audit
+    # Findings (see pages/stage_check.py).
+    for o in alignment_result.get("proposal_observations") or []:
+        observation_type = o.get("observation_type")
+        finding_type = _OBSERVATION_TYPE_TO_FINDING_TYPE.get(observation_type)
+        if not finding_type:
+            continue  # fail-closed: an unrecognized observation type is never guessed into a type
+        req_id = o.get("req_id")
+        rows.append({
+            "finding_type": finding_type,
+            "severity": None,
+            "title": o.get("title") or observation_type.replace("_", " ").title(),
+            "message": o.get("statement"),
+            "explanation": o.get("implication"),
+            "related_req_id": req_id,
+            "related_requirement_id": id_lookup.get(req_id),
+            "proposal_source_refs": o.get("proposal_source_refs") or [],
+            "procurement_source_refs": procurement_refs_lookup.get(req_id, []) if req_id else [],
+            "payload": dict(o),
         })
     return rows
 
@@ -397,11 +513,35 @@ def reconstruct_legacy_align_result(run: dict, assessments: list[dict], findings
                 else "Proposal coverage is incomplete -- absence cannot be confirmed."
                 if a.get("assessment_status") == "Cannot Assess" else ""
             ),
+            # PI-2A additive reload fields -- absent/empty on a historical
+            # PI-1 run (never crashes; CHECK renders them only when present).
+            "proposal_source_refs": refs,
+            "evidence_strength": a.get("evidence_strength"),
+            "procurement_source_refs": a.get("procurement_source_refs") or [],
         })
     mandatory_failures = [f["payload"] for f in findings
                           if f.get("finding_type") == FINDING_TYPE_MISSING_REQUIREMENT and f.get("payload")]
-    other_findings = [f["payload"] for f in findings
-                      if f.get("finding_type") == FINDING_TYPE_OTHER and f.get("payload")]
+    # PI-2A: a "general audit finding" for legacy CHECK rendering purposes
+    # is any finding NOT already reconstructed above/below into its own
+    # dedicated section -- MISSING_REQUIREMENT (mandatory_failures),
+    # SUBMISSION_ARTIFACT_GAP (folded into coverage_metadata already, never
+    # duplicated here), and DELIVERY_COMMITMENT/COMMERCIAL_EXPOSURE
+    # (proposal_observations below). This now correctly includes the new
+    # locally-typed deficiency findings (WEAK_EVIDENCE/UNSUPPORTED_CLAIM/
+    # CONTRADICTION/INTERNAL_INCONSISTENCY) as well as plain OTHER --
+    # a PI-1 run only ever had OTHER, so this is a strict superset, never
+    # a behavior change for historical rows.
+    _non_general_types = {
+        FINDING_TYPE_MISSING_REQUIREMENT, FINDING_TYPE_SUBMISSION_ARTIFACT_GAP,
+        FINDING_TYPE_DELIVERY_COMMITMENT, FINDING_TYPE_COMMERCIAL_EXPOSURE,
+    }
+    general_findings = [f["payload"] for f in findings
+                        if f.get("finding_type") not in _non_general_types and f.get("payload")]
+    proposal_observations = [
+        f["payload"] for f in findings
+        if f.get("finding_type") in (FINDING_TYPE_DELIVERY_COMMITMENT, FINDING_TYPE_COMMERCIAL_EXPOSURE)
+        and f.get("payload")
+    ]
     return {
         "status": "complete" if run.get("status") == "COMPLETE" else "incomplete",
         "message": legacy.get("message"), "reason": legacy.get("reason"),
@@ -414,7 +554,8 @@ def reconstruct_legacy_align_result(run: dict, assessments: list[dict], findings
         "partial_summary": legacy.get("partial_summary"),
         "requirement_coverage": requirement_coverage,
         "mandatory_failures": mandatory_failures,
-        "findings": other_findings,
+        "findings": general_findings,
+        "proposal_observations": proposal_observations,
         "coverage_metadata": run.get("coverage_metadata") or {},
         "based_on_procurement_revision": run.get("based_on_procurement_revision"),
         "based_on_procurement_truth_status": run.get("based_on_procurement_truth_status"),

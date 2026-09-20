@@ -1034,9 +1034,26 @@ def _allocate_package_chunk_budget(
             c["total"] = len(kept)
         return kept
 
+    # PI-2A (step 4): carry file identity fully through chunking -- not
+    # just source_file_id/source_filename (already carried pre-PI-2A) but
+    # also source_content_hash/source_package_path/source_file_type,
+    # whichever the caller's file dict actually has (never fabricated).
+    # This metadata is used purely for deterministic post-response
+    # provenance (analyst._build_proposal_source_ref) -- it is NEVER added
+    # to the model prompt.
+    def _tag(sec: dict, f: dict) -> dict:
+        tagged = {**sec, "source_file_id": f["file_id"], "source_filename": f["filename"]}
+        if f.get("content_hash"):
+            tagged["source_content_hash"] = f["content_hash"]
+        if f.get("package_path"):
+            tagged["source_package_path"] = f["package_path"]
+        if f.get("file_type"):
+            tagged["source_file_type"] = f["file_type"]
+        return tagged
+
     if total <= ceiling:
         kept = [
-            {**sec, "source_file_id": f["file_id"], "source_filename": f["filename"]}
+            _tag(sec, f)
             for f, secs in files_with_sections for sec in secs
         ]
         return _finalize(kept), []
@@ -1048,14 +1065,14 @@ def _allocate_package_chunk_budget(
         kept, skipped = [], []
         for f, secs in ordered[:ceiling]:
             mid = secs[len(secs) // 2]
-            kept.append({**mid, "source_file_id": f["file_id"], "source_filename": f["filename"]})
+            kept.append(_tag(mid, f))
             skipped.extend(
-                {**s, "source_file_id": f["file_id"], "source_filename": f["filename"]}
+                _tag(s, f)
                 for s in secs if s is not mid
             )
         for f, secs in ordered[ceiling:]:
             skipped.extend(
-                {**s, "source_file_id": f["file_id"], "source_filename": f["filename"]}
+                _tag(s, f)
                 for s in secs
             )
         return _finalize(kept), skipped
@@ -1094,7 +1111,7 @@ def _allocate_package_chunk_budget(
         q = min(quota.get(fid, 1), len(secs))
         keep_idx = set(_even_stride_sample_indices(len(secs), q))
         for i, sec in enumerate(secs):
-            tagged = {**sec, "source_file_id": fid, "source_filename": f["filename"]}
+            tagged = _tag(sec, f)
             (kept if i in keep_idx else skipped).append(tagged)
 
     return _finalize(kept), skipped
@@ -1143,7 +1160,8 @@ For THIS SECTION ONLY, return ONLY valid JSON:
       "title": "<finding title>",
       "issue": "<a SUBSTANTIVE gap, risk, or content-quality deficiency actually VISIBLE in THIS section's own text -- e.g. specific wording that is unclear, incomplete, unsigned, or non-compliant>",
       "recommendation": "<actionable fix>",
-      "effort": "Minor edit|Moderate rewrite|Major addition|Post-submission action"
+      "effort": "Minor edit|Moderate rewrite|Major addition|Post-submission action",
+      "deficiency_type": "WEAK_EVIDENCE|UNSUPPORTED_CLAIM|CONTRADICTION|INTERNAL_INCONSISTENCY|OTHER"
     }}
   ],
   "requirement_assertions": [
@@ -1151,14 +1169,27 @@ For THIS SECTION ONLY, return ONLY valid JSON:
       "req_id": "<req_id>",
       "coverage": "Fully Addressed|Partially Addressed",
       "confidence": "High|Medium|Low",
-      "evidence": "<short quote or precise paraphrase from THIS section ONLY -- describe positively what IS present; never mention what this section does or does not contain relative to the rest of the document, never mention truncation, and never mention section/chunk/excerpt boundaries>"
+      "evidence": "<short quote or precise paraphrase from THIS section ONLY -- describe positively what IS present; never mention what this section does or does not contain relative to the rest of the document, never mention truncation, and never mention section/chunk/excerpt boundaries>",
+      "evidence_strength": "STRONG|MODERATE|WEAK"
+    }}
+  ],
+  "proposal_observations": [
+    {{
+      "observation_type": "DELIVERY_COMMITMENT|COMMERCIAL_EXPOSURE",
+      "req_id": "<req_id or null>",
+      "title": "<short title>",
+      "statement": "<what the proposal itself actually says, from THIS section only>",
+      "implication": "<brief, no external knowledge>",
+      "confidence": "High|Medium|Low"
     }}
   ]
 }}
 CRITICAL RULES for chunk_findings:
 - Only include a chunk_finding for a SUBSTANTIVE deficiency you can see WITHIN this section's own text (unclear wording, an unsigned field, incomplete content, a real compliance gap). Whether a requirement/artifact is present ANYWHERE ELSE in the proposal is unknowable from this section alone and is decided later, after every section has been reviewed -- do NOT create a chunk_finding whose issue is that something is "not present," "not addressed," "not visible," or "cannot be seen" in this section/excerpt/chunk. That is not useful signal at package level and is discarded.
 - Do NOT create a chunk_finding that merely restates a requirement is satisfied, has no gap, or needs no action ("No gap identified", "Requirement satisfied", "Maintain current documentation") -- if there is nothing wrong, do not emit a finding for it at all.
-Only include a requirement_assertion when THIS section actually contains evidence for it -- do not list requirements this section does not address."""
+- deficiency_type: classify ONLY what THIS passage alone safely establishes. UNSUPPORTED_CLAIM only if a substantive claim in this SAME visible passage is asserted with no support where support is intrinsically needed -- never because evidence merely wasn't shown here (it may exist elsewhere). CONTRADICTION/INTERNAL_INCONSISTENCY only when both conflicting statements are directly visible within this SAME passage. WEAK_EVIDENCE when the evidence actually shown is materially weak or generic. Use OTHER for any other substantive deficiency. Never claim a package-wide or cross-document conclusion from one section.
+Only include a requirement_assertion when THIS section actually contains evidence for it -- do not list requirements this section does not address. evidence_strength (STRONG/MODERATE/WEAK) describes only how concrete/substantiated the evidence you cited actually is -- STRONG = named experience, quantified outcomes, explicit credentials/methods/resources, precise commitments; MODERATE = relevant but generic/incomplete; WEAK = capability asserted with little concrete support.
+proposal_observations is OPTIONAL and separate from chunk_findings (these are not deficiencies): DELIVERY_COMMITMENT = a promised staffing/turnaround/SLA/schedule/resource/methodology/availability/quantity commitment; COMMERCIAL_EXPOSURE = a pricing assumption, cost the bidder absorbs, uncapped effort, dependency on the client, travel/scope assumption, or other commercial qualifier. Only report what THIS section's own text actually states -- no inferred legal consequences, no outside knowledge, and never an RFP/contract clause merely because it appears in the procurement context above."""
 
 
 _CHUNK_FAILURE_API_ERROR = "api_error"
@@ -1205,6 +1236,70 @@ def _call_alignment_chunk(prompt: str, max_tokens: int = 2000) -> tuple[dict | N
     return None, last_category
 
 
+# ── PI-2A: deterministic proposal provenance ──────────────────────────────
+# ProposalSourceRef is built ENTIRELY from chunk metadata the application
+# already deterministically knows (see _allocate_package_chunk_budget's
+# _tag()) -- never from anything the model returns as a physical
+# identifier. Only fields genuinely known are included; nothing is ever
+# guessed/fabricated (step 3/5).
+_EVIDENCE_STRENGTH_VALUES = {"STRONG", "MODERATE", "WEAK"}
+_CHUNK_DEFICIENCY_TYPES = {"WEAK_EVIDENCE", "UNSUPPORTED_CLAIM", "CONTRADICTION", "INTERNAL_INCONSISTENCY", "OTHER"}
+_OBSERVATION_TYPES = {"DELIVERY_COMMITMENT", "COMMERCIAL_EXPOSURE"}
+
+
+def _build_proposal_source_ref(chunk: dict) -> dict:
+    """One chunk's deterministic ProposalSourceRef -- physical identity
+    only, never model-supplied. Omits any coordinate the chunk metadata
+    doesn't actually carry (never fabricated as null/placeholder)."""
+    ref = {}
+    if chunk.get("source_file_id"):
+        ref["file_id"] = chunk["source_file_id"]
+    if chunk.get("source_content_hash"):
+        ref["content_hash"] = chunk["source_content_hash"]
+    if chunk.get("source_filename"):
+        ref["filename"] = chunk["source_filename"]
+    if chunk.get("source_package_path"):
+        ref["package_path"] = chunk["source_package_path"]
+    if chunk.get("source_file_type"):
+        ref["file_type"] = chunk["source_file_type"]
+    if chunk.get("heading"):
+        ref["section"] = chunk["heading"]
+    if chunk.get("start") is not None:
+        ref["char_start"] = chunk["start"]
+    if chunk.get("end") is not None:
+        ref["char_end"] = chunk["end"]
+    return ref
+
+
+def _attach_chunk_provenance(parsed: dict, chunk: dict, chunk_label: str) -> dict:
+    """After a chunk's model response has been validated, attach the
+    chunk's own deterministic ProposalSourceRef to every requirement
+    assertion, chunk finding, and proposal observation it produced (step
+    5) -- the model never supplies file_id/content_hash/package_path/
+    char_start/char_end itself. Also fail-closes any invalid/unrecognized
+    evidence_strength/deficiency_type/observation_type value to absent
+    rather than crashing or guessing (step 7/9/10)."""
+    ref = _build_proposal_source_ref(chunk)
+    for a in parsed.get("requirement_assertions") or []:
+        a["_source_ref"] = ref
+        if a.get("evidence_strength") not in _EVIDENCE_STRENGTH_VALUES:
+            a["evidence_strength"] = None
+    for f in parsed.get("chunk_findings") or []:
+        f["_source_ref"] = ref
+        if f.get("deficiency_type") not in _CHUNK_DEFICIENCY_TYPES:
+            f["deficiency_type"] = "OTHER" if f.get("deficiency_type") else None
+    valid_observations = []
+    for o in parsed.get("proposal_observations") or []:
+        if not isinstance(o, dict) or o.get("observation_type") not in _OBSERVATION_TYPES:
+            continue  # fail-closed: an unrecognized observation is dropped, never guessed
+        o = dict(o)
+        o["_source_ref"] = ref
+        o["proposal_location"] = chunk_label
+        valid_observations.append(o)
+    parsed["proposal_observations"] = valid_observations
+    return parsed
+
+
 _COVERAGE_RANK = {"Fully Addressed": 2, "Partially Addressed": 1}
 _COVERAGE_SCORE_MAP = {"Fully Addressed": 100.0, "Partially Addressed": 50.0, "Not Addressed": 0.0}
 
@@ -1217,6 +1312,10 @@ def _aggregate_requirement_coverage(requirements: list[dict], chunk_results: lis
     proposal coverage is complete; otherwise 'Cannot Assess' -- unknown
     absence must never be silently reinterpreted as confirmed absence."""
     assertions_by_req: dict[str, dict] = {}
+    # PI-2A step 6: preserve EVERY valid positive assertion's provenance
+    # per requirement (not just the winner's) -- coverage classification
+    # itself is unchanged (still strongest-assertion-wins, below).
+    refs_by_req: dict[str, list[dict]] = {}
     for cr in chunk_results:
         chunk_label = cr["chunk_label"]
         for a in cr.get("requirement_assertions", []):
@@ -1224,19 +1323,29 @@ def _aggregate_requirement_coverage(requirements: list[dict], chunk_results: lis
             cov = a.get("coverage")
             if not rid or cov not in _COVERAGE_RANK:
                 continue
+            ref = dict(a.get("_source_ref") or {})
+            excerpt = (a.get("evidence") or "")[:300]
+            if excerpt:
+                ref["excerpt"] = excerpt
+            entry = {"ref": ref, "coverage": cov, "evidence_strength": a.get("evidence_strength")}
+            existing_refs = refs_by_req.setdefault(rid, [])
+            if ref and ref not in [e["ref"] for e in existing_refs]:
+                existing_refs.append(entry)
             existing = assertions_by_req.get(rid)
             if existing is None or _COVERAGE_RANK[cov] > _COVERAGE_RANK[existing["coverage"]]:
                 assertions_by_req[rid] = {
                     "coverage": cov,
                     "confidence": a.get("confidence", "Medium"),
-                    "evidence": (a.get("evidence") or "")[:300],
+                    "evidence": excerpt,
                     "location": chunk_label,
+                    "evidence_strength": a.get("evidence_strength"),
                 }
 
     rows = []
     for r in requirements:
         rid = r.get("req_id") or ""
         hit = assertions_by_req.get(rid)
+        proposal_refs = [e["ref"] for e in refs_by_req.get(rid, []) if e["ref"]]
         base = {
             "req_id": rid, "category": r.get("category", ""),
             "description": (r.get("description") or "")[:160],
@@ -1246,10 +1355,13 @@ def _aggregate_requirement_coverage(requirements: list[dict], chunk_results: lis
             # exists and how it's used; stripped before the result is
             # ever returned to a caller.
             "_is_qualification_gate": has_supplier_qualification_evidence(r),
+            # PI-2A: additive, does not change coverage/scoring semantics.
+            "proposal_source_refs": proposal_refs,
         }
         if hit:
             rows.append({
                 **base,
+                "evidence_strength": hit.get("evidence_strength"),
                 "coverage": hit["coverage"], "confidence": hit["confidence"],
                 "evidence_location": hit["location"], "notes": hit["evidence"],
             })
@@ -1465,9 +1577,49 @@ def _aggregate_findings(chunk_results: list[dict]) -> list[dict]:
             f = dict(f)
             f["proposal_location"] = cr["chunk_label"]
             f["finding_type"] = _classify_finding_theme(f)
+            # PI-2A step 9: the model's own locally-safe deficiency
+            # classification (WEAK_EVIDENCE/UNSUPPORTED_CLAIM/CONTRADICTION/
+            # INTERNAL_INCONSISTENCY/OTHER), kept under its own key --
+            # never merged into/overwriting `finding_type` above, which is
+            # a pre-existing, unrelated deterministic THEME label used by
+            # dedup/reconciliation and must stay untouched.
+            ref = f.pop("_source_ref", None)
+            f["proposal_source_refs"] = [dict(ref, excerpt=f.get("issue"))] if ref else []
             findings.append(f)
     findings.sort(key=lambda f: _FINDING_SEVERITY_ORDER.get(f.get("severity", "Medium"), 2))
     return findings
+
+
+def _aggregate_proposal_observations(chunk_results: list[dict]) -> list[dict]:
+    """PI-2A step 12: deterministic aggregation of proposal_observations
+    across chunks -- stable ordering (original chunk order, already
+    `chunk_results`' own order), provenance preserved, and only clear
+    exact/near-identical duplicates from overlapping chunks collapsed
+    (same observation_type + req_id + same normalized statement text).
+    Never merges two observations whose statements actually differ, and
+    never uses a model call to consolidate."""
+    seen: dict[tuple, dict] = {}
+    ordered: list[dict] = []
+    for cr in chunk_results:
+        for o in cr.get("proposal_observations") or []:
+            statement = (o.get("statement") or "").strip().lower()
+            key = (o.get("observation_type"), o.get("req_id"), statement)
+            if key in seen:
+                continue  # exact/near-identical duplicate from an overlapping chunk
+            ref = o.get("_source_ref") or {}
+            row = {
+                "observation_type": o.get("observation_type"),
+                "req_id": o.get("req_id"),
+                "title": o.get("title"),
+                "statement": o.get("statement"),
+                "implication": o.get("implication"),
+                "confidence": o.get("confidence"),
+                "proposal_location": o.get("proposal_location"),
+                "proposal_source_refs": [ref] if ref else [],
+            }
+            seen[key] = row
+            ordered.append(row)
+    return ordered
 
 
 # ── PACKAGE-LEVEL FINDING RECONCILIATION ──────────────────────────────────
@@ -2133,6 +2285,7 @@ def _process_chunks_concurrently(chunks: list[dict], bid_header: str, procuremen
     outputs: dict[int, dict] = {}
     failed: set[int] = set()
     diagnostics: dict[int, dict] = {}
+    chunk_by_index = {c["index"]: c for c in chunks}
 
     def _run_one(chunk: dict):
         # Package chunks (tagged by _allocate_package_chunk_budget with
@@ -2165,6 +2318,11 @@ def _process_chunks_concurrently(chunks: list[dict], bid_header: str, procuremen
                 }
             else:
                 parsed["chunk_label"] = label
+                # PI-2A step 5: attach this chunk's own deterministic
+                # ProposalSourceRef now, while the originating chunk dict
+                # (and its application-known physical identity) is still
+                # in scope -- never reconstructed later from model output.
+                parsed = _attach_chunk_provenance(parsed, chunk_by_index[idx], label)
                 outputs[idx] = parsed
 
     return outputs, failed, diagnostics
@@ -2289,6 +2447,11 @@ def analyze_proposal_alignment(
     # silent partial score.
     requirement_coverage = _aggregate_requirement_coverage(requirements, chunk_results, coverage_complete)
     findings = _aggregate_findings(chunk_results)
+    # PI-2A step 18 (fail-closed incomplete coverage): positive
+    # observations from chunks that WERE successfully analyzed are always
+    # valid regardless of package-wide coverage completeness -- preserved
+    # unconditionally here, same as findings/requirement evidence above.
+    proposal_observations = _aggregate_proposal_observations(chunk_results)
     # Package-level reconciliation (before _is_qualification_gate is
     # popped from the rows, so unresolved_items can still tell a
     # mandatory/qualification-gate requirement apart): neither a chunk-
@@ -2334,6 +2497,7 @@ def analyze_proposal_alignment(
             "priority_actions": priority_actions,
             "partial_summary": partial_summary,
             "coverage_metadata": coverage_metadata,
+            "proposal_observations": proposal_observations,
         }
 
     weight_by_req = {r.get("req_id"): r.get("weight") for r in requirements}
@@ -2378,6 +2542,7 @@ def analyze_proposal_alignment(
         "next_steps": next_steps,
         "priority_actions": priority_actions,
         "coverage_metadata": coverage_metadata,
+        "proposal_observations": proposal_observations,
     }
 
     if not _validate_alignment_contract(result):
@@ -2582,6 +2747,7 @@ def analyze_proposal_alignment_package(
 
     requirement_coverage = _aggregate_requirement_coverage(requirements, chunk_results, coverage_complete)
     findings = _aggregate_findings(chunk_results)
+    proposal_observations = _aggregate_proposal_observations(chunk_results)
     # Package-level reconciliation (before _is_qualification_gate is
     # popped, so unresolved_items can still tell a mandatory/
     # qualification-gate requirement apart): neither a chunk-local
@@ -2644,6 +2810,7 @@ def analyze_proposal_alignment_package(
             "priority_actions": priority_actions,
             "partial_summary": partial_summary,
             "coverage_metadata": coverage_metadata,
+            "proposal_observations": proposal_observations,
         }
 
     weight_by_req = {r.get("req_id"): r.get("weight") for r in requirements}
@@ -2688,6 +2855,7 @@ def analyze_proposal_alignment_package(
         "next_steps": next_steps,
         "priority_actions": priority_actions,
         "coverage_metadata": coverage_metadata,
+        "proposal_observations": proposal_observations,
     }
 
     if not _validate_alignment_contract(result):

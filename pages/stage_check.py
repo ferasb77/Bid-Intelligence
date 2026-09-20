@@ -728,6 +728,86 @@ def page_check(bid_id: int):
                     row[5].markdown(f'<span style="font-size:.76rem;color:#A9A69D">{r.get("notes","")}</span>', unsafe_allow_html=True)
                     st.markdown('<hr class="section-divider" style="margin:.15rem 0">', unsafe_allow_html=True)
 
+            # ── PROPOSAL INTELLIGENCE (PI-2A) ───────────────────────────────────
+            # A single, clearly separated surface for the richer durable
+            # intelligence PI-2A adds on top of the unchanged CHECK audit
+            # above -- never a redesign of CHECK, never a proposal quality
+            # score. Renders from whatever is already on `align_data`
+            # (either a freshly-run PI-2 result or a reload of a historical
+            # PI-1/PI-2 run via proposal_intelligence.reconstruct_legacy_
+            # align_result) -- no new model call, no re-analysis. Every
+            # sub-section is hidden entirely when it has nothing to show
+            # (never an empty section), and every field access is defensive
+            # so a historical PI-1 run (no evidence_strength, no structured
+            # refs, no observations) renders without error.
+            weak_or_moderate_evidence = [
+                r for r in req_coverage
+                if r.get("evidence_strength") in ("WEAK", "MODERATE") and r.get("coverage") in
+                ("Fully Addressed", "Partially Addressed")
+            ]
+            observations = align_data.get("proposal_observations") or []
+            # `f.get("finding_type")` on a raw analyzer/payload finding dict
+            # is the pre-existing, UNRELATED deterministic theme label
+            # (e.g. "Pricing completeness") -- the PI-2A chunk-level
+            # deficiency classification lives under its own key,
+            # `deficiency_type`, and must never be confused with it here.
+            typed_findings = [f for f in findings if f.get("deficiency_type") not in (None, "OTHER")]
+            if weak_or_moderate_evidence or observations or typed_findings:
+                st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+                st.markdown("### 🔎 Proposal Intelligence")
+
+                if weak_or_moderate_evidence:
+                    st.markdown(f"#### Evidence Quality ({len(weak_or_moderate_evidence)} requirement(s))")
+                    for r in weak_or_moderate_evidence:
+                        strength = r.get("evidence_strength", "")
+                        s_col = "#E67E22" if strength == "MODERATE" else "#C0392B"
+                        refs = r.get("proposal_source_refs") or []
+                        loc = refs[0].get("filename") or refs[0].get("section") or "" if refs else r.get("evidence_location", "")
+                        st.markdown(
+                            f'<div style="background:#111118;border:1px solid #292832;border-left:3px solid {s_col};'
+                            f'border-radius:0 4px 4px 0;padding:.5rem 1rem;margin:.25rem 0">'
+                            f'<span style="color:#C9A96E;font-size:.72rem">Req: {r.get("req_id","")}</span> '
+                            f'<span style="color:{s_col};font-weight:700;font-size:.72rem">[{strength}]</span> '
+                            f'<span style="font-size:.78rem;color:#A9A69D">{r.get("coverage","")}</span>'
+                            f'<div style="font-size:.76rem;color:#6E6C66;margin-top:.15rem">📍 {loc or "—"}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                if observations:
+                    commitments = [o for o in observations if o.get("observation_type") == "DELIVERY_COMMITMENT"]
+                    exposures = [o for o in observations if o.get("observation_type") == "COMMERCIAL_EXPOSURE"]
+                    st.markdown(f"#### Commitments & Commercial Exposure ({len(observations)})")
+                    for label, group, color in (("Delivery Commitment", commitments, "#27AE60"),
+                                                ("Commercial Exposure", exposures, "#E67E22")):
+                        for o in group:
+                            refs = o.get("proposal_source_refs") or []
+                            loc = (refs[0].get("filename") or refs[0].get("section")) if refs else o.get("proposal_location", "")
+                            st.markdown(
+                                f'<div style="background:#111118;border:1px solid #292832;border-left:3px solid {color};'
+                                f'border-radius:0 4px 4px 0;padding:.5rem 1rem;margin:.25rem 0">'
+                                f'<span style="color:{color};font-weight:700;font-size:.72rem">[{label.upper()}]</span> '
+                                f'<span style="color:#C9A96E;font-size:.72rem">Req: {o.get("req_id") or "—"}</span> '
+                                f'<strong style="font-size:.8rem">{o.get("title") or ""}</strong>'
+                                f'<div style="font-size:.78rem;color:#EDEAE3;margin-top:.15rem">{o.get("statement") or o.get("message") or ""}</div>'
+                                + (f'<div style="font-size:.74rem;color:#A9A69D;margin-top:.1rem">{o.get("implication") or o.get("explanation") or ""}</div>'
+                                   if (o.get("implication") or o.get("explanation")) else "")
+                                + f'<div style="font-size:.7rem;color:#6E6C66;margin-top:.15rem">📍 {loc or "—"}</div>'
+                                + f'</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                if typed_findings:
+                    st.markdown(f"#### Typed Findings ({len(typed_findings)})")
+                    for f in typed_findings:
+                        dtype = f.get("deficiency_type") or f.get("finding_type") or "OTHER"
+                        st.markdown(
+                            f'<div style="font-size:.76rem;color:#A9A69D;margin:.15rem 0">'
+                            f'<span style="color:#C9A96E;font-weight:600">[{dtype}]</span> '
+                            f'{f.get("title","")} <span style="color:#6E6C66">— Req: {f.get("req_id") or "—"}</span></div>',
+                            unsafe_allow_html=True,
+                        )
+
             if is_complete:
                 # ── F. STRENGTHS ──────────────────────────────────────────────────
                 strengths = align_data.get("strengths", [])

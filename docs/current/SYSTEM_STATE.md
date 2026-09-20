@@ -39,16 +39,34 @@ needs that history).
   distinct from the later, holistic CHECK-stage audit below.
 - **CHECK / Proposal Alignment** (`analyst.py`'s `analyze_proposal_alignment*`
   family) — the holistic, whole-package submission-readiness audit.
-- **Proposal Intelligence** (PI-1, `proposal_intelligence.py` +
-  `migrations/015_proposal_intelligence.sql`, **live** — see below)
-  — the durable, immutable, provenance-aware persistence layer for CHECK's
-  Proposal Alignment output: what the proposal actually says,
+- **Proposal Intelligence** (`proposal_intelligence.py` +
+  `migrations/015_proposal_intelligence.sql`, **live and commissioned** —
+  see below) — the durable, immutable, provenance-aware persistence layer
+  for CHECK's Proposal Alignment output: what the proposal actually says,
   demonstrates, covers, contradicts, fails to evidence, or omits relative
   to the procurement. Advisory intelligence, never canonical procurement
   truth. Adds NO new LLM call — a pure adapter over the existing
   `analyze_proposal_alignment_package()` result, persisted via
-  `tenancy.run_proposal_intelligence_for_organization()`. See
-  [NAVIGATION.md](NAVIGATION.md) for the full file map.
+  `tenancy.run_proposal_intelligence_for_organization()`.
+  `PROPOSAL_INTELLIGENCE_ANALYSIS_VERSION` is `proposal-intelligence-v2`
+  (PI-2A): the analyzer's existing per-chunk schema now also carries
+  structured, deterministically-attached proposal-side provenance
+  (`ProposalSourceRef` — file_id/content_hash/filename/package_path/
+  file_type/section/char_start/char_end, built entirely from chunk
+  metadata the application already has, never from the model),
+  procurement-side provenance (a requirement's own canonical
+  `source_refs`), a closed-vocabulary evidence-strength rating (STRONG/
+  MODERATE/WEAK), locally-safe typed findings (WEAK_EVIDENCE/
+  UNSUPPORTED_CLAIM/CONTRADICTION/INTERNAL_INCONSISTENCY — only ever
+  established from within one chunk's own visible passage), and separate
+  `proposal_observations` (DELIVERY_COMMITMENT/COMMERCIAL_EXPOSURE) —
+  all additive to the unchanged chunk request/response call topology
+  (still exactly one call per chunk plus the existing optional narrative
+  synthesis call). Cross-document contradiction detection, package-wide
+  unsupported-claim adjudication, Response Guideline coverage, a proposal
+  quality score, win probability, and proposal rewriting remain explicitly
+  deferred to PI-2B (not implemented). See [NAVIGATION.md](NAVIGATION.md)
+  for the full file map.
 
 ## Architectural fact-type separation
 
@@ -68,8 +86,11 @@ the compact provenance wire format) remain **not activated**, pending paid
 credits; do not activate them without a task explicitly requesting it.
 
 **Proposal Intelligence development is explicitly active** (PI-1
-established the durable domain foundation on this branch). PI-2+ work
-should build on it, not re-litigate PI-1's schema/adapter without cause.
+established the durable domain foundation on this branch; PI-2A added
+richer per-chunk evidence/provenance/observation depth on top of it, with
+no new model call). PI-2B (cross-document/whole-package reasoning) is
+explicitly NOT started. Future work should build on PI-2A, not re-litigate
+PI-1/PI-2A's schema/adapter without cause.
 
 Absent an explicit task instruction otherwise, still do not: apply
 migration 013, alter/reapply migration 015, activate the compact-wire
@@ -98,9 +119,11 @@ below.
 > contains `20260920211025 proposal_intelligence_commissioning`, a
 > commissioning-only assertion run with no lasting schema or data changes
 > and no corresponding numbered repo migration file. Migration 013 remains
-> unapplied. Treat any future "is migration N live" question as requiring a
-> fresh check — `git log` and this file are not a substitute for checking
-> the live database when a task depends on it.
+> unapplied. PI-2A (this phase) added richer per-chunk evidence/provenance/
+> observation fields on top of the SAME live migration 015 schema — no new
+> migration was needed or created. Treat any future "is migration N live"
+> question as requiring a fresh check — `git log` and this file are not a
+> substitute for checking the live database when a task depends on it.
 
 ## Where NOT to look first
 
