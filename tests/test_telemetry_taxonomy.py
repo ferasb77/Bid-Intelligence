@@ -203,6 +203,200 @@ class TestAnalysisServiceReusesSharedTaxonomy:
         assert summary["recovery_or_retry_calls"] == 12
 
 
+def _v4_pattern_telemetry_with_explicit_attempted_field():
+    """Same 23-row V4 distribution, but every row also carries the
+    explicit `provider_call_attempted` field new code always writes
+    (Phase 5E.1) -- proves the explicit-field path, not just the
+    historical call_kind-inference fallback."""
+    rows = _v4_pattern_telemetry()
+    for row in rows:
+        row["provider_call_attempted"] = row["call_kind"] != "split_exhausted"
+        row.setdefault("error", None)
+    return rows
+
+
+class TestProviderAttemptedFieldExplicit:
+    """Requirement A/D: the explicit field, when present, is authoritative
+    -- never re-derived from token presence."""
+
+    def test_successful_call_with_usage_is_attempted_and_successful(self):
+        row = _row("initial", input_tokens=1000, output_tokens=500, stop_reason="end_turn")
+        row["provider_call_attempted"] = True
+        row["error"] = None
+        assert fa._is_provider_call(row) is True
+        summary = fa._telemetry_audit_summary([row], wall_seconds=1.0)
+        assert summary["provider_call_attempts"] == 1
+        assert summary["successful_provider_calls"] == 1
+        assert summary["failed_provider_calls"] == 0
+        assert summary["usage_reported_provider_calls"] == 1
+        assert summary["input_tokens"] == 1000
+        assert summary["output_tokens"] == 500
+
+    def test_genuine_exception_with_null_tokens_is_attempted_and_failed(self):
+        """Requirement B -- the exact defect this phase fixes: a row from
+        _call_fast_chunk's except-branch (null tokens, error set,
+        provider_call_attempted explicitly True) must be counted as a
+        genuine attempted, failed provider call -- never bookkeeping."""
+        row = _row("initial", input_tokens=None, output_tokens=None, stop_reason=None)
+        row["provider_call_attempted"] = True
+        row["error"] = "BadRequestError: Your credit balance is too low"
+        assert fa._is_provider_call(row) is True
+        summary = fa._telemetry_audit_summary([row], wall_seconds=1.0)
+        assert summary["provider_call_attempts"] == 1
+        assert summary["failed_provider_calls"] == 1
+        assert summary["successful_provider_calls"] == 0
+        assert summary["usage_reported_provider_calls"] == 0
+        assert summary["non_provider_bookkeeping_rows"] == 0
+        # A failed attempt contributes zero tokens but is still an attempt.
+        assert summary["input_tokens"] == 0
+        assert summary["output_tokens"] == 0
+
+    def test_split_exhausted_bookkeeping_row_with_null_tokens_is_not_attempted(self):
+        """Requirement C -- must remain correctly excluded even though its
+        token fields look identical to the failed-attempt case above."""
+        row = _row("split_exhausted")
+        row["provider_call_attempted"] = False
+        row["error"] = None
+        assert fa._is_provider_call(row) is False
+        summary = fa._telemetry_audit_summary([row], wall_seconds=1.0)
+        assert summary["provider_call_attempts"] == 0
+        assert summary["failed_provider_calls"] == 0
+        assert summary["non_provider_bookkeeping_rows"] == 1
+
+    def test_failed_and_bookkeeping_rows_are_distinguishable_despite_identical_tokens(self):
+        """The core proof this phase exists for: two rows with byte-for-
+        byte identical input_tokens/output_tokens/stop_reason (all None)
+        must NOT be classified the same way once provider_call_attempted
+        is known."""
+        failed = _row("initial", input_tokens=None, output_tokens=None, stop_reason=None)
+        failed["provider_call_attempted"] = True
+        failed["error"] = "APIConnectionError: timeout"
+        bookkeeping = _row("split_exhausted", input_tokens=None, output_tokens=None, stop_reason=None)
+        bookkeeping["provider_call_attempted"] = False
+        assert fa._is_provider_call(failed) is True
+        assert fa._is_provider_call(bookkeeping) is False
+        assert fa._is_provider_call(failed) != fa._is_provider_call(bookkeeping)
+
+
+class TestHistoricalRowsWithoutExplicitField:
+    """Requirement D/E: rows written before Phase 5E.1 have no
+    provider_call_attempted field at all -- _is_provider_call must still
+    classify them correctly from call_kind, and a genuinely unrecognized
+    historical call_kind must surface separately rather than be guessed."""
+
+    def test_historical_initial_row_infers_attempted_true(self):
+        row = _row("initial", input_tokens=1000, output_tokens=500)
+        assert "provider_call_attempted" not in row
+        assert fa._is_provider_call(row) is True
+
+    def test_historical_split_exhausted_row_infers_attempted_false(self):
+        row = _row("split_exhausted")
+        assert "provider_call_attempted" not in row
+        assert fa._is_provider_call(row) is False
+
+    def test_historical_unknown_call_kind_surfaces_as_none_not_guessed(self):
+        row = _row("some_never_before_seen_call_kind", input_tokens=None, output_tokens=None)
+        assert "provider_call_attempted" not in row
+        assert fa._is_provider_call(row) is None
+
+    def test_unknown_call_kind_with_reported_usage_is_still_counted_as_attempted(self):
+        """Regression guard: a pre-existing fixture elsewhere in this repo
+        (tests/test_fast_analysis_raw_snapshot.py's _rich_result()) uses
+        call_kind="recovery" -- not part of this module's recognized
+        vocabulary -- but has genuine reported token usage. A bookkeeping
+        row can never have real usage (by construction), so usage
+        presence must break the tie toward "attempted", not toward
+        "surfaced as unknown"."""
+        row = _row("recovery", input_tokens=300, output_tokens=50)
+        assert "provider_call_attempted" not in row
+        assert fa.classify_telemetry_entry(row) == "UNKNOWN"
+        assert fa._is_provider_call(row) is True
+
+    def test_unknown_historical_row_counted_separately_not_as_attempt_or_bookkeeping(self):
+        row = _row("some_never_before_seen_call_kind")
+        summary = fa._telemetry_audit_summary([row], wall_seconds=1.0)
+        assert summary["unknown_provider_status_rows"] == 1
+        assert summary["provider_call_attempts"] == 0
+        assert summary["non_provider_bookkeeping_rows"] == 0
+
+    def test_v4_historical_rows_without_the_new_field_still_classify_correctly(self):
+        """Requirement D -- the full 23-row V4 pattern, with NO row
+        carrying provider_call_attempted (as real historical telemetry
+        predating Phase 5E.1 would look), must still produce the correct
+        taxonomy purely from call_kind inference."""
+        telemetry = _v4_pattern_telemetry()
+        for row in telemetry:
+            assert "provider_call_attempted" not in row
+        summary = fa._telemetry_audit_summary(telemetry, wall_seconds=202.3)
+        assert summary["telemetry_rows"] == 23
+        assert summary["provider_call_attempts"] == 20
+        assert summary["recovery_provider_calls"] == 7
+        assert summary["non_provider_bookkeeping_rows"] == 3
+        assert summary["unknown_provider_status_rows"] == 0
+
+
+class TestV4ExactResultRequirementF:
+    """Requirement F: the exact historical V4 result must remain
+    unchanged by this phase's fix, both with and without the new
+    explicit field present on every row."""
+
+    def test_v4_result_unchanged_with_call_kind_inference_only(self):
+        summary = fa._telemetry_audit_summary(_v4_pattern_telemetry(), wall_seconds=202.3)
+        assert summary["telemetry_rows"] == 23
+        assert summary["provider_call_attempts"] == 20
+        assert summary["recovery_provider_calls"] == 7
+        assert summary["non_provider_bookkeeping_rows"] == 3
+
+    def test_v4_result_unchanged_with_explicit_field_present(self):
+        summary = fa._telemetry_audit_summary(
+            _v4_pattern_telemetry_with_explicit_attempted_field(), wall_seconds=202.3)
+        assert summary["telemetry_rows"] == 23
+        assert summary["provider_call_attempts"] == 20
+        assert summary["recovery_provider_calls"] == 7
+        assert summary["non_provider_bookkeeping_rows"] == 3
+
+    def test_legacy_field_still_reproduces_12(self):
+        summary = fa._telemetry_audit_summary(_v4_pattern_telemetry(), wall_seconds=202.3)
+        assert summary["recovery_or_retry_calls"] == 12
+
+
+class TestRealCallFastChunkTelemetryShape:
+    """Confirms the actual production code sites (not just hand-built test
+    fixtures) now write provider_call_attempted correctly -- by invoking
+    _call_fast_chunk with a mocked client, never a real one."""
+
+    def test_successful_response_row_has_provider_call_attempted_true(self):
+        from unittest.mock import MagicMock
+        client = MagicMock()
+        client.messages.create.return_value = MagicMock(
+            content=[MagicMock(text='{"requirements": []}')],
+            usage=MagicMock(input_tokens=100, output_tokens=50),
+            stop_reason="end_turn",
+        )
+        telemetry = []
+        fa._call_fast_chunk(fa.ROUTE_EVAL_ONLY, "f.pdf", "chunk text", "sk-test", client,
+                           0, telemetry)
+        assert telemetry[0]["provider_call_attempted"] is True
+        assert telemetry[0]["error"] is None
+
+    def test_exception_row_has_provider_call_attempted_true(self):
+        from unittest.mock import MagicMock
+        client = MagicMock()
+        client.messages.create.side_effect = RuntimeError("credit balance too low")
+        telemetry = []
+        try:
+            fa._call_fast_chunk(fa.ROUTE_EVAL_ONLY, "f.pdf", "chunk text", "sk-test", client,
+                               0, telemetry)
+        except RuntimeError:
+            pass
+        assert len(telemetry) == 1
+        assert telemetry[0]["provider_call_attempted"] is True
+        assert telemetry[0]["input_tokens"] is None
+        assert telemetry[0]["output_tokens"] is None
+        assert telemetry[0]["error"] is not None
+        assert fa._is_provider_call(telemetry[0]) is True
+
+
 if __name__ == "__main__":
     import sys
     import pytest

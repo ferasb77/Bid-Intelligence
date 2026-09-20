@@ -853,6 +853,11 @@ def _call_fast_chunk(route: str, filename: str, chunk_text: str, api_key: str, c
             "input_tokens": None, "output_tokens": None, "stop_reason": None,
             "parse_status": None, "error": f"{type(exc).__name__}: {exc}",
             "parent_call_index": parent_call_index, "split_trigger_reason": split_trigger_reason,
+            # Phase 5E.1: this row exists BECAUSE execute_messages_create()
+            # was actually invoked and raised -- a genuine attempted (and
+            # failed) provider call, never bookkeeping, regardless of its
+            # null token fields (a failed attempt has no usage to report).
+            "provider_call_attempted": True,
         })
         raise
     usage = getattr(response, "usage", None)
@@ -868,6 +873,7 @@ def _call_fast_chunk(route: str, filename: str, chunk_text: str, api_key: str, c
         "stop_reason": getattr(response, "stop_reason", None),
         "parse_status": parse_status, "error": None,
         "parent_call_index": parent_call_index, "split_trigger_reason": split_trigger_reason,
+        "provider_call_attempted": True,
     })
     return data if isinstance(data, dict) else {}
 
@@ -942,6 +948,9 @@ def extract_fast_document(filename: str, doc_text: str, api_key: str, *, route: 
                     "input_tokens": None, "output_tokens": None, "stop_reason": None,
                     "parse_status": "BOUNDED_SPLIT_EXHAUSTED", "error": None,
                     "parent_call_index": call_index, "split_trigger_reason": "max_tokens",
+                    # Phase 5E.1: pure bookkeeping -- no provider request was
+                    # ever made for this row (recovery gave up before trying).
+                    "provider_call_attempted": False,
                 })
                 continue
             for label, sub in zip(("split_recovery_a", "split_recovery_b"), subchunks):
@@ -962,6 +971,7 @@ def extract_fast_document(filename: str, doc_text: str, api_key: str, *, route: 
                         "input_tokens": None, "output_tokens": None, "stop_reason": None,
                         "parse_status": "BOUNDED_SPLIT_EXHAUSTED", "error": None,
                         "parent_call_index": sub_index, "split_trigger_reason": "max_tokens",
+                        "provider_call_attempted": False,
                     })
         elif not _has_required_fields(route, data):
             # v1/v2's original bounded single same-content retry -- unrelated
@@ -1094,6 +1104,7 @@ def run_focused_task(section_kind: str, filename: str, section_text: str, api_ke
                 "input_tokens": None, "output_tokens": None, "stop_reason": None,
                 "parse_status": "BOUNDED_SPLIT_EXHAUSTED", "error": None,
                 "parent_call_index": call_index, "split_trigger_reason": "max_tokens",
+                "provider_call_attempted": False,
             })
         else:
             for label, sub in zip(("split_recovery_a", "split_recovery_b"), subchunks):
@@ -1108,6 +1119,7 @@ def run_focused_task(section_kind: str, filename: str, section_text: str, api_ke
                         "input_tokens": None, "output_tokens": None, "stop_reason": None,
                         "parse_status": "BOUNDED_SPLIT_EXHAUSTED", "error": None,
                         "parent_call_index": sub_index, "split_trigger_reason": "max_tokens",
+                        "provider_call_attempted": False,
                     })
     return occurrences
 
@@ -1444,15 +1456,53 @@ def classify_telemetry_entry(entry: dict) -> str:
     return "UNKNOWN"
 
 
-def _is_provider_call(entry: dict) -> bool:
-    """False for bookkeeping-only rows (split_exhausted / *_split_exhausted)
-    that never reached the provider -- input_tokens, output_tokens and
-    stop_reason are always null for these by construction (see
-    extract_fast_document / run_focused_task, where the row is appended
-    with those fields explicitly set to None, no call attempted). Token
-    sums must only ever include real provider calls (instruction 4)."""
-    return (isinstance(entry, dict)
-           and (entry.get("input_tokens") is not None or entry.get("output_tokens") is not None))
+# BI Token Optimization Phase 5E.1: Phase 5E's _is_provider_call() inferred
+# "attempted a provider call" from token presence -- but _call_fast_chunk's
+# own exception handler (a GENUINE attempted, failed provider call: it only
+# exists because execute_messages_create() was actually invoked and raised)
+# writes input_tokens=None, output_tokens=None, exactly like a
+# split_exhausted bookkeeping row that never attempted anything. Token
+# presence cannot distinguish "attempted and failed" from "never attempted"
+# -- only the call site itself knows which happened, so every telemetry
+# row constructed by _call_fast_chunk (success AND exception paths) and
+# every split_exhausted bookkeeping row now carries an explicit
+# "provider_call_attempted" boolean written at construction time.
+_KNOWN_BOOKKEEPING_CLASSIFICATION = "BOOKKEEPING"
+
+
+def _is_provider_call(entry: dict) -> bool | None:
+    """True/False when determinable; None when a HISTORICAL row (written
+    before Phase 5E.1, so it has no "provider_call_attempted" field) has a
+    call_kind this function does not recognize -- surfaced separately via
+    _telemetry_audit_summary's "unknown_provider_status_rows", never
+    silently guessed either way (instruction 4's "fail conservatively /
+    surface separately").
+
+    Resolution order:
+      1. Explicit "provider_call_attempted" field, when present (every row
+         written by this module's current code always has it).
+      2. For historical rows without that field: call_kind-based inference
+         -- BOOKKEEPING classification -> False, any other RECOGNIZED
+         classification -> True. Never token presence alone (that was
+         Phase 5E.1's discovered defect)."""
+    if not isinstance(entry, dict):
+        return False
+    if "provider_call_attempted" in entry:
+        return bool(entry["provider_call_attempted"])
+    classification = classify_telemetry_entry(entry)
+    if classification == _KNOWN_BOOKKEEPING_CLASSIFICATION:
+        return False
+    if classification != "UNKNOWN":
+        return True
+    # Unrecognized call_kind, no explicit field: reported token usage is
+    # unambiguous evidence of a genuine provider call (a bookkeeping row
+    # never has real usage, by construction -- see extract_fast_document/
+    # run_focused_task, where split_exhausted rows are always written with
+    # null tokens). Only when usage is ALSO absent is this genuinely
+    # indeterminate -- surfaced separately, never guessed either way.
+    if entry.get("input_tokens") is not None or entry.get("output_tokens") is not None:
+        return True
+    return None
 
 
 def _telemetry_audit_summary(telemetry: list, wall_seconds: float) -> dict:
@@ -1460,38 +1510,66 @@ def _telemetry_audit_summary(telemetry: list, wall_seconds: float) -> dict:
     purposes -- never the raw per-call list (which is operational detail,
     not analytical output, and is not consumed by any report adapter).
 
-    Corrected in Phase 5E: exposes a precise taxonomy (telemetry_rows,
-    provider_calls, planned_primary/focused_provider_calls,
-    recovery_provider_calls and its truncation_recovery/targeted_retry
-    breakdown, non_provider_bookkeeping_rows, split_exhausted_rows)
-    alongside the original `recovery_or_retry_calls`/`total_calls`
-    fields, kept verbatim -- same computation as before Phase 5E -- for
-    any existing consumer/dashboard that already keys off those exact
-    names. New code should use the precise fields; the legacy fields are
-    not redefined."""
+    Corrected in Phase 5E (call-kind taxonomy) and Phase 5E.1 (provider-
+    attempt vs. bookkeeping, independent of token presence). Field
+    semantics, made explicit per Phase 5E.1 instruction 5:
+
+      provider_call_attempts        -- every row where a provider request
+                                        was genuinely made, success or
+                                        failure (this is what Phase 5E's
+                                        "provider_calls" meant and still
+                                        means -- kept under both names).
+      successful_provider_calls     -- attempted AND no error recorded
+                                        (a response came back).
+      failed_provider_calls         -- attempted AND an error was recorded
+                                        (the request itself raised).
+      usage_reported_provider_calls -- attempted AND the provider actually
+                                        reported token usage. Always a
+                                        subset of successful_provider_calls
+                                        (a failed attempt reports no usage).
+      non_provider_bookkeeping_rows -- provider_call_attempted is False.
+      unknown_provider_status_rows  -- a historical row with neither the
+                                        explicit field nor a recognized
+                                        call_kind; not counted as either
+                                        attempted or bookkeeping.
+
+    The original `recovery_or_retry_calls`/`total_calls` fields are kept,
+    computed exactly as they always were (never redefined), for any
+    existing consumer/dashboard that already keys off those exact names."""
     entries = [c for c in telemetry if isinstance(c, dict)]
-    classified = [(c, classify_telemetry_entry(c)) for c in entries]
-    provider_entries = [c for c in entries if _is_provider_call(c)]
-    bookkeeping_entries = [c for c in entries if not _is_provider_call(c)]
+    classified = [(c, classify_telemetry_entry(c), _is_provider_call(c)) for c in entries]
+
+    provider_entries = [c for c, cls, attempted in classified if attempted is True]
+    bookkeeping_entries = [c for c, cls, attempted in classified if attempted is False]
+    unknown_status_entries = [c for c, cls, attempted in classified if attempted is None]
 
     def _provider_count(label: str) -> int:
-        return sum(1 for c, cls in classified if cls == label and _is_provider_call(c))
+        return sum(1 for c, cls, attempted in classified if cls == label and attempted is True)
 
     planned_primary = _provider_count("PLANNED_PRIMARY")
     planned_focused = _provider_count("PLANNED_FOCUSED")
     truncation_recovery = _provider_count("TRUNCATION_RECOVERY")
     targeted_retry = _provider_count("TARGETED_RETRY")
     other_provider = _provider_count("UNKNOWN")
-    split_exhausted_rows = sum(1 for c, cls in classified if cls == "BOOKKEEPING")
+    split_exhausted_rows = sum(1 for c, cls, attempted in classified if cls == "BOOKKEEPING")
+
+    successful = [c for c in provider_entries if c.get("error") is None]
+    failed = [c for c in provider_entries if c.get("error") is not None]
+    usage_reported = [c for c in provider_entries
+                      if c.get("input_tokens") is not None or c.get("output_tokens") is not None]
 
     # Legacy metric, computed exactly as it always was -- never redefined.
     legacy_recovery_or_retry_calls = sum(
         1 for c in entries if c.get("call_kind") not in ("initial", "batch"))
 
     return {
-        # -- precise taxonomy (Phase 5E) --
+        # -- precise taxonomy (Phase 5E + 5E.1) --
         "telemetry_rows": len(entries),
-        "provider_calls": len(provider_entries),
+        "provider_call_attempts": len(provider_entries),
+        "provider_calls": len(provider_entries),  # Phase 5E name, same meaning, kept for compatibility
+        "successful_provider_calls": len(successful),
+        "failed_provider_calls": len(failed),
+        "usage_reported_provider_calls": len(usage_reported),
         "planned_primary_provider_calls": planned_primary,
         "planned_focused_provider_calls": planned_focused,
         "recovery_provider_calls": truncation_recovery + targeted_retry,
@@ -1500,9 +1578,12 @@ def _telemetry_audit_summary(telemetry: list, wall_seconds: float) -> dict:
         "other_provider_calls": other_provider,
         "non_provider_bookkeeping_rows": len(bookkeeping_entries),
         "split_exhausted_rows": split_exhausted_rows,
-        # -- token totals: provider calls only (instruction 4) --
-        "input_tokens": sum((c.get("input_tokens") or 0) for c in provider_entries),
-        "output_tokens": sum((c.get("output_tokens") or 0) for c in provider_entries),
+        "unknown_provider_status_rows": len(unknown_status_entries),
+        # -- token totals: actual reported usage only (instruction 6) --
+        # a failed attempt contributes zero tokens but was still counted
+        # above as a provider_call_attempt / failed_provider_call.
+        "input_tokens": sum((c.get("input_tokens") or 0) for c in usage_reported),
+        "output_tokens": sum((c.get("output_tokens") or 0) for c in usage_reported),
         "wall_seconds": wall_seconds,
         # -- legacy fields, preserved verbatim for backward compatibility --
         "total_calls": len(entries),
