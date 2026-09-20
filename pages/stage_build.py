@@ -10,6 +10,7 @@ Consolidated working environment for proposal construction:
 import streamlit as st
 import auth_session
 import tenancy
+import section_analyzer
 from analyst import draft_proposal_section
 from config import api_key_configured
 from components.ui import (metric_card, status_badge, priority_badge, readiness_bar,
@@ -20,6 +21,107 @@ def _current_access_token_and_org():
     session = auth_session.current_session()
     ctx = auth_session.current_auth_context()
     return session["access_token"], ctx.organization_id
+
+
+_DIRECTION_LABEL = {
+    "ON_TRACK": ("✅ On Track", "#27AE60"),
+    "NEEDS_ADJUSTMENT": ("⚠️ Needs Adjustment", "#C9A96E"),
+    "HIGH_RISK": ("🔴 High Risk", "#C0392B"),
+    "INSUFFICIENT_CONTEXT": ("❔ Insufficient Context", "#6E6C66"),
+}
+_REQ_STATUS_COLOR = {
+    "COVERED": "#27AE60", "PARTIAL": "#C9A96E", "MISSING": "#C0392B",
+    "CONTRADICTED": "#C0392B", "CANNOT_ASSESS": "#6E6C66",
+}
+
+
+def _render_section_review(review: dict, stale: bool, key_prefix: str = ""):
+    """Progressive-disclosure rendering of one persisted section_reviews
+    row (instruction 17). The first screen answers, immediately: are we
+    heading in the right direction, why, and what to change next --
+    everything else is behind an expander."""
+    result = review.get("review_result") or {}
+    direction = review.get("direction", "INSUFFICIENT_CONTEXT")
+    label, color = _DIRECTION_LABEL.get(direction, _DIRECTION_LABEL["INSUFFICIENT_CONTEXT"])
+
+    status_html = '<span style="color:#C9A96E">● Stale — section or requirements changed since this review</span>' \
+        if stale else '<span style="color:#27AE60">● Current</span>'
+    st.markdown(
+        f'<div style="background:#111118;border:1px solid #292832;border-radius:6px;padding:.8rem 1rem;margin:.5rem 0">'
+        f'<div style="font-size:1.1rem;font-weight:700;color:{color}">{label}</div>'
+        f'<div style="font-size:.72rem;margin-top:.2rem">{status_html}</div>'
+        f'<div style="font-size:.85rem;color:#EDEAE3;margin-top:.5rem">{result.get("summary","")}</div>'
+        f'</div>', unsafe_allow_html=True)
+
+    top_changes = result.get("top_changes") or []
+    if top_changes:
+        st.markdown("**Top Changes Before Writing More**")
+        for i, c in enumerate(top_changes, 1):
+            st.markdown(f"{i}. {c}")
+
+    req_assessments = result.get("requirement_assessments") or []
+    if req_assessments:
+        with st.expander(f"📋 Requirement Coverage ({len(req_assessments)})", expanded=False):
+            for ra in req_assessments:
+                c = _REQ_STATUS_COLOR.get(ra.get("status"), "#6E6C66")
+                st.markdown(
+                    f'<div style="border-left:3px solid {c};padding:.3rem .6rem;margin:.3rem 0">'
+                    f'<strong>{ra.get("criterion","")}</strong> '
+                    f'<span style="color:{c};font-size:.75rem;font-weight:600">{ra.get("status","")}</span>'
+                    f'</div>', unsafe_allow_html=True)
+                if ra.get("gap"):
+                    st.markdown(f'<div style="font-size:.78rem;color:#A9A69D">Gap: {ra["gap"]}</div>', unsafe_allow_html=True)
+                if ra.get("recommended_action"):
+                    st.markdown(f'<div style="font-size:.78rem;color:#A9A69D">Action: {ra["recommended_action"]}</div>', unsafe_allow_html=True)
+
+    rg_assessments = result.get("response_guideline_assessments") or []
+    if rg_assessments:
+        with st.expander(f"📐 Response Guideline Coverage ({len(rg_assessments)})", expanded=False):
+            for rga in rg_assessments:
+                st.markdown(f'**{rga.get("guideline","")}** — {rga.get("status","")}')
+                if rga.get("prompt"):
+                    st.markdown(f'<div style="font-size:.78rem;color:#A9A69D">{rga["prompt"]}</div>', unsafe_allow_html=True)
+
+    evidence = result.get("evidence_assessment") or {}
+    if evidence:
+        with st.expander("🔬 Evidence Strength", expanded=False):
+            if evidence.get("strong_evidence"):
+                st.markdown("**Strong evidence:**")
+                for e in evidence["strong_evidence"]:
+                    st.markdown(f"- {e}")
+            if evidence.get("unsupported_claims"):
+                st.markdown("**Unsupported claims:**")
+                for e in evidence["unsupported_claims"]:
+                    st.markdown(f"- {e}")
+            if evidence.get("missing_evidence"):
+                st.markdown("**Missing evidence:**")
+                for e in evidence["missing_evidence"]:
+                    st.markdown(f"- {e}")
+
+    clarity = result.get("clarity_and_structure") or []
+    if clarity:
+        with st.expander("🧭 Clarity & Evaluator Usability", expanded=False):
+            for c in clarity:
+                st.markdown(f"- {c}")
+
+    diff = result.get("differentiation") or []
+    if diff:
+        with st.expander("✨ Differentiation", expanded=False):
+            for d in diff:
+                st.markdown(f'- **{d.get("assessment","")}**: {d.get("statement","")}')
+
+    buyer_ctx = result.get("buyer_context") or []
+    if buyer_ctx:
+        with st.expander("🌐 Buyer Context (External — not a stated requirement)", expanded=False):
+            for b in buyer_ctx:
+                st.markdown(f'<div style="font-size:.8rem"><em>External signal:</em> {b.get("external_fact","")}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="font-size:.8rem;color:#A9A69D"><em>Analytical implication:</em> {b.get("implication","")}</div>', unsafe_allow_html=True)
+
+    cross_section = [ra for ra in req_assessments if ra.get("dependency") and ra.get("dependency") != "IN_SECTION"]
+    if cross_section:
+        with st.expander("🔗 Cross-Section Dependencies", expanded=False):
+            for ra in cross_section:
+                st.markdown(f'- **{ra.get("criterion","")}** — {ra.get("dependency","")}')
 
 
 def page_build(bid_id: int):
@@ -122,7 +224,9 @@ def page_build(bid_id: int):
                 st.markdown(f"#### ✍️ Drafting: [{active_sec.get('section_num','')}] {active_sec['title']}")
                 st.markdown(f'<div style="font-size:.78rem;color:#A9A69D;margin-bottom:.5rem">Owner: <strong>{active_sec.get("owner") or "Unassigned"}</strong> · Target: <strong>{active_sec.get("word_limit") or 500} words</strong></div>', unsafe_allow_html=True)
 
-                # Requirements mapped in-view
+                # Requirements mapped in-view -- durably persisted (migrations/
+                # 013_section_analyzer.sql), not session-state only: reopening
+                # this bid later shows the same mapping.
                 with st.expander("🎯 Evaluation Criteria In View (Mapped Requirements)", expanded=True):
                     st.markdown(
                         '<div style="font-size:.75rem;color:#A9A69D;margin-bottom:.3rem">'
@@ -131,8 +235,16 @@ def page_build(bid_id: int):
                         unsafe_allow_html=True
                     )
                     req_options = {f"[{r.get('req_id','—')}] ({r.get('category','')}) {r.get('description','')[:65]}": r for r in reqs}
-                    selected_req_keys = st.multiselect("Mapped Requirements", list(req_options.keys()), key=f"req_map_{active_sec['id']}")
+                    persisted_req_ids = tenancy.get_section_requirement_ids_authenticated(_token, active_sec["id"])
+                    default_req_keys = [k for k, r in req_options.items() if r.get("id") in persisted_req_ids]
+                    selected_req_keys = st.multiselect("Mapped Requirements", list(req_options.keys()),
+                                                       default=default_req_keys, key=f"req_map_{active_sec['id']}")
                     mapped_reqs = [req_options[k] for k in selected_req_keys]
+                    mapped_req_ids = sorted(r["id"] for r in mapped_reqs if r.get("id"))
+                    if set(mapped_req_ids) != set(persisted_req_ids):
+                        tenancy.set_section_requirement_mapping_authenticated(
+                            _token, bid_id, active_sec["id"], mapped_req_ids)
+                        persisted_req_ids = mapped_req_ids
 
                 # Semantic Content Reuse
                 with st.expander("📚 Relevant Content Library Blocks (Semantic Search)", expanded=False):
@@ -185,6 +297,49 @@ def page_build(bid_id: int):
                     tenancy.delete_section_authenticated(_token, active_sec["id"])
                     st.session_state.pop("active_draft_sec", None)
                     st.rerun()
+
+                # ── SECTION ANALYZER ─────────────────────────────────────────
+                # Formative review of the CURRENT editor text (`edited_draft`,
+                # the text_area's own live value from this exact run -- never
+                # the last-saved DB value) against this section's mapped
+                # requirements. Lives in BUILD, not CHECK -- see
+                # section_analyzer.py's module docstring for why.
+                st.markdown("")
+                if st.button("🔎 Analyze This Section", key=f"analyze_sec_{active_sec['id']}", use_container_width=True):
+                    if not (api_key_configured() or st.session_state.get("anthropic_api_key")):
+                        st.error("Configure Anthropic API key to use the Section Analyzer.")
+                    else:
+                        with st.spinner("Analyzing section direction against buyer requirements… 15–45s"):
+                            try:
+                                session = auth_session.current_session()
+                                tenancy.analyze_section_for_organization(
+                                    bid_id, active_sec["id"], edited_draft, mapped_req_ids,
+                                    _org_id, user_id=session.get("user_id"))
+                                st.rerun()
+                            except section_analyzer.SectionAnalyzerError as e:
+                                st.error(f"Analysis could not be completed ({e.category}): {e}")
+                            except tenancy.AccessDeniedError as e:
+                                st.error(f"Not authorized: {e}")
+                            except Exception as e:
+                                st.error(f"Analysis failed: {e}")
+
+                reviews = tenancy.get_section_reviews_authenticated(_token, bid_id, active_sec["id"])
+                if reviews:
+                    latest = reviews[0]
+                    basis = section_analyzer.procurement_basis(bid_id)
+                    current_hash = section_analyzer.content_hash(edited_draft)
+                    stale = section_analyzer.is_section_review_stale(latest, current_hash, set(mapped_req_ids), basis)
+                    _render_section_review(latest, stale)
+                    if len(reviews) > 1:
+                        with st.expander(f"Previous Reviews ({len(reviews) - 1})", expanded=False):
+                            for r in reviews[1:]:
+                                st.markdown(
+                                    f'<div style="font-size:.78rem;color:#A9A69D;padding:.3rem 0;border-bottom:1px solid #292832">'
+                                    f'{r["created_at"][:19].replace("T"," ")} · <strong>{r["direction"].replace("_"," ").title()}</strong> · '
+                                    f'content {r["section_content_hash"][:10]}…'
+                                    f'</div>', unsafe_allow_html=True)
+                                if st.button("Open", key=f"open_review_{r['id']}"):
+                                    _render_section_review(r, stale=True, key_prefix=f"hist_{r['id']}_")
 
     # ══════════════════════════════════════════════════════════════════════════
     # TAB 2: DELIVERABLES & SOW DETAIL

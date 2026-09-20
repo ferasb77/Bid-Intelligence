@@ -156,6 +156,19 @@ def get_requirements(bid_id, include_retired: bool = False):
         query = query.eq("lifecycle_status", "active")
     return _rows(query.order("category").order("req_id").execute())
 
+
+def get_requirements_by_ids(bid_id: int, requirement_ids: list[int]) -> list[dict]:
+    """Fetch a specific set of requirements by internal id, scoped to
+    bid_id defensively (a requirement_id passed to this function must
+    actually belong to the bid it's being used for -- callers never trust
+    an id list without this). Returns [] for an empty/None id list rather
+    than querying with an empty IN clause."""
+    if not requirement_ids:
+        return []
+    return _rows(get_client().table("requirements").select("*")
+                .eq("bid_id", bid_id).in_("id", list(requirement_ids)).execute())
+
+
 class GovernedRequirementMutationError(Exception):
     """Raised when a direct (non-governed) write would change a canonical
     procurement-truth field on a requirement belonging to a bid whose
@@ -452,6 +465,60 @@ def upsert_section(data):
 
 def delete_section(sec_id):
     get_client().table("outline_sections").delete().eq("id", sec_id).execute()
+
+
+# ── Section Analyzer: durable requirement mapping & review history ────────────
+# migrations/013_section_analyzer.sql. The durable replacement for the
+# session-state-only "Mapped Requirements" multiselect in
+# pages/stage_build.py -- see section_analyzer.py for how these are used.
+
+def get_section_requirement_ids(section_id: int) -> list[int]:
+    rows = _rows(get_client().table("outline_section_requirements")
+                .select("requirement_id").eq("section_id", section_id).execute())
+    return [r["requirement_id"] for r in rows]
+
+
+def set_section_requirement_mapping(bid_id: int, section_id: int, requirement_ids: list[int]) -> None:
+    """Replace-ALL semantics for one section's mapping, matching the UI
+    multiselect's own "this IS the current set" behavior exactly -- not an
+    incremental add/remove. Deletes then reinserts inside no explicit
+    transaction (Supabase's REST client has no cross-statement transaction
+    control here); the delete-then-insert order means a mid-failure can
+    only ever leave the mapping temporarily EMPTY, never duplicated or
+    pointing at stale ids -- an acceptable, self-healing failure mode for
+    a re-savable mapping (unlike section_reviews, which must never be
+    partially written)."""
+    sb = get_client()
+    sb.table("outline_section_requirements").delete().eq("section_id", section_id).execute()
+    if requirement_ids:
+        sb.table("outline_section_requirements").insert([
+            {"bid_id": bid_id, "section_id": section_id, "requirement_id": rid}
+            for rid in sorted(set(requirement_ids))
+        ]).execute()
+
+
+def create_section_review(data: dict) -> dict | None:
+    """Insert-only -- section_reviews rows are immutable (instruction 11);
+    no update_section_review/delete_section_review function exists on
+    purpose. Returns the inserted row (echoed back by Supabase), or None
+    if the insert failed."""
+    keys = ["bid_id", "section_id", "section_content_snapshot", "section_content_hash",
+            "mapped_requirement_ids", "based_on_procurement_revision",
+            "based_on_procurement_truth_status", "based_on_analysis_run_id",
+            "based_on_analysis_result_id", "raw_snapshot_schema_version",
+            "review_schema_version", "direction", "review_result", "created_by_user_id"]
+    clean = {k: data.get(k) for k in keys}
+    return _one(get_client().table("section_reviews").insert(clean).execute())
+
+
+def get_section_reviews(bid_id: int, section_id: int) -> list[dict]:
+    """Most recent first -- callers that want "the current review" take
+    index 0 after their own staleness check; callers building history UI
+    use the full ordered list as-is."""
+    return _rows(get_client().table("section_reviews").select("*")
+                .eq("bid_id", bid_id).eq("section_id", section_id)
+                .order("created_at", desc=True).execute())
+
 
 # ── Readiness ─────────────────────────────────────────────────────────────────
 def get_readiness(bid_id):

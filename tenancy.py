@@ -285,6 +285,28 @@ def get_raw_snapshot_report_for_organization(
     return analysis_service.regenerate_report_from_raw_snapshot(run_id, buyer_intelligence=buyer_intelligence)
 
 
+def analyze_section_for_organization(
+    bid_id: int, section_id: int, section_text: str, mapped_requirement_ids: list[int],
+    organization_id: str, user_id: str | None = None,
+) -> dict:
+    """Authorization boundary in front of section_analyzer.analyze_section()
+    -- the Section Analyzer's own model-invoking action, gated exactly like
+    start_fast_analysis_for_organization/get_raw_snapshot_report_for_organization
+    above (organization ownership of bid_id, AND section_id actually
+    belongs to bid_id, checked before any privileged read or model call).
+    `section_text` must be the caller's CURRENT editor text -- this
+    function does not re-fetch section content from the database (see
+    section_analyzer.analyze_section's own docstring)."""
+    require_bid_access(bid_id, organization_id)
+    section = db.get_outline(bid_id)
+    section = next((s for s in section if int(s["id"]) == int(section_id)), None)
+    if not section:
+        raise AccessDeniedError(f"section {section_id} does not belong to bid {bid_id}")
+    import section_analyzer
+    return section_analyzer.analyze_section(
+        bid_id, section, section_text, mapped_requirement_ids, created_by_user_id=user_id)
+
+
 def upload_document_for_organization(
     bid_id: int, organization_id: str, filename: str, file_bytes: bytes,
     doc_type: str = "RFP / Source", owner: str | None = None, doc_id: int | None = None,
@@ -831,6 +853,40 @@ def upsert_section_authenticated(access_token: str, data: dict) -> None:
 
 def delete_section_authenticated(access_token: str, sec_id: int) -> None:
     auth_client.get_authenticated_client(access_token).table("outline_sections").delete().eq("id", sec_id).execute()
+
+
+# ── Section Analyzer: durable mapping + review history (category A: full CRUD) ──
+# The analyzer's actual model-invoking action, analyze_section_for_organization,
+# lives further below as a category-B (service-role, require_bid_access-gated)
+# privileged call -- it mirrors start_fast_analysis_for_organization's
+# authorization shape for the same reason: it spends a model call, this
+# read/write CRUD does not.
+
+def get_section_requirement_ids_authenticated(access_token: str, section_id: int) -> list[int]:
+    client = auth_client.get_authenticated_client(access_token)
+    rows = client.table("outline_section_requirements").select("requirement_id") \
+        .eq("section_id", section_id).execute().data or []
+    return [r["requirement_id"] for r in rows]
+
+
+def set_section_requirement_mapping_authenticated(access_token: str, bid_id: int, section_id: int,
+                                                   requirement_ids: list[int]) -> None:
+    client = auth_client.get_authenticated_client(access_token)
+    client.table("outline_section_requirements").delete().eq("section_id", section_id).execute()
+    if requirement_ids:
+        client.table("outline_section_requirements").insert([
+            {"bid_id": bid_id, "section_id": section_id, "requirement_id": rid}
+            for rid in sorted(set(requirement_ids))
+        ]).execute()
+
+
+def get_section_reviews_authenticated(access_token: str, bid_id: int, section_id: int) -> list[dict]:
+    client = auth_client.get_authenticated_client(access_token)
+    return (
+        client.table("section_reviews").select("*")
+        .eq("bid_id", bid_id).eq("section_id", section_id)
+        .order("created_at", desc=True).execute().data or []
+    )
 
 
 # ── deliverables (category A: full CRUD) ──────────────────────────────────
