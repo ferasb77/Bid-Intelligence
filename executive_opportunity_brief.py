@@ -129,8 +129,14 @@ def _resolve(reference: GovernedObjectReference,
     return result
 
 
-def validate_executive_opportunity_brief(
-        brief: ExecutiveOpportunityBrief) -> ExecutiveOpportunityBrief:
+def _validate_and_resolve(
+        brief: ExecutiveOpportunityBrief) -> tuple[ExecutiveOpportunityBrief, dict[str, ResolutionResult]]:
+    """Shared body for validate/render: resolve every declared reference
+    exactly once. Rendering previously called the public validate function
+    (one resolution pass over `brief.detail_register`) and then resolved
+    the same references again to build its own lookup table -- doubling
+    the governed-resolution work with zero effect on the rendered bytes.
+    Both callers below now run this single pass and reuse its result."""
     if not isinstance(brief, ExecutiveOpportunityBrief):
         raise ContractValidationError("ExecutiveOpportunityBrief is required")
     if brief.brief_version != BRIEF_VERSION:
@@ -162,9 +168,14 @@ def validate_executive_opportunity_brief(
         raise ContractValidationError("brief coverage differs from the understanding")
     if brief.brief_id != _presentation_identity(understanding):
         raise ContractValidationError("brief presentation identity is invalid")
-    for reference in brief.detail_register:
-        _resolve(reference, understanding)
-    return brief
+    resolved = {reference.object_id: _resolve(reference, understanding)
+               for reference in brief.detail_register}
+    return brief, resolved
+
+
+def validate_executive_opportunity_brief(
+        brief: ExecutiveOpportunityBrief) -> ExecutiveOpportunityBrief:
+    return _validate_and_resolve(brief)[0]
 
 
 def build_executive_opportunity_brief(
@@ -237,11 +248,8 @@ def _render_reference(reference: GovernedObjectReference,
 
 def render_executive_opportunity_brief(brief: ExecutiveOpportunityBrief) -> str:
     """Resolve owner-declared values and render the immutable presentation plan."""
-    validate_executive_opportunity_brief(brief)
-    understanding = brief.understanding
+    brief, resolved = _validate_and_resolve(brief)
     reference_by_id = {item.object_id: item for item in brief.detail_register}
-    resolved = {item.object_id: _resolve(item, understanding)
-                for item in brief.detail_register}
     rendered_ids: set[str] = set()
     lines = ["# Executive Opportunity Brief", "",
              f"Understanding: `{brief.understanding_id}`",

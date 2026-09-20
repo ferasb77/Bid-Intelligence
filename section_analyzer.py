@@ -320,7 +320,13 @@ _ANALYZER_SYSTEM = (
 )
 
 
-def _analyzer_prompt(context: dict) -> str:
+def _analyzer_prompt(context: dict, *, return_components: bool = False):
+    """Builds the Section Analyzer user prompt. `return_components=True`
+    additionally returns the named blocks the prompt is assembled from,
+    for offline request-size profiling (Phase 5A) -- it changes nothing
+    about the returned prompt string itself; every caller that doesn't
+    pass it gets byte-identical behavior to before this parameter existed
+    (see tests/test_request_profiling.py's equivalence test)."""
     reqs_block = "\n".join(
         f"- requirement_id={r['requirement_id']} req_id={r['req_id']!r} category={r['category']!r}\n"
         f"  buyer wording: {r['description']}\n"
@@ -348,16 +354,16 @@ def _analyzer_prompt(context: dict) -> str:
         + (f" (unavailable: {basis['advisory_unavailable_reason']})" if not basis["advisory_intelligence_available"] else ".")
     )
 
-    return f"""=== SECTION BEING REVIEWED ===
+    section_block = f"""=== SECTION BEING REVIEWED ===
 Title: {context['section_title']}
 Guidance/scope note: {context['section_guidance'] or '(none)'}
 Word-count target: {context['word_limit'] or 'not set'}
 
 --- CURRENT DRAFT TEXT (exactly as the writer has it right now) ---
 {context['section_text'] or '(section is currently empty)'}
---- END DRAFT TEXT ---
+--- END DRAFT TEXT ---"""
 
-=== PROCUREMENT REQUIREMENTS MAPPED TO THIS SECTION ===
+    requirements_block = f"""=== PROCUREMENT REQUIREMENTS MAPPED TO THIS SECTION ===
 {basis_note}
 {reqs_block}
 
@@ -365,39 +371,50 @@ Word-count target: {context['word_limit'] or 'not set'}
 {qual_block}
 
 === TIE-BREAK RULES (advisory, from Fast Analysis) ===
-{tie_block}
+{tie_block}"""
 
-=== EXTERNAL BUYER CONTEXT (advisory only -- NEVER an evaluation requirement) ===
-{buyer_block}
+    buyer_intelligence_block = f"""=== EXTERNAL BUYER CONTEXT (advisory only -- NEVER an evaluation requirement) ===
+{buyer_block}"""
 
-Return ONLY valid JSON in exactly this shape:
-{{
+    instructions_block = """Return ONLY valid JSON in exactly this shape:
+{
   "direction": "ON_TRACK|NEEDS_ADJUSTMENT|HIGH_RISK|INSUFFICIENT_CONTEXT",
   "summary": "<what this section currently communicates: what it tries to prove, what an evaluator can verify, what they'd still have to infer -- 2-4 sentences, analysis not a claim about the buyer's mental state>",
   "requirement_assessments": [
-    {{"requirement_id": <int, must be one of the requirement_ids above>, "criterion": "<short label>",
+    {"requirement_id": <int, must be one of the requirement_ids above>, "criterion": "<short label>",
       "status": "COVERED|PARTIAL|MISSING|CONTRADICTED|CANNOT_ASSESS",
       "section_evidence": ["<short quote/paraphrase from the draft text, or empty if none>"],
       "gap": "<what's missing, or empty if COVERED>", "recommended_action": "<actionable next step>",
-      "dependency": "IN_SECTION|CROSS_REFERENCE_NEEDED|OWNED_BY_OTHER_SECTION|GLOBAL_REQUIREMENT"}}
+      "dependency": "IN_SECTION|CROSS_REFERENCE_NEEDED|OWNED_BY_OTHER_SECTION|GLOBAL_REQUIREMENT"}
   ],
   "response_guideline_assessments": [
-    {{"guideline": "<RG id>", "prompt": "<the evidence prompt>", "status": "ANSWERED|PARTIAL|NOT_ANSWERED",
-      "section_evidence": ["..."], "recommended_action": "..."}}
+    {"guideline": "<RG id>", "prompt": "<the evidence prompt>", "status": "ANSWERED|PARTIAL|NOT_ANSWERED",
+      "section_evidence": ["..."], "recommended_action": "..."}
   ],
-  "evidence_assessment": {{"strong_evidence": ["<concrete, named, quantified points actually in the text>"],
+  "evidence_assessment": {"strong_evidence": ["<concrete, named, quantified points actually in the text>"],
     "unsupported_claims": ["<assertions with no supporting evidence in the text>"],
-    "missing_evidence": ["<evidence referenced but not actually supplied>"]}},
+    "missing_evidence": ["<evidence referenced but not actually supplied>"]},
   "clarity_and_structure": ["<specific usability issues: buried answers, long generic intros, repetition, evidence separated from claims -- or empty list if none>"],
   "differentiation": [
-    {{"statement": "<a claim from the text>", "assessment": "SPECIFIC|GENERIC|UNSUPPORTED|DIFFERENTIATED"}}
+    {"statement": "<a claim from the text>", "assessment": "SPECIFIC|GENERIC|UNSUPPORTED|DIFFERENTIATED"}
   ],
   "buyer_context": [
-    {{"external_fact": "<a Buyer Intelligence signal actually given above>", "implication": "<analytical implication for THIS section, clearly separate from the fact itself>", "source": "<source>"}}
+    {"external_fact": "<a Buyer Intelligence signal actually given above>", "implication": "<analytical implication for THIS section, clearly separate from the fact itself>", "source": "<source>"}
   ],
   "top_changes": ["<3-5 highly actionable, specific next changes -- never more than 5, never generic filler>"]
-}}
+}
 Rules: requirement_assessments must cover every requirement_id listed above, no more, no fewer. A requirement whose subject matter belongs to a different proposal section (e.g. pricing detail inside a technical-approach section) must be marked with dependency OWNED_BY_OTHER_SECTION or CROSS_REFERENCE_NEEDED, never MISSING, purely because it belongs elsewhere. If response guidelines were shown above, include one response_guideline_assessments entry per guideline shown; otherwise return an empty list. Never include more than 5 top_changes."""
+
+    prompt = (section_block + "\n\n" + requirements_block + "\n\n"
+             + buyer_intelligence_block + "\n\n" + instructions_block)
+    if return_components:
+        return prompt, {
+            "section": section_block,
+            "requirements": requirements_block,
+            "buyer_intelligence": buyer_intelligence_block,
+            "instructions": instructions_block,
+        }
+    return prompt
 
 
 def _validate_review_json(parsed: dict, expected_requirement_ids: set[int]) -> bool:

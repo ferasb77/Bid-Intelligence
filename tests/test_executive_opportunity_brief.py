@@ -139,6 +139,32 @@ def test_identical_understanding_produces_identical_brief_and_bytes():
     assert render_executive_opportunity_brief(first) == render_executive_opportunity_brief(second)
 
 
+def test_render_resolves_each_reference_exactly_once():
+    """Phase 5A offline-profiling finding: render() used to validate (one
+    governed-resolution pass over detail_register) and then build its own
+    resolved-lookup table (a second, identical pass) -- doubling resolution
+    work with zero effect on the rendered bytes. Guards against that
+    regressing; the double-computation would also double the effective
+    cost of the ~1,000-relationship-per-object rendering this brief type
+    produces on a real Bank of Canada-sized document set."""
+    import executive_opportunity_brief as eob
+
+    brief = build_executive_opportunity_brief(_understanding())
+    calls = []
+    original = eob._resolve
+
+    def counting_resolve(reference, understanding):
+        calls.append(reference.object_id)
+        return original(reference, understanding)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(eob, "_resolve", counting_resolve)
+        render_executive_opportunity_brief(brief)
+
+    assert len(calls) == len(brief.detail_register)
+    assert sorted(calls) == sorted(item.object_id for item in brief.detail_register)
+
+
 def test_brief_is_immutable_and_contains_no_semantic_value_or_upstream_fields():
     brief = build_executive_opportunity_brief(_understanding())
     with pytest.raises(FrozenInstanceError):

@@ -1,0 +1,117 @@
+{
+  "schema_version": "1.0",
+  "generated_by": "scripts/request_profile.py",
+  "generated_from_head": "bb7b40345c3d266f87a043d1506e81c708dea6b7",
+  "generated_under": "BI Token Optimization Program, Phase 5A (Offline Request Profiling & Token Budgeting)",
+  "methodology": [
+    "baseline_static_bytes are measured, not aspirational -- current byte size of the STATIC fields listed for each entry, taken directly from live module-level constants (SYSTEM prompts, schema text, fixed instructions).",
+    "Only the static_fields listed per entry are gated. Every other request component (source_document, procurement_context, buyer_intelligence, proposal_content, and analyst.py's per-call dynamic user prompt) is intentionally NOT gated here, because real RFP/proposal size legitimately varies -- gating it would either block legitimate large documents or require an arbitrary aspirational cap this phase was told not to invent.",
+    "warning_threshold_bytes = baseline * 1.20 (rounded up); hard_regression_threshold_bytes = baseline * 1.50 (rounded up). A static field should almost never grow -- these are wide enough to tolerate a genuine small wording edit while still catching runaway bloat (e.g. an accidentally-duplicated block, a schema pasted in twice).",
+    "provider_counted_input_tokens is never used for these budgets -- client.messages.count_tokens() was attempted once during this baseline run and failed with the same 'credit balance too low' error as messages.create (see docs/current/SYSTEM_STATE.md / Phase 5 commissioning history), so every number below is an exact character/byte measurement, never an estimated or provider-reported token count.",
+    "informational_total_request_bytes is the full representative-request size (static + synthetic dynamic content) from the same profiling run, included for context only -- it is not a budget and must not be asserted against in regression tests."
+  ],
+  "budgets": [
+    {
+      "workflow": "section_analyzer", "operation": "formative_review",
+      "static_fields": {"system_bytes": 1091, "instructions_bytes": 2505},
+      "baseline_static_bytes": 3596,
+      "warning_threshold_bytes": 4316,
+      "hard_regression_threshold_bytes": 5394,
+      "informational_total_request_bytes": 5056,
+      "source": "section_analyzer._ANALYZER_SYSTEM + the fixed instructions_block returned by _analyzer_prompt(return_components=True)"
+    },
+    {
+      "workflow": "fast_analysis", "operation": "initial",
+      "static_fields": {"schema_bytes": 3025, "header_instructions_bytes": 869},
+      "baseline_static_bytes": 3894,
+      "warning_threshold_bytes": 4673,
+      "hard_regression_threshold_bytes": 5841,
+      "informational_total_request_bytes": 11994,
+      "source": "fast_analysis._ROUTE_SCHEMAS[ROUTE_EVAL_ONLY] + the fixed header text in _build_prompt() (measured for one representative route; other routes have their own schema constants, not individually budgeted this pass)"
+    },
+    {
+      "workflow": "deep_verify", "operation": "initial",
+      "static_fields": {"instructions_bytes": 14688},
+      "baseline_static_bytes": 14688,
+      "warning_threshold_bytes": 17626,
+      "hard_regression_threshold_bytes": 22032,
+      "informational_total_request_bytes": 26128,
+      "source": "extractor.STAGE_A_FACT_EXTRACTION_PROMPT (module constant)"
+    },
+    {
+      "workflow": "deep_verify", "operation": "stage_d_synthesis",
+      "static_fields": {"instructions_bytes": 5722},
+      "baseline_static_bytes": 5722,
+      "warning_threshold_bytes": 6867,
+      "hard_regression_threshold_bytes": 8583,
+      "informational_total_request_bytes": 14545,
+      "source": "stage_d_projection.SYNTHESIS_PROMPT (module constant; the remaining request_text is the dynamic canonical_json(projection) context, intentionally unbudgeted)"
+    },
+    {
+      "workflow": "analyst", "operation": "compliance_review",
+      "static_fields": {"system_bytes": 263}, "baseline_static_bytes": 263,
+      "warning_threshold_bytes": 316, "hard_regression_threshold_bytes": 395,
+      "informational_total_request_bytes": 961, "source": "analyst.COMPLIANCE_SYSTEM"
+    },
+    {
+      "workflow": "analyst", "operation": "missing_evidence",
+      "static_fields": {"system_bytes": 215}, "baseline_static_bytes": 215,
+      "warning_threshold_bytes": 258, "hard_regression_threshold_bytes": 323,
+      "informational_total_request_bytes": 1126, "source": "analyst.EVIDENCE_SYSTEM"
+    },
+    {
+      "workflow": "analyst", "operation": "clarification_questions",
+      "static_fields": {"system_bytes": 1005}, "baseline_static_bytes": 1005,
+      "warning_threshold_bytes": 1206, "hard_regression_threshold_bytes": 1508,
+      "informational_total_request_bytes": 2285, "source": "analyst.CLARIFICATION_SYSTEM"
+    },
+    {
+      "workflow": "analyst", "operation": "bid_no_bid_score",
+      "static_fields": {"system_bytes": 357}, "baseline_static_bytes": 357,
+      "warning_threshold_bytes": 429, "hard_regression_threshold_bytes": 536,
+      "informational_total_request_bytes": 2946, "source": "analyst.BID_NOBID_SYSTEM"
+    },
+    {
+      "workflow": "analyst", "operation": "past_proposal_analysis",
+      "static_fields": {"system_bytes": 295}, "baseline_static_bytes": 295,
+      "warning_threshold_bytes": 354, "hard_regression_threshold_bytes": 443,
+      "informational_total_request_bytes": 1774, "source": "analyst.PROPOSAL_ANALYZER_SYSTEM"
+    },
+    {
+      "workflow": "analyst", "operation": "draft_proposal_section",
+      "static_fields": {"system_bytes": 336}, "baseline_static_bytes": 336,
+      "warning_threshold_bytes": 404, "hard_regression_threshold_bytes": 504,
+      "informational_total_request_bytes": 1399, "source": "analyst.DRAFTER_SYSTEM"
+    },
+    {
+      "workflow": "analyst", "operation": "submission_readiness_check",
+      "static_fields": {"system_bytes": 227}, "baseline_static_bytes": 227,
+      "warning_threshold_bytes": 273, "hard_regression_threshold_bytes": 341,
+      "informational_total_request_bytes": 1162, "source": "analyst.READINESS_SYSTEM"
+    },
+    {
+      "workflow": "analyst", "operation": "addendum_analysis",
+      "static_fields": {"system_bytes": 228}, "baseline_static_bytes": 228,
+      "warning_threshold_bytes": 274, "hard_regression_threshold_bytes": 342,
+      "informational_total_request_bytes": 1833, "source": "analyst.ADDENDUM_SYSTEM"
+    },
+    {
+      "workflow": "analyst", "operation": "proposal_alignment_chunk",
+      "static_fields": {"system_bytes": 784}, "baseline_static_bytes": 784,
+      "warning_threshold_bytes": 941, "hard_regression_threshold_bytes": 1176,
+      "informational_total_request_bytes": 784, "source": "analyst._ALIGN_CHUNK_SYSTEM"
+    },
+    {
+      "workflow": "analyst", "operation": "proposal_alignment_synthesis",
+      "static_fields": {"system_bytes": 259}, "baseline_static_bytes": 259,
+      "warning_threshold_bytes": 311, "hard_regression_threshold_bytes": 389,
+      "informational_total_request_bytes": 259, "source": "analyst._ALIGN_SYNTHESIS_SYSTEM"
+    },
+    {
+      "workflow": "analyst", "operation": "procurement_change_proposal",
+      "static_fields": {"system_bytes": 1042}, "baseline_static_bytes": 1042,
+      "warning_threshold_bytes": 1251, "hard_regression_threshold_bytes": 1563,
+      "informational_total_request_bytes": 1042, "source": "analyst._PROCUREMENT_CHANGE_SYSTEM"
+    }
+  ]
+}
