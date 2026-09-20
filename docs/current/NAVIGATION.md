@@ -76,34 +76,48 @@ Where to look, not what everything means. Read
   by Proposal Intelligence (no new LLM call, no prompt/schema/scoring
   change).
 
-**Proposal Intelligence (PI-1)** — durable persistence for CHECK's
-Proposal Alignment output
+**Proposal Intelligence (PI-1, hardened in PI-1.1)** — durable persistence
+for CHECK's Proposal Alignment output
 - `proposal_intelligence.py` — the pure, deterministic adapter: package
-  digest (`compute_package_digest`), the current-alignment-result → PI
-  adapter (`adapt_requirement_assessments`/`adapt_findings`/
-  `build_run_payload`/`build_failed_run_payload`), the inverse adapter for
-  CHECK reload (`reconstruct_legacy_align_result`), and staleness helpers
+  digest over the FULL submitted package, included and excluded alike
+  (`compute_package_digest`), the current-alignment-result → PI adapter
+  (`adapt_requirement_assessments`/`adapt_findings`/`build_run_payload`/
+  `build_failed_run_payload` — both now take explicit `started_at`/
+  `completed_at`, captured by the caller around the actual analyzer call,
+  never DB-defaulted), the inverse adapter for CHECK reload
+  (`reconstruct_legacy_align_result`, `restore_package_manifest_dict` for
+  the historical package manifest), and staleness helpers
   (`staleness_reasons`/`is_current`). `PROPOSAL_INTELLIGENCE_ANALYSIS_VERSION`
   is the PI analytical-contract version, not the model name.
-- `migrations/015_proposal_intelligence.sql` — `proposal_package_snapshots`,
-  `proposal_intelligence_runs`, `proposal_requirement_assessments`,
-  `proposal_intelligence_findings` (written, **not applied** — see
-  SYSTEM_STATE.md). RLS: authenticated SELECT only (transitive
-  `can_access_bid`), no authenticated INSERT/UPDATE/DELETE policy —
-  writes are service-role only, reached exclusively through
-  `tenancy.run_proposal_intelligence_for_organization`.
-- `database.py`'s `create_proposal_package_snapshot`/
-  `create_proposal_intelligence_run`/`create_proposal_requirement_assessments`/
-  `create_proposal_intelligence_findings` (privileged, insert-only — no
-  update/delete function exists on purpose) and their `get_*` counterparts.
-- `tenancy.py`'s `run_proposal_intelligence_for_organization` (the
-  authorization boundary + orchestration: `require_bid_access` first, then
-  package-snapshot identity, the existing analyzer, the PI-1 adapter, then
-  persistence) and the `get_*_authenticated` read functions CHECK uses on
-  page reload.
+- `migrations/015_proposal_intelligence.sql` — the four PI tables
+  (written, **not applied** — see SYSTEM_STATE.md), each child table tied
+  to its parent by a COMPOSITE foreign key against `(id, bid_id)` (never a
+  same-table `bid_id` column trusted independently — a run/assessment/
+  finding cannot cross-link to another bid's parent row). Two SQL
+  functions, service-role-only (anon/authenticated execute revoked):
+  `get_or_create_proposal_package_snapshot` (concurrency-safe get-or-
+  create via a per-bid advisory lock) and `create_proposal_intelligence_bundle`
+  (the run + all its assessments + all its findings in one atomic call —
+  never partial). RLS: authenticated SELECT only (transitive
+  `can_access_bid`); the write protection is RLS-enabled-plus-no-write-
+  policy, not table GRANTs.
+- `database.py`'s `get_or_create_proposal_package_snapshot`/
+  `create_proposal_intelligence_bundle` (the ONLY write paths — no
+  per-table insert functions exist anymore) and `get_latest_proposal_intelligence_run`
+  (any status) vs. `get_latest_usable_proposal_intelligence_run`
+  (COMPLETE/INCOMPLETE only — a FAILED run never hides prior usable
+  intelligence) plus the other `get_*` read functions.
+- `tenancy.py`'s `run_proposal_intelligence_for_organization` (auth
+  boundary + orchestration; takes `package_files` — the analyzer's
+  included-only input — and a separate `full_package_manifest` for the
+  durable snapshot) and the `get_*_authenticated` read functions,
+  including `get_latest_usable_proposal_intelligence_run_authenticated`
+  (what CHECK reload uses) and `get_proposal_package_snapshot_authenticated`
+  (restores the historical manifest on reload).
 - Tests: `tests/test_proposal_intelligence.py` (adapter),
-  `tests/test_proposal_intelligence_tenancy.py` (authorization boundary),
-  `tests/test_proposal_intelligence_database.py` (persistence helpers).
+  `tests/test_proposal_intelligence_tenancy.py` (authorization boundary +
+  atomic persistence), `tests/test_proposal_intelligence_database.py`
+  (RPC-boundary persistence + migration DDL-intent checks).
 
 **Tenancy / RLS / auth boundary**
 - `tenancy.py` — every `*_for_organization` (service-role, ownership-checked)

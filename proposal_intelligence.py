@@ -105,7 +105,22 @@ def compute_package_digest(files: list[dict]) -> str:
     -- the digest represents identity, not content, exactly like every
     other content-hash identity already established in this codebase
     (extractor.build_alignment_submission_package's own file_id/
-    content_hash)."""
+    content_hash).
+
+    PI-1.1 (instruction 6): `files` must be the COMPLETE SUBMITTED package
+    -- every file the user uploaded, included and excluded, duplicate,
+    rejected, and unsupported alike -- never just the analyzer's included-
+    only subset. This makes "an excluded file is present in the package"
+    and "that file was never supplied at all" deliberately DIFFERENT
+    package identities (the excluded file still contributes a
+    (file_id, content_hash, included=False, role) entry either way,
+    changing the digest from a package that never had it), which matches
+    what a historical audit needs to reconstruct: the exact submission a
+    reviewer chose to exclude, not merely the subset the model saw. The
+    analyzer itself still only ever receives the included subset --
+    calling code must build that narrower list separately (see
+    tenancy.run_proposal_intelligence_for_organization's
+    `package_files_for_analysis` vs. `full_package_manifest` parameters)."""
     rows = sorted(
         (
             {field: f.get(field) for field in _PACKAGE_IDENTITY_FIELDS}
@@ -294,7 +309,8 @@ def adapt_findings(alignment_result: dict) -> list[dict]:
     return rows
 
 
-def build_run_payload(alignment_result: dict, *, procurement_state: dict) -> dict:
+def build_run_payload(alignment_result: dict, *, procurement_state: dict,
+                      started_at: str | None = None, completed_at: str | None = None) -> dict:
     """The proposal_intelligence_runs row body (minus id/bid_id/
     proposal_package_snapshot_id/created_by_user_id, which the caller/
     persistence layer supplies). Never mutates canonical procurement
@@ -305,7 +321,13 @@ def build_run_payload(alignment_result: dict, *, procurement_state: dict) -> dic
     status mirrors the analyzer's own existing vocabulary ("complete" ->
     COMPLETE, "incomplete" -> INCOMPLETE) rather than inventing a third
     one; FAILED is reserved for a caller-detected provider/model exception
-    with no analyzer result at all (see build_failed_run_payload)."""
+    with no analyzer result at all (see build_failed_run_payload).
+
+    PI-1.1 (instruction 7): `started_at` must be the timestamp the caller
+    captured BEFORE invoking the analyzer, and `completed_at` the
+    timestamp captured immediately after it returned -- never left to
+    default at INSERT time, which would record when the row was written,
+    not when analysis actually ran."""
     status = "COMPLETE" if alignment_result.get("status") == "complete" else "INCOMPLETE"
     legacy_result = {
         k: alignment_result.get(k) for k in (
@@ -322,6 +344,8 @@ def build_run_payload(alignment_result: dict, *, procurement_state: dict) -> dic
         "failure_reason": None,
         "coverage_metadata": alignment_result.get("coverage_metadata"),
         "legacy_result": legacy_result,
+        "started_at": started_at,
+        "completed_at": completed_at,
     }
 
 
@@ -377,11 +401,28 @@ def reconstruct_legacy_align_result(run: dict, assessments: list[dict], findings
     }
 
 
-def build_failed_run_payload(*, procurement_state: dict, failure_reason: str) -> dict:
+def restore_package_manifest_dict(snapshot: dict) -> dict:
+    """PI-1.1 instruction 8: the exact shape CHECK's
+    _align_result_snapshot_key session-state entry needs, rebuilt from a
+    persisted proposal_package_snapshots row's `manifest` column -- the
+    FULL submitted package (included AND excluded/duplicate/rejected/
+    unsupported files alike, each still carrying its own `role`, so a
+    primary-file designation survives reload exactly as it was at audit
+    time), never re-derived from whatever the live uploader currently
+    holds."""
+    return {"files": snapshot.get("manifest") or []}
+
+
+def build_failed_run_payload(*, procurement_state: dict, failure_reason: str,
+                             started_at: str | None = None, completed_at: str | None = None) -> dict:
     """A FAILED run when a provider/model exception left no analyzer
     result at all (instruction 13: 'A provider/model failure should
     create a FAILED run only where sufficient run identity already
-    exists' -- i.e. a package snapshot id -- never invents findings)."""
+    exists' -- i.e. a package snapshot id -- never invents findings).
+
+    PI-1.1 (instruction 7): a FAILED run also carries real start/
+    completion timing -- the caller captures both around the (failed)
+    analyzer invocation exactly as it does for a successful run."""
     return {
         "based_on_procurement_revision": procurement_state.get("procurement_revision"),
         "based_on_procurement_truth_status": procurement_state.get("procurement_truth_status"),
@@ -390,4 +431,6 @@ def build_failed_run_payload(*, procurement_state: dict, failure_reason: str) ->
         "failure_reason": failure_reason,
         "coverage_metadata": None,
         "legacy_result": None,
+        "started_at": started_at,
+        "completed_at": completed_at,
     }

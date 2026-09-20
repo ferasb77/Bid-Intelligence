@@ -356,6 +356,68 @@ class TestReconstructLegacyAlignResult:
         assert result["reason"] == "one file failed"
 
 
+class TestRestorePackageManifestDict:
+    """PI-1.1 instruction 8: reload must restore the exact historical
+    package manifest CHECK's PDF export and manifest view consume."""
+
+    def test_restores_files_list_from_snapshot_manifest_column(self):
+        snapshot = {"id": 55, "manifest": [
+            {"file_id": "f1", "filename": "Tech.pdf", "role": "primary", "included": True},
+            {"file_id": "f2", "filename": "Excluded.pdf", "role": None, "included": False},
+        ]}
+        result = pi.restore_package_manifest_dict(snapshot)
+        assert result == {"files": snapshot["manifest"]}
+
+    def test_primary_role_survives_reconstruction(self):
+        snapshot = {"manifest": [{"file_id": "f1", "filename": "Tech.pdf", "role": "primary"}]}
+        result = pi.restore_package_manifest_dict(snapshot)
+        primary = [f["filename"] for f in result["files"] if f.get("role") == "primary"]
+        assert primary == ["Tech.pdf"]
+
+    def test_excluded_files_are_present_in_the_restored_manifest(self):
+        """Instruction 5: the durable manifest -- and therefore the
+        restored view -- must retain excluded/duplicate/rejected/
+        unsupported files, not just what the analyzer saw."""
+        snapshot = {"manifest": [
+            {"file_id": "f1", "included": True, "lifecycle_status": "extracted"},
+            {"file_id": "f2", "included": False, "lifecycle_status": "extracted"},
+            {"file_id": "f3", "included": False, "lifecycle_status": "duplicate"},
+        ]}
+        result = pi.restore_package_manifest_dict(snapshot)
+        assert len(result["files"]) == 3
+        statuses = {f["lifecycle_status"] for f in result["files"]}
+        assert statuses == {"extracted", "duplicate"}
+
+    def test_missing_manifest_column_returns_empty_files_never_raises(self):
+        assert pi.restore_package_manifest_dict({"id": 55}) == {"files": []}
+
+
+class TestDigestSemanticsExcludedVsNeverSupplied:
+    """PI-1.1 instruction 6: an excluded-but-present file must produce a
+    DIFFERENT digest than a package that never had that file at all."""
+
+    def test_excluded_file_present_differs_from_file_never_supplied(self):
+        with_excluded = [
+            {"file_id": "a", "content_hash": "ha", "included": True, "role": "primary"},
+            {"file_id": "b", "content_hash": "hb", "included": False, "role": None},
+        ]
+        without_b_at_all = [
+            {"file_id": "a", "content_hash": "ha", "included": True, "role": "primary"},
+        ]
+        assert pi.compute_package_digest(with_excluded) != pi.compute_package_digest(without_b_at_all)
+
+    def test_full_manifest_digest_differs_from_included_only_digest(self):
+        """The digest must be computed over the FULL submitted package,
+        not the analyzer's included-only subset -- these two inputs
+        represent genuinely different audit scopes and must not collide."""
+        full = [
+            {"file_id": "a", "content_hash": "ha", "included": True, "role": "primary"},
+            {"file_id": "b", "content_hash": "hb", "included": False, "role": None},
+        ]
+        included_only = [f for f in full if f["included"]]
+        assert pi.compute_package_digest(full) != pi.compute_package_digest(included_only)
+
+
 if __name__ == "__main__":
     import sys
     import pytest

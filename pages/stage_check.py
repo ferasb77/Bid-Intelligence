@@ -308,35 +308,71 @@ def page_check(bid_id: int):
         # Session state is not the durable owner of a completed audit
         # anymore (PI-1) -- if this browser session has no in-memory
         # result yet (a reload, a new tab, a different device), recover
-        # the most recent PERSISTED Proposal Intelligence run instead of
-        # forcing a re-run. Never overwrites an in-memory result from a
-        # run just completed THIS session.
+        # the most recent USABLE (COMPLETE/INCOMPLETE) persisted Proposal
+        # Intelligence run instead of forcing a re-run -- a later FAILED
+        # attempt must never hide it (PI-1.1 instruction 9). Never
+        # overwrites an in-memory result from a run just completed THIS
+        # session. Also restores the HISTORICAL full package manifest
+        # (PI-1.1 instruction 8) so the manifest view, primary-file
+        # selection, and PDF export all reflect exactly what was audited,
+        # not whatever the live uploader currently shows.
         if _align_result_key(bid_id) not in st.session_state:
             _token, _org_id = _current_access_token_and_org()
             try:
-                latest_run = tenancy.get_latest_proposal_intelligence_run_authenticated(_token, bid_id)
+                latest_run = tenancy.get_latest_usable_proposal_intelligence_run_authenticated(_token, bid_id)
             except Exception:
                 latest_run = None
-            if latest_run and latest_run.get("status") in ("COMPLETE", "INCOMPLETE"):
+            if latest_run:
                 assessments = tenancy.get_proposal_requirement_assessments_authenticated(_token, latest_run["id"])
                 findings = tenancy.get_proposal_intelligence_findings_authenticated(_token, latest_run["id"])
                 st.session_state[_align_result_key(bid_id)] = proposal_intelligence.reconstruct_legacy_align_result(
                     latest_run, assessments, findings)
                 st.session_state[_align_pi_run_key(bid_id)] = latest_run
+                try:
+                    historical_snapshot = tenancy.get_proposal_package_snapshot_authenticated(
+                        _token, bid_id, latest_run["proposal_package_snapshot_id"])
+                except Exception:
+                    historical_snapshot = None
+                if historical_snapshot:
+                    st.session_state[_align_result_snapshot_key(bid_id)] = \
+                        proposal_intelligence.restore_package_manifest_dict(historical_snapshot)
 
         pi_run = st.session_state.get(_align_pi_run_key(bid_id))
         if pi_run:
+            # PROPOSAL_CHANGED can only be detected when a package is
+            # actually present in THIS session -- compare its full-
+            # manifest digest against the persisted run's own snapshot
+            # digest (re-derived from the manifest already cached under
+            # _align_result_snapshot_key, never a fresh DB write just to
+            # check staleness). When digests match, pass the run's own
+            # real snapshot id through so staleness_reasons reports
+            # "current"; when they differ, pass a value guaranteed unequal
+            # to it. Never fabricate PROPOSAL_CHANGED when no package is
+            # uploaded (instruction 10): the persisted run may still be
+            # accurately CURRENT relative to its own historical package,
+            # so the badge below only ever claims what is actually known.
+            current_package_snapshot_id = pi_run.get("proposal_package_snapshot_id")
+            if package:
+                current_digest = proposal_intelligence.compute_package_digest(package["files"])
+                run_snapshot = st.session_state.get(_align_result_snapshot_key(bid_id))
+                run_snapshot_digest = proposal_intelligence.compute_package_digest(
+                    (run_snapshot or {}).get("files") or [])
+                if current_digest != run_snapshot_digest:
+                    current_package_snapshot_id = None  # guaranteed != a real snapshot id
             stale_reasons = proposal_intelligence.staleness_reasons(
                 pi_run, current_procurement_revision=procurement_state.get("procurement_revision"),
-                current_package_snapshot_id=pi_run.get("proposal_package_snapshot_id"))
-            # PROCUREMENT_CHANGED is the only reason detectable here without
-            # re-fingerprinting the currently-selected package (PROPOSAL_
-            # CHANGED would need a fresh digest of `package`, only available
-            # once one is uploaded this session) -- report what's known
-            # rather than silently omitting the check.
+                current_package_snapshot_id=current_package_snapshot_id)
             proc_stale = proposal_intelligence.STALE_PROCUREMENT_CHANGED in stale_reasons
-            badge_color = "#E67E22" if proc_stale else "#6E6C66"
-            badge_text = "⚠️ Procurement basis changed since this audit" if proc_stale else "✅ Current procurement basis"
+            proposal_stale = package is not None and proposal_intelligence.STALE_PROPOSAL_CHANGED in stale_reasons
+            if proc_stale or proposal_stale:
+                reasons_label = " & ".join(
+                    r for r, is_stale in (("procurement basis", proc_stale), ("proposal package", proposal_stale))
+                    if is_stale)
+                badge_color, badge_text = "#E67E22", f"⚠️ {reasons_label} changed since this audit"
+            else:
+                badge_color = "#6E6C66"
+                badge_text = ("✅ Current relative to its own historical package"
+                              if not package else "✅ Current procurement basis and proposal package")
             st.markdown(
                 f'<div style="font-size:.74rem;color:{badge_color};margin-bottom:.4rem">'
                 f'Proposal Intelligence run #{pi_run["id"]} · {pi_run.get("status")} · {badge_text}</div>',
@@ -380,6 +416,7 @@ def page_check(bid_id: int):
                         pi_result = tenancy.run_proposal_intelligence_for_organization(
                             bid_id, _org_id, package_files=package_files_for_analysis,
                             requirements=reqs, rfp_text=procurement_context, bid_info=bid,
+                            full_package_manifest=package["files"],
                             user_id=session.get("user_id"),
                         )
                         align_res = pi_result["alignment_result"]

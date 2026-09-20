@@ -1224,83 +1224,110 @@ def delete_coach_authenticated(access_token: str, coach_id: int) -> None:
 def run_proposal_intelligence_for_organization(
     bid_id: int, organization_id: str, package_files: list[dict],
     requirements: list[dict], rfp_text: str, bid_info: dict,
+    full_package_manifest: list[dict] | None = None,
     user_id: str | None = None,
 ) -> dict:
     """Establishes/reuses the proposal package snapshot identity, runs the
     existing analyst.analyze_proposal_alignment_package() unchanged, adapts
     its result into durable Proposal Intelligence rows
-    (proposal_intelligence.py's adapter), and persists all of it. Returns
-    {"run", "assessments", "findings", "alignment_result"}.
+    (proposal_intelligence.py's adapter), and persists the run + its
+    assessments + its findings ATOMICALLY (PI-1.1 instruction 3, via
+    database.create_proposal_intelligence_bundle -- never three
+    independent inserts a partial failure could leave inconsistent).
+    Returns {"run", "alignment_result"} (the run row already carries its
+    persisted id; assessments/findings are read back via
+    get_proposal_requirement_assessments_authenticated/
+    get_proposal_intelligence_findings_authenticated by callers that need
+    them, matching every other read path in this module).
 
     `package_files` must be the caller's CURRENT, already-filtered
     (included-only) list in analyze_proposal_alignment_package's own
-    expected shape -- extractor.build_alignment_submission_package's file
-    record already carries every field proposal_intelligence.py's package
-    digest needs (file_id, content_hash, included, role).
+    expected shape -- this is exactly what the analyzer receives, never
+    widened. `full_package_manifest` (PI-1.1 instruction 5) is the
+    COMPLETE submitted package -- every file, included and excluded,
+    duplicate, rejected, and unsupported alike, in
+    extractor.build_report_manifest()'s report-safe shape -- used ONLY
+    for the durable package-snapshot identity/manifest, never passed to
+    the analyzer. Defaults to `package_files` when omitted (keeps the
+    function usable exactly as before if a caller has no broader manifest
+    available), but callers that DO have the full submitted package
+    (pages/stage_check.py) must pass it explicitly so an excluded file
+    remains part of the historical audit record (see
+    proposal_intelligence.compute_package_digest's docstring for why this
+    makes "excluded" and "never supplied" different package identities).
 
     On a genuine provider/model exception from the analyzer, persists a
     FAILED run (the package snapshot identity already exists by that
     point, so this satisfies instruction 13's "only where sufficient run
     identity already exists") with no fabricated findings, then re-raises
-    -- callers must not treat a FAILED run as a silently-swallowed error."""
+    -- callers must not treat a FAILED run as a silently-swallowed error.
+    started_at/completed_at (PI-1.1 instruction 7) are captured around the
+    actual analyzer invocation, for both the successful and FAILED cases."""
     require_bid_access(bid_id, organization_id)
     import analyst
     import extractor
     import proposal_intelligence as pi
 
+    manifest_source = full_package_manifest if full_package_manifest is not None else package_files
     procurement_state = db.get_bid_procurement_state(bid_id)
 
-    digest = pi.compute_package_digest(package_files)
-    snapshot = db.get_proposal_package_snapshot_by_digest(bid_id, digest)
-    if snapshot is None:
-        manifest = extractor.build_report_manifest(package_files)
-        next_version = db.get_latest_proposal_package_version(bid_id) + 1
-        snapshot = db.create_proposal_package_snapshot({
-            "bid_id": bid_id, "package_version": next_version,
-            "package_digest": digest, "manifest": manifest,
-            "created_by_user_id": user_id,
-        })
+    digest = pi.compute_package_digest(manifest_source)
+    manifest = extractor.build_report_manifest(manifest_source)
+    snapshot = db.get_or_create_proposal_package_snapshot(
+        bid_id, digest, manifest, created_by_user_id=user_id)
 
+    started_at = datetime.now(timezone.utc).isoformat()
     try:
         alignment_result = analyst.analyze_proposal_alignment_package(
             package_files=package_files, requirements=requirements,
             rfp_text=rfp_text, bid_info=bid_info,
         )
     except Exception as exc:
+        completed_at = datetime.now(timezone.utc).isoformat()
         failed_payload = pi.build_failed_run_payload(
-            procurement_state=procurement_state, failure_reason=f"{type(exc).__name__}: {exc}")
+            procurement_state=procurement_state, failure_reason=f"{type(exc).__name__}: {exc}",
+            started_at=started_at, completed_at=completed_at)
         failed_payload.update({
             "bid_id": bid_id, "proposal_package_snapshot_id": snapshot["id"],
             "created_by_user_id": user_id,
         })
-        db.create_proposal_intelligence_run(failed_payload)
+        db.create_proposal_intelligence_bundle(failed_payload)
         raise
+    completed_at = datetime.now(timezone.utc).isoformat()
 
-    run_payload = pi.build_run_payload(alignment_result, procurement_state=procurement_state)
+    run_payload = pi.build_run_payload(alignment_result, procurement_state=procurement_state,
+                                       started_at=started_at, completed_at=completed_at)
     run_payload.update({
         "bid_id": bid_id, "proposal_package_snapshot_id": snapshot["id"],
-        "completed_at": datetime.now(timezone.utc).isoformat(), "created_by_user_id": user_id,
+        "created_by_user_id": user_id,
     })
-    run = db.create_proposal_intelligence_run(run_payload)
-
     assessments = pi.adapt_requirement_assessments(alignment_result, requirements)
-    for a in assessments:
-        a["run_id"], a["bid_id"] = run["id"], bid_id
-    persisted_assessments = db.create_proposal_requirement_assessments(assessments)
-
     findings = pi.adapt_findings(alignment_result)
-    for f in findings:
-        f["run_id"], f["bid_id"] = run["id"], bid_id
-    persisted_findings = db.create_proposal_intelligence_findings(findings)
+    run = db.create_proposal_intelligence_bundle(run_payload, assessments, findings)
 
-    return {"run": run, "assessments": persisted_assessments, "findings": persisted_findings,
-           "alignment_result": alignment_result}
+    return {"run": run, "alignment_result": alignment_result}
 
 
 def get_latest_proposal_intelligence_run_authenticated(access_token: str, bid_id: int) -> dict | None:
+    """The literal latest run of ANY status, including FAILED. CHECK's
+    reload path should use get_latest_usable_proposal_intelligence_run_
+    authenticated() instead (PI-1.1 instruction 9)."""
     client = auth_client.get_authenticated_client(access_token)
     rows = (client.table("proposal_intelligence_runs").select("*")
            .eq("bid_id", bid_id).order("created_at", desc=True).limit(1).execute().data or [])
+    return rows[0] if rows else None
+
+
+def get_latest_usable_proposal_intelligence_run_authenticated(access_token: str, bid_id: int) -> dict | None:
+    """The latest COMPLETE or INCOMPLETE run -- a later FAILED attempt
+    never hides the most recent genuinely usable intelligence. Run
+    history (get_proposal_intelligence_runs_authenticated) still returns
+    every status, including FAILED -- this helper only affects what
+    reload/display code treats as "the current result"."""
+    client = auth_client.get_authenticated_client(access_token)
+    rows = (client.table("proposal_intelligence_runs").select("*")
+           .eq("bid_id", bid_id).in_("status", ["COMPLETE", "INCOMPLETE"])
+           .order("created_at", desc=True).limit(1).execute().data or [])
     return rows[0] if rows else None
 
 
@@ -1326,3 +1353,16 @@ def get_proposal_package_snapshots_authenticated(access_token: str, bid_id: int)
     client = auth_client.get_authenticated_client(access_token)
     return (client.table("proposal_package_snapshots").select("*")
            .eq("bid_id", bid_id).order("package_version", desc=True).execute().data or [])
+
+
+def get_proposal_package_snapshot_authenticated(access_token: str, bid_id: int, snapshot_id: int) -> dict | None:
+    """One snapshot by id, scoped to bid_id (defense in depth alongside
+    RLS -- a snapshot_id that exists but belongs to a different bid is
+    excluded by the .eq("bid_id", ...) filter even before RLS would also
+    exclude it). Used by CHECK to restore the historical, full submitted-
+    package manifest (included/excluded/duplicate/rejected/unsupported
+    alike) on reload (PI-1.1 instruction 8)."""
+    client = auth_client.get_authenticated_client(access_token)
+    rows = (client.table("proposal_package_snapshots").select("*")
+           .eq("bid_id", bid_id).eq("id", snapshot_id).execute().data or [])
+    return rows[0] if rows else None
