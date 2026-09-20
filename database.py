@@ -1127,3 +1127,47 @@ def get_reviewed_document_hashes(bid_id: int) -> set[tuple[int, str]]:
                  .in_("review_id", review_ids).execute())
     return {(d["document_id"], d["document_hash"]) for d in docs if d.get("document_hash")}
 
+
+# ── Model usage telemetry (migrations/014_model_usage_events.sql) ─────────────
+# Phase 4, BI Context & Token Optimization Program. Append-only accounting
+# data -- never updated or deleted by application code. See
+# model_telemetry.py for the normalized event shape and the failure policy
+# governing what happens when a persistence call here fails.
+
+_MODEL_USAGE_EVENT_KEYS = [
+    "schema_version", "workflow", "operation", "provider", "model", "status",
+    "bid_id", "analysis_run_id", "section_review_id", "document_id",
+    "call_index", "retry_number", "parent_event_id",
+    "request_bytes", "input_chars", "input_tokens", "output_tokens",
+    "cache_creation_tokens", "cache_read_tokens", "reasoning_tokens",
+    "latency_ms", "stop_reason", "error_category", "parse_status", "metadata",
+]
+
+
+def create_model_usage_event(event: dict) -> dict | None:
+    """Insert one normalized usage event. Only the known columns are ever
+    written -- an unexpected extra key in `event` is silently dropped, not
+    persisted, so this can never become an accidental side channel for
+    prompt/response content a caller mistakenly included."""
+    clean = {k: event.get(k) for k in _MODEL_USAGE_EVENT_KEYS}
+    return _one(get_client().table("model_usage_events").insert(clean).execute())
+
+
+def get_model_usage_events(*, bid_id: int | None = None, analysis_run_id: int | None = None,
+                           workflow: str | None = None, since: str | None = None,
+                           until: str | None = None, limit: int = 500) -> list[dict]:
+    """Raw event rows for detailed/event-mode reporting -- filtered, never
+    unbounded (default limit keeps this from becoming a giant dump)."""
+    q = get_client().table("model_usage_events").select("*")
+    if bid_id is not None:
+        q = q.eq("bid_id", bid_id)
+    if analysis_run_id is not None:
+        q = q.eq("analysis_run_id", analysis_run_id)
+    if workflow is not None:
+        q = q.eq("workflow", workflow)
+    if since is not None:
+        q = q.gte("created_at", since)
+    if until is not None:
+        q = q.lte("created_at", until)
+    return _rows(q.order("created_at", desc=True).limit(limit).execute())
+

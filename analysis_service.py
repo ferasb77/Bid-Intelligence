@@ -497,6 +497,21 @@ def _execute_fast_analysis_run(run_id: int, bid_id: int, docs: list[dict], api_k
         # completion event, not a guess.
         progress.mark(MILESTONE_AMBIGUITIES_READY)
 
+        # Phase 4 (BI Context & Token Optimization Program): bridge Fast
+        # Analysis's own rich, already-complete per-call telemetry list
+        # into durable, normalized model_usage_events rows -- once, here,
+        # never at fast_analysis.py's own call sites (which never pass
+        # telemetry_context), so a call already captured in result.telemetry
+        # can never be double-counted. Wrapped so a telemetry-persistence
+        # failure can never affect this run (see model_telemetry.py's
+        # "failure policy").
+        try:
+            import model_telemetry
+            model_telemetry.bridge_fast_analysis_telemetry(
+                result.telemetry, bid_id=bid_id, analysis_run_id=run_id)
+        except Exception:
+            pass
+
         # Durability: serialize the raw analytical result BEFORE the lossy
         # structured_intelligence/report_content transformation below, so a
         # future report-layout revision or acceptance run can regenerate

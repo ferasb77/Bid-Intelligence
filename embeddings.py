@@ -52,6 +52,26 @@ def _get_voyage_client():
 
 
 # ── Generate one embedding ────────────────────────────────────────────────────
+def _record_embed_usage(operation: str, status: str, item_count: int, input_chars: int,
+                        latency_ms: int, result=None, error_category: str | None = None) -> None:
+    """Phase 4 (BI Context & Token Optimization Program). Never raises --
+    a telemetry failure must never affect embed_text/embed_query's existing
+    degrade-gracefully-to-None contract. `total_tokens` is passed through
+    ONLY when the installed voyageai SDK's response object actually
+    exposed it on this call; never estimated from input_chars (instruction
+    10)."""
+    try:
+        import model_telemetry
+        total_tokens = getattr(result, "total_tokens", None) if result is not None else None
+        model_telemetry.record_voyage_usage(
+            workflow="content_library", operation=operation, status=status,
+            item_count=item_count, input_chars=input_chars, latency_ms=latency_ms,
+            total_tokens=total_tokens, error_category=error_category,
+        )
+    except Exception:
+        pass
+
+
 def embed_text(text: str) -> Optional[list[float]]:
     """
     Return an embedding vector for the given text.
@@ -62,14 +82,22 @@ def embed_text(text: str) -> Optional[list[float]]:
     client = _get_voyage_client()
     if not client:
         return None
+    import time
+    truncated = text[:4000]
+    t0 = time.monotonic()
     try:
         result = client.embed(
-            [text[:4000]],
+            [truncated],
             model=EMBEDDING_MODEL,
             input_type="document",
         )
+        latency_ms = round((time.monotonic() - t0) * 1000)
+        _record_embed_usage("embed_document", "SUCCESS", 1, len(truncated), latency_ms, result=result)
         return result.embeddings[0]
     except Exception:
+        latency_ms = round((time.monotonic() - t0) * 1000)
+        _record_embed_usage("embed_document", "FAILURE", 1, len(truncated), latency_ms,
+                            error_category="PROCESSING_ERROR")
         return None
 
 
@@ -80,14 +108,22 @@ def embed_query(text: str) -> Optional[list[float]]:
     client = _get_voyage_client()
     if not client:
         return None
+    import time
+    truncated = text[:2000]
+    t0 = time.monotonic()
     try:
         result = client.embed(
-            [text[:2000]],
+            [truncated],
             model=EMBEDDING_MODEL,
             input_type="query",
         )
+        latency_ms = round((time.monotonic() - t0) * 1000)
+        _record_embed_usage("embed_query", "SUCCESS", 1, len(truncated), latency_ms, result=result)
         return result.embeddings[0]
     except Exception:
+        latency_ms = round((time.monotonic() - t0) * 1000)
+        _record_embed_usage("embed_query", "FAILURE", 1, len(truncated), latency_ms,
+                            error_category="PROCESSING_ERROR")
         return None
 
 

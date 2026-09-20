@@ -271,10 +271,12 @@ class TestAnalysisServiceRawSnapshotPersistence(unittest.TestCase):
         return [{"id": 10, "bid_id": 1, "name": "RFP.pdf", "doc_type": "RFP / Source",
                  "version": 1, "storage_path": "1/abc.pdf"}]
 
+    @patch("model_telemetry.bridge_fast_analysis_telemetry")
     @patch("analysis_service.db")
     @patch("analysis_service.extract_document_with_metadata")
     @patch("analysis_service.run_fast_analysis_corpus")
-    def test_raw_snapshot_is_persisted_before_completion(self, mock_run, mock_extract, mock_db):
+    def test_raw_snapshot_is_persisted_before_completion(self, mock_run, mock_extract, mock_db,
+                                                          mock_bridge):
         import analysis_service as svc
         mock_db.download_file.return_value = b"bytes"
         mock_extract.return_value = ("text", {})
@@ -295,11 +297,12 @@ class TestAnalysisServiceRawSnapshotPersistence(unittest.TestCase):
                    if "status" in c.args[1]]
         self.assertIn("COMPLETE", statuses)
 
+    @patch("model_telemetry.bridge_fast_analysis_telemetry")
     @patch("analysis_service.db")
     @patch("analysis_service.extract_document_with_metadata")
     @patch("analysis_service.run_fast_analysis_corpus")
     def test_raw_snapshot_persistence_failure_fails_the_run_not_complete(
-        self, mock_run, mock_extract, mock_db
+        self, mock_run, mock_extract, mock_db, mock_bridge
     ):
         """Fail-closed (instruction 6): create_analysis_result 'succeeding'
         with no actual snapshot value on the returned row must mark the run
@@ -319,11 +322,12 @@ class TestAnalysisServiceRawSnapshotPersistence(unittest.TestCase):
         self.assertIn("FAILED", statuses)
         self.assertNotIn("COMPLETE", statuses)
 
+    @patch("model_telemetry.bridge_fast_analysis_telemetry")
     @patch("analysis_service.db")
     @patch("analysis_service.extract_document_with_metadata")
     @patch("analysis_service.run_fast_analysis_corpus")
     def test_create_analysis_result_returning_none_also_fails_the_run(
-        self, mock_run, mock_extract, mock_db
+        self, mock_run, mock_extract, mock_db, mock_bridge
     ):
         import analysis_service as svc
         mock_db.download_file.return_value = b"bytes"

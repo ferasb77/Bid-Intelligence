@@ -432,10 +432,17 @@ def _reconcile_requirement_ids(parsed: dict, expected_requirement_ids: set[int])
 
 
 def _call_section_analyzer(prompt: str, expected_requirement_ids: set[int],
-                           max_tokens: int = 3000) -> tuple[dict | None, str | None]:
+                           max_tokens: int = 3000, *, bid_id: int | None = None,
+                           section_id: int | None = None) -> tuple[dict | None, str | None]:
     """ONE attempt plus ONE bounded retry (instruction 14) -- mirrors
     analyst.py's _call_alignment_chunk exactly. Returns (validated dict,
-    None) or (None, failure_category)."""
+    None) or (None, failure_category).
+
+    Each attempt is attributed to workflow="section_analyzer",
+    operation="formative_review" via config.execute_messages_create's
+    `telemetry_context` (Phase 4) -- this never adds a call; the normal
+    path is still exactly one model call, with the retry attributed as
+    retry_number=1 on the (at most one) second attempt."""
     last_category = _CALL_FAILURE_UNKNOWN
     for _attempt in range(2):
         try:
@@ -443,6 +450,9 @@ def _call_section_analyzer(prompt: str, expected_requirement_ids: set[int],
             response = execute_messages_create(
                 client, model=_MODEL, max_tokens=max_tokens,
                 system=_ANALYZER_SYSTEM, messages=[{"role": "user", "content": prompt}],
+                telemetry_context={"workflow": "section_analyzer", "operation": "formative_review",
+                                   "bid_id": bid_id, "document_id": str(section_id) if section_id else None},
+                retry_number=_attempt,
             )
             raw = response.content[0].text.strip()
         except Exception as exc:
@@ -488,7 +498,7 @@ def analyze_section(bid_id: int, section: dict, section_text: str,
     context = build_section_context(section, section_text, mapped_requirements, basis)
     expected_ids = {r["id"] for r in mapped_requirements}
     prompt = _analyzer_prompt(context)
-    parsed, failure = _call_section_analyzer(prompt, expected_ids)
+    parsed, failure = _call_section_analyzer(prompt, expected_ids, bid_id=bid_id, section_id=section["id"])
     if parsed is None:
         raise SectionAnalyzerError(failure, "Section analysis failed after a bounded retry.")
 

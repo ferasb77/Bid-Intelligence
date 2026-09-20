@@ -89,7 +89,7 @@ def _fake_call_factory(assertions_by_marker: dict):
     whenever a chunk prompt contains a given marker string -- lets tests
     plant evidence in one specific file/sheet and prove it surfaces with
     that file's own filename-qualified location."""
-    def fake_call(system, user, max_tokens=2048):
+    def fake_call(system, user, max_tokens=2048, **kwargs):
         if "requirement_assertions" not in user:
             return _synthesis_response()
         for marker, assertion in assertions_by_marker.items():
@@ -501,7 +501,7 @@ class TestPackageAlignmentAudit(unittest.TestCase):
             "file_id": "f1", "filename": "Corrupt.xlsx", "package_path": "Corrupt.xlsx", "file_type": "xlsx",
             "text": "", "analyzable": False, "unusable_reason": "unreadable spreadsheet", "extraction_meta": {},
         }
-        with patch("analyst._call", side_effect=lambda system, user, max_tokens=2048: (_chunk_response() if "requirement_assertions" in user else _synthesis_response())):
+        with patch("analyst._call", side_effect=lambda system, user, max_tokens=2048, **kwargs: (_chunk_response() if "requirement_assertions" in user else _synthesis_response())):
             result = analyst.analyze_proposal_alignment_package(
                 package_files=[good, failed], requirements=[_req("R1")],
                 rfp_text="context", bid_info={"title": "T", "client": "C"},
@@ -516,7 +516,7 @@ class TestPackageAlignmentAudit(unittest.TestCase):
         was actually included, so exclusion alone is sufficient to keep
         an otherwise-complete audit complete."""
         good = self._pf("g1", "Technical Proposal.txt", "Solid methodology narrative. " * 30)
-        with patch("analyst._call", side_effect=lambda system, user, max_tokens=2048: (_chunk_response() if "requirement_assertions" in user else _synthesis_response())):
+        with patch("analyst._call", side_effect=lambda system, user, max_tokens=2048, **kwargs: (_chunk_response() if "requirement_assertions" in user else _synthesis_response())):
             result = analyst.analyze_proposal_alignment_package(
                 package_files=[good],  # the unsupported .pptx was excluded by the caller, never passed
                 requirements=[], rfp_text="context", bid_info={"title": "T", "client": "C"},
@@ -532,7 +532,7 @@ class TestPackageAlignmentAudit(unittest.TestCase):
         small = self._pf("small1", "Small.txt", "SMALLMARK_UNIQUE: tiny file content.")
         seen_prompts = []
 
-        def fake_call(system, user, max_tokens=2048):
+        def fake_call(system, user, max_tokens=2048, **kwargs):
             seen_prompts.append(user)
             if "requirement_assertions" in user:
                 return _chunk_response()
@@ -561,7 +561,7 @@ class TestPackageAlignmentAudit(unittest.TestCase):
         named in coverage_metadata -- never left for the user to infer."""
         files = [self._pf(f"f{i}", f"File{i}.txt", f"UNIQUE_MARK_{i}: tiny single-section content.") for i in range(30)]
 
-        def fake_call(system, user, max_tokens=2048):
+        def fake_call(system, user, max_tokens=2048, **kwargs):
             if "requirement_assertions" in user:
                 return _chunk_response()
             return _synthesis_response()

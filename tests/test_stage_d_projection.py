@@ -19,6 +19,17 @@ def checkpoint_off(monkeypatch):
     monkeypatch.delenv("CHECKPOINT_ROOT", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def no_live_telemetry_client(monkeypatch):
+    """Phase 4 (BI Context & Token Optimization Program): Stage D's
+    execute_messages_create call site now carries a telemetry_context, so
+    a mocked-away model call would otherwise still try to construct a real
+    database.get_client() when this file's tests don't mock database.py at
+    all. Keep it a true no-op here (this file already asserts nothing
+    about telemetry -- tests/test_model_telemetry.py owns that)."""
+    monkeypatch.setattr("database.create_model_usage_event", lambda event: None, raising=False)
+
+
 def ctx(projection):
     return proj.expand_prompt_context(projection["prompt_context"])
 

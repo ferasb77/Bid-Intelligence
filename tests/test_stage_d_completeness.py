@@ -674,7 +674,8 @@ class TestStageDContextSizePreflight(unittest.TestCase):
         mock_client.with_options.return_value = mock_client
         mock_client.messages.create.return_value = mock_response
 
-        with mock.patch("extractor.get_anthropic_client", return_value=mock_client):
+        with mock.patch("extractor.get_anthropic_client", return_value=mock_client), \
+             mock.patch("database.create_model_usage_event", return_value=None):
             result = synthesize_bid_brief(self._minimal_nf(), [], api_key="test")
         self.assertIsInstance(result, dict)
         mock_client.messages.create.assert_called_once()

@@ -66,7 +66,7 @@ def _fake_call_with_findings(assertions_by_marker=None, findings_by_marker=None)
     assertions_by_marker = assertions_by_marker or {}
     findings_by_marker = findings_by_marker or {}
 
-    def fake_call(system, user, max_tokens=2048):
+    def fake_call(system, user, max_tokens=2048, **kwargs):
         if "requirement_assertions" not in user:
             return _synthesis_response()
         assertions, findings = [], []
@@ -382,7 +382,7 @@ class TestChunkBoundaryArtifacts(unittest.TestCase):
         failing = _pf("f1", "Failing.txt", "FAIL_MARK: some content that will fail to analyze.")
         boundary = _pf("b1", "Boundary.txt", "BOUND_MARK: some content near a boundary.")
 
-        def fake_call(system, user, max_tokens=2048):
+        def fake_call(system, user, max_tokens=2048, **kwargs):
             if "FAIL_MARK" in user:
                 raise RuntimeError("simulated api failure")
             if "requirement_assertions" not in user:
@@ -559,7 +559,7 @@ class TestChunkFailureDiagnostics(unittest.TestCase):
     def test_diagnostics_contain_filename_section_category_no_content(self):
         pf = _pf("p1", "Doc.txt", "MARK: content here " * 50)
 
-        def fake_call(system, user, max_tokens=2048):
+        def fake_call(system, user, max_tokens=2048, **kwargs):
             raise RuntimeError("simulated failure referencing SENSITIVE_PROMPT_DATA")
 
         with patch("analyst._call", side_effect=fake_call):
@@ -578,7 +578,7 @@ class TestChunkFailureDiagnostics(unittest.TestCase):
     def test_malformed_response_category(self):
         result_holder = {}
 
-        def fake_call(system, user, max_tokens=2048):
+        def fake_call(system, user, max_tokens=2048, **kwargs):
             if "requirement_assertions" not in user:
                 return _synthesis_response()
             return json.dumps({"not_the_right_keys": True})
@@ -594,7 +594,7 @@ class TestChunkFailureDiagnostics(unittest.TestCase):
     def test_beyond_ceiling_category_distinct_from_engine_failure(self):
         files = [_pf(f"f{i}", f"File{i}.txt", f"UNIQUE_{i}: tiny content.") for i in range(30)]
 
-        def fake_call(system, user, max_tokens=2048):
+        def fake_call(system, user, max_tokens=2048, **kwargs):
             if "requirement_assertions" not in user:
                 return _synthesis_response()
             return json.dumps({"chunk_findings": [], "requirement_assertions": []})

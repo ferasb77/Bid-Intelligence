@@ -11,6 +11,14 @@ import stage_d_projection as proj
 from test_stage_d_projection import facts, conflicts, ctx, supported_response, support_id, model_client
 
 
+@pytest.fixture(autouse=True)
+def no_live_telemetry_client(monkeypatch):
+    """See test_stage_d_projection.py's identical fixture -- Stage D's
+    execute_messages_create call site now carries a telemetry_context;
+    keep it a true no-op for this file's mocked-away model calls too."""
+    monkeypatch.setattr("database.create_model_usage_event", lambda event: None, raising=False)
+
+
 def scoped_response(projection):
     response = supported_response(projection)
     support = response["citations"][0]["supports"][0]

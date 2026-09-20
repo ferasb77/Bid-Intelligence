@@ -90,8 +90,9 @@ class TestAnalystUsesCentralAnthropicClient(unittest.TestCase):
         self.assertTrue(hasattr(analyst, "get_anthropic_client"),
                          "analyst.py must import get_anthropic_client from config")
 
+    @patch("database.create_model_usage_event", return_value=None)
     @patch("analyst.get_anthropic_client")
-    def test_call_obtains_its_client_through_get_anthropic_client(self, mock_get_client):
+    def test_call_obtains_its_client_through_get_anthropic_client(self, mock_get_client, mock_usage_event):
         mock_client = MagicMock()
         mock_client.messages.create.return_value = MagicMock(
             content=[MagicMock(text="ok")]
@@ -108,9 +109,11 @@ class TestAnalystUsesCentralAnthropicClient(unittest.TestCase):
         self.assertEqual(kwargs["system"], "system prompt")
         self.assertEqual(result, "ok")
 
+    @patch("database.create_model_usage_event", return_value=None)
     @patch("anthropic.Anthropic")
     @patch("analyst.get_anthropic_client")
-    def test_alignment_audit_never_constructs_an_unconfigured_client(self, mock_get_client, mock_anthropic_cls):
+    def test_alignment_audit_never_constructs_an_unconfigured_client(self, mock_get_client, mock_anthropic_cls,
+                                                                     mock_usage_event):
         """The exact live failure scenario: CHECK -> Proposal Alignment
         Analyzer -> analyze_proposal_alignment() -> _call() (x2). Proves
         the whole call chain goes through the mocked, centrally-

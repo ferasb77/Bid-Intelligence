@@ -655,7 +655,7 @@ class TestBidNoBidRequirementPartition(unittest.TestCase):
 
         captured_prompts = []
 
-        def mock_call(system, user, max_tokens=2048):
+        def mock_call(system, user, max_tokens=2048, **kwargs):
             captured_prompts.append(user)
             return '{"recommendation": "GO", "confidence": "High", "overall_score": 85, "summary": "Test", "dimensions": {"qualification_alignment": 9, "technical_feasibility": 8, "commercial_viability": 8, "capacity_capability": 8, "strategic_fit": 8}, "hard_blockers": [], "conditions": [], "win_themes": [], "red_flags": []}'
 

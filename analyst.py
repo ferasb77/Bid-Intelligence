@@ -19,7 +19,15 @@ from config import get_anthropic_client, execute_messages_create
 from requirement_semantics import has_supplier_qualification_evidence
 
 
-def _call(system: str, user: str, max_tokens: int = 2048) -> str:
+def _call(system: str, user: str, max_tokens: int = 2048, *, operation: str = "unknown",
+         bid_id: int | None = None, retry_number: int = 0) -> str:
+    """`operation` identifies which of this module's 11 distinct model-
+    calling workflows made this call (Phase 4, BI Context & Token
+    Optimization Program) -- every caller below passes its own, so usage
+    is never collapsed into one undifferentiated "analyst" bucket. Passing
+    it only attaches a `model_telemetry` event via
+    config.execute_messages_create's `telemetry_context`; it changes
+    nothing about the request itself or this function's return value."""
     client = get_anthropic_client()
     response = execute_messages_create(
         client,
@@ -27,6 +35,8 @@ def _call(system: str, user: str, max_tokens: int = 2048) -> str:
         max_tokens=max_tokens,
         system=system,
         messages=[{"role": "user", "content": user}],
+        telemetry_context={"workflow": "analyst", "operation": operation, "bid_id": bid_id},
+        retry_number=retry_number,
     )
     return response.content[0].text.strip()
 
@@ -155,7 +165,7 @@ Analyze how well the draft addresses each requirement. Return ONLY valid JSON:
   "critical_gaps": ["<most urgent gap 1>", "<most urgent gap 2>"]
 }}"""
 
-    raw = _call(COMPLIANCE_SYSTEM, prompt, max_tokens=2048)
+    raw = _call(COMPLIANCE_SYSTEM, prompt, max_tokens=2048, operation="compliance_review")
     return _parse_json(raw)
 
 
@@ -208,7 +218,7 @@ Identify all at-risk and unverified qualification items. Return ONLY valid JSON:
   "recommendation": "<single most important priority action today>"
 }}"""
 
-    raw = _call(EVIDENCE_SYSTEM, prompt, max_tokens=2048)
+    raw = _call(EVIDENCE_SYSTEM, prompt, max_tokens=2048, operation="missing_evidence")
     return _parse_json(raw)
 
 
@@ -278,7 +288,7 @@ Keep each field concise (under 250 characters). Return ONLY valid JSON:
   "deadline_note": "Deadline reminder note. Under 80 chars."
 }}"""
 
-    raw = _call(CLARIFICATION_SYSTEM, prompt, max_tokens=4096)
+    raw = _call(CLARIFICATION_SYSTEM, prompt, max_tokens=4096, operation="clarification_questions")
     result = _parse_json(raw)
     for q in result.get("questions", []):
         q.setdefault("id", "")
@@ -401,7 +411,7 @@ Return ONLY valid JSON:
   "red_flags": ["<critical pursuit risk or weakness 1>", "<risk 2>"]
 }}"""
 
-    raw = _call(BID_NOBID_SYSTEM, prompt, max_tokens=2048)
+    raw = _call(BID_NOBID_SYSTEM, prompt, max_tokens=2048, operation="bid_no_bid_score")
     return _parse_json(raw)
 
 
@@ -451,7 +461,7 @@ Extract all reusable proposal content blocks and key personnel profiles. Return 
   "gaps": ["Content categories or evidence areas that this proposal does not cover"]
 }}"""
 
-    raw = _call(PROPOSAL_ANALYZER_SYSTEM, prompt, max_tokens=4096)
+    raw = _call(PROPOSAL_ANALYZER_SYSTEM, prompt, max_tokens=4096, operation="past_proposal_analysis")
     result = _parse_json(raw)
     if not isinstance(result, dict):
         result = {}
@@ -515,7 +525,7 @@ Draft the section now. Return ONLY valid JSON:
   "improvement_notes": "Specific suggestions to strengthen score against evaluation criteria"
 }}"""
 
-    raw = _call(DRAFTER_SYSTEM, prompt, max_tokens=3000)
+    raw = _call(DRAFTER_SYSTEM, prompt, max_tokens=3000, operation="draft_proposal_section")
     return _parse_json(raw)
 
 
@@ -579,7 +589,7 @@ Conduct the final readiness gate check. Return ONLY valid JSON:
   "recommended_submission_time": "Suggested target time prior to hard deadline"
 }}"""
 
-    raw = _call(READINESS_SYSTEM, prompt, max_tokens=2048)
+    raw = _call(READINESS_SYSTEM, prompt, max_tokens=2048, operation="submission_readiness_check")
     return _parse_json(raw)
 
 
@@ -647,7 +657,7 @@ Analyze all changes introduced by this document. Return ONLY valid JSON:
   "key_changes": ["Major change item 1", "Major change item 2"]
 }}"""
 
-    raw = _call(ADDENDUM_SYSTEM, prompt, max_tokens=4096)
+    raw = _call(ADDENDUM_SYSTEM, prompt, max_tokens=4096, operation="addendum_analysis")
     return _parse_json(raw)
 
 
@@ -1166,7 +1176,8 @@ def _call_alignment_chunk(prompt: str, max_tokens: int = 2000) -> tuple[dict | N
     last_category = _CHUNK_FAILURE_UNKNOWN
     for _attempt in range(2):
         try:
-            raw = _call(_ALIGN_CHUNK_SYSTEM, prompt, max_tokens=max_tokens)
+            raw = _call(_ALIGN_CHUNK_SYSTEM, prompt, max_tokens=max_tokens,
+                       operation="proposal_alignment_chunk", retry_number=_attempt)
         except Exception:
             last_category = _CHUNK_FAILURE_API_ERROR
             continue
@@ -2051,7 +2062,7 @@ Return ONLY valid JSON, with EXACTLY these three keys and no others:
   ]
 }}"""
     try:
-        raw = _call(_ALIGN_SYNTHESIS_SYSTEM, prompt, max_tokens=1500)
+        raw = _call(_ALIGN_SYNTHESIS_SYSTEM, prompt, max_tokens=1500, operation="proposal_alignment_synthesis")
         parsed = _parse_json(raw)
     except Exception:
         return None
@@ -2805,7 +2816,8 @@ def propose_procurement_changes(
                 chunk["text"], chunk_label, doc.get("filename", ""),
             )
             try:
-                raw = _call(_PROCUREMENT_CHANGE_SYSTEM, prompt, max_tokens=2500)
+                raw = _call(_PROCUREMENT_CHANGE_SYSTEM, prompt, max_tokens=2500,
+                           operation="procurement_change_proposal")
                 parsed = _parse_json(raw)
             except Exception:
                 continue

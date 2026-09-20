@@ -101,14 +101,59 @@ def sanitize_anthropic_kwargs(kwargs: dict) -> dict:
     return {k: v for k, v in kwargs.items() if k not in _DISALLOWED_SAMPLING_KEYS}
 
 
-def execute_messages_create(client, **kwargs):
+def execute_messages_create(client, *, telemetry_context: dict | None = None,
+                            retry_number: int = 0, **kwargs):
     """Central invocation helper for Anthropic messages.create.
     Strips unsupported sampling parameters (temperature, top_p, top_k)
     before delegating to client.messages.create, ensuring consistent model
     compatibility across all workflows.
+
+    `telemetry_context` (Phase 4, BI Context & Token Optimization Program):
+    optional, keyword-only, and NEVER forwarded to the Anthropic API --
+    it is popped before `client.messages.create` ever sees `kwargs`. When
+    given, this call's provider-reported usage (or failure) is recorded as
+    one normalized model_telemetry event, attributed to
+    `telemetry_context["workflow"]`/`["operation"]` plus whatever
+    bid_id/analysis_run_id/section_review_id/document_id/call_index/
+    metadata keys it supplies (see model_telemetry.build_usage_event for
+    the full field list). Omitting it (the default) is a complete no-op --
+    every existing caller's behavior, return value, and exceptions are
+    byte-for-byte unchanged; this parameter adds nothing to the request
+    itself and changes no request semantics.
+
+    Fast Analysis and Deep Verify's Stage A already have their OWN rich,
+    per-call telemetry lists and must NOT also pass `telemetry_context` at
+    their call sites -- doing so would double-count each call. See
+    model_telemetry.py's module docstring for exactly which callers use
+    which mechanism.
+
+    `retry_number`: purely descriptive metadata for the recorded event
+    (which attempt this is, 0-based) -- never affects request behavior.
     """
     clean_kwargs = sanitize_anthropic_kwargs(kwargs)
-    return client.messages.create(**clean_kwargs)
+    if telemetry_context is None:
+        return client.messages.create(**clean_kwargs)
+
+    import time
+    import model_telemetry
+    model = kwargs.get("model", "unknown")
+    request_bytes = None
+    try:
+        request_bytes = len(json.dumps(kwargs.get("messages", [])).encode("utf-8"))
+    except (TypeError, ValueError):
+        pass
+    t0 = time.monotonic()
+    try:
+        response = client.messages.create(**clean_kwargs)
+    except Exception as exc:
+        latency_ms = round((time.monotonic() - t0) * 1000)
+        model_telemetry.record_failure(telemetry_context, model, exc, latency_ms,
+                                       request_bytes=request_bytes, retry_number=retry_number)
+        raise
+    latency_ms = round((time.monotonic() - t0) * 1000)
+    model_telemetry.record_from_anthropic_response(telemetry_context, model, response, latency_ms,
+                                                    request_bytes=request_bytes, retry_number=retry_number)
+    return response
 
 
 def classify_anthropic_error(exc: Exception) -> dict:

@@ -75,7 +75,7 @@ class TestChunkingAndCoverage(unittest.TestCase):
         proposal = self._build_proposal(124110, marker, 100000)
         seen_prompts = []
 
-        def fake_call(system, user, max_tokens=2048):
+        def fake_call(system, user, max_tokens=2048, **kwargs):
             seen_prompts.append(user)
             if "requirement_assertions" in user:
                 return _chunk_response()
@@ -92,7 +92,7 @@ class TestChunkingAndCoverage(unittest.TestCase):
     def test_complete_character_accounting_for_the_live_example_size(self):
         proposal = self._build_proposal(124110, "M", 100000)
 
-        def fake_call(system, user, max_tokens=2048):
+        def fake_call(system, user, max_tokens=2048, **kwargs):
             if "requirement_assertions" in user:
                 return _chunk_response()
             return _synthesis_response()
@@ -114,7 +114,7 @@ class TestChunkingAndCoverage(unittest.TestCase):
         huge_proposal = self._build_proposal(400000, "M", 200000)
         call_count = {"n": 0}
 
-        def fake_call(system, user, max_tokens=2048):
+        def fake_call(system, user, max_tokens=2048, **kwargs):
             call_count["n"] += 1
             if "requirement_assertions" in user:
                 return _chunk_response()
@@ -138,7 +138,7 @@ class TestChunkingAndCoverage(unittest.TestCase):
         huge_proposal = huge_proposal[:-len(marker)] + marker
         seen_prompts = []
 
-        def fake_call(system, user, max_tokens=2048):
+        def fake_call(system, user, max_tokens=2048, **kwargs):
             seen_prompts.append(user)
             if "requirement_assertions" in user:
                 return _chunk_response()
@@ -458,7 +458,7 @@ class TestZeroEvaluationUniverse(unittest.TestCase):
             _req("C1", category="Commercial", description="Accept net-30 payment terms", weight=None),
         ]
 
-        def fake_call(system, user, max_tokens=2048):
+        def fake_call(system, user, max_tokens=2048, **kwargs):
             if "requirement_assertions" in user:
                 return _chunk_response(assertions=[
                     {"req_id": "M1", "coverage": "Fully Addressed", "confidence": "High", "evidence": "e"},
@@ -488,7 +488,7 @@ class TestFailClosedBehavior(unittest.TestCase):
     def test_malformed_chunk_response_is_retried_then_skipped_not_trusted(self):
         attempts = {"n": 0}
 
-        def fake_call(system, user, max_tokens=2048):
+        def fake_call(system, user, max_tokens=2048, **kwargs):
             if "requirement_assertions" in user:
                 attempts["n"] += 1
                 return "not valid json at all {{{"
@@ -502,7 +502,7 @@ class TestFailClosedBehavior(unittest.TestCase):
         self.assertGreaterEqual(attempts["n"], 2)  # one attempt + one bounded retry
 
     def test_truncated_chunk_response_is_never_trusted(self):
-        def fake_call(system, user, max_tokens=2048):
+        def fake_call(system, user, max_tokens=2048, **kwargs):
             if "requirement_assertions" in user:
                 return json.dumps({"chunk_findings": [], "requirement_assertions": [], "_truncated": True})
             return _synthesis_response()
@@ -522,7 +522,7 @@ class TestFailClosedBehavior(unittest.TestCase):
         lock = threading.Lock()
         call_n = {"n": 0}
 
-        def fake_call(system, user, max_tokens=2048):
+        def fake_call(system, user, max_tokens=2048, **kwargs):
             if "requirement_assertions" in user:
                 with lock:
                     call_n["n"] += 1
@@ -554,7 +554,7 @@ class TestFailClosedBehavior(unittest.TestCase):
         filler = "Our proposed methodology addresses the stated requirements in detail. "
         huge_proposal = (filler * (400000 // len(filler) + 1))[:400000]
 
-        def fake_call(system, user, max_tokens=2048):
+        def fake_call(system, user, max_tokens=2048, **kwargs):
             if "requirement_assertions" in user:
                 return _chunk_response()
             return _synthesis_response()
@@ -625,7 +625,7 @@ class TestCoverageSemantics(unittest.TestCase):
 
 class TestNarrativeSynthesisResilience(unittest.TestCase):
     def test_synthesis_failure_preserves_valid_deterministic_audit(self):
-        def fake_call(system, user, max_tokens=2048):
+        def fake_call(system, user, max_tokens=2048, **kwargs):
             if "requirement_assertions" in user:
                 return _chunk_response(assertions=[{"req_id": "R1", "coverage": "Fully Addressed", "confidence": "High", "evidence": "e"}])
             return "not valid json {{{"  # synthesis call fails
@@ -645,7 +645,7 @@ class TestNarrativeSynthesisResilience(unittest.TestCase):
         JSON response (ignoring the prompt's instruction not to), they
         must never reach the final result -- only the three permitted
         narrative keys may."""
-        def fake_call(system, user, max_tokens=2048):
+        def fake_call(system, user, max_tokens=2048, **kwargs):
             if "requirement_assertions" in user:
                 return _chunk_response(assertions=[{"req_id": "R1", "coverage": "Fully Addressed", "confidence": "High", "evidence": "e"}])
             # Synthesis response deliberately includes extra, forbidden fields.
@@ -675,7 +675,7 @@ class TestNarrativeSynthesisResilience(unittest.TestCase):
         self.assertEqual(result["strengths"], ["legit strength"])
 
     def test_synthesize_narrative_return_value_has_only_the_three_permitted_keys(self):
-        def fake_call(system, user, max_tokens=2048):
+        def fake_call(system, user, max_tokens=2048, **kwargs):
             return json.dumps({
                 "executive_summary": "x", "strengths": [], "next_steps": [],
                 "overall_score": 99, "recommendation": "SUBMIT AS-IS",
@@ -704,7 +704,7 @@ class TestConcurrentChunkProcessing(unittest.TestCase):
         lock = threading.Lock()
         state = {"current": 0, "max_seen": 0}
 
-        def fake_call(system, user, max_tokens=2048):
+        def fake_call(system, user, max_tokens=2048, **kwargs):
             if "requirement_assertions" not in user:
                 return _synthesis_response()
             with lock:
@@ -728,7 +728,7 @@ class TestConcurrentChunkProcessing(unittest.TestCase):
         calls are made in total."""
         call_count = {"n": 0}
 
-        def fake_call(system, user, max_tokens=2048):
+        def fake_call(system, user, max_tokens=2048, **kwargs):
             call_count["n"] += 1
             if "requirement_assertions" in user:
                 return _chunk_response()
@@ -750,7 +750,7 @@ class TestConcurrentChunkProcessing(unittest.TestCase):
         deterministic, index-ordered aggregation."""
         import random
 
-        def fake_call(system, user, max_tokens=2048):
+        def fake_call(system, user, max_tokens=2048, **kwargs):
             if "requirement_assertions" not in user:
                 return _synthesis_response()
             import time as _t
@@ -766,7 +766,7 @@ class TestConcurrentChunkProcessing(unittest.TestCase):
         self.assertEqual(indices, sorted(indices), "section metadata is not in deterministic index order")
 
     def test_one_chunk_failure_does_not_crash_concurrent_batch(self):
-        def fake_call(system, user, max_tokens=2048):
+        def fake_call(system, user, max_tokens=2048, **kwargs):
             if "requirement_assertions" not in user:
                 return _synthesis_response()
             if "SECTION 2" in user:

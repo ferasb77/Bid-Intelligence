@@ -4764,6 +4764,8 @@ def _synthesize_projected_bid_brief(normalized_facts, conflicts, api_key, checkp
                 model="claude-haiku-4-5-20251001", max_tokens=8000,
                 output_config=finalized["output_config"],
                 messages=[{"role": "user", "content": [{"type": "text", "text": finalized["request_text"]}]}],
+                telemetry_context={"workflow": "deep_verify", "operation": "stage_d_synthesis"},
+                retry_number=attempt - 1,
             )
             text = "".join(block.text for block in response.content if block.type == "text")
             usage = getattr(response, "usage", None)
@@ -4851,9 +4853,16 @@ def _extract_procurement_package(package_files, api_key, checkpoint):
         checkpoint.write("preprocessed-inputs.json", pack_preprocessed(package_metadata))
 
     # STAGE A: Extract facts per document
+    # Phase 4 (BI Context & Token Optimization Program): `telemetry` was
+    # already threaded all the way down through extract_document_facts ->
+    # _extract_chunk_facts (every recovery/split-recovery/coverage-guard
+    # call site) but was never actually populated here -- this is the one
+    # line that activates it. See the bridge call after the pipeline
+    # completes below.
+    telemetry: list = []
     doc_facts_list = []
     for index, (fname, doc_text) in enumerate(extracted_docs, 1):
-        facts = extract_document_facts(doc_text, fname, api_key)
+        facts = extract_document_facts(doc_text, fname, api_key, telemetry=telemetry)
         doc_facts_list.append(facts)
         checkpoint.write(f"stage-a/document-{index:04d}.json", facts)
     checkpoint.write("stage-a/document-facts.json", doc_facts_list)
@@ -4873,6 +4882,21 @@ def _extract_procurement_package(package_files, api_key, checkpoint):
 
     result = _assemble_procurement_result(synth_output, normalized_facts, conflicts)
     checkpoint.write("stage-d/final-result.json", result)
+
+    # Phase 4: bridge Stage A's now-populated telemetry list into durable,
+    # normalized model_usage_events rows -- once, after the analytical
+    # result is already fully assembled, so a telemetry-persistence
+    # failure can never affect the returned result (see
+    # model_telemetry.py's module docstring, "failure policy"). Stage D's
+    # own call is separately instrumented at its own call site via
+    # `telemetry_context` and is never included in this list, so this
+    # bridge cannot double-count it.
+    try:
+        import model_telemetry
+        model_telemetry.bridge_deep_verify_telemetry(telemetry)
+    except Exception:
+        pass
+
     return result, "claude-haiku-4-5-20251001 (Staged Pipeline A->B->C->D)"
 
 
