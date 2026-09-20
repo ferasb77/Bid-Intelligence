@@ -315,8 +315,13 @@ _ANALYZER_SYSTEM = (
     "guessing. Never predict a numeric score (e.g. 'you will score 8/10') -- "
     "only report a buyer's own stated weight/minimum-score facts verbatim "
     "when given. Never claim a competitor cannot do something -- you may "
-    "only say a statement 'could be made by most suppliers'. "
-    "Respond with valid JSON only."
+    "only say a statement 'could be made by most suppliers'."
+    # Phase 5B: the generic "respond with valid JSON only" directive
+    # removed here is exact-redundancy, not lost meaning -- the user
+    # prompt's own instructions_block already states it more specifically
+    # ("Return ONLY valid JSON in exactly this shape:") immediately before
+    # the schema it introduces. See tests/test_request_profiling.py's
+    # TestSectionAnalyzerComponentExposure for the equivalence proof.
 )
 
 

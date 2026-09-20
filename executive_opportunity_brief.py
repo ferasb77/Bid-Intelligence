@@ -217,7 +217,8 @@ def _semantic_text(value: SemanticValue) -> str:
 
 
 def _render_reference(reference: GovernedObjectReference,
-                      resolved: ResolutionResult) -> list[str]:
+                      resolved: ResolutionResult,
+                      detail_register_by_id: dict) -> list[str]:
     root = resolved.root
     lines = [
         f"- **{root.object_class} · {root.object_id}**",
@@ -237,12 +238,36 @@ def _render_reference(reference: GovernedObjectReference,
     else:
         for item in resolved.relationships:
             target = item.target
-            lines.append(
-                f"    - `{item.kind.value}` / `{item.role}` / {item.ordinal}: "
-                f"`{target.owner_domain}/{target.owner_contract}/"
-                f"{target.contract_version}/{target.object_class}/{target.object_id}` "
-                f"(snapshot `{target.snapshot_id}`, snapshot digest "
-                f"`{target.snapshot_digest}`, object digest `{target.object_digest}`)")
+            target_entry = detail_register_by_id.get(target.object_id)
+            if target_entry is not None and target_entry.object_class == target.object_class:
+                # This target's full identity (owner/contract/version/
+                # snapshot/digests) is separately rendered in full
+                # elsewhere in THIS SAME document, at target_entry's own
+                # detail_pointer. That rendering is guaranteed byte-
+                # identical to inlining it here again: this brief is
+                # scoped to exactly one publication snapshot (see
+                # validate_executive_opportunity_understanding's
+                # publication-snapshot completeness check), and
+                # governed_reference_resolution.resolve_governed_reference
+                # resolves every relationship target from that same
+                # snapshot's object graph the detail register itself is
+                # built from -- never a different snapshot of the "same"
+                # object. Pointing to it instead of re-embedding the full
+                # identity here preserves full traceability with no
+                # information loss (see
+                # tests/test_executive_opportunity_brief.py's compaction-
+                # equivalence tests).
+                lines.append(
+                    f"    - `{item.kind.value}` / `{item.role}` / {item.ordinal}: "
+                    f"see `{target_entry.detail_pointer}` for full identity "
+                    f"(same snapshot, same digests).")
+            else:
+                lines.append(
+                    f"    - `{item.kind.value}` / `{item.role}` / {item.ordinal}: "
+                    f"`{target.owner_domain}/{target.owner_contract}/"
+                    f"{target.contract_version}/{target.object_class}/{target.object_id}` "
+                    f"(snapshot `{target.snapshot_id}`, snapshot digest "
+                    f"`{target.snapshot_digest}`, object digest `{target.object_digest}`)")
     return lines
 
 
@@ -265,14 +290,14 @@ def render_executive_opportunity_brief(brief: ExecutiveOpportunityBrief) -> str:
             if object_id in rendered_ids:
                 lines.append(f"- `{object_id}` — see `{reference.detail_pointer}`.")
                 continue
-            lines.extend(_render_reference(reference, resolved[object_id]))
+            lines.extend(_render_reference(reference, resolved[object_id], reference_by_id))
             rendered_ids.add(object_id)
 
     detail_only = tuple(item for item in brief.detail_register
                         if item.object_id not in rendered_ids)
     lines.extend(("", "## Complete Detail Register"))
     for reference in detail_only:
-        lines.extend(_render_reference(reference, resolved[reference.object_id]))
+        lines.extend(_render_reference(reference, resolved[reference.object_id], reference_by_id))
         rendered_ids.add(reference.object_id)
     if not detail_only:
         lines.append("- All detail objects are displayed in the executive index.")

@@ -1111,8 +1111,11 @@ _ALIGN_CHUNK_SYSTEM = (
     "the point where the supplied excerpt ends is NOT evidence that the source "
     "document itself ends there. Never report truncation, incompleteness, a "
     "missing continuation, or a cut-off table solely because the excerpt you "
-    "were given ends at that point. "
-    "Respond with valid JSON only."
+    "were given ends at that point."
+    # Phase 5B: removed the generic "respond with valid JSON only" trailer
+    # as exact-redundancy -- _align_chunk_prompt's own user prompt already
+    # states it more specifically ("For THIS SECTION ONLY, return ONLY
+    # valid JSON:") immediately before the schema it introduces.
 )
 
 
@@ -2018,7 +2021,11 @@ _ALIGN_SYNTHESIS_SYSTEM = (
     "You write a concise executive narrative summarizing an already-completed, "
     "deterministic proposal alignment audit. You do NOT reassess coverage, "
     "scores, or mandatory failures -- those are fixed and provided to you as "
-    "ground truth. Respond with valid JSON only."
+    "ground truth."
+    # Phase 5B: removed the generic "respond with valid JSON only" trailer
+    # as exact-redundancy -- _synthesize_narrative's own user prompt
+    # already states it more specifically ("Return ONLY valid JSON, with
+    # EXACTLY these three keys and no others:").
 )
 
 
@@ -2720,7 +2727,11 @@ _PROCUREMENT_CHANGE_SYSTEM = (
     "proposal must be grounded in the supplied document text. This input may be one "
     "section/chunk of a larger buyer document -- the point where this excerpt ends "
     "is not evidence the document itself ends there; never propose a change based on "
-    "an assumed truncation. Respond with valid JSON only."
+    "an assumed truncation."
+    # Phase 5B: removed the generic "respond with valid JSON only" trailer
+    # as exact-redundancy -- _procurement_change_prompt's own user prompt
+    # already states it more specifically ("Return ONLY valid JSON:")
+    # immediately before the schema it introduces.
 )
 
 
