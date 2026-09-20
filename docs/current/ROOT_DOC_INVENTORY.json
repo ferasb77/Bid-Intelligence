@@ -1,0 +1,932 @@
+{
+  "schema_version": "1.0",
+  "generated_by": "scripts/generate_root_doc_inventory.py",
+  "classification_method": "deterministic: self-declared Document Metadata table only (Authority Level / Status); filename analysis contributes only the separate `category` field, never `currentness`. No LLM summarization or semantic judgment was used.",
+  "total_files": 102,
+  "total_bytes": 2026643,
+  "currentness_summary": {
+    "CURRENT_DECLARED": 10,
+    "UNKNOWN": 83,
+    "PROPOSED_OR_DRAFT": 9
+  },
+  "documents": [
+    {
+      "path": "AGENT.md",
+      "bytes": 3451,
+      "category": "constitutional",
+      "declared_authority_level": "Level 2 \u2014 Repository Governance",
+      "declared_status": "Ratified",
+      "currentness": "CURRENT_DECLARED",
+      "has_metadata_table": true
+    },
+    {
+      "path": "AGENTS.md",
+      "bytes": 1687,
+      "category": "unknown",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "ANTI_GOALS.md",
+      "bytes": 3067,
+      "category": "constitutional",
+      "declared_authority_level": "Level 2 \u2014 Repository Governance",
+      "declared_status": "Ratified",
+      "currentness": "CURRENT_DECLARED",
+      "has_metadata_table": true
+    },
+    {
+      "path": "BANK_OF_CANADA_BID_INTELLIGENCE_PREVIEW_VALIDATION_NOTE.md",
+      "bytes": 11538,
+      "category": "validation_report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BANK_OF_CANADA_BUYER_BRIEF.md",
+      "bytes": 2924,
+      "category": "brief",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BANK_OF_CANADA_CONFLICT_IDENTITY_REMEDIATION_REPORT.md",
+      "bytes": 31701,
+      "category": "remediation_report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BANK_OF_CANADA_EXECUTIVE_BRIEFING_PACK_COMMISSIONING_REPORT.md",
+      "bytes": 28660,
+      "category": "commissioning_report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BANK_OF_CANADA_EXECUTIVE_OPPORTUNITY_BRIEF.md",
+      "bytes": 8115,
+      "category": "brief",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BANK_OF_CANADA_PERFORMANCE_BASELINE_REPORT.md",
+      "bytes": 43031,
+      "category": "benchmark_report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BANK_OF_CANADA_PREVIOUS_PREVIEW_CORRECTIONS.md",
+      "bytes": 3503,
+      "category": "unknown",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BANK_OF_CANADA_PROVENANCE_GRANULARITY_REMEDIATION_REPORT.md",
+      "bytes": 33013,
+      "category": "remediation_report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BANK_OF_CANADA_REAL_WORLD_ACCEPTANCE_REPORT.md",
+      "bytes": 16057,
+      "category": "acceptance_report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BANK_OF_CANADA_STAGE_A_CONCURRENCY_FULL_VALIDATION_REPORT.md",
+      "bytes": 14453,
+      "category": "validation_report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BANK_OF_CANADA_STAGE_A_CONCURRENCY_PILOT_REPORT.md",
+      "bytes": 19772,
+      "category": "benchmark_report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BANK_OF_CANADA_STAGE_A_LIVE_TELEMETRY_REPORT.md",
+      "bytes": 26899,
+      "category": "benchmark_report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BANK_OF_CANADA_STAGE_A_RECOVERY_CONTEXT_OPTIMIZATION_REPORT.md",
+      "bytes": 13690,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BANK_OF_CANADA_STAGE_A_RECOVERY_OPTIMIZATION_REPORT.md",
+      "bytes": 27455,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BASELINE_RELEASE_NOTES.md",
+      "bytes": 5010,
+      "category": "release_note",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BID_INTELLIGENCE_BRIEFING_PACK.md",
+      "bytes": 23015,
+      "category": "brief",
+      "declared_authority_level": "Level 3 \u2014 Product Doctrine",
+      "declared_status": "Proposed",
+      "currentness": "PROPOSED_OR_DRAFT",
+      "has_metadata_table": true
+    },
+    {
+      "path": "BID_INTELLIGENCE_COMMISSIONED_BASELINE.md",
+      "bytes": 19434,
+      "category": "unknown",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BID_INTELLIGENCE_GENERIC_ASSEMBLY_RELEASE_NOTES.md",
+      "bytes": 5381,
+      "category": "release_note",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BID_INTELLIGENCE_PHASE4_GENERALIZATION_REPORT.md",
+      "bytes": 32520,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BID_INTELLIGENCE_PHASE5_GENERIC_ASSEMBLY_REPORT.md",
+      "bytes": 74764,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BID_INTELLIGENCE_PHASE6_GENERALIZATION_RELEASE_NOTES.md",
+      "bytes": 4148,
+      "category": "release_note",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BID_INTELLIGENCE_PHASE6_THIRD_PROCUREMENT_HOLDOUT_REPORT.md",
+      "bytes": 43078,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BID_INTELLIGENCE_PHASE8_AUTH_TENANCY_FOUNDATION.md",
+      "bytes": 27123,
+      "category": "unknown",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BID_INTELLIGENCE_PHASE8_PRODUCTION_READINESS_AUDIT.md",
+      "bytes": 56956,
+      "category": "audit",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BID_INTELLIGENCE_PHASE8_RLS_REMEDIATION_1.md",
+      "bytes": 12671,
+      "category": "unknown",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BID_INTELLIGENCE_PHASE8_TENANT_RLS_ENFORCEMENT.md",
+      "bytes": 106208,
+      "category": "unknown",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BID_INTELLIGENCE_PRODUCT_INTEGRATION_PHASE3_COMMISSIONING_REPORT.md",
+      "bytes": 21045,
+      "category": "commissioning_report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BID_LIFECYCLE_ARCHITECTURE.md",
+      "bytes": 65702,
+      "category": "architecture",
+      "declared_authority_level": "Level 4 \u2014 Architecture Specification",
+      "declared_status": "Proposed",
+      "currentness": "PROPOSED_OR_DRAFT",
+      "has_metadata_table": true
+    },
+    {
+      "path": "BID_WORKSPACE_ARCHITECTURE.md",
+      "bytes": 37844,
+      "category": "architecture",
+      "declared_authority_level": "Level 4 \u2014 Architecture Specification",
+      "declared_status": "Proposed",
+      "currentness": "PROPOSED_OR_DRAFT",
+      "has_metadata_table": true
+    },
+    {
+      "path": "BRAND-INTEGRATION.md",
+      "bytes": 1059,
+      "category": "unknown",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BUYER_BRIEF_ARCHITECTURE.md",
+      "bytes": 10225,
+      "category": "architecture",
+      "declared_authority_level": "Level 5 \u2014 Presentation Architecture",
+      "declared_status": "Implemented",
+      "currentness": "CURRENT_DECLARED",
+      "has_metadata_table": true
+    },
+    {
+      "path": "BUYER_BRIEF_DESIGN.md",
+      "bytes": 18654,
+      "category": "unknown",
+      "declared_authority_level": "Level 5 \u2014 Product Design",
+      "declared_status": "Proposed",
+      "currentness": "PROPOSED_OR_DRAFT",
+      "has_metadata_table": true
+    },
+    {
+      "path": "BUYER_DOMAIN_ARCHITECTURE.md",
+      "bytes": 5364,
+      "category": "architecture",
+      "declared_authority_level": "Level 4 \u2014 Architecture Specification",
+      "declared_status": "Implemented",
+      "currentness": "CURRENT_DECLARED",
+      "has_metadata_table": true
+    },
+    {
+      "path": "BUYER_EVIDENCE_ACQUISITION_ARCHITECTURE.md",
+      "bytes": 41211,
+      "category": "architecture",
+      "declared_authority_level": "Level 4 \u2014 Architecture Specification",
+      "declared_status": "Proposed",
+      "currentness": "PROPOSED_OR_DRAFT",
+      "has_metadata_table": true
+    },
+    {
+      "path": "BUYER_EVIDENCE_ARCHITECTURE.md",
+      "bytes": 6375,
+      "category": "architecture",
+      "declared_authority_level": "Level 4 \u2014 Architecture Specification",
+      "declared_status": "Implemented",
+      "currentness": "CURRENT_DECLARED",
+      "has_metadata_table": true
+    },
+    {
+      "path": "BUYER_INTELLIGENCE_ARCHITECTURE.md",
+      "bytes": 12673,
+      "category": "architecture",
+      "declared_authority_level": "Level 4 \u2014 Architecture Specification",
+      "declared_status": "Implemented",
+      "currentness": "CURRENT_DECLARED",
+      "has_metadata_table": true
+    },
+    {
+      "path": "BUYER_INTELLIGENCE_DOMAIN_ARCHITECTURE.md",
+      "bytes": 23431,
+      "category": "architecture",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BUYER_INTELLIGENCE_FACT_OWNERSHIP_ARCHITECTURE.md",
+      "bytes": 11841,
+      "category": "architecture",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BUYER_INTELLIGENCE_PUBLICATION_ARCHITECTURE.md",
+      "bytes": 10664,
+      "category": "architecture",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "BUYER_INTELLIGENCE_SPECIFICATION.md",
+      "bytes": 19986,
+      "category": "specification",
+      "declared_authority_level": "Level 4 \u2014 Functional Specification",
+      "declared_status": "Proposed",
+      "currentness": "PROPOSED_OR_DRAFT",
+      "has_metadata_table": true
+    },
+    {
+      "path": "BUYER_RETRIEVAL_ARCHITECTURE.md",
+      "bytes": 36475,
+      "category": "architecture",
+      "declared_authority_level": "Level 4 \u2014 Architecture Specification",
+      "declared_status": "Proposed",
+      "currentness": "PROPOSED_OR_DRAFT",
+      "has_metadata_table": true
+    },
+    {
+      "path": "CANONICAL_OPPORTUNITY_INTEGRITY_REPORT.md",
+      "bytes": 18892,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURAL_REVIEW.md",
+      "bytes": 19163,
+      "category": "architectural_review",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURE.md",
+      "bytes": 32599,
+      "category": "architecture",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "CLAUDE.md",
+      "bytes": 2346,
+      "category": "unknown",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "CONSTITUTIONAL_COMPLETENESS_REVIEW.md",
+      "bytes": 28334,
+      "category": "review",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "DECISION_ANALYST_ARCHITECTURE_PHASE2.md",
+      "bytes": 5167,
+      "category": "unknown",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "DECISION_INTELLIGENCE_ARCHITECTURE_PHASE1.md",
+      "bytes": 5566,
+      "category": "unknown",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "DECISION_WORKSPACE_ARCHITECTURE.md",
+      "bytes": 3392,
+      "category": "architecture",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "EVALUATION_HIERARCHY_INTEGRITY_REPORT.md",
+      "bytes": 13619,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "EVIDENCE_AND_PROVENANCE_ARCHITECTURAL_REVIEW.md",
+      "bytes": 22917,
+      "category": "architectural_review",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "EVIDENCE_ARCHITECTURE.md",
+      "bytes": 24476,
+      "category": "architecture",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "EVIDENCE_EXPLAINABILITY_REPORT.md",
+      "bytes": 1031,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "EVIDENCE_QUERY_ENGINE_REPORT.md",
+      "bytes": 1548,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "EXECUTIVE_BRIEFING_PACK_ARCHITECTURE.md",
+      "bytes": 23655,
+      "category": "architecture",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "EXECUTIVE_OPPORTUNITY_BRIEF_ARCHITECTURE.md",
+      "bytes": 13995,
+      "category": "architecture",
+      "declared_authority_level": "Level 4 \u2014 Presentation Contract",
+      "declared_status": "Approved",
+      "currentness": "CURRENT_DECLARED",
+      "has_metadata_table": true
+    },
+    {
+      "path": "EXECUTIVE_OPPORTUNITY_UNDERSTANDING_ARCHITECTURAL_VALIDATION.md",
+      "bytes": 23192,
+      "category": "architectural_review",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "EXECUTIVE_OPPORTUNITY_UNDERSTANDING_ARCHITECTURE.md",
+      "bytes": 42438,
+      "category": "architecture",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "FAST_ANALYSIS_MINIMUM_VIABLE_INTELLIGENCE_AUDIT.md",
+      "bytes": 28278,
+      "category": "audit",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "FAST_ANALYSIS_PRODUCT_INTEGRATION_PHASE1_REPORT.md",
+      "bytes": 19995,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "FAST_ANALYSIS_PRODUCT_INTEGRATION_PHASE2_REPORT.md",
+      "bytes": 24977,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "FAST_ANALYSIS_V1_IMPLEMENTATION_REPORT.md",
+      "bytes": 10547,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "FAST_ANALYSIS_V2_IMPLEMENTATION_REPORT.md",
+      "bytes": 18000,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "FAST_ANALYSIS_V3_IMPLEMENTATION_REPORT.md",
+      "bytes": 16382,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "FAST_ANALYSIS_V4_IMPLEMENTATION_REPORT.md",
+      "bytes": 15909,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "FAST_ANALYSIS_V4_SOURCE_TRUTH_RECONCILIATION.md",
+      "bytes": 9459,
+      "category": "unknown",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "GEMINI.md",
+      "bytes": 1737,
+      "category": "unknown",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "GOVERNANCE.md",
+      "bytes": 4597,
+      "category": "constitutional",
+      "declared_authority_level": "Level 2 \u2014 Repository Governance",
+      "declared_status": "Ratified",
+      "currentness": "CURRENT_DECLARED",
+      "has_metadata_table": true
+    },
+    {
+      "path": "GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md",
+      "bytes": 38878,
+      "category": "architecture",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "MANIFESTO.md",
+      "bytes": 5747,
+      "category": "constitutional",
+      "declared_authority_level": "Level 1 \u2014 Constitutional Authority",
+      "declared_status": "Ratified",
+      "currentness": "CURRENT_DECLARED",
+      "has_metadata_table": true
+    },
+    {
+      "path": "OPPORTUNITY_IDENTITY_AND_LEGACY_DATES_ARCHITECTURE.md",
+      "bytes": 27149,
+      "category": "architecture",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md",
+      "bytes": 48879,
+      "category": "specification",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "OPPORTUNITY_INTELLIGENCE_IMPLEMENTATION_REPORT.md",
+      "bytes": 5550,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "OPPORTUNITY_INTELLIGENCE_PUBLICATION_ARCHITECTURAL_REVIEW.md",
+      "bytes": 19032,
+      "category": "architectural_review",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "OPPORTUNITY_ORCHESTRATION_ARCHITECTURAL_REVIEW.md",
+      "bytes": 14633,
+      "category": "architectural_review",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "OPPORTUNITY_ORCHESTRATION_ARCHITECTURE.md",
+      "bytes": 30241,
+      "category": "architecture",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "OPPORTUNITY_STRUCTURE_PUBLICATION_ARCHITECTURE.md",
+      "bytes": 22605,
+      "category": "architecture",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "POST_MIGRATION_003_SMOKE_TEST.md",
+      "bytes": 4332,
+      "category": "unknown",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "PRODUCTION_ECONOMICS_AUDIT.md",
+      "bytes": 49490,
+      "category": "audit",
+      "declared_authority_level": "Level 5 \u2014 Operational Record",
+      "declared_status": "Draft \u2014 Audit Only",
+      "currentness": "PROPOSED_OR_DRAFT",
+      "has_metadata_table": true
+    },
+    {
+      "path": "PRODUCTION_OPTIMIZATION_PROGRAM.md",
+      "bytes": 33565,
+      "category": "unknown",
+      "declared_authority_level": "Level 5 \u2014 Operational Record",
+      "declared_status": "Draft \u2014 Planning Only, No Implementation Authorized",
+      "currentness": "PROPOSED_OR_DRAFT",
+      "has_metadata_table": true
+    },
+    {
+      "path": "RC1_PRE_MERGE_REVIEW.md",
+      "bytes": 19599,
+      "category": "review",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "README.md",
+      "bytes": 3639,
+      "category": "constitutional",
+      "declared_authority_level": "Level 6 \u2014 Introduction and Guidance",
+      "declared_status": "Current",
+      "currentness": "CURRENT_DECLARED",
+      "has_metadata_table": true
+    },
+    {
+      "path": "REQUIREMENT_SEMANTIC_SEPARATION_REPORT.md",
+      "bytes": 23529,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "RISK_DELIVERABLE_HYGIENE_REPORT.md",
+      "bytes": 11211,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "STAGE_A_EXTRACTION_RELIABILITY_REPORT.md",
+      "bytes": 12742,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "STAGE_B_REQUIREMENT_DEDUP_INTEGRITY_REPORT.md",
+      "bytes": 6927,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "STAGE_C_CONFLICT_RECONCILIATION_REFINEMENT_REPORT.md",
+      "bytes": 15772,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "STAGE_C_NULL_DATE_SAFETY_REPORT.md",
+      "bytes": 6740,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "STAGE_D_ARCHITECTURAL_REVIEW.md",
+      "bytes": 21954,
+      "category": "architectural_review",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "STAGE_D_SYNTHESIS_COMPLETENESS_REPORT.md",
+      "bytes": 8950,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "STAGE_D_SYNTHESIS_PROJECTION_REPORT.md",
+      "bytes": 28871,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "STREAMLINED_WORKFLOW_ACCEPTANCE_REPORT.md",
+      "bytes": 16261,
+      "category": "acceptance_report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "STREAMLINED_WORKFLOW_REMEDIATION_REPORT.md",
+      "bytes": 11851,
+      "category": "remediation_report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "SUBMISSION_ARTIFACT_PROJECTION_REPORT.md",
+      "bytes": 16687,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "SUBMISSION_DOCUMENT_PROVENANCE_REPORT.md",
+      "bytes": 12244,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "SUBMIT_STATE_CONSISTENCY_REPORT.md",
+      "bytes": 10829,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "TEST_REPORT_STREAMLINED_WORKFLOW.md",
+      "bytes": 7248,
+      "category": "unknown",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "UNDERSTANDING_PROFILE_ARCHITECTURE.md",
+      "bytes": 28548,
+      "category": "architecture",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    },
+    {
+      "path": "XLS_INGESTION_REPORT.md",
+      "bytes": 8856,
+      "category": "report",
+      "declared_authority_level": null,
+      "declared_status": null,
+      "currentness": "UNKNOWN",
+      "has_metadata_table": false
+    }
+  ]
+}
