@@ -90,10 +90,17 @@ below.
 > was found already live during Phase 5's commissioning work. Migration
 > 015 (Proposal Intelligence, PI-1) was applied live on 2026-09-20 and is
 > formally recorded in Supabase's migration ledger as
-> `20260920205721 proposal_intelligence`. Migration 013 remains unapplied.
-> Treat any future "is migration N live" question as requiring a fresh
-> check — `git log` and this file are not a substitute for checking the
-> live database when a task depends on it.
+> `20260920205721 proposal_intelligence`. Live PI-1 commissioning also
+> passed on 2026-09-20: service-role RPC execution, snapshot reuse/versioning,
+> atomic bundle rollback, composite cross-bid rejection, authenticated RLS
+> read isolation/write denial, latest-usable-run semantics, and disposable
+> cleanup were all exercised against the real project. The ledger also
+> contains `20260920211025 proposal_intelligence_commissioning`, a
+> commissioning-only assertion run with no lasting schema or data changes
+> and no corresponding numbered repo migration file. Migration 013 remains
+> unapplied. Treat any future "is migration N live" question as requiring a
+> fresh check — `git log` and this file are not a substitute for checking
+> the live database when a task depends on it.
 
 ## Where NOT to look first
 
