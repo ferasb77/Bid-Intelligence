@@ -10,7 +10,7 @@
 | Purpose | Define the deterministic customer-facing presentation of Executive Opportunity Understanding used to prepare senior consulting leaders for proposal kickoff. |
 | Higher Authority | [`MANIFESTO.md`](MANIFESTO.md), [`AGENT.md`](AGENT.md), [`ANTI_GOALS.md`](ANTI_GOALS.md), [`EXECUTIVE_OPPORTUNITY_UNDERSTANDING_ARCHITECTURE.md`](EXECUTIVE_OPPORTUNITY_UNDERSTANDING_ARCHITECTURE.md), [`OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md`](OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md), and [`GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md`](GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md) |
 | Governed Documents | `executive_opportunity_brief.py`, `tests/test_executive_opportunity_brief.py`, and evaluation artifacts derived from this contract |
-| Related Documents | [`DECISION_WORKSPACE_ARCHITECTURE.md`](DECISION_WORKSPACE_ARCHITECTURE.md), [`BID_INTELLIGENCE_BRIEFING_PACK.md`](BID_INTELLIGENCE_BRIEFING_PACK.md) |
+| Related Documents | [`DECISION_WORKSPACE_ARCHITECTURE.md`](DECISION_WORKSPACE_ARCHITECTURE.md), [`BID_INTELLIGENCE_BRIEFING_PACK.md`](docs/archive/proposed/BID_INTELLIGENCE_BRIEFING_PACK.md) |
 
 # Executive Opportunity Brief Architecture
 

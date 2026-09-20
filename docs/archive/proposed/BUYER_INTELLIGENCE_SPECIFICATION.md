@@ -8,9 +8,9 @@
 | Version | 1.0.0 |
 | Status | Proposed |
 | Purpose | Define the first Buyer Intelligence capability and the future Buyer Intelligence Brief without prescribing implementation. |
-| Higher Authority | [`MANIFESTO.md`](MANIFESTO.md), [`AGENT.md`](AGENT.md), [`GOVERNANCE.md`](GOVERNANCE.md), [`ANTI_GOALS.md`](ANTI_GOALS.md), [Product Doctrine](docs/product/PRODUCT_VISION.md), [Architecture Doctrine](docs/architecture/ARCHITECTURE.md), [Engineering Doctrine](docs/engineering/CONTRIBUTING.md) |
+| Higher Authority | [`MANIFESTO.md`](../../../MANIFESTO.md), [`AGENT.md`](../../../AGENT.md), [`GOVERNANCE.md`](../../../GOVERNANCE.md), [`ANTI_GOALS.md`](../../../ANTI_GOALS.md), [Product Doctrine](../../product/PRODUCT_VISION.md), [Architecture Doctrine](../../architecture/ARCHITECTURE.md), [Engineering Doctrine](../../engineering/CONTRIBUTING.md) |
 | Governed Documents | Future Buyer Intelligence architecture, contracts, designs, implementation plans, validation, and evaluation criteria. |
-| Related Documents | [`PRODUCT_VISION.md`](docs/product/PRODUCT_VISION.md), [`CUSTOMER_WORKFLOW.md`](docs/product/CUSTOMER_WORKFLOW.md), [`DOMAIN_MODEL.md`](docs/architecture/DOMAIN_MODEL.md), [`DECISION_DOCTRINE.md`](docs/architecture/DECISION_DOCTRINE.md), [`PRODUCT_ROADMAP.md`](docs/product/PRODUCT_ROADMAP.md) |
+| Related Documents | [`PRODUCT_VISION.md`](../../product/PRODUCT_VISION.md), [`CUSTOMER_WORKFLOW.md`](../../product/CUSTOMER_WORKFLOW.md), [`DOMAIN_MODEL.md`](../../architecture/DOMAIN_MODEL.md), [`DECISION_DOCTRINE.md`](../../architecture/DECISION_DOCTRINE.md), [`PRODUCT_ROADMAP.md`](../../product/PRODUCT_ROADMAP.md) |
 
 # Buyer Intelligence v1
 

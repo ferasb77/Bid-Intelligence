@@ -11,7 +11,7 @@
 | Status | Approved |
 | Purpose | Define how Canonical Opportunity exposes the semantic objects it already owns as immutable governed objects for exact downstream resolution. |
 | Higher authority | [Bid Intelligence Constitution](MANIFESTO.md), [AI Contributor Instructions](AGENT.md), [Product Anti-Goals](ANTI_GOALS.md), [Architecture Doctrine](docs/architecture/ARCHITECTURE.md), [Decision Information Doctrine](docs/architecture/DECISION_DOCTRINE.md), and [Governed Reference Resolution Architecture](GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md) |
-| Validated basis | [Canonical Opportunity Publication Architectural Review](CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURAL_REVIEW.md) |
+| Validated basis | [Canonical Opportunity Publication Architectural Review](docs/archive/operational/CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURAL_REVIEW.md) |
 | Governed implementation | Future Canonical Opportunity owner-publication contracts, validators, immutable snapshots, manifests, and governed references |
 | Related architecture | [Opportunity Intelligence Analyst Specification](OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md), [Executive Opportunity Understanding Architecture](EXECUTIVE_OPPORTUNITY_UNDERSTANDING_ARCHITECTURE.md), and [Executive Opportunity Brief Architecture](EXECUTIVE_OPPORTUNITY_BRIEF_ARCHITECTURE.md) |
 
@@ -465,6 +465,6 @@ Canonical Opportunity Publication is conformant only when:
 
 ## 20. Architectural confirmation
 
-This architecture closes the omission identified by [Canonical Opportunity Publication Architectural Review](CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURAL_REVIEW.md).
+This architecture closes the omission identified by [Canonical Opportunity Publication Architectural Review](docs/archive/operational/CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURAL_REVIEW.md).
 
 It introduces no new semantic authority, domain, runtime service, persistence mechanism, API, schema, prompt, retrieval capability, intelligence, presentation logic, recommendation, or decision. It does not redesign Canonical Opportunity. It defines only how Canonical Opportunity publishes the immutable semantic objects it already owns for governed downstream resolution.

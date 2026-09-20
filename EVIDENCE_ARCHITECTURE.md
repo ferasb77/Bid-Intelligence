@@ -12,7 +12,7 @@
 | Purpose | Define the domain-neutral constitutional owner, immutable contracts, publication duties, and governed resolution boundaries for attributable evidence and its provenance. |
 | Higher authority | [The Bid Intelligence Constitution](MANIFESTO.md), [Repository Governance](GOVERNANCE.md), [Architecture Doctrine](docs/architecture/ARCHITECTURE.md), [Decision Doctrine](docs/architecture/DECISION_DOCTRINE.md), and [Canonical Domain Vocabulary](docs/architecture/DOMAIN_MODEL.md) |
 | Governed documents | Future Evidence contracts, Evidence owner-publication specifications, validators, and conformance tests |
-| Related documents | [Evidence and Provenance Architectural Review](EVIDENCE_AND_PROVENANCE_ARCHITECTURAL_REVIEW.md), [Governed Reference Resolution Architecture](GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md), [Canonical Opportunity Publication Architecture](CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURE.md), [Opportunity Orchestration Architecture](OPPORTUNITY_ORCHESTRATION_ARCHITECTURE.md), [Opportunity Intelligence Analyst Specification](OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md), and [Executive Opportunity Understanding Architecture](EXECUTIVE_OPPORTUNITY_UNDERSTANDING_ARCHITECTURE.md) |
+| Related documents | [Evidence and Provenance Architectural Review](docs/archive/operational/EVIDENCE_AND_PROVENANCE_ARCHITECTURAL_REVIEW.md), [Governed Reference Resolution Architecture](GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md), [Canonical Opportunity Publication Architecture](CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURE.md), [Opportunity Orchestration Architecture](OPPORTUNITY_ORCHESTRATION_ARCHITECTURE.md), [Opportunity Intelligence Analyst Specification](OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md), and [Executive Opportunity Understanding Architecture](EXECUTIVE_OPPORTUNITY_UNDERSTANDING_ARCHITECTURE.md) |
 
 ## 1. Purpose
 
@@ -370,4 +370,4 @@ This architecture is satisfied only when:
 
 This architecture formalizes the repository's existing Evidence layer as the independent owner of attributable source representations. It introduces no second Provenance owner: occurrence objects and Evidence-owned relationships preserve provenance inside the same constitutional boundary. Evidence owner publication exposes immutable, versioned, snapshot-bound objects for governed resolution while leaving canonical facts, analysis, organization, orchestration, and presentation with their established owners.
 
-The result closes the ownership and publication gap identified in the [Evidence and Provenance Architectural Review](EVIDENCE_AND_PROVENANCE_ARCHITECTURAL_REVIEW.md) without creating a new semantic authority or duplicating canonical truth.
+The result closes the ownership and publication gap identified in the [Evidence and Provenance Architectural Review](docs/archive/operational/EVIDENCE_AND_PROVENANCE_ARCHITECTURAL_REVIEW.md) without creating a new semantic authority or duplicating canonical truth.

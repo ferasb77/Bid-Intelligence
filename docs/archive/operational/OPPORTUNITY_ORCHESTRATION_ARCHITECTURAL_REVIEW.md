@@ -10,7 +10,7 @@
 | Version | 1.0.0 |
 | Status | Review finding |
 | Purpose | Determine the constitutional owner of multi-owner publication admission, resolution-context assembly, and Opportunity Intelligence support binding. |
-| Higher authority | [The Bid Intelligence Constitution](MANIFESTO.md), [Repository Governance](GOVERNANCE.md), [Architecture Doctrine](docs/architecture/ARCHITECTURE.md), [Canonical Opportunity Publication Architecture](CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURE.md), [Governed Reference Resolution Architecture](GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md), and [Opportunity Intelligence Analyst Specification](OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md) |
+| Higher authority | [The Bid Intelligence Constitution](../../../MANIFESTO.md), [Repository Governance](../../../GOVERNANCE.md), [Architecture Doctrine](../../architecture/ARCHITECTURE.md), [Canonical Opportunity Publication Architecture](../../../CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURE.md), [Governed Reference Resolution Architecture](../../../GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md), and [Opportunity Intelligence Analyst Specification](../../../OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md) |
 | Governed documents | None; this review does not amend architecture. |
 | Related documents | [Canonical Opportunity Publication Architectural Review](CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURAL_REVIEW.md) and [Opportunity Intelligence Publication Architectural Review](OPPORTUNITY_INTELLIGENCE_PUBLICATION_ARCHITECTURAL_REVIEW.md) |
 
@@ -28,7 +28,7 @@ The required orchestration responsibility has no semantic authority. It does not
 
 This review examines architecture only. It does not define runtime components, APIs, persistence, services, or implementation sequencing.
 
-The requested file `OPPORTUNITY_INTELLIGENCE_PUBLICATION_ARCHITECTURE.md` is not present in the repository. Opportunity Intelligence owner publication is governed by the publication amendment in [Opportunity Intelligence Analyst Specification](OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md), currently version 1.1.1. This review relies on that ratified specification and does not infer content for the absent standalone filename.
+The requested file `OPPORTUNITY_INTELLIGENCE_PUBLICATION_ARCHITECTURE.md` is not present in the repository. Opportunity Intelligence owner publication is governed by the publication amendment in [Opportunity Intelligence Analyst Specification](../../../OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md), currently version 1.1.1. This review relies on that ratified specification and does not infer content for the absent standalone filename.
 
 ## Validation method
 
@@ -54,7 +54,7 @@ Each semantic owner creates and validates its own objects. Canonical Opportunity
 
 Each owner publication responsibility exposes only that owner’s existing semantics through immutable objects, an owner-bound snapshot, object and snapshot digests, owner-declared relationships, and governed references. An owner publication cannot admit another owner’s snapshot or claim cross-domain completeness.
 
-[Canonical Opportunity Publication Architecture](CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURE.md) expressly excludes construction of a multi-owner `ResolutionContext` and creation of Opportunity Intelligence support bindings. It assigns compatible multi-owner context assembly to a “governed operation orchestrator.”
+[Canonical Opportunity Publication Architecture](../../../CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURE.md) expressly excludes construction of a multi-owner `ResolutionContext` and creation of Opportunity Intelligence support bindings. It assigns compatible multi-owner context assembly to a “governed operation orchestrator.”
 
 ### Opportunity Intelligence
 

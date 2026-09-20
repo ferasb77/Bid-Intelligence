@@ -10,9 +10,9 @@
 | Version | 1.0.0 |
 | Status | Review finding |
 | Purpose | Determine the constitutional ownership and publication requirements of Evidence and Provenance in the governed opportunity pipeline. |
-| Higher authority | [The Bid Intelligence Constitution](MANIFESTO.md), [Repository Governance](GOVERNANCE.md), [Architecture Doctrine](docs/architecture/ARCHITECTURE.md), [Decision Doctrine](docs/architecture/DECISION_DOCTRINE.md), and [Canonical Domain Vocabulary](docs/architecture/DOMAIN_MODEL.md) |
+| Higher authority | [The Bid Intelligence Constitution](../../../MANIFESTO.md), [Repository Governance](../../../GOVERNANCE.md), [Architecture Doctrine](../../architecture/ARCHITECTURE.md), [Decision Doctrine](../../architecture/DECISION_DOCTRINE.md), and [Canonical Domain Vocabulary](../../architecture/DOMAIN_MODEL.md) |
 | Governed documents | None; this review does not amend architecture. |
-| Related documents | [Canonical Opportunity Publication Architecture](CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURE.md), [Governed Reference Resolution Architecture](GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md), [Opportunity Orchestration Architecture](OPPORTUNITY_ORCHESTRATION_ARCHITECTURE.md), [Opportunity Intelligence Analyst Specification](OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md), and [Opportunity Orchestration Architectural Review](OPPORTUNITY_ORCHESTRATION_ARCHITECTURAL_REVIEW.md) |
+| Related documents | [Canonical Opportunity Publication Architecture](../../../CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURE.md), [Governed Reference Resolution Architecture](../../../GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md), [Opportunity Orchestration Architecture](../../../OPPORTUNITY_ORCHESTRATION_ARCHITECTURE.md), [Opportunity Intelligence Analyst Specification](../../../OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md), and [Opportunity Orchestration Architectural Review](OPPORTUNITY_ORCHESTRATION_ARCHITECTURAL_REVIEW.md) |
 
 ## Executive summary
 
@@ -34,7 +34,7 @@ The required architecture should govern the already-existing Evidence layer. It 
 
 This is an architectural review only. It defines no production component, schema, API, persistence mechanism, migration, service, or implementation plan.
 
-The requested `CANONICAL_OPPORTUNITY_ARCHITECTURE.md` is not present in the repository. Canonical Opportunity authority was therefore evaluated through [Architecture Doctrine](docs/architecture/ARCHITECTURE.md), [Decision Doctrine](docs/architecture/DECISION_DOCTRINE.md), [Canonical Domain Vocabulary](docs/architecture/DOMAIN_MODEL.md), the approved [Canonical Opportunity Publication Architecture](CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURE.md), and the inspected production contracts. This review does not invent content for the absent document.
+The requested `CANONICAL_OPPORTUNITY_ARCHITECTURE.md` is not present in the repository. Canonical Opportunity authority was therefore evaluated through [Architecture Doctrine](../../architecture/ARCHITECTURE.md), [Decision Doctrine](../../architecture/DECISION_DOCTRINE.md), [Canonical Domain Vocabulary](../../architecture/DOMAIN_MODEL.md), the approved [Canonical Opportunity Publication Architecture](../../../CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURE.md), and the inspected production contracts. This review does not invent content for the absent document.
 
 ## Current production blocker
 
@@ -55,9 +55,9 @@ The blocker occurs before orchestration. Opportunity Orchestration is therefore 
 
 ### Evidence
 
-[Architecture Doctrine](docs/architecture/ARCHITECTURE.md) defines Evidence as an attributable representation supplied by a source and requires it to retain identity, provenance, location, and relevant status. Evidence precedes Canonical Truth. Canonical Truth describes what available Evidence supports; it does not own the underlying representation merely because it reconciles facts derived from it.
+[Architecture Doctrine](../../architecture/ARCHITECTURE.md) defines Evidence as an attributable representation supplied by a source and requires it to retain identity, provenance, location, and relevant status. Evidence precedes Canonical Truth. Canonical Truth describes what available Evidence supports; it does not own the underlying representation merely because it reconciles facts derived from it.
 
-[Canonical Domain Vocabulary](docs/architecture/DOMAIN_MODEL.md) makes the assignment explicit: Evidence is architecturally owned by the Evidence layer. It supports Source Facts, Observations, Requirements, and analytical conclusions while retaining provenance.
+[Canonical Domain Vocabulary](../../architecture/DOMAIN_MODEL.md) makes the assignment explicit: Evidence is architecturally owned by the Evidence layer. It supports Source Facts, Observations, Requirements, and analytical conclusions while retaining provenance.
 
 Evidence is therefore an independent semantic owner because it has meaning and validation rules that remain authoritative across consumers:
 
@@ -155,7 +155,7 @@ If provenance is published as a distinct object class, it remains within its est
 
 ### Why current architecture is insufficient for implementation
 
-[Governed Reference Resolution Architecture](GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md) supplies uniform owner obligations, but it intentionally does not define domain semantics. A conforming Evidence owner must still declare:
+[Governed Reference Resolution Architecture](../../../GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md) supplies uniform owner obligations, but it intentionally does not define domain semantics. A conforming Evidence owner must still declare:
 
 - stable namespaces for documents, occurrences, evidence extracts, citations, and provenance records as applicable;
 - exact semantic object classes;
@@ -225,7 +225,7 @@ Opportunity Intelligence continues to use admitted evidence and canonical entiti
 
 ### Buyer Evidence
 
-[Canonical Buyer Evidence Architecture](BUYER_EVIDENCE_ARCHITECTURE.md) defines attributable public organizational evidence for Buyer Intelligence. Its scope, categories, authenticity rules, buyer identity, and acquisition context are specific to that pillar. It demonstrates that Evidence can be an immutable owner contract, but it cannot silently govern procurement-package evidence used by Canonical Opportunity.
+[Canonical Buyer Evidence Architecture](../../../BUYER_EVIDENCE_ARCHITECTURE.md) defines attributable public organizational evidence for Buyer Intelligence. Its scope, categories, authenticity rules, buyer identity, and acquisition context are specific to that pillar. It demonstrates that Evidence can be an immutable owner contract, but it cannot silently govern procurement-package evidence used by Canonical Opportunity.
 
 Reusing its general design principles is possible only through an explicit architecture. Reusing its semantic ownership directly would conflate buyer evidence with opportunity source evidence.
 

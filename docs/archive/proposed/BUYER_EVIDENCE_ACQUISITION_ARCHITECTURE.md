@@ -8,9 +8,9 @@
 | Version | 1.0.0 |
 | Status | Proposed |
 | Purpose | Govern how attributable public organizational material is selected, acquired, validated, and closed into a Buyer Evidence corpus. |
-| Higher Authority | [`MANIFESTO.md`](MANIFESTO.md), [`AGENT.md`](AGENT.md), [`GOVERNANCE.md`](GOVERNANCE.md), [`ANTI_GOALS.md`](ANTI_GOALS.md), [Product Doctrine](docs/product/PRODUCT_VISION.md), [Architecture Doctrine](docs/architecture/ARCHITECTURE.md), [Engineering Doctrine](docs/engineering/CONTRIBUTING.md), [`BUYER_INTELLIGENCE_SPECIFICATION.md`](BUYER_INTELLIGENCE_SPECIFICATION.md), [`BUYER_DOMAIN_ARCHITECTURE.md`](BUYER_DOMAIN_ARCHITECTURE.md), and [`BUYER_EVIDENCE_ARCHITECTURE.md`](BUYER_EVIDENCE_ARCHITECTURE.md) |
+| Higher Authority | [`MANIFESTO.md`](../../../MANIFESTO.md), [`AGENT.md`](../../../AGENT.md), [`GOVERNANCE.md`](../../../GOVERNANCE.md), [`ANTI_GOALS.md`](../../../ANTI_GOALS.md), [Product Doctrine](../../product/PRODUCT_VISION.md), [Architecture Doctrine](../../architecture/ARCHITECTURE.md), [Engineering Doctrine](../../engineering/CONTRIBUTING.md), [`BUYER_INTELLIGENCE_SPECIFICATION.md`](BUYER_INTELLIGENCE_SPECIFICATION.md), [`BUYER_DOMAIN_ARCHITECTURE.md`](../../../BUYER_DOMAIN_ARCHITECTURE.md), and [`BUYER_EVIDENCE_ARCHITECTURE.md`](../../../BUYER_EVIDENCE_ARCHITECTURE.md) |
 | Governed Documents | Future Buyer Evidence acquisition policies, coverage profiles, acquisition plans, adapters, validation contracts, implementations, runbooks, and acceptance evidence. |
-| Related Documents | [`BUYER_RETRIEVAL_ARCHITECTURE.md`](BUYER_RETRIEVAL_ARCHITECTURE.md), [`BUYER_INTELLIGENCE_ARCHITECTURE.md`](BUYER_INTELLIGENCE_ARCHITECTURE.md), [`BUYER_BRIEF_DESIGN.md`](BUYER_BRIEF_DESIGN.md), and [`BID_INTELLIGENCE_BRIEFING_PACK.md`](BID_INTELLIGENCE_BRIEFING_PACK.md) |
+| Related Documents | [`BUYER_RETRIEVAL_ARCHITECTURE.md`](BUYER_RETRIEVAL_ARCHITECTURE.md), [`BUYER_INTELLIGENCE_ARCHITECTURE.md`](../../../BUYER_INTELLIGENCE_ARCHITECTURE.md), [`BUYER_BRIEF_DESIGN.md`](BUYER_BRIEF_DESIGN.md), and [`BID_INTELLIGENCE_BRIEFING_PACK.md`](BID_INTELLIGENCE_BRIEFING_PACK.md) |
 
 # Buyer Evidence Acquisition Architecture
 

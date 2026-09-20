@@ -12,7 +12,7 @@
 | Purpose | Govern deterministic, fail-closed composition of independently governed brief artifacts into one Executive Briefing Pack. |
 | Higher authority | [The Bid Intelligence Constitution](MANIFESTO.md), [Repository Governance](GOVERNANCE.md), [Product Anti-Goals](ANTI_GOALS.md), [Architecture Doctrine](docs/architecture/ARCHITECTURE.md), and [Decision Doctrine](docs/architecture/DECISION_DOCTRINE.md) |
 | Governed documents | Future Executive Briefing Pack composition contracts, validators, renderers, and conformance tests |
-| Related documents | [Constitutional Completeness Review](CONSTITUTIONAL_COMPLETENESS_REVIEW.md), [Bid Intelligence Briefing Pack Product Design](BID_INTELLIGENCE_BRIEFING_PACK.md), [Executive Opportunity Brief Architecture](EXECUTIVE_OPPORTUNITY_BRIEF_ARCHITECTURE.md), [Buyer Brief Architecture](BUYER_BRIEF_ARCHITECTURE.md), [Executive Opportunity Understanding Architecture](EXECUTIVE_OPPORTUNITY_UNDERSTANDING_ARCHITECTURE.md), [Opportunity Orchestration Architecture](OPPORTUNITY_ORCHESTRATION_ARCHITECTURE.md), and [Governed Reference Resolution Architecture](GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md) |
+| Related documents | [Constitutional Completeness Review](docs/archive/operational/CONSTITUTIONAL_COMPLETENESS_REVIEW.md), [Bid Intelligence Briefing Pack Product Design](docs/archive/proposed/BID_INTELLIGENCE_BRIEFING_PACK.md), [Executive Opportunity Brief Architecture](EXECUTIVE_OPPORTUNITY_BRIEF_ARCHITECTURE.md), [Buyer Brief Architecture](BUYER_BRIEF_ARCHITECTURE.md), [Executive Opportunity Understanding Architecture](EXECUTIVE_OPPORTUNITY_UNDERSTANDING_ARCHITECTURE.md), [Opportunity Orchestration Architecture](OPPORTUNITY_ORCHESTRATION_ARCHITECTURE.md), and [Governed Reference Resolution Architecture](GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md) |
 
 ## Summary
 
@@ -20,7 +20,7 @@ The Executive Briefing Pack is an immutable presentation-composition contract. I
 
 The pack owns composition metadata only. It does not copy, reinterpret, resolve, publish, or acquire the semantic content of any included volume. Each volume retains its identity, revision, authority, evidence cutoff, governed references, resolution bindings, provenance, and validation status.
 
-This architecture closes the single responsibility gap identified by the [Constitutional Completeness Review](CONSTITUTIONAL_COMPLETENESS_REVIEW.md). It introduces no semantic owner, intelligence layer, publication owner, resolver, operation orchestrator, persistence boundary, or runtime service.
+This architecture closes the single responsibility gap identified by the [Constitutional Completeness Review](docs/archive/operational/CONSTITUTIONAL_COMPLETENESS_REVIEW.md). It introduces no semantic owner, intelligence layer, publication owner, resolver, operation orchestrator, persistence boundary, or runtime service.
 
 ## 1. Purpose
 

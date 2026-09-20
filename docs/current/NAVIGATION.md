@@ -10,11 +10,14 @@ Where to look, not what everything means. Read
 2. This file's section for the relevant subsystem, below.
 3. The task-relevant source and test files it points to.
 4. The specific governing architecture doc for that subsystem, **only if**
-   the task needs the "why," not just the "how."
-5. Historical reports (root `.md` files, `docs/current/ROOT_DOC_INVENTORY.json`)
-   — **only when the task specifically requires historical evidence** (e.g.
-   "what did we decide about X in the Phase 6 report," "reconstruct a past
-   acceptance run"). Do not scan them for ordinary orientation.
+   the task needs the "why," not just the "how" — see
+   [CURRENT_DOCUMENTS.md](CURRENT_DOCUMENTS.md) for exactly which root
+   documents may be treated as current authority (most of the former root
+   documentation has moved to `docs/archive/` — see below).
+5. `docs/archive/` (its own `README.md` explains the structure) — **only
+   when the task specifically requires historical evidence** (e.g. "what
+   did we decide about X in the Phase 6 report," "reconstruct a past
+   acceptance run"). Do not scan it for ordinary orientation.
 
 ## By subsystem
 
@@ -75,9 +78,14 @@ Where to look, not what everything means. Read
 
 ## Standing rules for this repo
 
-- Do not scan root historical reports (`*_REPORT.md`, `*_AUDIT.md`,
-  `*_COMMISSIONING_REPORT.md`, `BANK_OF_CANADA_*`, etc.) during ordinary
-  task orientation.
+- Do not scan `docs/archive/` (historical operational records, engagement
+  history, superseded versions, proposed/not-yet-implemented designs)
+  during ordinary task orientation. See [CURRENT_DOCUMENTS.md](CURRENT_DOCUMENTS.md)
+  for what root documentation remains and may be treated as current.
+- A filename alone (even one containing "ARCHITECTURE") is not a reliable
+  currentness signal in this repo — several self-declare `Status:
+  Proposed`. Check `docs/current/DOCUMENT_AUTHORITY_MAP.json` or a
+  document's own metadata table when in doubt.
 - A written migration file is not a live database change. Check explicitly
   before assuming one is applied.
 - Full constitutional reading (`MANIFESTO.md` → `GOVERNANCE.md` →

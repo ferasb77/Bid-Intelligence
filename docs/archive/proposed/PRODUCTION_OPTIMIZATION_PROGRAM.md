@@ -8,9 +8,9 @@
 | Version | 1.0.0 |
 | Status | Draft — Planning Only, No Implementation Authorized |
 | Purpose | Design a phased, risk-classified optimization program that reduces production cost and latency while preserving every constitutional boundary established in `MANIFESTO.md`, `ANTI_GOALS.md`, and `AGENT.md`. |
-| Higher Authority | [`GOVERNANCE.md`](GOVERNANCE.md), [`AGENT.md`](AGENT.md) |
+| Higher Authority | [`GOVERNANCE.md`](../../../GOVERNANCE.md), [`AGENT.md`](../../../AGENT.md) |
 | Governed Documents | None directly. This document authorizes no code change; each phase's actual implementation, when undertaken, must separately satisfy `AGENT.md`'s "Before implementation" test. |
-| Related Documents | [`PRODUCTION_ECONOMICS_AUDIT.md`](PRODUCTION_ECONOMICS_AUDIT.md) (source of all findings cited below), [`MANIFESTO.md`](MANIFESTO.md), [`ANTI_GOALS.md`](ANTI_GOALS.md), [`AGENT.md`](AGENT.md) |
+| Related Documents | [`PRODUCTION_ECONOMICS_AUDIT.md`](PRODUCTION_ECONOMICS_AUDIT.md) (source of all findings cited below), [`MANIFESTO.md`](../../../MANIFESTO.md), [`ANTI_GOALS.md`](../../../ANTI_GOALS.md), [`AGENT.md`](../../../AGENT.md) |
 
 **Scope discipline.** This document is a planning artifact. It changes no code, prompt, test, schema, or architecture, and it authorizes no implementation. Every opportunity below is identified and risk-classified, not built. Where an opportunity would touch a governed interface (prompts, projection schemas, replay formats — per `AGENT.md`'s "Protect compatibility deliberately"), that fact is stated explicitly as a precondition for any future implementation, not waived.
 

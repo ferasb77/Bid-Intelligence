@@ -8,9 +8,9 @@
 | Version | 1.0.0 |
 | Status | Proposed |
 | Purpose | Define the professional customer-facing artifact through which teams consume validated Buyer Intelligence. |
-| Higher Authority | [`MANIFESTO.md`](MANIFESTO.md), [`AGENT.md`](AGENT.md), [`GOVERNANCE.md`](GOVERNANCE.md), [`ANTI_GOALS.md`](ANTI_GOALS.md), [Product Doctrine](docs/product/PRODUCT_VISION.md), [Architecture Doctrine](docs/architecture/ARCHITECTURE.md), [Engineering Doctrine](docs/engineering/CONTRIBUTING.md), [`BUYER_INTELLIGENCE_SPECIFICATION.md`](BUYER_INTELLIGENCE_SPECIFICATION.md) |
+| Higher Authority | [`MANIFESTO.md`](../../../MANIFESTO.md), [`AGENT.md`](../../../AGENT.md), [`GOVERNANCE.md`](../../../GOVERNANCE.md), [`ANTI_GOALS.md`](../../../ANTI_GOALS.md), [Product Doctrine](../../product/PRODUCT_VISION.md), [Architecture Doctrine](../../architecture/ARCHITECTURE.md), [Engineering Doctrine](../../engineering/CONTRIBUTING.md), [`BUYER_INTELLIGENCE_SPECIFICATION.md`](BUYER_INTELLIGENCE_SPECIFICATION.md) |
 | Governed Documents | Future Buyer Brief prototypes, presentation specifications, evaluation frameworks, and acceptance reviews. |
-| Related Documents | [`CUSTOMER_WORKFLOW.md`](docs/product/CUSTOMER_WORKFLOW.md), [`CUSTOMER_PERSONAS.md`](docs/product/CUSTOMER_PERSONAS.md), [`DECISION_DOCTRINE.md`](docs/architecture/DECISION_DOCTRINE.md), [`EXECUTIVE_BRIEF_REVIEW_FRAMEWORK.md`](docs/evaluation/EXECUTIVE_BRIEF_REVIEW_FRAMEWORK.md) |
+| Related Documents | [`CUSTOMER_WORKFLOW.md`](../../product/CUSTOMER_WORKFLOW.md), [`CUSTOMER_PERSONAS.md`](../../product/CUSTOMER_PERSONAS.md), [`DECISION_DOCTRINE.md`](../../architecture/DECISION_DOCTRINE.md), [`EXECUTIVE_BRIEF_REVIEW_FRAMEWORK.md`](../../evaluation/EXECUTIVE_BRIEF_REVIEW_FRAMEWORK.md) |
 
 # Buyer Brief Product Design
 

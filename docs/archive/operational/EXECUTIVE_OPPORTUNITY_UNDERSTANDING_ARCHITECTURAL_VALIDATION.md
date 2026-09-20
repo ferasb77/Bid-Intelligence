@@ -10,9 +10,9 @@
 | Version | 1.0.0 |
 | Status | Complete |
 | Purpose | Determine whether the approved Executive Opportunity Understanding architecture is sufficient as the sole canonical upstream contract for governed presentation consumers. |
-| Higher Authority | [`EXECUTIVE_OPPORTUNITY_UNDERSTANDING_ARCHITECTURE.md`](EXECUTIVE_OPPORTUNITY_UNDERSTANDING_ARCHITECTURE.md) |
+| Higher Authority | [`EXECUTIVE_OPPORTUNITY_UNDERSTANDING_ARCHITECTURE.md`](../../../EXECUTIVE_OPPORTUNITY_UNDERSTANDING_ARCHITECTURE.md) |
 | Governed Documents | None |
-| Related Documents | [`EXECUTIVE_OPPORTUNITY_BRIEF_ARCHITECTURE.md`](EXECUTIVE_OPPORTUNITY_BRIEF_ARCHITECTURE.md), [`STAGE_D_ARCHITECTURAL_REVIEW.md`](STAGE_D_ARCHITECTURAL_REVIEW.md) |
+| Related Documents | [`EXECUTIVE_OPPORTUNITY_BRIEF_ARCHITECTURE.md`](../../../EXECUTIVE_OPPORTUNITY_BRIEF_ARCHITECTURE.md), [`STAGE_D_ARCHITECTURAL_REVIEW.md`](STAGE_D_ARCHITECTURAL_REVIEW.md) |
 
 ## Executive Summary
 

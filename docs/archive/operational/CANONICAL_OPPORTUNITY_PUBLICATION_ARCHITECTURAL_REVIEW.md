@@ -7,14 +7,14 @@
 | Document | `CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURAL_REVIEW.md` |
 | Status | Architectural review only |
 | Scope | Governed publication of authoritative opportunity objects for downstream resolution |
-| Higher authority | [Bid Intelligence Constitution](MANIFESTO.md), [Architecture Doctrine](docs/architecture/ARCHITECTURE.md), [Decision Information Doctrine](docs/architecture/DECISION_DOCTRINE.md), [Opportunity Intelligence Analyst Specification](OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md), [Governed Reference Resolution Architecture](GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md), and [Executive Opportunity Understanding Architecture](EXECUTIVE_OPPORTUNITY_UNDERSTANDING_ARCHITECTURE.md) |
+| Higher authority | [Bid Intelligence Constitution](../../../MANIFESTO.md), [Architecture Doctrine](../../architecture/ARCHITECTURE.md), [Decision Information Doctrine](../../architecture/DECISION_DOCTRINE.md), [Opportunity Intelligence Analyst Specification](../../../OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md), [Governed Reference Resolution Architecture](../../../GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md), and [Executive Opportunity Understanding Architecture](../../../EXECUTIVE_OPPORTUNITY_UNDERSTANDING_ARCHITECTURE.md) |
 | Repository changes authorized | This review document only |
 
 ## Executive conclusion
 
 The Bank of Canada production blocker is a genuine architectural omission followed by an implementation-sequencing consequence. It is not a defect in Governed Reference Resolution, Opportunity Intelligence owner publication, or Executive Opportunity Understanding.
 
-[Governed Reference Resolution Architecture](GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md) establishes the uniform repository protocol and states that an existing domain participating in cross-domain resolution must declare how its stable references bind to immutable snapshots and which owner-authored semantic representation satisfies consumer rights. [Opportunity Intelligence Analyst Specification](OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md) correctly requires upstream requirements, facts, observations, conflicts, evidence, and provenance to remain owned and published by their existing domains. The repository does not contain `CANONICAL_OPPORTUNITY_ARCHITECTURE.md`, and no other approved Canonical Opportunity contract supplies the required owner-publication declaration.
+[Governed Reference Resolution Architecture](../../../GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md) establishes the uniform repository protocol and states that an existing domain participating in cross-domain resolution must declare how its stable references bind to immutable snapshots and which owner-authored semantic representation satisfies consumer rights. [Opportunity Intelligence Analyst Specification](../../../OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md) correctly requires upstream requirements, facts, observations, conflicts, evidence, and provenance to remain owned and published by their existing domains. The repository does not contain `CANONICAL_OPPORTUNITY_ARCHITECTURE.md`, and no other approved Canonical Opportunity contract supplies the required owner-publication declaration.
 
 The current Canonical Opportunity implementation creates deterministic mappings with stable IDs, normalized values, resolution states, conflicts, source references, and a schema version. It does not define or emit governed semantic objects, owner-contract versions compatible with the resolution protocol, immutable owner snapshots, object digests, relationship manifests, or resolver-compatible references. Test fixtures construct these items manually, but test construction is not a production owner contract.
 
@@ -35,7 +35,7 @@ The review compared:
 5. current production behavior in `canonical_opportunity.py`, `opportunity_intelligence_publication.py`, and `governed_reference_resolution.py`; and
 6. production call-site availability outside tests.
 
-The named standalone `OPPORTUNITY_INTELLIGENCE_PUBLICATION_ARCHITECTURE` is not present. Its relevant authority is section 11.1 of [Opportunity Intelligence Analyst Specification](OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md). The named `CANONICAL_OPPORTUNITY_ARCHITECTURE.md` is also not present. Its absence prevents the review from inferring owner-publication semantics from an approved Canonical Opportunity contract.
+The named standalone `OPPORTUNITY_INTELLIGENCE_PUBLICATION_ARCHITECTURE` is not present. Its relevant authority is section 11.1 of [Opportunity Intelligence Analyst Specification](../../../OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md). The named `CANONICAL_OPPORTUNITY_ARCHITECTURE.md` is also not present. Its absence prevents the review from inferring owner-publication semantics from an approved Canonical Opportunity contract.
 
 No implementation, tests, prompts, schemas, persistence, pipeline, or existing architecture documents were changed during this review.
 
@@ -61,7 +61,7 @@ Executive Opportunity Understanding also cannot fill the gap. It owns organizati
 
 ### Canonical Truth
 
-[Architecture Doctrine](docs/architecture/ARCHITECTURE.md) assigns Canonical Truth the authoritative account of what available evidence supports. Publication must therefore originate at the owner boundary. A presentation, analyst, resolver, or orchestration layer cannot author canonical semantic representations on Canonical Opportunity's behalf.
+[Architecture Doctrine](../../architecture/ARCHITECTURE.md) assigns Canonical Truth the authoritative account of what available evidence supports. Publication must therefore originate at the owner boundary. A presentation, analyst, resolver, or orchestration layer cannot author canonical semantic representations on Canonical Opportunity's behalf.
 
 Publishing an exact immutable representation does not create new truth. It makes existing canonical truth addressable and verifiable across domain boundaries. The published representation must retain resolution state, conflict state, precision, scope, contributing observations, source relationships, and governed absence. It cannot flatten conflicts or expose a resolved value where the owner declares none.
 

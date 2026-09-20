@@ -8,9 +8,9 @@
 | Version | 1.0.0 |
 | Status | Implemented |
 | Purpose | Define the immutable canonical identity contract for an organization that issues opportunities. |
-| Higher Authority | [`MANIFESTO.md`](MANIFESTO.md), [`GOVERNANCE.md`](GOVERNANCE.md), [`ANTI_GOALS.md`](ANTI_GOALS.md), [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md), [`docs/architecture/DOMAIN_MODEL.md`](docs/architecture/DOMAIN_MODEL.md), and [`BUYER_INTELLIGENCE_SPECIFICATION.md`](BUYER_INTELLIGENCE_SPECIFICATION.md) |
+| Higher Authority | [`MANIFESTO.md`](MANIFESTO.md), [`GOVERNANCE.md`](GOVERNANCE.md), [`ANTI_GOALS.md`](ANTI_GOALS.md), [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md), [`docs/architecture/DOMAIN_MODEL.md`](docs/architecture/DOMAIN_MODEL.md), and [`BUYER_INTELLIGENCE_SPECIFICATION.md`](docs/archive/proposed/BUYER_INTELLIGENCE_SPECIFICATION.md) |
 | Governed Documents | [`buyer_domain.py`](buyer_domain.py), [`tests/test_buyer_domain.py`](tests/test_buyer_domain.py) |
-| Related Documents | [`BUYER_BRIEF_DESIGN.md`](BUYER_BRIEF_DESIGN.md), [`BID_INTELLIGENCE_BRIEFING_PACK.md`](BID_INTELLIGENCE_BRIEFING_PACK.md) |
+| Related Documents | [`BUYER_BRIEF_DESIGN.md`](docs/archive/proposed/BUYER_BRIEF_DESIGN.md), [`BID_INTELLIGENCE_BRIEFING_PACK.md`](docs/archive/proposed/BID_INTELLIGENCE_BRIEFING_PACK.md) |
 
 # Canonical Buyer Domain Architecture
 

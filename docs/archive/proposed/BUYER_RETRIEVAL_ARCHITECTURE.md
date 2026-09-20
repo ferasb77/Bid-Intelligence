@@ -8,9 +8,9 @@
 | Version | 1.0.0 |
 | Status | Proposed |
 | Purpose | Govern how future Buyer Retrieval acquires attributable public organizational material and creates canonical Buyer Evidence without performing analysis. |
-| Higher Authority | [`MANIFESTO.md`](MANIFESTO.md), [`AGENT.md`](AGENT.md), [`GOVERNANCE.md`](GOVERNANCE.md), [`ANTI_GOALS.md`](ANTI_GOALS.md), [Product Doctrine](docs/product/PRODUCT_VISION.md), [Architecture Doctrine](docs/architecture/ARCHITECTURE.md), [Engineering Doctrine](docs/engineering/CONTRIBUTING.md), [`BUYER_INTELLIGENCE_SPECIFICATION.md`](BUYER_INTELLIGENCE_SPECIFICATION.md), [`BUYER_DOMAIN_ARCHITECTURE.md`](BUYER_DOMAIN_ARCHITECTURE.md), and [`BUYER_EVIDENCE_ARCHITECTURE.md`](BUYER_EVIDENCE_ARCHITECTURE.md) |
+| Higher Authority | [`MANIFESTO.md`](../../../MANIFESTO.md), [`AGENT.md`](../../../AGENT.md), [`GOVERNANCE.md`](../../../GOVERNANCE.md), [`ANTI_GOALS.md`](../../../ANTI_GOALS.md), [Product Doctrine](../../product/PRODUCT_VISION.md), [Architecture Doctrine](../../architecture/ARCHITECTURE.md), [Engineering Doctrine](../../engineering/CONTRIBUTING.md), [`BUYER_INTELLIGENCE_SPECIFICATION.md`](BUYER_INTELLIGENCE_SPECIFICATION.md), [`BUYER_DOMAIN_ARCHITECTURE.md`](../../../BUYER_DOMAIN_ARCHITECTURE.md), and [`BUYER_EVIDENCE_ARCHITECTURE.md`](../../../BUYER_EVIDENCE_ARCHITECTURE.md) |
 | Governed Documents | Future Buyer Retrieval contracts, adapters, implementations, validation plans, operational runbooks, and retrieval evidence reports. |
-| Related Documents | [`BUYER_BRIEF_DESIGN.md`](BUYER_BRIEF_DESIGN.md), [`BID_INTELLIGENCE_BRIEFING_PACK.md`](BID_INTELLIGENCE_BRIEFING_PACK.md), [`DOMAIN_MODEL.md`](docs/architecture/DOMAIN_MODEL.md), and [`TESTING_PHILOSOPHY.md`](docs/engineering/TESTING_PHILOSOPHY.md) |
+| Related Documents | [`BUYER_BRIEF_DESIGN.md`](BUYER_BRIEF_DESIGN.md), [`BID_INTELLIGENCE_BRIEFING_PACK.md`](BID_INTELLIGENCE_BRIEFING_PACK.md), [`DOMAIN_MODEL.md`](../../architecture/DOMAIN_MODEL.md), and [`TESTING_PHILOSOPHY.md`](../../engineering/TESTING_PHILOSOPHY.md) |
 
 # Buyer Retrieval Architecture
 
@@ -64,7 +64,7 @@ Buyer Retrieval is responsible for:
 6. recording redirects, response metadata, acquisition time, format, and integrity digest;
 7. validating identity, authenticity indicators, format support, dates, language, and reference closure;
 8. normalizing representation without changing semantic content;
-9. creating valid immutable contracts governed by [`BUYER_EVIDENCE_ARCHITECTURE.md`](BUYER_EVIDENCE_ARCHITECTURE.md);
+9. creating valid immutable contracts governed by [`BUYER_EVIDENCE_ARCHITECTURE.md`](../../../BUYER_EVIDENCE_ARCHITECTURE.md);
 10. preserving omissions, failures, conflicts, and partial completion in diagnostics; and
 11. terminating deterministically under the stopping rules in this document.
 
@@ -211,7 +211,7 @@ Normalization must not paraphrase, translate, summarize, classify subject matter
 
 ### 7. Evidence creation
 
-Create `EvidenceSource`, `EvidenceDocument`, `EvidenceFreshness`, `EvidenceScope`, `EvidenceCitation`, and `EvidenceExtract` values under [`BUYER_EVIDENCE_ARCHITECTURE.md`](BUYER_EVIDENCE_ARCHITECTURE.md). Stable IDs derive from governed identity inputs and cannot depend on discovery order, mutable display text, or transient run position.
+Create `EvidenceSource`, `EvidenceDocument`, `EvidenceFreshness`, `EvidenceScope`, `EvidenceCitation`, and `EvidenceExtract` values under [`BUYER_EVIDENCE_ARCHITECTURE.md`](../../../BUYER_EVIDENCE_ARCHITECTURE.md). Stable IDs derive from governed identity inputs and cannot depend on discovery order, mutable display text, or transient run position.
 
 Only exact requested extracts with exact citations may be created automatically. Whole documents may be preserved without extracts. Absence of an extract does not make an acquired document absent.
 

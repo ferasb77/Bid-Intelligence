@@ -8,9 +8,9 @@
 | Version | 1.0.0 |
 | Status | Implemented |
 | Purpose | Define immutable contracts for attributable public organizational evidence consumed by future Buyer Intelligence. |
-| Higher Authority | [`MANIFESTO.md`](MANIFESTO.md), [`GOVERNANCE.md`](GOVERNANCE.md), [`ANTI_GOALS.md`](ANTI_GOALS.md), [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md), [`docs/architecture/DOMAIN_MODEL.md`](docs/architecture/DOMAIN_MODEL.md), [`BUYER_INTELLIGENCE_SPECIFICATION.md`](BUYER_INTELLIGENCE_SPECIFICATION.md), and [`BUYER_DOMAIN_ARCHITECTURE.md`](BUYER_DOMAIN_ARCHITECTURE.md) |
+| Higher Authority | [`MANIFESTO.md`](MANIFESTO.md), [`GOVERNANCE.md`](GOVERNANCE.md), [`ANTI_GOALS.md`](ANTI_GOALS.md), [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md), [`docs/architecture/DOMAIN_MODEL.md`](docs/architecture/DOMAIN_MODEL.md), [`BUYER_INTELLIGENCE_SPECIFICATION.md`](docs/archive/proposed/BUYER_INTELLIGENCE_SPECIFICATION.md), and [`BUYER_DOMAIN_ARCHITECTURE.md`](BUYER_DOMAIN_ARCHITECTURE.md) |
 | Governed Documents | [`buyer_evidence.py`](buyer_evidence.py), [`tests/test_buyer_evidence.py`](tests/test_buyer_evidence.py) |
-| Related Documents | [`BUYER_BRIEF_DESIGN.md`](BUYER_BRIEF_DESIGN.md), [`BID_INTELLIGENCE_BRIEFING_PACK.md`](BID_INTELLIGENCE_BRIEFING_PACK.md) |
+| Related Documents | [`BUYER_BRIEF_DESIGN.md`](docs/archive/proposed/BUYER_BRIEF_DESIGN.md), [`BID_INTELLIGENCE_BRIEFING_PACK.md`](docs/archive/proposed/BID_INTELLIGENCE_BRIEFING_PACK.md) |
 
 # Canonical Buyer Evidence Architecture
 

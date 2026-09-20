@@ -7,7 +7,7 @@
 
 ## Summary of amendments
 
-Version 1.1.0 adds one responsibility established by [`OPPORTUNITY_INTELLIGENCE_PUBLICATION_ARCHITECTURAL_REVIEW.md`](OPPORTUNITY_INTELLIGENCE_PUBLICATION_ARCHITECTURAL_REVIEW.md): Opportunity Intelligence publishes the immutable analytical objects it already owns for governed downstream resolution.
+Version 1.1.0 adds one responsibility established by [`OPPORTUNITY_INTELLIGENCE_PUBLICATION_ARCHITECTURAL_REVIEW.md`](docs/archive/operational/OPPORTUNITY_INTELLIGENCE_PUBLICATION_ARCHITECTURAL_REVIEW.md): Opportunity Intelligence publishes the immutable analytical objects it already owns for governed downstream resolution.
 
 The amendment defines publication identity, snapshot, version and digest binding, owner-declared semantic and relationship publication, compatibility, validation, fail-closed behavior, and downstream guarantees. It does not change analytical semantics, computation, evidence or canonical ownership, or any downstream domain.
 
@@ -705,7 +705,7 @@ This amendment is compatible with the existing repository architecture:
 - **Existing immutable analyses retain their meaning.** Version 1.0.0 analyses are not silently reinterpreted as publications. Cross-domain resolution requires an exact supported publication binding or an explicit lossless compatibility contract.
 - **Operational auditability is preserved without semantic drift.** Execution metadata remains independently attributable for audit, replay, diagnostics, and operational traceability, while semantic identity remains stable across executions that produce the same governed meaning.
 
-The amendment satisfies the finding in [`OPPORTUNITY_INTELLIGENCE_PUBLICATION_ARCHITECTURAL_REVIEW.md`](OPPORTUNITY_INTELLIGENCE_PUBLICATION_ARCHITECTURAL_REVIEW.md) by assigning the missing owner-publication responsibility to Opportunity Intelligence and supplying the identity, semantic, snapshot, version, digest, relationship, compatibility, validation, and fail-closed guarantees required by [`GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md`](GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md).
+The amendment satisfies the finding in [`OPPORTUNITY_INTELLIGENCE_PUBLICATION_ARCHITECTURAL_REVIEW.md`](docs/archive/operational/OPPORTUNITY_INTELLIGENCE_PUBLICATION_ARCHITECTURAL_REVIEW.md) by assigning the missing owner-publication responsibility to Opportunity Intelligence and supplying the identity, semantic, snapshot, version, digest, relationship, compatibility, validation, and fail-closed guarantees required by [`GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md`](GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md).
 
 ## 23. Version roadmap
 

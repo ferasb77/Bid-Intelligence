@@ -8,9 +8,9 @@
 | Version | 1.0.0 |
 | Status | Implemented |
 | Purpose | Govern the immutable, evidence-closed Buyer Intelligence analysis produced from approved Buyer and opportunity inputs. |
-| Higher Authority | [`MANIFESTO.md`](MANIFESTO.md), [`GOVERNANCE.md`](GOVERNANCE.md), [`ANTI_GOALS.md`](ANTI_GOALS.md), [Architecture Doctrine](docs/architecture/ARCHITECTURE.md), [`BUYER_INTELLIGENCE_SPECIFICATION.md`](BUYER_INTELLIGENCE_SPECIFICATION.md), [`BUYER_DOMAIN_ARCHITECTURE.md`](BUYER_DOMAIN_ARCHITECTURE.md), [`BUYER_EVIDENCE_ARCHITECTURE.md`](BUYER_EVIDENCE_ARCHITECTURE.md), and [`BUYER_RETRIEVAL_ARCHITECTURE.md`](BUYER_RETRIEVAL_ARCHITECTURE.md) |
+| Higher Authority | [`MANIFESTO.md`](MANIFESTO.md), [`GOVERNANCE.md`](GOVERNANCE.md), [`ANTI_GOALS.md`](ANTI_GOALS.md), [Architecture Doctrine](docs/architecture/ARCHITECTURE.md), [`BUYER_INTELLIGENCE_SPECIFICATION.md`](docs/archive/proposed/BUYER_INTELLIGENCE_SPECIFICATION.md), [`BUYER_DOMAIN_ARCHITECTURE.md`](BUYER_DOMAIN_ARCHITECTURE.md), [`BUYER_EVIDENCE_ARCHITECTURE.md`](BUYER_EVIDENCE_ARCHITECTURE.md), and [`BUYER_RETRIEVAL_ARCHITECTURE.md`](docs/archive/proposed/BUYER_RETRIEVAL_ARCHITECTURE.md) |
 | Governed Documents | [`buyer_intelligence.py`](buyer_intelligence.py), [`tests/test_buyer_intelligence.py`](tests/test_buyer_intelligence.py) |
-| Related Documents | [`BUYER_BRIEF_DESIGN.md`](BUYER_BRIEF_DESIGN.md), [`BID_INTELLIGENCE_BRIEFING_PACK.md`](BID_INTELLIGENCE_BRIEFING_PACK.md), and [`DECISION_DOCTRINE.md`](docs/architecture/DECISION_DOCTRINE.md) |
+| Related Documents | [`BUYER_BRIEF_DESIGN.md`](docs/archive/proposed/BUYER_BRIEF_DESIGN.md), [`BID_INTELLIGENCE_BRIEFING_PACK.md`](docs/archive/proposed/BID_INTELLIGENCE_BRIEFING_PACK.md), and [`DECISION_DOCTRINE.md`](docs/architecture/DECISION_DOCTRINE.md) |
 
 # Buyer Intelligence v1 Architecture
 

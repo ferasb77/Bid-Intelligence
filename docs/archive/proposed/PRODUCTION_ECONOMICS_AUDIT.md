@@ -8,9 +8,9 @@
 | Version | 1.0.0 |
 | Status | Draft — Audit Only |
 | Purpose | Establish, with evidence, where production time and cost are actually spent, before any optimization work begins. |
-| Higher Authority | [`GOVERNANCE.md`](GOVERNANCE.md) |
+| Higher Authority | [`GOVERNANCE.md`](../../../GOVERNANCE.md) |
 | Governed Documents | None. This is a read-only engineering record; it makes no architectural or product claim. |
-| Related Documents | [`STAGE_A_EXTRACTION_RELIABILITY_REPORT.md`](STAGE_A_EXTRACTION_RELIABILITY_REPORT.md), [`STAGE_D_SYNTHESIS_PROJECTION_REPORT.md`](STAGE_D_SYNTHESIS_PROJECTION_REPORT.md), [`BANK_OF_CANADA_REAL_WORLD_ACCEPTANCE_REPORT.md`](BANK_OF_CANADA_REAL_WORLD_ACCEPTANCE_REPORT.md), [`SUBMISSION_ARTIFACT_PROJECTION_REPORT.md`](SUBMISSION_ARTIFACT_PROJECTION_REPORT.md), [`evaluation/bank_of_canada_briefing_pack/CORRECTED_CORPUS_REGENERATION_REPORT.md`](evaluation/bank_of_canada_briefing_pack/CORRECTED_CORPUS_REGENERATION_REPORT.md) |
+| Related Documents | [`STAGE_A_EXTRACTION_RELIABILITY_REPORT.md`](../operational/STAGE_A_EXTRACTION_RELIABILITY_REPORT.md), [`STAGE_D_SYNTHESIS_PROJECTION_REPORT.md`](../operational/STAGE_D_SYNTHESIS_PROJECTION_REPORT.md), [`BANK_OF_CANADA_REAL_WORLD_ACCEPTANCE_REPORT.md`](../engagements/bank-of-canada/BANK_OF_CANADA_REAL_WORLD_ACCEPTANCE_REPORT.md), [`SUBMISSION_ARTIFACT_PROJECTION_REPORT.md`](../operational/SUBMISSION_ARTIFACT_PROJECTION_REPORT.md), [`evaluation/bank_of_canada_briefing_pack/CORRECTED_CORPUS_REGENERATION_REPORT.md`](evaluation/bank_of_canada_briefing_pack/CORRECTED_CORPUS_REGENERATION_REPORT.md) |
 
 **Scope discipline.** This document changes no code, prompt, test, or architecture. Every implementation-level claim below cites a `file:line`. Every quantitative claim is labeled either **MEASURED** (recorded in an existing commissioning/acceptance report, cited) or **ESTIMATE** (derived by this audit from source-code constants and character counts, using an explicit, stated token-per-character assumption). No dollar cost figures exist anywhere in this repository's history; every cost figure in this report is therefore an estimate built on published Anthropic list pricing for the model actually in use, `claude-haiku-4-5-20251001`.
 

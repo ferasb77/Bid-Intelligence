@@ -10,15 +10,15 @@
 | Version | 1.0.0 |
 | Status | Review finding |
 | Purpose | Determine whether the governed opportunity-to-presentation chain has complete semantic ownership, publication, orchestration, resolution, understanding, and presentation responsibilities. |
-| Higher authority | [The Bid Intelligence Constitution](MANIFESTO.md), [Repository Governance](GOVERNANCE.md), [Architecture Doctrine](docs/architecture/ARCHITECTURE.md), [Decision Doctrine](docs/architecture/DECISION_DOCTRINE.md), and the approved architecture listed in the validation method |
+| Higher authority | [The Bid Intelligence Constitution](../../../MANIFESTO.md), [Repository Governance](../../../GOVERNANCE.md), [Architecture Doctrine](../../architecture/ARCHITECTURE.md), [Decision Doctrine](../../architecture/DECISION_DOCTRINE.md), and the approved architecture listed in the validation method |
 | Governed documents | None; this review does not amend architecture or authorize implementation. |
-| Related documents | [Evidence Architecture](EVIDENCE_ARCHITECTURE.md), [Canonical Opportunity Publication Architecture](CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURE.md), [Opportunity Orchestration Architecture](OPPORTUNITY_ORCHESTRATION_ARCHITECTURE.md), [Governed Reference Resolution Architecture](GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md), [Opportunity Intelligence Analyst Specification](OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md), [Executive Opportunity Understanding Architecture](EXECUTIVE_OPPORTUNITY_UNDERSTANDING_ARCHITECTURE.md), [Executive Opportunity Brief Architecture](EXECUTIVE_OPPORTUNITY_BRIEF_ARCHITECTURE.md), and [Bid Intelligence Briefing Pack Product Design](BID_INTELLIGENCE_BRIEFING_PACK.md) |
+| Related documents | [Evidence Architecture](../../../EVIDENCE_ARCHITECTURE.md), [Canonical Opportunity Publication Architecture](../../../CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURE.md), [Opportunity Orchestration Architecture](../../../OPPORTUNITY_ORCHESTRATION_ARCHITECTURE.md), [Governed Reference Resolution Architecture](../../../GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md), [Opportunity Intelligence Analyst Specification](../../../OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md), [Executive Opportunity Understanding Architecture](../../../EXECUTIVE_OPPORTUNITY_UNDERSTANDING_ARCHITECTURE.md), [Executive Opportunity Brief Architecture](../../../EXECUTIVE_OPPORTUNITY_BRIEF_ARCHITECTURE.md), and [Bid Intelligence Briefing Pack Product Design](../proposed/BID_INTELLIGENCE_BRIEFING_PACK.md) |
 
 ## Executive summary
 
-The governed chain from attributable source through Executive Opportunity Brief now has one explicit owner for every semantic responsibility and one governed protocol for publication admission, cross-owner resolution, analytical publication, organizational understanding, and brief presentation. The current code implements every part of that chain except the general Evidence owner contract and Evidence owner publication. That absence is an implementation and owner-publication gap under the approved [Evidence Architecture](EVIDENCE_ARCHITECTURE.md), not a missing semantic owner or missing constitutional architecture.
+The governed chain from attributable source through Executive Opportunity Brief now has one explicit owner for every semantic responsibility and one governed protocol for publication admission, cross-owner resolution, analytical publication, organizational understanding, and brief presentation. The current code implements every part of that chain except the general Evidence owner contract and Evidence owner publication. That absence is an implementation and owner-publication gap under the approved [Evidence Architecture](../../../EVIDENCE_ARCHITECTURE.md), not a missing semantic owner or missing constitutional architecture.
 
-The terminal Executive Briefing Pack responsibility is different. The repository contains [Bid Intelligence Briefing Pack Product Design](BID_INTELLIGENCE_BRIEFING_PACK.md), but its metadata status is `Proposed`. It describes the product family, volumes, lifecycle, authority separation, and presentation standards. It does not constitute an approved architecture or contract for deterministic, fail-closed assembly of multiple independently governed brief artifacts into one pack.
+The terminal Executive Briefing Pack responsibility is different. The repository contains [Bid Intelligence Briefing Pack Product Design](../proposed/BID_INTELLIGENCE_BRIEFING_PACK.md), but its metadata status is `Proposed`. It describes the product family, volumes, lifecycle, authority separation, and presentation standards. It does not constitute an approved architecture or contract for deterministic, fail-closed assembly of multiple independently governed brief artifacts into one pack.
 
 No existing approved owner can absorb that responsibility. Executive Opportunity Brief owns presentation of opportunity understanding only. Buyer Brief owns buyer presentation only. Opportunity Orchestration is scoped to admission and support binding for an Opportunity Intelligence operation and owns no presentation. Governed Reference Resolution verifies references and owns no composition. Assigning cross-volume assembly to any of them would cross an existing authority boundary.
 
@@ -48,17 +48,17 @@ Code is treated as evidence of current behavior. It cannot fill an architectural
 
 | Architectural step | Governing authority | Constitutional status | Production status |
 |---|---|---|---|
-| Attributable Source → Evidence | [Evidence Architecture](EVIDENCE_ARCHITECTURE.md) | Complete owner boundary | General implementation absent |
-| Evidence → Canonical Opportunity | [Architecture Doctrine](docs/architecture/ARCHITECTURE.md), [Evidence Architecture](EVIDENCE_ARCHITECTURE.md) | Complete authority transition | Existing extraction/canonical inputs predate governed Evidence publication |
+| Attributable Source → Evidence | [Evidence Architecture](../../../EVIDENCE_ARCHITECTURE.md) | Complete owner boundary | General implementation absent |
+| Evidence → Canonical Opportunity | [Architecture Doctrine](../../architecture/ARCHITECTURE.md), [Evidence Architecture](../../../EVIDENCE_ARCHITECTURE.md) | Complete authority transition | Existing extraction/canonical inputs predate governed Evidence publication |
 | Canonical Opportunity | Repository doctrine and current canonical contracts | Complete semantic owner | Implemented in [`canonical_opportunity.py`](canonical_opportunity.py) |
-| Canonical Opportunity Publication | [Canonical Opportunity Publication Architecture](CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURE.md) | Complete owner-publication responsibility | Implemented in [`canonical_opportunity_publication.py`](canonical_opportunity_publication.py) |
-| Opportunity Orchestration | [Opportunity Orchestration Architecture](OPPORTUNITY_ORCHESTRATION_ARCHITECTURE.md) | Complete composition responsibility | Implemented in [`opportunity_orchestration.py`](opportunity_orchestration.py) |
-| Governed Reference Resolution | [Governed Reference Resolution Architecture](GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md) | Complete verification responsibility | Implemented in [`governed_reference_resolution.py`](governed_reference_resolution.py) |
-| Opportunity Intelligence | [Opportunity Intelligence Analyst Specification](OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md) | Complete analytical owner | Implemented in [`opportunity_intelligence.py`](opportunity_intelligence.py) and its governed contracts |
-| Opportunity Intelligence Publication | [Opportunity Intelligence Analyst Specification](OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md) v1.1.1 | Complete owner-publication responsibility | Implemented in [`opportunity_intelligence_publication.py`](opportunity_intelligence_publication.py) |
-| Executive Opportunity Understanding | [Executive Opportunity Understanding Architecture](EXECUTIVE_OPPORTUNITY_UNDERSTANDING_ARCHITECTURE.md) | Complete organizational responsibility | Implemented in [`executive_opportunity_understanding.py`](executive_opportunity_understanding.py) |
-| Executive Opportunity Brief | [Executive Opportunity Brief Architecture](EXECUTIVE_OPPORTUNITY_BRIEF_ARCHITECTURE.md) v2.0.0 | Complete presentation responsibility | Implemented in [`executive_opportunity_brief.py`](executive_opportunity_brief.py) |
-| Executive Briefing Pack | [Bid Intelligence Briefing Pack Product Design](BID_INTELLIGENCE_BRIEFING_PACK.md) | Product intent exists; approved composition contract absent | Evaluation-only assembly exists; no production pack adapter found |
+| Canonical Opportunity Publication | [Canonical Opportunity Publication Architecture](../../../CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURE.md) | Complete owner-publication responsibility | Implemented in [`canonical_opportunity_publication.py`](canonical_opportunity_publication.py) |
+| Opportunity Orchestration | [Opportunity Orchestration Architecture](../../../OPPORTUNITY_ORCHESTRATION_ARCHITECTURE.md) | Complete composition responsibility | Implemented in [`opportunity_orchestration.py`](opportunity_orchestration.py) |
+| Governed Reference Resolution | [Governed Reference Resolution Architecture](../../../GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md) | Complete verification responsibility | Implemented in [`governed_reference_resolution.py`](governed_reference_resolution.py) |
+| Opportunity Intelligence | [Opportunity Intelligence Analyst Specification](../../../OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md) | Complete analytical owner | Implemented in [`opportunity_intelligence.py`](opportunity_intelligence.py) and its governed contracts |
+| Opportunity Intelligence Publication | [Opportunity Intelligence Analyst Specification](../../../OPPORTUNITY_INTELLIGENCE_ANALYST_SPECIFICATION.md) v1.1.1 | Complete owner-publication responsibility | Implemented in [`opportunity_intelligence_publication.py`](opportunity_intelligence_publication.py) |
+| Executive Opportunity Understanding | [Executive Opportunity Understanding Architecture](../../../EXECUTIVE_OPPORTUNITY_UNDERSTANDING_ARCHITECTURE.md) | Complete organizational responsibility | Implemented in [`executive_opportunity_understanding.py`](executive_opportunity_understanding.py) |
+| Executive Opportunity Brief | [Executive Opportunity Brief Architecture](../../../EXECUTIVE_OPPORTUNITY_BRIEF_ARCHITECTURE.md) v2.0.0 | Complete presentation responsibility | Implemented in [`executive_opportunity_brief.py`](executive_opportunity_brief.py) |
+| Executive Briefing Pack | [Bid Intelligence Briefing Pack Product Design](../proposed/BID_INTELLIGENCE_BRIEFING_PACK.md) | Product intent exists; approved composition contract absent | Evaluation-only assembly exists; no production pack adapter found |
 
 The chain contains no unowned semantic transition through Executive Opportunity Brief. Its single constitutional gap is at the final cross-volume packaging boundary.
 
@@ -66,7 +66,7 @@ The chain contains no unowned semantic transition through Executive Opportunity 
 
 ### Evidence
 
-[Evidence Architecture](EVIDENCE_ARCHITECTURE.md) assigns exactly one domain-neutral Evidence owner. It owns source, artifact, occurrence, extract, identity, provenance, snapshot, digest, and Evidence-owned relationship semantics. Provenance remains governed semantic content within that owner and does not create a second domain.
+[Evidence Architecture](../../../EVIDENCE_ARCHITECTURE.md) assigns exactly one domain-neutral Evidence owner. It owns source, artifact, occurrence, extract, identity, provenance, snapshot, digest, and Evidence-owned relationship semantics. Provenance remains governed semantic content within that owner and does not create a second domain.
 
 The current [`buyer_evidence.py`](buyer_evidence.py) is a buyer-specific immutable Evidence contract. It defines Buyer sources, documents, citations, extracts, and a `BuyerEvidenceSet`. It does not implement the repository-wide Evidence object classes, general Evidence publication snapshots, or resolver-compatible publication required for procurement Evidence. It cannot be treated as the general owner because doing so would place opportunity, contract, compliance, and due-diligence Evidence inside Buyer scope.
 
@@ -128,7 +128,7 @@ All required publication responsibilities are architecturally assigned. General 
 
 ## 4. Orchestration inventory
 
-[Opportunity Orchestration Architecture](OPPORTUNITY_ORCHESTRATION_ARCHITECTURE.md) assigns one non-semantic operation boundary to:
+[Opportunity Orchestration Architecture](../../../OPPORTUNITY_ORCHESTRATION_ARCHITECTURE.md) assigns one non-semantic operation boundary to:
 
 - admit immutable owner publications;
 - validate declared compatibility;
@@ -145,7 +145,7 @@ No additional opportunity orchestration responsibility is constitutionally missi
 
 ## 5. Resolution inventory
 
-[Governed Reference Resolution Architecture](GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md) assigns verification authority only. The production [`governed_reference_resolution.py`](governed_reference_resolution.py) defines immutable semantic fields, governed objects, relationships, references, snapshots, bounded contexts, requests, results, and typed failures.
+[Governed Reference Resolution Architecture](../../../GOVERNED_REFERENCE_RESOLUTION_ARCHITECTURE.md) assigns verification authority only. The production [`governed_reference_resolution.py`](governed_reference_resolution.py) defines immutable semantic fields, governed objects, relationships, references, snapshots, bounded contexts, requests, results, and typed failures.
 
 It verifies:
 
@@ -171,7 +171,7 @@ No second analyst, synthesis owner, or intelligence-to-presentation bridge is ne
 
 ## 7. Understanding inventory
 
-[Executive Opportunity Understanding Architecture](EXECUTIVE_OPPORTUNITY_UNDERSTANDING_ARCHITECTURE.md) assigns first-class immutable organization and coverage responsibility. It specifies an executive index, complete detail register, coverage ledger, bound resolution context, deterministic identity, ordering, validation, and fail-closed behavior.
+[Executive Opportunity Understanding Architecture](../../../EXECUTIVE_OPPORTUNITY_UNDERSTANDING_ARCHITECTURE.md) assigns first-class immutable organization and coverage responsibility. It specifies an executive index, complete detail register, coverage ledger, bound resolution context, deterministic identity, ordering, validation, and fail-closed behavior.
 
 [`executive_opportunity_understanding.py`](executive_opportunity_understanding.py) consumes Opportunity Intelligence Publication and its resolver context. Its detail references preserve owner, publication, snapshot, object, relationship, authority, confidence, uncertainty, assumptions, alternatives, limitations, unknowns, and questions through the published objects rather than reconstructing those values.
 
@@ -181,13 +181,13 @@ It creates organizational records and identity only. It does not create analytic
 
 ### Executive Opportunity Brief
 
-[Executive Opportunity Brief Architecture](EXECUTIVE_OPPORTUNITY_BRIEF_ARCHITECTURE.md) v2.0.0 makes the brief a pure deterministic adapter over one validated Executive Opportunity Understanding. [`executive_opportunity_brief.py`](executive_opportunity_brief.py) accepts that contract, validates it, resolves references using its bound context, preserves executive-index order, and renders semantic values and relationship navigation.
+[Executive Opportunity Brief Architecture](../../../EXECUTIVE_OPPORTUNITY_BRIEF_ARCHITECTURE.md) v2.0.0 makes the brief a pure deterministic adapter over one validated Executive Opportunity Understanding. [`executive_opportunity_brief.py`](executive_opportunity_brief.py) accepts that contract, validates it, resolves references using its bound context, preserves executive-index order, and renders semantic values and relationship navigation.
 
 The module has no accepted input for `DecisionAnalysis`, normalized facts, Stage D output, Canonical Opportunity, or an independent Evidence store. It creates a presentation identity, sections, and rendered text but no semantic object or upstream identity. This responsibility is both architecturally and operationally present.
 
 ### Executive Briefing Pack
 
-The [Bid Intelligence Briefing Pack Product Design](BID_INTELLIGENCE_BRIEFING_PACK.md) defines a pack as a family of bounded volumes and correctly states that cross-volume references do not transfer authority. It also defines lifecycle, naming, revision, and presentation principles. Its status remains `Proposed`, however, so it is not an approved constitutional contract under [Repository Governance](GOVERNANCE.md).
+The [Bid Intelligence Briefing Pack Product Design](../proposed/BID_INTELLIGENCE_BRIEFING_PACK.md) defines a pack as a family of bounded volumes and correctly states that cross-volume references do not transfer authority. It also defines lifecycle, naming, revision, and presentation principles. Its status remains `Proposed`, however, so it is not an approved constitutional contract under [Repository Governance](../../../GOVERNANCE.md).
 
 The inspected repository contains evaluation scripts and generated Bank of Canada pack artifacts, but no production Briefing Pack adapter. Evaluation assembly cannot establish constitutional ownership or production behavior.
 
@@ -226,7 +226,7 @@ No duplicate semantic authority was found in the approved architecture. Current 
 
 ### Blocker 1: no general Evidence production contract or publication
 
-**Observed condition:** The repository has buyer-specific Evidence objects but no general Evidence implementation or owner publication conforming to [Evidence Architecture](EVIDENCE_ARCHITECTURE.md).
+**Observed condition:** The repository has buyer-specific Evidence objects but no general Evidence implementation or owner publication conforming to [Evidence Architecture](../../../EVIDENCE_ARCHITECTURE.md).
 
 **Primary classification:** **Missing implementation**.
 

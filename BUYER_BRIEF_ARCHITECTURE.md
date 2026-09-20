@@ -8,9 +8,9 @@
 | Version | 1.0.0 |
 | Status | Implemented |
 | Purpose | Govern the deterministic presentation of validated Buyer Intelligence as Volume 2 of the Bid Intelligence Briefing Pack. |
-| Higher Authority | [`MANIFESTO.md`](MANIFESTO.md), [`GOVERNANCE.md`](GOVERNANCE.md), [`ANTI_GOALS.md`](ANTI_GOALS.md), [Architecture Doctrine](docs/architecture/ARCHITECTURE.md), [`BUYER_INTELLIGENCE_SPECIFICATION.md`](BUYER_INTELLIGENCE_SPECIFICATION.md), [`BUYER_INTELLIGENCE_ARCHITECTURE.md`](BUYER_INTELLIGENCE_ARCHITECTURE.md), [`BUYER_BRIEF_DESIGN.md`](BUYER_BRIEF_DESIGN.md), and [`BID_INTELLIGENCE_BRIEFING_PACK.md`](BID_INTELLIGENCE_BRIEFING_PACK.md) |
+| Higher Authority | [`MANIFESTO.md`](MANIFESTO.md), [`GOVERNANCE.md`](GOVERNANCE.md), [`ANTI_GOALS.md`](ANTI_GOALS.md), [Architecture Doctrine](docs/architecture/ARCHITECTURE.md), [`BUYER_INTELLIGENCE_SPECIFICATION.md`](docs/archive/proposed/BUYER_INTELLIGENCE_SPECIFICATION.md), [`BUYER_INTELLIGENCE_ARCHITECTURE.md`](BUYER_INTELLIGENCE_ARCHITECTURE.md), [`BUYER_BRIEF_DESIGN.md`](docs/archive/proposed/BUYER_BRIEF_DESIGN.md), and [`BID_INTELLIGENCE_BRIEFING_PACK.md`](docs/archive/proposed/BID_INTELLIGENCE_BRIEFING_PACK.md) |
 | Governed Documents | [`buyer_brief.py`](buyer_brief.py) and [`tests/test_buyer_brief.py`](tests/test_buyer_brief.py) |
-| Related Documents | [`BUYER_DOMAIN_ARCHITECTURE.md`](BUYER_DOMAIN_ARCHITECTURE.md), [`BUYER_EVIDENCE_ARCHITECTURE.md`](BUYER_EVIDENCE_ARCHITECTURE.md), [`BUYER_RETRIEVAL_ARCHITECTURE.md`](BUYER_RETRIEVAL_ARCHITECTURE.md), and [`executive_opportunity_brief.py`](executive_opportunity_brief.py) |
+| Related Documents | [`BUYER_DOMAIN_ARCHITECTURE.md`](BUYER_DOMAIN_ARCHITECTURE.md), [`BUYER_EVIDENCE_ARCHITECTURE.md`](BUYER_EVIDENCE_ARCHITECTURE.md), [`BUYER_RETRIEVAL_ARCHITECTURE.md`](docs/archive/proposed/BUYER_RETRIEVAL_ARCHITECTURE.md), and [`executive_opportunity_brief.py`](executive_opportunity_brief.py) |
 
 # Buyer Brief Presentation Architecture
 
@@ -43,7 +43,7 @@ The fixed order is:
 9. Evidence Register; and
 10. Limitations.
 
-The first nine titles follow [`BUYER_BRIEF_DESIGN.md`](BUYER_BRIEF_DESIGN.md). The tenth follows the higher-level functional output contract in [`BUYER_INTELLIGENCE_SPECIFICATION.md`](BUYER_INTELLIGENCE_SPECIFICATION.md), which requires limitations as a distinct final section. Every section appears even when its validated collection is empty.
+The first nine titles follow [`BUYER_BRIEF_DESIGN.md`](docs/archive/proposed/BUYER_BRIEF_DESIGN.md). The tenth follows the higher-level functional output contract in [`BUYER_INTELLIGENCE_SPECIFICATION.md`](docs/archive/proposed/BUYER_INTELLIGENCE_SPECIFICATION.md), which requires limitations as a distinct final section. Every section appears even when its validated collection is empty.
 
 ## Section projection
 

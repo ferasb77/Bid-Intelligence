@@ -11,7 +11,7 @@
 | Status | Investigation complete — no code, schema, or publication changed. |
 | Purpose | Determine, from repository evidence alone, whether an Intelligence layer may republish a Canonical layer's own already-established facts as its own new facts, using the real collision `analyze_buyer`'s identity facts caused in `BuyerAtAGlance` as the triggering case. |
 | Trigger | Real commissioning: `build_buyer_brief` combined `_identity_items(buyer)` (from `CanonicalBuyer`) with `analysis.buyer_facts` filtered to `FactKind.IDENTITY` (from `analyze_buyer`) and exceeded `BuyerAtAGlance`'s six-item cap — 5 + 4 = 9. |
-| Higher authority | [MANIFESTO.md](MANIFESTO.md), [docs/architecture/DECISION_DOCTRINE.md](docs/architecture/DECISION_DOCTRINE.md), [docs/architecture/DOMAIN_MODEL.md](docs/architecture/DOMAIN_MODEL.md), [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md), [BUYER_INTELLIGENCE_SPECIFICATION.md](BUYER_INTELLIGENCE_SPECIFICATION.md) |
+| Higher authority | [MANIFESTO.md](MANIFESTO.md), [docs/architecture/DECISION_DOCTRINE.md](docs/architecture/DECISION_DOCTRINE.md), [docs/architecture/DOMAIN_MODEL.md](docs/architecture/DOMAIN_MODEL.md), [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md), [BUYER_INTELLIGENCE_SPECIFICATION.md](docs/archive/proposed/BUYER_INTELLIGENCE_SPECIFICATION.md) |
 | Related architecture | [BUYER_DOMAIN_ARCHITECTURE.md](BUYER_DOMAIN_ARCHITECTURE.md), [BUYER_INTELLIGENCE_ARCHITECTURE.md](BUYER_INTELLIGENCE_ARCHITECTURE.md), [CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURE.md](CANONICAL_OPPORTUNITY_PUBLICATION_ARCHITECTURE.md), [OPPORTUNITY_STRUCTURE_PUBLICATION_ARCHITECTURE.md](OPPORTUNITY_STRUCTURE_PUBLICATION_ARCHITECTURE.md) |
 
 ---

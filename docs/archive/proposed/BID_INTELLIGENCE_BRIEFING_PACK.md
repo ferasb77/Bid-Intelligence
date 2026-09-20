@@ -8,9 +8,9 @@
 | Version | 1.0.0 |
 | Status | Proposed |
 | Purpose | Define the canonical family, lifecycle, and presentation standard for customer-facing Bid Intelligence deliverables. |
-| Higher Authority | [`MANIFESTO.md`](MANIFESTO.md), [`AGENT.md`](AGENT.md), [`GOVERNANCE.md`](GOVERNANCE.md), [`ANTI_GOALS.md`](ANTI_GOALS.md), [Product Doctrine](docs/product/PRODUCT_VISION.md), [Architecture Doctrine](docs/architecture/ARCHITECTURE.md), [Engineering Doctrine](docs/engineering/CONTRIBUTING.md) |
+| Higher Authority | [`MANIFESTO.md`](../../../MANIFESTO.md), [`AGENT.md`](../../../AGENT.md), [`GOVERNANCE.md`](../../../GOVERNANCE.md), [`ANTI_GOALS.md`](../../../ANTI_GOALS.md), [Product Doctrine](../../product/PRODUCT_VISION.md), [Architecture Doctrine](../../architecture/ARCHITECTURE.md), [Engineering Doctrine](../../engineering/CONTRIBUTING.md) |
 | Governed Documents | Designs, specifications, evaluations, and presentation standards for every customer-facing Bid Intelligence briefing document. |
-| Related Documents | [`BUYER_INTELLIGENCE_SPECIFICATION.md`](BUYER_INTELLIGENCE_SPECIFICATION.md), [`BUYER_BRIEF_DESIGN.md`](BUYER_BRIEF_DESIGN.md), [`EXECUTIVE_BRIEF_REVIEW_FRAMEWORK.md`](docs/evaluation/EXECUTIVE_BRIEF_REVIEW_FRAMEWORK.md), [`CUSTOMER_WORKFLOW.md`](docs/product/CUSTOMER_WORKFLOW.md) |
+| Related Documents | [`BUYER_INTELLIGENCE_SPECIFICATION.md`](BUYER_INTELLIGENCE_SPECIFICATION.md), [`BUYER_BRIEF_DESIGN.md`](BUYER_BRIEF_DESIGN.md), [`EXECUTIVE_BRIEF_REVIEW_FRAMEWORK.md`](../../evaluation/EXECUTIVE_BRIEF_REVIEW_FRAMEWORK.md), [`CUSTOMER_WORKFLOW.md`](../../product/CUSTOMER_WORKFLOW.md) |
 
 # Bid Intelligence Briefing Pack
 
@@ -24,16 +24,16 @@ The pack prepares people to think. It does not make decisions, recommend actions
 
 ## Relationship to repository doctrine
 
-The pack gives customer-facing form to the four pillars established by the [`MANIFESTO.md`](MANIFESTO.md):
+The pack gives customer-facing form to the four pillars established by the [`MANIFESTO.md`](../../../MANIFESTO.md):
 
 - Opportunity Intelligence produces understanding of the opportunity.
 - Buyer Intelligence produces understanding of the buyer.
 - Proposal Compliance Intelligence produces verification of the completed response.
 - Organizational Intelligence produces evidence-linked learning from completed pursuits.
 
-Every volume follows [`PRODUCT_PRINCIPLES.md`](docs/product/PRODUCT_PRINCIPLES.md) and the information transitions in [`DECISION_DOCTRINE.md`](docs/architecture/DECISION_DOCTRINE.md). Facts, computations, observations, interpretations, assumptions, unknowns, questions, and Human Decisions retain distinct authority. A briefing presents validated intelligence; it does not become another analyst.
+Every volume follows [`PRODUCT_PRINCIPLES.md`](../../product/PRODUCT_PRINCIPLES.md) and the information transitions in [`DECISION_DOCTRINE.md`](../../architecture/DECISION_DOCTRINE.md). Facts, computations, observations, interpretations, assumptions, unknowns, questions, and Human Decisions retain distinct authority. A briefing presents validated intelligence; it does not become another analyst.
 
-The pack must never advance an exclusion in [`ANTI_GOALS.md`](ANTI_GOALS.md). In particular, it is not a proposal-writing suite, win-probability product, autonomous bidding engine, or executive decision-maker.
+The pack must never advance an exclusion in [`ANTI_GOALS.md`](../../../ANTI_GOALS.md). In particular, it is not a proposal-writing suite, win-probability product, autonomous bidding engine, or executive decision-maker.
 
 ## Purpose of the pack
 
