@@ -147,19 +147,22 @@ class TestLatestUsableRun(unittest.TestCase):
     @patch("database.get_client")
     def test_filters_to_complete_and_incomplete_only(self, mock_get_client):
         sb = MagicMock()
-        chain = sb.table.return_value.select.return_value.eq.return_value.in_.return_value.order.return_value.limit.return_value
+        chain = sb.table.return_value.select.return_value.eq.return_value.in_.return_value.order.return_value.order.return_value.limit.return_value
         chain.execute.return_value = MagicMock(data=[{"id": 5, "status": "COMPLETE"}])
         mock_get_client.return_value = sb
 
         result = db.get_latest_usable_proposal_intelligence_run(8)
         self.assertEqual(result["id"], 5)
+        q = sb.table.return_value.select.return_value.eq.return_value.in_.return_value
+        q.order.assert_called_once_with("created_at", desc=True)
+        q.order.return_value.order.assert_called_once_with("id", desc=True)
         sb.table.return_value.select.return_value.eq.return_value.in_.assert_called_once_with(
             "status", ["COMPLETE", "INCOMPLETE"])
 
     @patch("database.get_client")
     def test_returns_none_when_only_failed_runs_exist(self, mock_get_client):
         sb = MagicMock()
-        chain = sb.table.return_value.select.return_value.eq.return_value.in_.return_value.order.return_value.limit.return_value
+        chain = sb.table.return_value.select.return_value.eq.return_value.in_.return_value.order.return_value.order.return_value.limit.return_value
         chain.execute.return_value = MagicMock(data=[])
         mock_get_client.return_value = sb
 
@@ -168,12 +171,15 @@ class TestLatestUsableRun(unittest.TestCase):
     @patch("database.get_client")
     def test_latest_run_of_any_status_still_available_separately(self, mock_get_client):
         sb = MagicMock()
-        chain = sb.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value
+        chain = sb.table.return_value.select.return_value.eq.return_value.order.return_value.order.return_value.limit.return_value
         chain.execute.return_value = MagicMock(data=[{"id": 6, "status": "FAILED"}])
         mock_get_client.return_value = sb
 
         result = db.get_latest_proposal_intelligence_run(8)
         self.assertEqual(result["status"], "FAILED")
+        q = sb.table.return_value.select.return_value.eq.return_value
+        q.order.assert_called_once_with("created_at", desc=True)
+        q.order.return_value.order.assert_called_once_with("id", desc=True)
 
 
 class TestMigrationDDLIntent(unittest.TestCase):

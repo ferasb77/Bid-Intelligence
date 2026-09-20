@@ -40,7 +40,7 @@ needs that history).
 - **CHECK / Proposal Alignment** (`analyst.py`'s `analyze_proposal_alignment*`
   family) — the holistic, whole-package submission-readiness audit.
 - **Proposal Intelligence** (PI-1, `proposal_intelligence.py` +
-  `migrations/015_proposal_intelligence.sql`, **not applied** — see below)
+  `migrations/015_proposal_intelligence.sql`, **live** — see below)
   — the durable, immutable, provenance-aware persistence layer for CHECK's
   Proposal Alignment output: what the proposal actually says,
   demonstrates, covers, contradicts, fails to evidence, or omits relative
@@ -72,8 +72,9 @@ established the durable domain foundation on this branch). PI-2+ work
 should build on it, not re-litigate PI-1's schema/adapter without cause.
 
 Absent an explicit task instruction otherwise, still do not: apply
-migration 013 or 015, activate the compact-wire prototype, change chunk
-sizes/max_tokens/model routing/caching, or merge `main`/deploy.
+migration 013, alter/reapply migration 015, activate the compact-wire
+prototype, change chunk sizes/max_tokens/model routing/caching, or merge
+`main`/deploy.
 
 ## Migrations known in this repository (files, not live-database state)
 
@@ -87,10 +88,12 @@ below.
 > owner. Migration 013 (Section Analyzer) was written but explicitly NOT
 > applied — still true. Migration 014 (`model_usage_events`, telemetry)
 > was found already live during Phase 5's commissioning work. Migration
-> 015 (Proposal Intelligence, PI-1) was written this phase and explicitly
-> NOT applied. Treat any "is migration N live" question as requiring a
-> fresh check — `git log` and this file are not a substitute for asking or
-> checking the live database when a task depends on it.
+> 015 (Proposal Intelligence, PI-1) was applied live on 2026-09-20 and is
+> formally recorded in Supabase's migration ledger as
+> `20260920205721 proposal_intelligence`. Migration 013 remains unapplied.
+> Treat any future "is migration N live" question as requiring a fresh
+> check — `git log` and this file are not a substitute for checking the
+> live database when a task depends on it.
 
 ## Where NOT to look first
 

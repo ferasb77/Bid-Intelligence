@@ -90,7 +90,8 @@ for CHECK's Proposal Alignment output
   (`staleness_reasons`/`is_current`). `PROPOSAL_INTELLIGENCE_ANALYSIS_VERSION`
   is the PI analytical-contract version, not the model name.
 - `migrations/015_proposal_intelligence.sql` — the four PI tables
-  (written, **not applied** — see SYSTEM_STATE.md), each child table tied
+  (**applied live**; formal ledger entry `20260920205721 proposal_intelligence`),
+  each child table tied
   to its parent by a COMPOSITE foreign key against `(id, bid_id)` (never a
   same-table `bid_id` column trusted independently — a run/assessment/
   finding cannot cross-link to another bid's parent row). Two SQL

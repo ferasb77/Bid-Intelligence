@@ -1281,9 +1281,13 @@ def create_proposal_intelligence_bundle(run: dict, assessments: list[dict] | Non
 def get_proposal_intelligence_runs(bid_id: int, *, limit: int = 50) -> list[dict]:
     """Full run history for one bid, most recent first -- every status,
     including FAILED (instruction 9: 'Run history must still include
-    FAILED runs. Do not delete or hide failures from history.')."""
+    FAILED runs. Do not delete or hide failures from history.').
+    `id desc` is the deterministic tie-break when rows share the
+    same transaction timestamp."""
     return _rows(get_client().table("proposal_intelligence_runs").select("*")
-                .eq("bid_id", bid_id).order("created_at", desc=True).limit(limit).execute())
+                .eq("bid_id", bid_id)
+                .order("created_at", desc=True).order("id", desc=True)
+                .limit(limit).execute())
 
 
 def get_latest_proposal_intelligence_run(bid_id: int) -> dict | None:
@@ -1302,7 +1306,8 @@ def get_latest_usable_proposal_intelligence_run(bid_id: int) -> dict | None:
     still returns it)."""
     rows = _rows(get_client().table("proposal_intelligence_runs").select("*")
                 .eq("bid_id", bid_id).in_("status", ["COMPLETE", "INCOMPLETE"])
-                .order("created_at", desc=True).limit(1).execute())
+                .order("created_at", desc=True).order("id", desc=True)
+                .limit(1).execute())
     return rows[0] if rows else None
 
 

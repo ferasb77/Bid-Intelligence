@@ -1314,7 +1314,9 @@ def get_latest_proposal_intelligence_run_authenticated(access_token: str, bid_id
     authenticated() instead (PI-1.1 instruction 9)."""
     client = auth_client.get_authenticated_client(access_token)
     rows = (client.table("proposal_intelligence_runs").select("*")
-           .eq("bid_id", bid_id).order("created_at", desc=True).limit(1).execute().data or [])
+           .eq("bid_id", bid_id)
+           .order("created_at", desc=True).order("id", desc=True)
+           .limit(1).execute().data or [])
     return rows[0] if rows else None
 
 
@@ -1327,14 +1329,17 @@ def get_latest_usable_proposal_intelligence_run_authenticated(access_token: str,
     client = auth_client.get_authenticated_client(access_token)
     rows = (client.table("proposal_intelligence_runs").select("*")
            .eq("bid_id", bid_id).in_("status", ["COMPLETE", "INCOMPLETE"])
-           .order("created_at", desc=True).limit(1).execute().data or [])
+           .order("created_at", desc=True).order("id", desc=True)
+           .limit(1).execute().data or [])
     return rows[0] if rows else None
 
 
 def get_proposal_intelligence_runs_authenticated(access_token: str, bid_id: int) -> list[dict]:
     client = auth_client.get_authenticated_client(access_token)
     return (client.table("proposal_intelligence_runs").select("*")
-           .eq("bid_id", bid_id).order("created_at", desc=True).execute().data or [])
+           .eq("bid_id", bid_id)
+           .order("created_at", desc=True).order("id", desc=True)
+           .execute().data or [])
 
 
 def get_proposal_requirement_assessments_authenticated(access_token: str, run_id: int) -> list[dict]:

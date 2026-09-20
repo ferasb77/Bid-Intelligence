@@ -265,11 +265,11 @@ class TestAuthenticatedReadHelpers(unittest.TestCase):
         client = MagicMock()
         table = client.table.return_value
         table.select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(data=rows)
-        table.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = \
+        table.select.return_value.eq.return_value.order.return_value.order.return_value.limit.return_value.execute.return_value = \
             MagicMock(data=rows)
-        table.select.return_value.eq.return_value.in_.return_value.order.return_value.limit.return_value.execute.return_value = \
+        table.select.return_value.eq.return_value.in_.return_value.order.return_value.order.return_value.limit.return_value.execute.return_value = \
             MagicMock(data=rows)
-        table.select.return_value.eq.return_value.order.return_value.execute.return_value = MagicMock(data=rows)
+        table.select.return_value.eq.return_value.order.return_value.order.return_value.execute.return_value = MagicMock(data=rows)
         table.select.return_value.eq.return_value.execute.return_value = MagicMock(data=rows)
         return client
 
@@ -278,6 +278,9 @@ class TestAuthenticatedReadHelpers(unittest.TestCase):
         mock_auth_client.return_value = self._client([{"id": 900, "status": "FAILED"}])
         result = tenancy.get_latest_proposal_intelligence_run_authenticated("token-x", 8)
         self.assertEqual(result["status"], "FAILED")
+        q = mock_auth_client.return_value.table.return_value.select.return_value.eq.return_value
+        q.order.assert_called_once_with("created_at", desc=True)
+        q.order.return_value.order.assert_called_once_with("id", desc=True)
         mock_auth_client.assert_called_once_with("token-x")
 
     @patch("tenancy.auth_client.get_authenticated_client")
@@ -286,6 +289,9 @@ class TestAuthenticatedReadHelpers(unittest.TestCase):
         mock_auth_client.return_value = client
         result = tenancy.get_latest_usable_proposal_intelligence_run_authenticated("token-x", 8)
         self.assertEqual(result["id"], 899)
+        q = client.table.return_value.select.return_value.eq.return_value.in_.return_value
+        q.order.assert_called_once_with("created_at", desc=True)
+        q.order.return_value.order.assert_called_once_with("id", desc=True)
         client.table.return_value.select.return_value.eq.return_value.in_.assert_called_once_with(
             "status", ["COMPLETE", "INCOMPLETE"])
 
