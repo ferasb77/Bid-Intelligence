@@ -32,6 +32,17 @@ Where to look, not what everything means. Read
   column.
 - Tests: `tests/test_fast_analysis_raw_snapshot.py`,
   `tests/test_phoenix_procurement_taxonomy.py`, `tests/test_analysis_service.py`.
+- **Telemetry call taxonomy** (`fast_analysis.classify_telemetry_entry`/
+  `_is_provider_call`/`_telemetry_audit_summary`, reused by
+  `analysis_service._telemetry_summary`) — the precise measurement
+  vocabulary for any future live A/B: `provider_calls` (real API calls
+  only), `planned_primary_provider_calls`, `planned_focused_provider_calls`,
+  `recovery_provider_calls` (split into `truncation_recovery_provider_calls`
+  / `targeted_retry_provider_calls`), `non_provider_bookkeeping_rows`,
+  `split_exhausted_rows`. The older `recovery_or_retry_calls`/`total_calls`
+  fields are kept for backward compatibility but conflate planned focused
+  calls and zero-cost bookkeeping rows with genuine recovery — do not use
+  them for new measurement work. Tests: `tests/test_telemetry_taxonomy.py`.
 
 **Procurement governance**
 - `migrations/010_procurement_revision_governance.sql`,

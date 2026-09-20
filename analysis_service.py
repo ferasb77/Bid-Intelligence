@@ -53,6 +53,7 @@ from fast_analysis import (
     run_fast_analysis_corpus, FastAnalysisResult, route_document, find_section,
     BATCH_GROUP, ROUTE_SKIP, ROUTE_EVAL_ONLY, ROUTE_IDENTITY_EVAL_REQ, ROUTE_COMMERCIAL_ONLY,
     serialize_fast_analysis_result, deserialize_fast_analysis_result, RawSnapshotSchemaError,
+    _telemetry_audit_summary,
 )
 from fast_analysis_app_adapter import build_opportunity_intelligence
 from scripts.fast_analysis_report_adapter import build_fast_report_content
@@ -395,17 +396,17 @@ def _telemetry_summary(result: FastAnalysisResult) -> dict:
     exposed in the client-facing report, available for operational
     diagnostics. Individual per-call detail is not persisted here; the
     per-call shape lives only in the in-memory result.telemetry list for
-    the duration of the run."""
-    recovery_calls = [c for c in result.telemetry if c.get("call_kind") not in ("initial", "batch")]
-    total_input = sum(c.get("input_tokens") or 0 for c in result.telemetry)
-    total_output = sum(c.get("output_tokens") or 0 for c in result.telemetry)
+    the duration of the run.
+
+    Phase 5E: delegates the call-taxonomy computation to fast_analysis's
+    _telemetry_audit_summary (single source of truth) instead of keeping
+    its own separate, independently-buggy copy of the same counting
+    logic -- adds only the fields specific to this application layer
+    (engine_version, documents_skipped/batched, cost_note)."""
+    base = _telemetry_audit_summary(result.telemetry, result.wall_seconds)
     return {
         "engine_version": FAST_ANALYSIS_ENGINE_VERSION,
-        "wall_seconds": result.wall_seconds,
-        "total_calls": len(result.telemetry),
-        "recovery_or_retry_calls": len(recovery_calls),
-        "input_tokens": total_input,
-        "output_tokens": total_output,
+        **base,
         "documents_skipped": len(result.skipped_documents),
         "documents_batched": len(result.batched_documents),
         # Provider-reported cost is not exposed by the current Anthropic API

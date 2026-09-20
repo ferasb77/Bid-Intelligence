@@ -1410,18 +1410,103 @@ class RawSnapshotSchemaError(ValueError):
     reconstruct)."""
 
 
+# BI Token Optimization Phase 5E: the complete call_kind vocabulary this
+# module ever writes into telemetry, classified precisely. A prior
+# metric (`recovery_or_retry_calls`, still emitted below for backward
+# compatibility) classified anything not literally "initial"/"batch" as
+# recovery -- which silently counted planned focused-task calls
+# (focused_{kind}_initial) and zero-cost split_exhausted bookkeeping rows
+# (no provider call was ever made for them) as if they were genuine paid
+# retries. This taxonomy distinguishes all of them explicitly.
+_PLANNED_PRIMARY_KINDS = {"initial", "batch"}
+_TARGETED_RETRY_KINDS = {"targeted_retry"}
+
+
+def classify_telemetry_entry(entry: dict) -> str:
+    """One of PLANNED_PRIMARY / PLANNED_FOCUSED / TRUNCATION_RECOVERY /
+    TARGETED_RETRY / BOOKKEEPING / UNKNOWN, from a telemetry row's
+    call_kind alone. UNKNOWN is a safety net for any future call_kind
+    this function doesn't yet recognize -- it is never silently folded
+    into an existing bucket (see _telemetry_audit_summary's
+    "other_provider_calls" for how an UNKNOWN provider call still gets
+    counted rather than disappearing from the totals)."""
+    kind = (entry.get("call_kind") if isinstance(entry, dict) else None) or "unknown"
+    if kind in _PLANNED_PRIMARY_KINDS:
+        return "PLANNED_PRIMARY"
+    if kind.endswith("_initial"):
+        return "PLANNED_FOCUSED"
+    if kind == "split_exhausted" or kind.endswith("_split_exhausted"):
+        return "BOOKKEEPING"
+    if kind in ("split_recovery_a", "split_recovery_b") or "_split_recovery_" in kind:
+        return "TRUNCATION_RECOVERY"
+    if kind in _TARGETED_RETRY_KINDS:
+        return "TARGETED_RETRY"
+    return "UNKNOWN"
+
+
+def _is_provider_call(entry: dict) -> bool:
+    """False for bookkeeping-only rows (split_exhausted / *_split_exhausted)
+    that never reached the provider -- input_tokens, output_tokens and
+    stop_reason are always null for these by construction (see
+    extract_fast_document / run_focused_task, where the row is appended
+    with those fields explicitly set to None, no call attempted). Token
+    sums must only ever include real provider calls (instruction 4)."""
+    return (isinstance(entry, dict)
+           and (entry.get("input_tokens") is not None or entry.get("output_tokens") is not None))
+
+
 def _telemetry_audit_summary(telemetry: list, wall_seconds: float) -> dict:
     """A compact, JSON-safe summary of per-call telemetry for audit
     purposes -- never the raw per-call list (which is operational detail,
-    not analytical output, and is not consumed by any report adapter)."""
-    recovery_calls = [c for c in telemetry if isinstance(c, dict)
-                      and c.get("call_kind") not in ("initial", "batch")]
+    not analytical output, and is not consumed by any report adapter).
+
+    Corrected in Phase 5E: exposes a precise taxonomy (telemetry_rows,
+    provider_calls, planned_primary/focused_provider_calls,
+    recovery_provider_calls and its truncation_recovery/targeted_retry
+    breakdown, non_provider_bookkeeping_rows, split_exhausted_rows)
+    alongside the original `recovery_or_retry_calls`/`total_calls`
+    fields, kept verbatim -- same computation as before Phase 5E -- for
+    any existing consumer/dashboard that already keys off those exact
+    names. New code should use the precise fields; the legacy fields are
+    not redefined."""
+    entries = [c for c in telemetry if isinstance(c, dict)]
+    classified = [(c, classify_telemetry_entry(c)) for c in entries]
+    provider_entries = [c for c in entries if _is_provider_call(c)]
+    bookkeeping_entries = [c for c in entries if not _is_provider_call(c)]
+
+    def _provider_count(label: str) -> int:
+        return sum(1 for c, cls in classified if cls == label and _is_provider_call(c))
+
+    planned_primary = _provider_count("PLANNED_PRIMARY")
+    planned_focused = _provider_count("PLANNED_FOCUSED")
+    truncation_recovery = _provider_count("TRUNCATION_RECOVERY")
+    targeted_retry = _provider_count("TARGETED_RETRY")
+    other_provider = _provider_count("UNKNOWN")
+    split_exhausted_rows = sum(1 for c, cls in classified if cls == "BOOKKEEPING")
+
+    # Legacy metric, computed exactly as it always was -- never redefined.
+    legacy_recovery_or_retry_calls = sum(
+        1 for c in entries if c.get("call_kind") not in ("initial", "batch"))
+
     return {
-        "total_calls": len(telemetry),
-        "recovery_or_retry_calls": len(recovery_calls),
-        "input_tokens": sum((c.get("input_tokens") or 0) for c in telemetry if isinstance(c, dict)),
-        "output_tokens": sum((c.get("output_tokens") or 0) for c in telemetry if isinstance(c, dict)),
+        # -- precise taxonomy (Phase 5E) --
+        "telemetry_rows": len(entries),
+        "provider_calls": len(provider_entries),
+        "planned_primary_provider_calls": planned_primary,
+        "planned_focused_provider_calls": planned_focused,
+        "recovery_provider_calls": truncation_recovery + targeted_retry,
+        "truncation_recovery_provider_calls": truncation_recovery,
+        "targeted_retry_provider_calls": targeted_retry,
+        "other_provider_calls": other_provider,
+        "non_provider_bookkeeping_rows": len(bookkeeping_entries),
+        "split_exhausted_rows": split_exhausted_rows,
+        # -- token totals: provider calls only (instruction 4) --
+        "input_tokens": sum((c.get("input_tokens") or 0) for c in provider_entries),
+        "output_tokens": sum((c.get("output_tokens") or 0) for c in provider_entries),
         "wall_seconds": wall_seconds,
+        # -- legacy fields, preserved verbatim for backward compatibility --
+        "total_calls": len(entries),
+        "recovery_or_retry_calls": legacy_recovery_or_retry_calls,
     }
 
 
