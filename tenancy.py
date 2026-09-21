@@ -1801,6 +1801,44 @@ def _enrichment_row_to_dict(row: dict) -> dict:
     }
 
 
+def _requirement_evidence_context(bid_id: int, req_id: str) -> tuple:
+    """Shared by OM-3B (strengthen_requirement_evidence_for_organization)
+    and PI-3A (draft_section_for_organization): the requirement's latest
+    usable Proposal Intelligence assessment row for `req_id` (or None) and
+    every finding from that SAME run related to `req_id`. Never triggers a
+    new Proposal Intelligence run -- read-only against the latest
+    already-COMPLETE/INCOMPLETE run, exactly as before this was factored
+    out (no behavior change, see git history)."""
+    assessment = None
+    related_findings = []
+    run = db.get_latest_usable_proposal_intelligence_run(bid_id)
+    if run is not None:
+        assessments = db.get_proposal_requirement_assessments(run["id"])
+        assessment = next((a for a in assessments if a.get("req_id") == req_id), None)
+        findings = db.get_proposal_intelligence_findings(run["id"])
+        related_findings = [f for f in findings if f.get("related_req_id") == req_id]
+    return assessment, related_findings
+
+
+def _requirement_evidence_state_from_assessment(assessment: dict | None, related_findings: list):
+    """assessment/related_findings (from _requirement_evidence_context)
+    -> evidence_strengthening.RequirementEvidenceState -- the SAME
+    construction strengthen_requirement_evidence_for_organization always
+    performed inline, now shared with PI-3A's brief assembly."""
+    import evidence_strengthening as es
+    import proposal_intelligence as pi
+
+    has_contradiction = any(
+        f.get("finding_type") in (pi.FINDING_TYPE_CONTRADICTION, pi.FINDING_TYPE_INTERNAL_INCONSISTENCY)
+        for f in related_findings
+    )
+    return es.RequirementEvidenceState(
+        assessment_status=(assessment or {}).get("assessment_status"),
+        evidence_strength=(assessment or {}).get("evidence_strength"),
+        has_contradiction_finding=has_contradiction,
+    )
+
+
 def strengthen_requirement_evidence_for_organization(
     bid_id: int, organization_id: str, requirement_id: int,
     top_k: int = 5, embed_fn=None, created_by_user_id: str | None = None,
@@ -1863,7 +1901,6 @@ def strengthen_requirement_evidence_for_organization(
 
     import evidence_strengthening as es
     import organizational_memory as om
-    import proposal_intelligence as pi
 
     reqs = db.get_requirements_by_ids(bid_id, [requirement_id])
     if not reqs:
@@ -1873,29 +1910,8 @@ def strengthen_requirement_evidence_for_organization(
     requirement = reqs[0]
     req_id = requirement.get("req_id")
 
-    assessment_status = None
-    evidence_strength = None
-    has_contradiction = False
-    run = db.get_latest_usable_proposal_intelligence_run(bid_id)
-    if run is not None:
-        assessments = db.get_proposal_requirement_assessments(run["id"])
-        match = next((a for a in assessments if a.get("req_id") == req_id), None)
-        if match is not None:
-            assessment_status = match.get("assessment_status")
-            evidence_strength = match.get("evidence_strength")
-
-        findings = db.get_proposal_intelligence_findings(run["id"])
-        has_contradiction = any(
-            f.get("related_req_id") == req_id
-            and f.get("finding_type") in (pi.FINDING_TYPE_CONTRADICTION, pi.FINDING_TYPE_INTERNAL_INCONSISTENCY)
-            for f in findings
-        )
-
-    evidence_state = es.RequirementEvidenceState(
-        assessment_status=assessment_status,
-        evidence_strength=evidence_strength,
-        has_contradiction_finding=has_contradiction,
-    )
+    _assessment, _related_findings = _requirement_evidence_context(bid_id, req_id)
+    evidence_state = _requirement_evidence_state_from_assessment(_assessment, _related_findings)
 
     if not evidence_state.needs_strengthening:
         result = es.strengthen_requirement_evidence(
@@ -1965,3 +1981,123 @@ def strengthen_requirement_evidence_for_organization(
         # time is missing, nothing about this response is wrong.
         return result.to_dict()
     return _enrichment_row_to_dict(persisted)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Proposal Intelligence (PI-3A: evidence-aware section drafting)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def draft_section_for_organization(
+    bid_id: int, organization_id: str, requirement_id: int,
+    outline_section: dict | None = None,
+    max_related_requirements: int = 5, max_findings: int = 5,
+) -> dict:
+    """PI-3A: evidence-aware section drafting for ONE requirement, wired to
+    real, already-persisted intelligence. Verifies bid ownership FIRST.
+
+    Assembles a bounded section_drafting.SectionDraftingBrief from
+    EXISTING, ALREADY-COMPUTED intelligence only:
+      - the requirement's own canonical row (database.get_requirements_by_ids,
+        bid-scoped);
+      - sibling requirements sharing the same category, context only
+        (database.get_requirements), capped at max_related_requirements;
+      - the requirement's latest Proposal Intelligence assessment/findings
+        (tier 2), via the SAME _requirement_evidence_context/
+        _requirement_evidence_state_from_assessment helpers OM-3B uses --
+        never re-run here;
+      - Fast Analysis's evaluation_criteria/response_guidelines, via
+        section_analyzer.procurement_basis plus the SAME matching
+        functions section_analyzer.build_section_context already uses
+        (section_analyzer._match_evaluation_criterion/
+        _matching_response_guideline -- reused, not reimplemented; never
+        re-runs Fast Analysis itself, only reads an already-persisted raw
+        snapshot exactly like section_analyzer.procurement_basis always
+        has);
+      - the requirement's LATEST ALREADY-PERSISTED OM-3B enrichment
+        (database.get_requirement_evidence_enrichments) -- this function
+        NEVER triggers a fresh OM-3A/OM-3B computation. A caller that
+        wants fresh Organizational Memory enrichment first must call
+        strengthen_requirement_evidence_for_organization separately, as
+        its own prior step ("analyze once, persist, draft from persisted
+        intelligence" -- instruction 6);
+      - `outline_section`, ONLY when the caller supplies one (an
+        outline_sections row/dict) for word_limit/title/notes -- never
+        fetched by this function itself, so this has no dependency on
+        migration 013's (still unapplied) outline_section_requirements
+        mapping table.
+
+    Then calls section_drafting.draft_section() (the ONE new bounded model
+    call) and section_drafting.assure_section_draft() (bounded,
+    deterministic, no second model call). Returns
+    {"brief", "result", "assurance"} as plain dicts.
+
+    Read-only end to end: writes nothing anywhere, mutates no
+    Organizational Memory item, creates no requirement_evidence_
+    enrichments row, persists no draft -- PI-3A is compute-and-return only
+    (see docs/current/SYSTEM_STATE.md)."""
+    require_bid_access(bid_id, organization_id)
+    if not organization_id:
+        raise ValueError("draft_section_for_organization requires an explicit organization_id")
+
+    import section_drafting as sd
+
+    reqs = db.get_requirements_by_ids(bid_id, [requirement_id])
+    if not reqs:
+        raise ValueError(
+            f"draft_section_for_organization: requirement {requirement_id} not found for bid {bid_id}")
+    requirement = reqs[0]
+    req_id = requirement.get("req_id")
+
+    all_requirements = db.get_requirements(bid_id)
+    related = [
+        r for r in all_requirements
+        if r.get("category") == requirement.get("category") and r.get("id") != requirement.get("id")
+    ]
+
+    assessment, related_findings = _requirement_evidence_context(bid_id, req_id)
+    evidence_state = _requirement_evidence_state_from_assessment(assessment, related_findings)
+
+    evaluation_criterion = None
+    response_guideline = None
+    try:
+        import section_analyzer as sa
+        basis = sa.procurement_basis(bid_id)
+        raw = basis.get("raw_snapshot")
+        if raw is not None:
+            evaluation_criteria = raw.evaluation_criteria or []
+            response_guidelines = raw.deterministic_response_guidelines or []
+            evaluation_criterion = sa._match_evaluation_criterion(requirement, evaluation_criteria)
+            if evaluation_criterion:
+                response_guideline = sa._matching_response_guideline(
+                    evaluation_criterion, evaluation_criteria, response_guidelines)
+    except Exception:
+        # Advisory-only context (exactly like section_analyzer.
+        # procurement_basis's own treatment of evaluation/response-
+        # guideline data) -- a failure to resolve it must never block
+        # drafting, only omit this optional context.
+        evaluation_criterion = None
+        response_guideline = None
+
+    enrichment_history = db.get_requirement_evidence_enrichments(bid_id, req_id)
+    persisted_enrichment = enrichment_history[0] if enrichment_history else None
+
+    response_constraints = sd.ResponseConstraints(
+        word_limit=(outline_section or {}).get("word_limit"),
+        section_title=(outline_section or {}).get("title"),
+        section_guidance=(outline_section or {}).get("notes"),
+    )
+
+    brief = sd.build_brief(
+        organization_id=organization_id, bid_id=bid_id, requirement=requirement,
+        related_requirements=related, evaluation_criterion=evaluation_criterion,
+        response_guideline=response_guideline, evidence_state=evidence_state.to_dict(),
+        assessment=assessment, persisted_enrichment=persisted_enrichment,
+        proposal_intelligence_findings=related_findings,
+        response_constraints=response_constraints,
+        max_related_requirements=max_related_requirements, max_findings=max_findings,
+    )
+
+    result = sd.draft_section(brief=brief)
+    assurance = sd.assure_section_draft(brief, result)
+
+    return {"brief": brief.to_dict(), "result": result.to_dict(), "assurance": assurance.to_dict()}

@@ -466,6 +466,112 @@ new freshness-content-read guard). Explicitly still deferred: a UI, Ask
 CapOS integration, Section Analyzer integration, proposal-generation
 integration.
 
+**PI-3A (evidence-aware section drafting) is now implemented** — the
+first bounded proposal-generation capability in Bid Intelligence, drafting
+ONE requirement's response from EXISTING persisted intelligence only
+(never whole-proposal generation). New `section_drafting.py`: a pure
+domain module (no I/O of its own, same posture as `evidence_
+strengthening.py`/`proposal_intelligence.py`). `SectionDraftingBrief`
+keeps the evidence hierarchy structural, not just behavioral — separate,
+distinctly-named fields per tier: `current_rfp_source_refs` (tier 1, the
+requirement's own canonical `source_refs`), `bid_specific_evidence` (tier
+2, the requirement's latest Proposal Intelligence assessment —
+assessment_status/evidence_strength/confidence/explanation/
+proposal_source_refs, reused verbatim, never re-derived),
+`organizational_evidence` (tiers 3/4, OM-3B's ALREADY-PERSISTED
+enrichment, read-only), plus `related_requirements` (same-category
+siblings, context only), `evaluation`/`response_constraints` (Fast
+Analysis's `evaluation_criteria`/`deterministic_response_guidelines`,
+matched via `section_analyzer._match_evaluation_criterion`/
+`_matching_response_guideline` — REUSED, not reimplemented), and
+`proposal_intelligence_findings` (bounded, `related_req_id`-filtered).
+`build_brief()` is pure and performs no I/O; it never fetches, never calls
+a model, never touches Organizational Memory.
+
+No independent retrieval during drafting (this phase's core architectural
+claim, live-proven — see below): `section_drafting.py` never calls
+`organizational_memory.retrieve()`, never re-runs OM-3A/OM-3B, never
+re-runs Proposal Alignment/Fast Analysis, never fetches full RFP/proposal
+text — it consumes ONLY the already-assembled brief. This discipline
+extends to brief ASSEMBLY too: `build_brief()` takes an
+ALREADY-PERSISTED OM-3B enrichment dict as a plain argument and never
+triggers a fresh OM-3A/OM-3B computation itself — a caller that wants
+fresh Organizational Memory enrichment must call `strengthen_requirement_
+evidence_for_organization` separately, first, as its own step
+("analyze once, persist, draft from persisted intelligence").
+
+The ONE new bounded model call (`section_drafting._call_section_draft`,
+`workflow="section_drafting"`, `operation="draft_section"`, same
+structured-call pattern as `analyst._call_package_reasoning`/
+`evidence_strengthening._call_memory_adjudication`) is instructed to tag
+every cited evidence item with a closed claim-type vocabulary
+(`VERIFIED_FACT`/`ORGANIZATIONAL_KNOWLEDGE`/`PROPOSED_APPROACH`/
+`UNSUPPORTED_GAP`), never fabricate names/metrics/certifications/
+personnel/outcomes/commitments/references, and insert an explicit
+`[SME confirmation required: ...]` placeholder rather than invent a
+missing fact. Traceability is enforced structurally, mirroring PI-2B1's
+own P#/C# short-id ledger discipline (`analyst._build_package_
+intelligence_ledger`/`_reconcile_package_findings`) rather than
+reinventing it: `_evidence_id_registry()` assigns bounded ids (`CE#`
+current-RFP, `PE#` bid-specific proposal evidence, `OM#` Organizational
+Memory) from the brief's own contents, and `_reconcile_draft_response()`
+fail-closed-drops any `evidence_items_used` entry citing an id outside
+that registry or an unrecognized claim type — an invented id can never
+survive into the structured result. A CONTRADICTION-classified OM item
+already present in the brief is carried through unchanged (never
+re-adjudicated); the draft is expected to surface it as a caveat, and
+`assure_section_draft()` flags a hidden one.
+
+`assure_section_draft()` is bounded, post-draft assurance — ENTIRELY
+DETERMINISTIC, no second model call: cross-checks the draft's own
+structured output against the brief (mandatory-requirement coverage,
+evaluation-criterion reflection, evidence-id validity, a surfaced
+CONTRADICTION caveat, word-limit compliance, and
+`human_confirmation_required` correctness given unresolved points/
+contradictions/the enrichment's own flag/gap_kind). Not the full Red Team
+capability — section-level drafting assurance only.
+
+`tenancy.draft_section_for_organization` wires it to real, already-
+persisted intelligence: `require_bid_access` first; `database.
+get_requirements_by_ids`/`get_requirements` (same-category siblings);
+`_requirement_evidence_context`/`_requirement_evidence_state_from_
+assessment` (factored out of OM-3B's own function during this task, pure
+refactor, no behavior change — now shared by both); `section_analyzer.
+procurement_basis` + its own matching functions for evaluation context
+(advisory-only, a resolution failure never blocks drafting); `database.
+get_requirement_evidence_enrichments` for the LATEST persisted OM-3B row
+only (a plain read, never triggering computation); an optional
+caller-supplied `outline_section` dict for word_limit/title/notes (never
+fetched by this function itself, so no new dependency on migration 013's
+still-unapplied `outline_section_requirements` mapping table). Returns
+`{"brief", "result", "assurance"}`. Read-only end to end — writes nothing
+anywhere, including no draft persistence (PI-3A is compute-and-return
+only this phase; no migration, no new table — the existing `requirements`/
+`proposal_requirement_assessments`/`proposal_intelligence_findings`/
+`requirement_evidence_enrichments` schema was already sufficient).
+
+Live commissioning (2026-09-21): `section_drafting.draft_section` was run
+ONCE against the real Anthropic API with entirely synthetic, disposable
+in-memory inputs (no Supabase interaction) — a requirement with one
+strongly supported APPROVED_FIRM_KNOWLEDGE fact, one partial/caveated
+SOURCE_MEMORY item, one CONTRADICTION-classified SOURCE_MEMORY item, one
+evaluation criterion, and a 120-word limit. The live draft cited the
+strong fact appropriately (tagged `ORGANIZATIONAL_KNOWLEDGE`, not
+overclaimed as `VERIFIED_FACT`), avoided citing the partial fact's missing
+metric at all (explicitly noted in its own `drafting_notes`), inserted an
+explicit `[SME confirmation required: ...]` placeholder for the genuinely
+missing fact instead of inventing one, explicitly declined to let the
+CONTRADICTION item override the bid's own stated evidence (articulating
+why in `contradictions_or_caveats`), reflected the evaluation criterion,
+stayed within the word limit (119/120), and set
+`human_confirmation_required=True` correctly.
+`assure_section_draft()` passed with zero issues. No defect found this
+commissioning pass. Tests: `tests/test_section_drafting.py` (30, pure
+domain layer), `tests/test_section_drafting_tenancy.py` (9, wiring/
+architecture-discipline). Explicitly still deferred: whole-proposal
+generation, draft persistence, a UI, Word export, Ask CapOS integration,
+Red Team, Section Analyzer UI wiring.
+
 ## Architectural fact-type separation
 
 Every subsystem above keeps these categories distinct, never merges them:
@@ -527,6 +633,18 @@ to a later OM phase: proposal-text generation from memory, auto-insertion
 of evidence, Section Analyzer integration, a UI, Ask CapOS integration,
 win-probability/scoring, and any PROPOSAL_MEMORY → APPROVED_FIRM_KNOWLEDGE
 promotion mechanism.
+
+**PI-3A (evidence-aware section drafting, `section_drafting.py` +
+`tenancy.draft_section_for_organization`) is now implemented and
+live-commissioned** — the first bounded proposal-generation capability,
+drafting ONE requirement's response from EXISTING persisted intelligence
+(Proposal Intelligence's assessment, Fast Analysis's evaluation criteria,
+and OM-3B's already-persisted enrichment) with no independent
+retrieval/re-analysis and structural claim/evidence-traceability
+guardrails; no new migration, compute-and-return only this phase. See the
+Organizational Memory entry above for full detail. Deferred: whole-
+proposal generation, draft persistence, a UI, Word export, Ask CapOS
+integration, Red Team, Section Analyzer UI wiring.
 
 Absent an explicit task instruction otherwise, still do not: apply
 migration 013, alter/reapply migration 015, 016, or 017, activate the

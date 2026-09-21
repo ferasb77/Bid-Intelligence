@@ -437,6 +437,86 @@ deferred, not started.
 - Explicitly still deferred: proposal-text generation, a UI, Ask CapOS
   integration, Section Analyzer integration, auto-approval of any kind.
 
+**Proposal Intelligence (PI-3A: evidence-aware section drafting)**
+- `section_drafting.py` — the first bounded proposal-generation
+  capability, drafting ONE requirement's response. Pure, no I/O of its
+  own (same posture as `evidence_strengthening.py`). `SectionDraftingBrief`
+  keeps the evidence hierarchy STRUCTURAL, distinct fields per tier:
+  `current_rfp_source_refs` (tier 1, the requirement's own `source_refs`),
+  `bid_specific_evidence` (tier 2, the requirement's latest Proposal
+  Intelligence assessment — assessment_status/evidence_strength/
+  confidence/explanation/proposal_source_refs, reused verbatim),
+  `organizational_evidence` (tiers 3/4, OM-3B's ALREADY-PERSISTED
+  enrichment, read-only — `build_brief()` never fetches or computes one
+  itself), `related_requirements` (same-category siblings, context only),
+  `evaluation`/`response_constraints` (Fast Analysis's evaluation_
+  criteria/response_guidelines, matched via `section_analyzer.
+  _match_evaluation_criterion`/`_matching_response_guideline` — reused,
+  not reimplemented), `proposal_intelligence_findings` (bounded,
+  req_id-filtered). `build_brief()` is pure: no fetch, no model call, no
+  Organizational Memory access.
+- No independent retrieval during drafting: `section_drafting.py` never
+  calls `organizational_memory.retrieve()`, never re-runs OM-3A/OM-3B,
+  never re-runs Proposal Alignment/Fast Analysis. Extends to brief
+  assembly too -- `build_brief()` takes an already-persisted OM-3B
+  enrichment dict as a plain argument; a caller wanting fresh enrichment
+  calls `strengthen_requirement_evidence_for_organization` separately,
+  first.
+- `_call_section_draft` — the ONE new bounded model call
+  (`workflow="section_drafting"`, `operation="draft_section"`, same
+  pattern as `analyst._call_package_reasoning`/`evidence_strengthening.
+  _call_memory_adjudication`), instructed to tag every cited evidence item
+  with a closed claim-type vocabulary (`VERIFIED_FACT`/`ORGANIZATIONAL_
+  KNOWLEDGE`/`PROPOSED_APPROACH`/`UNSUPPORTED_GAP`) and insert an explicit
+  `[SME confirmation required: ...]` placeholder rather than invent a
+  missing fact. `_evidence_id_registry()` assigns bounded ids (`CE#`/
+  `PE#`/`OM#`) from the brief, mirroring PI-2B1's P#/C# short-id ledger
+  discipline (`analyst._build_package_intelligence_ledger`/
+  `_reconcile_package_findings`) — reused, not reinvented;
+  `_reconcile_draft_response()` fail-closed-drops any cited id outside
+  that registry or an unrecognized claim type.
+- `assure_section_draft()` — bounded, ENTIRELY DETERMINISTIC post-draft
+  assurance (no second model call): mandatory-requirement coverage,
+  evaluation-criterion reflection, evidence-id validity, a surfaced
+  CONTRADICTION caveat, word-limit compliance, `human_confirmation_
+  required` correctness. Not Red Team — section-level assurance only.
+- `tenancy.draft_section_for_organization` — `require_bid_access` first;
+  `database.get_requirements_by_ids`/`get_requirements` (siblings);
+  `tenancy._requirement_evidence_context`/`_requirement_evidence_state_
+  from_assessment` (factored out of OM-3B's own function this task, pure
+  refactor, no behavior change, now shared); `section_analyzer.
+  procurement_basis` + its matching functions for evaluation context
+  (advisory-only, failure never blocks drafting); `database.
+  get_requirement_evidence_enrichments` for the LATEST persisted row only
+  (plain read, never triggers computation); optional caller-supplied
+  `outline_section` dict for word_limit/title/notes (never fetched here —
+  no dependency on migration 013's unapplied mapping table). Returns
+  `{"brief", "result", "assurance"}`. Read-only end to end — no draft
+  persistence this phase, no migration.
+- Tests: `tests/test_section_drafting.py` (30, pure domain layer — grounding,
+  missing-evidence, conflicts, coverage, traceability, architecture
+  discipline, safety, constraints, failure handling),
+  `tests/test_section_drafting_tenancy.py` (9, wiring — proves via
+  monkeypatched `organizational_memory.retrieve`/`evidence_strengthening.
+  strengthen_requirement_evidence` that drafting never calls either,
+  result shape, related-requirement filtering). No live provider call in
+  either file — the model call is always injected via `draft_fn` or
+  monkeypatched at `_call_section_draft`.
+- Live commissioning (2026-09-21): `section_drafting.draft_section` run
+  ONCE against the real Anthropic API with synthetic disposable inputs
+  (strong APPROVED_FIRM_KNOWLEDGE fact, partial caveated SOURCE_MEMORY,
+  CONTRADICTION-classified SOURCE_MEMORY, one evaluation criterion, a
+  120-word limit) — cited the strong fact appropriately (tagged
+  ORGANIZATIONAL_KNOWLEDGE, not overclaimed), avoided citing the partial
+  fact's missing metric, inserted an explicit placeholder for the missing
+  fact, explicitly declined to let the contradiction override current-bid
+  evidence, reflected the evaluation criterion, stayed within the word
+  limit (119/120), set `human_confirmation_required=True` correctly;
+  `assure_section_draft()` passed with zero issues. No defect found.
+- Explicitly still deferred: whole-proposal generation, draft persistence,
+  a UI, Word export, Ask CapOS integration, Red Team, Section Analyzer UI
+  wiring.
+
 **Tenancy / RLS / auth boundary**
 - `tenancy.py` — every `*_for_organization` (service-role, ownership-checked)
   and `*_authenticated` (user's own RLS-scoped client) function.
