@@ -68,14 +68,23 @@ Where to look, not what everything means. Read
 - `section_analyzer.py` — context assembly, the bounded model call,
   staleness/idempotency.
 - `migrations/013_section_analyzer.sql` — `outline_section_requirements`,
-  `section_reviews` (written, **still not applied** — 2026-09-21
-  compatibility audit classified it **SAFE WITH SOURCE FIXES**; one fix
-  applied directly to this still-unapplied file: removed `section_
-  reviews`' unused `authenticated` INSERT policy, since application code
-  has always written that table via the service-role client only — see
-  SYSTEM_STATE.md's "Migration 013 Compatibility Audit" entry for the
-  full writeup and recommended commissioning procedure. Still not applied
-  by this audit).
+  `section_reviews`. **Applied and live-commissioned 2026-09-21**, ledger
+  entry `20260921182042 section_analyzer`. A 2026-09-21 compatibility
+  audit classified it **SAFE WITH SOURCE FIXES** and applied one fix in
+  place: removed `section_reviews`' unused `authenticated` INSERT policy
+  (application code has always written that table via the service-role
+  client only). A separate, later live-commissioning task then applied
+  the fixed migration: schema verified directly against the live database
+  (columns/FKs/constraints/indexes/RLS/policies all match exactly), a
+  direct `authenticated` INSERT into `section_reviews` was proven rejected
+  live (the audit's own fix, confirmed working), the real `tenancy`
+  mapping functions and `analyze_section_for_organization` (one bounded
+  real Anthropic call) round-tripped correctly against bid 1/bid 8, and a
+  full `page_build(8)` render completed with zero `tenancy.
+  SectionMappingUnavailableError` — PI-3D's graceful-degradation path now
+  sits unused in normal operation, retained only as defensive fallback.
+  See SYSTEM_STATE.md's "Migration 013 Compatibility Audit" entry for the
+  full writeup of both the audit and the live commissioning.
 - Tests: `tests/test_section_analyzer.py`, `tests/
   test_migration_013_audit.py` (static source-level checks: the fix is
   present, no schema drift vs. `database.py`/`section_analyzer.py`).
@@ -743,18 +752,21 @@ deferred, not started.
   site, one requirement at a time) -- no batch/whole-proposal drafting
   call introduced.
 - **Root-cause discovery**: `migrations/013_section_analyzer.sql`
-  (`outline_section_requirements`/`section_reviews`) is confirmed live-
-  verified as still NOT applied to any live database -- the pre-existing
-  per-section requirement-mapping expander would have raised a raw
-  PostgREST error the moment any bid actually had both an outline section
-  and a mapping attempt. `tenancy.get_section_requirement_ids_
-  authenticated`/`get_section_requirement_map_authenticated` now degrade
-  to an empty mapping and `set_section_requirement_mapping_authenticated`
-  raises the new, distinctly-typed `tenancy.SectionMappingUnavailableError`
-  instead of a raw traceback; the BUILD page shows an inline caption
-  instead of crashing. Migration 013 remains unapplied -- see
-  SYSTEM_STATE.md's PI-3D entry; applying it needs its own future,
-  explicitly-authorized commissioning task.
+  (`outline_section_requirements`/`section_reviews`) was found, at the
+  time this task ran, confirmed live-verified as NOT applied to any live
+  database -- the pre-existing per-section requirement-mapping expander
+  would have raised a raw PostgREST error the moment any bid actually had
+  both an outline section and a mapping attempt. `tenancy.get_section_
+  requirement_ids_authenticated`/`get_section_requirement_map_
+  authenticated` degrade to an empty mapping and `set_section_
+  requirement_mapping_authenticated` raises the distinctly-typed
+  `tenancy.SectionMappingUnavailableError` instead of a raw traceback --
+  this defensive fallback is UNCHANGED code, but is no longer triggered
+  in normal operation now that migration 013 is live-commissioned
+  (2026-09-21, ledger `20260921182042 section_analyzer` -- see the
+  "Section Analyzer" entry above and SYSTEM_STATE.md's "Migration 013
+  Compatibility Audit" entry for the full audit-then-commissioning
+  writeup).
 - Tests: `tests/test_proposal_outline.py` (28, pure), `tests/
   test_build_workflow_tenancy.py` (13 -- bid-access gating, no-Anthropic/
   no-OM-retrieval proofs, migration-013-missing degradation), `tests/

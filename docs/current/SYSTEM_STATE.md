@@ -885,6 +885,15 @@ two compounding defects, both pre-existing, neither introduced by PI-3A/
    when no mapping is available, exactly as it already did before this
    task.
 
+**Update, 2026-09-21: migration 013 is now live-commissioned** (see the
+"Migration 013 Compatibility Audit" entry below for the audit and its
+live-commissioning follow-up) — requirement-to-section mapping now
+genuinely persists. The graceful-degradation behavior described above
+(`SectionMappingUnavailableError`/empty-map fallback) is retained in the
+code as a defensive fallback but is no longer triggered under normal live
+operation, live-proved via a full `page_build(8)` render with zero
+exceptions.
+
 **Workflow changes** (`pages/stage_build.py`'s "Proposal Outline &
 Section Drafter" tab only -- no other BUILD tab touched):
 - A primary/secondary toggle ("🤖 AI-Assisted Build" / "✍️ Build
@@ -987,9 +996,10 @@ whole-app smoke suite pass unchanged.
 Explicitly NOT built (instruction 13): one-call whole-proposal
 generation, Word export, collaborative editing, Red Team, Ask CapOS,
 Arabic, SME messaging, a proposal template designer, visual draft diffs,
-or any other BUILD redesign beyond this tab. Migration 013 remains
-unapplied -- do not apply it without a future task's explicit
-authorization.
+or any other BUILD redesign beyond this tab. Migration 013 was unapplied
+at the time this task ran; it is now **applied and live-commissioned
+2026-09-21** (see "Migration 013 Compatibility Audit" below) — a later,
+separate task.
 
 ## Architectural fact-type separation
 
@@ -1096,7 +1106,11 @@ Highest migration file present: **019**
 2026-09-21**, ledger entry `20260921163500 section_draft_claim_mappings`).
 Migrations 017/018 (`017_requirement_evidence_enrichment.sql`/
 `018_section_drafts.sql`) remain **applied and live-commissioned
-2026-09-21**. Files 001–019 exist in `migrations/`. This describes what's
+2026-09-21**. Migration 013 (`013_section_analyzer.sql`) is also **applied
+and live-commissioned 2026-09-21**, ledger entry `20260921182042
+section_analyzer` — see "Migration 013 Compatibility Audit" below for
+the audit and its live-commissioning follow-up. Files 001–019 exist in
+`migrations/`. This describes what's
 **written in the repo**, not
 what's applied to any Supabase project — see the note below (which is the
 current source of truth for live status; always verify explicitly rather
@@ -1201,6 +1215,73 @@ authenticated` continue to degrade to an empty mapping and `set_section_
 requirement_mapping_authenticated` continues to raise `tenancy.
 SectionMappingUnavailableError` (PI-3D's own graceful-degradation
 behavior, unaffected by this audit).
+
+**Update, 2026-09-21 (Migration 013 Live Commissioning): migration 013 is
+now APPLIED AND LIVE-COMMISSIONED**, formally recorded in Supabase's
+migration ledger as `20260921182042 section_analyzer`. Schema verified
+directly (not via the ledger) to match the file exactly: both tables'
+columns/types, all 5 FKs (`ON DELETE CASCADE` on bid/section/requirement,
+`ON DELETE SET NULL` on the two analysis-run/result links), the PK/unique
+constraint, the `direction` CHECK constraint, all 8 indexes (including
+the idempotency index), RLS enabled on both tables, and the exact 4-policy
+set the audited source now defines (`outline_section_requirements`:
+authenticated select/insert/delete; `section_reviews`: authenticated
+select ONLY — no insert/update/delete policy at all). Security probes via
+real role-switched, **committed** transactions (not rolled back) proved:
+the authorized bid-owning user can select/insert/delete on `outline_
+section_requirements` and select-only on `section_reviews`; an
+unaffiliated `authenticated` user (this project has only one real
+organization, so cross-org access was simulated via an `auth.uid()` with
+no `organization_members` row — the same predicate `is_organization_
+member` evaluates for a genuinely different org) and `anon` were both
+rejected on every operation against both tables; critically, a direct
+`authenticated` INSERT into `section_reviews` — the audit's own fix — was
+rejected live (`new row violates row-level security policy`), and no
+role (including the authorized owner) can UPDATE/DELETE a `section_
+reviews` row at all, confirming genuine immutability. FK integrity
+confirmed: mapping to a nonexistent requirement_id is rejected
+(`23503`). One genuine, narrow **integrity gap** found and accepted as a
+documented limitation, not fixed: `outline_section_requirements` has no
+DB-level check that `requirement_id`'s own bid matches the mapping row's
+`bid_id` — a bid-authorized user could theoretically insert a row
+pointing `bid_id=1` at a requirement that actually belongs to a different
+bid. This requires already having legitimate write access to the row's
+OWN `bid_id` (no privilege escalation, no content exposure — only an
+opaque foreign id reference), is never reachable through the real
+application code path (the UI/tenancy layer only ever offers same-bid
+requirement options), and matches this schema's own established pattern
+of trusting application-layer consistency across joined FKs elsewhere
+(no other "mapping" table in this schema enforces cross-FK bid
+consistency via a DB trigger either) — adding one would be a genuinely
+new mechanism, out of scope for commissioning an existing design.
+Live-proved via the REAL application code paths (no separate
+commissioning path invented): `tenancy.get_section_requirement_ids_
+authenticated`/`set_section_requirement_mapping_authenticated`/`get_
+section_requirement_map_authenticated` (PI-3D's bulk reader) round-trip
+correctly (read → replace-all modify → replace-all modify again → bulk
+read agrees) against bid 1; `tenancy.analyze_section_for_organization`
+(ONE real, bounded Anthropic call, synthetic disposable text) persisted a
+genuine `section_reviews` row, a second identical call reused it
+idempotently (a poisoned `section_analyzer._call_section_analyzer` proved
+zero second model call), and the authenticated read path saw it. PI-3D
+BUILD integration re-verified on the real Bank of Canada bid (bid 8): one
+disposable section created and mapped to 2 real requirements via the real
+tenancy path, persisted correctly across a fresh read ("reopening BUILD"),
+`section_analyzer.build_section_context` consumed the mapping without
+error, and a full `page_build(8)` render completed with zero exceptions
+and zero `tenancy.SectionMappingUnavailableError` — the graceful-
+degradation path added during PI-3D now sits **unused in normal live
+operation**, retained purely as defensive fallback (e.g. a future
+environment where 013 genuinely isn't applied yet), not removed. Security
+advisors re-checked post-commissioning: same 3 pre-existing findings as
+before (`model_usage_events` RLS-no-policy, `can_access_bid`/`is_
+organization_member` SECURITY DEFINER, auth leaked-password-protection)
+— zero new findings attributable to migration 013, confirming the fix
+introduced no regression. All disposable rows (2 `outline_sections`, their
+cascaded `outline_section_requirements`/`section_reviews` children) were
+deleted; verified zero residue and the original 24 legitimate `outline_
+sections` rows fully intact. No further code changes were required this
+pass — the audit's one fix was already correct as commissioned.
 
 > **LAST VERIFIED EXTERNAL STATE** (as of the audit that wrote this file):
 > migration 012 was applied to the project's Supabase database by the repo
