@@ -80,6 +80,28 @@
 -- insert — matching the instruction that a memory item's provenance can
 -- never be silently altered after creation.
 --
+-- ── Write-boundary hardening (commissioning-review pass) ──────────────────
+-- Four invariants enforced STRUCTURALLY, not merely by the Python dataclass
+-- (organizational_memory.py's __post_init__), so a direct/buggy/future
+-- insert that bypasses the dataclass is still rejected by Postgres itself:
+--   1. organizational_memory_items_exact_source_identity (CHECK) —
+--      SOURCE_MEMORY/PROPOSAL_MEMORY must carry source_file_id or
+--      source_content_hash.
+--   2. organizational_memory_items_approved_requires_lineage (CHECK) +
+--      trg_organizational_memory_items_guard_derived_lineage (trigger) —
+--      APPROVED_FIRM_KNOWLEDGE requires derived_from_item_id, the composite
+--      FK forces it to be same-organization, and the trigger forces the
+--      referenced row's own memory_class to be SOURCE_MEMORY.
+--   3. create_organizational_memory_item() (RPC, below) rejects
+--      memory_class = 'APPROVED_FIRM_KNOWLEDGE' outright — approved-
+--      knowledge creation is reserved for a separate, explicit human-
+--      approval write path this migration does not build. tenancy.py's
+--      create_organizational_memory_item_for_organization() enforces the
+--      same rejection at the application layer as defense-in-depth.
+--   4. trg_organizational_memory_items_guard_source_bid_org (trigger) —
+--      source_bid_id, when present, must belong to a bid in the SAME
+--      organization_id as the memory item.
+--
 -- ── Organization scoping / RLS ─────────────────────────────────────────────
 -- Reuses `is_organization_member(uuid)` (migration 008) directly, the same
 -- function firm_profiles' organization-scoped policies already use — no
@@ -158,6 +180,30 @@ create table if not exists organizational_memory_items (
         or
         (memory_class <> 'APPROVED_FIRM_KNOWLEDGE'
             and approved_by_user_id is null and approved_at is null)
+    ),
+
+    -- Exact-source enforcement at the DB level (mirrors
+    -- OrganizationalMemoryItem.__post_init__'s Python-side check, which is
+    -- not sufficient on its own -- a direct/buggy/future insert that
+    -- bypasses the dataclass must still be rejected here): SOURCE_MEMORY
+    -- and PROPOSAL_MEMORY must carry at least one real source identity
+    -- coordinate. APPROVED_FIRM_KNOWLEDGE is unconstrained by this check
+    -- (its own lineage requirement is enforced separately below).
+    constraint organizational_memory_items_exact_source_identity check (
+        memory_class not in ('SOURCE_MEMORY', 'PROPOSAL_MEMORY')
+        or source_file_id is not null
+        or source_content_hash is not null
+    ),
+
+    -- APPROVED_FIRM_KNOWLEDGE must have traceable SOURCE_MEMORY lineage:
+    -- derived_from_item_id is required whenever memory_class is
+    -- APPROVED_FIRM_KNOWLEDGE. The composite FK above already forces same-
+    -- organization; the additional constraint that the referenced item is
+    -- ACTUALLY memory_class = 'SOURCE_MEMORY' cannot be expressed by a
+    -- plain CHECK (it requires inspecting a different row) and is enforced
+    -- by the trigger below instead.
+    constraint organizational_memory_items_approved_requires_lineage check (
+        memory_class <> 'APPROVED_FIRM_KNOWLEDGE' or derived_from_item_id is not null
     )
 );
 
@@ -211,6 +257,84 @@ create trigger trg_organizational_memory_items_immutable_provenance
     for each row execute function public.organizational_memory_items_guard_immutable_provenance();
 
 -- ═══════════════════════════════════════════════════════════════════════════
+-- APPROVED_FIRM_KNOWLEDGE lineage-class guard trigger
+-- ═══════════════════════════════════════════════════════════════════════════
+-- The composite FK on derived_from_item_id already forces same-organization
+-- and referential existence. What a FK/CHECK cannot express is "the
+-- referenced row's OWN memory_class column is SOURCE_MEMORY" -- that needs
+-- to inspect a different row, so it is a trigger. Combined with the
+-- organizational_memory_items_approved_requires_lineage CHECK above, an
+-- APPROVED_FIRM_KNOWLEDGE row with no identified SOURCE_MEMORY lineage is
+-- structurally impossible to insert or update into this table.
+create or replace function public.organizational_memory_items_guard_derived_lineage()
+returns trigger
+language plpgsql
+as $$
+declare
+    v_source_class text;
+begin
+    if new.derived_from_item_id is not null then
+        select memory_class into v_source_class
+        from public.organizational_memory_items
+        where id = new.derived_from_item_id;
+
+        if v_source_class is null then
+            raise exception 'organizational_memory_items: derived_from_item_id % does not reference an existing item', new.derived_from_item_id;
+        end if;
+
+        if v_source_class <> 'SOURCE_MEMORY' then
+            raise exception 'organizational_memory_items: derived_from_item_id must reference a SOURCE_MEMORY item, not %', v_source_class;
+        end if;
+    end if;
+    return new;
+end;
+$$;
+
+drop trigger if exists trg_organizational_memory_items_guard_derived_lineage on public.organizational_memory_items;
+create trigger trg_organizational_memory_items_guard_derived_lineage
+    before insert or update on public.organizational_memory_items
+    for each row execute function public.organizational_memory_items_guard_derived_lineage();
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- source_bid_id cross-tenant integrity guard trigger
+-- ═══════════════════════════════════════════════════════════════════════════
+-- source_bid_id is provenance-only (never a retrieval/RLS scoping column --
+-- see the column comment above), but when present it must still belong to
+-- the SAME organization as the memory item itself. bids.organization_id
+-- (migration 007) is a direct column, but a composite FK against it would
+-- require altering the bids table, which this migration's own header
+-- states it will not do -- so this is enforced with a trigger that looks
+-- up the referenced bid's organization_id and rejects a mismatch.
+create or replace function public.organizational_memory_items_guard_source_bid_org()
+returns trigger
+language plpgsql
+as $$
+declare
+    v_bid_org uuid;
+begin
+    if new.source_bid_id is not null then
+        select organization_id into v_bid_org
+        from public.bids
+        where id = new.source_bid_id;
+
+        if v_bid_org is null then
+            raise exception 'organizational_memory_items: source_bid_id % does not reference an existing bid', new.source_bid_id;
+        end if;
+
+        if v_bid_org <> new.organization_id then
+            raise exception 'organizational_memory_items: source_bid_id % belongs to a different organization than this memory item', new.source_bid_id;
+        end if;
+    end if;
+    return new;
+end;
+$$;
+
+drop trigger if exists trg_organizational_memory_items_guard_source_bid_org on public.organizational_memory_items;
+create trigger trg_organizational_memory_items_guard_source_bid_org
+    before insert or update on public.organizational_memory_items
+    for each row execute function public.organizational_memory_items_guard_source_bid_org();
+
+-- ═══════════════════════════════════════════════════════════════════════════
 -- create_organizational_memory_item — the ONLY supported write path
 -- ═══════════════════════════════════════════════════════════════════════════
 -- service_role only (mirrors migration 015's write-boundary pattern).
@@ -231,6 +355,9 @@ begin
     end if;
     if p_item->>'memory_class' is null then
         raise exception 'create_organizational_memory_item: memory_class is required';
+    end if;
+    if p_item->>'memory_class' = 'APPROVED_FIRM_KNOWLEDGE' then
+        raise exception 'create_organizational_memory_item: APPROVED_FIRM_KNOWLEDGE creation is reserved for the explicit human-approval flow, not this generic write path';
     end if;
     if p_item->>'content' is null or p_item->>'content_hash' is null then
         raise exception 'create_organizational_memory_item: content and content_hash are required';

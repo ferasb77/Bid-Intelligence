@@ -1442,11 +1442,25 @@ def create_organizational_memory_item_for_organization(
     content_hash is ALWAYS recomputed server-side from `item['content']`
     via organizational_memory.content_hash() -- never accepted verbatim
     from the caller -- so a caller cannot claim a content_hash that does
-    not match the content actually being stored."""
+    not match the content actually being stored.
+
+    This generic path REJECTS memory_class = 'APPROVED_FIRM_KNOWLEDGE'
+    outright (defense-in-depth alongside migration 016's own RPC-level
+    rejection) -- a caller cannot manufacture trusted firm knowledge merely
+    by supplying approved_by/approved_at/derived_from_item_id as ordinary
+    parameters. Approved-knowledge creation is reserved for a separate,
+    explicit human-approval write path that this phase does not build; a
+    future OM-2 approval function is where that belongs, not here."""
     if not organization_id:
         raise ValueError(
             "create_organizational_memory_item_for_organization requires an explicit organization_id")
     import organizational_memory as om
+
+    if item.get("memory_class") == om.MemoryClass.APPROVED_FIRM_KNOWLEDGE.value:
+        raise ValueError(
+            "create_organizational_memory_item_for_organization: APPROVED_FIRM_KNOWLEDGE "
+            "creation is reserved for the explicit human-approval flow, not this generic "
+            "create path")
 
     content = item.get("content") or ""
     clean = dict(item)

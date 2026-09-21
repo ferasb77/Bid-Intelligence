@@ -11,13 +11,19 @@ either omitted (deterministic keyword fallback) or a hand-built mock
 function, never a real or mocked Voyage/Anthropic client invocation of any
 kind.
 """
+import re
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 import organizational_memory as om
 import tenancy
+
+
+_MIGRATION_016 = (Path(__file__).resolve().parents[1] / "migrations"
+                  / "016_organizational_memory.sql").read_text(encoding="utf-8")
 
 
 ORG_A = "11111111-1111-1111-1111-111111111111"
@@ -410,3 +416,143 @@ class TestEvidenceArchitectureCompatibility:
         import hashlib
         expected = hashlib.sha256("sample text".encode("utf-8")).hexdigest()
         assert om.content_hash("sample text") == expected
+
+
+# ── Commissioning-review hardening: SQL-level write-boundary invariants ──
+#
+# Migration 016 is NOT applied to any live database in this test
+# environment (see docs/current/SYSTEM_STATE.md / CLAUDE.md) -- these
+# tests cannot issue real DDL/DML. They instead follow the same two-layer
+# pattern tests/test_proposal_intelligence_database.py established for
+# migration 015: (a) assert the migration FILE's own text expresses the
+# intended CHECK/trigger/FK shape (a "migration DDL-intent" test -- proves
+# the SQL text says what it must, not that Postgres has executed it), and
+# (b) exercise the Python-layer entry point (tenancy.py's generic create
+# function) directly -- including calls that do NOT go through
+# OrganizationalMemoryItem's own __post_init__ at all -- to prove the
+# application layer independently refuses the same disallowed cases as a
+# defense-in-depth measure, not merely because the dataclass happens to.
+
+class TestMigrationDDLIntent:
+    """Migration 016 DDL-intent assertions -- mirrors
+    TestMigrationDDLIntent in tests/test_proposal_intelligence_database.py."""
+
+    def test_exact_source_identity_check_constraint_present(self):
+        assert "organizational_memory_items_exact_source_identity" in _MIGRATION_016
+        assert re.search(
+            r"memory_class not in \('SOURCE_MEMORY', 'PROPOSAL_MEMORY'\)\s*"
+            r"or source_file_id is not null\s*"
+            r"or source_content_hash is not null",
+            _MIGRATION_016)
+
+    def test_approved_firm_knowledge_requires_lineage_check_constraint_present(self):
+        assert "organizational_memory_items_approved_requires_lineage" in _MIGRATION_016
+        assert re.search(
+            r"memory_class <> 'APPROVED_FIRM_KNOWLEDGE' or derived_from_item_id is not null",
+            _MIGRATION_016)
+
+    def test_derived_from_item_id_has_composite_same_organization_fk(self):
+        assert re.search(
+            r"foreign key\s*\(derived_from_item_id,\s*organization_id\)\s*"
+            r"references organizational_memory_items\s*\(id,\s*organization_id\)",
+            _MIGRATION_016, re.IGNORECASE)
+
+    def test_table_has_composite_unique_id_organization_id(self):
+        assert "unique (id, organization_id)" in _MIGRATION_016
+
+    def test_derived_lineage_class_guard_trigger_present(self):
+        assert "organizational_memory_items_guard_derived_lineage" in _MIGRATION_016
+        assert "trg_organizational_memory_items_guard_derived_lineage" in _MIGRATION_016
+        # The trigger body must actually check the referenced row's
+        # memory_class, not just its existence.
+        assert re.search(
+            r"select memory_class into v_source_class\s*"
+            r"from public\.organizational_memory_items\s*"
+            r"where id = new\.derived_from_item_id",
+            _MIGRATION_016)
+        assert "v_source_class <> 'SOURCE_MEMORY'" in _MIGRATION_016
+
+    def test_source_bid_id_cross_tenant_guard_trigger_present(self):
+        assert "organizational_memory_items_guard_source_bid_org" in _MIGRATION_016
+        assert "trg_organizational_memory_items_guard_source_bid_org" in _MIGRATION_016
+        assert re.search(
+            r"select organization_id into v_bid_org\s*from public\.bids\s*"
+            r"where id = new\.source_bid_id",
+            _MIGRATION_016)
+        assert "v_bid_org <> new.organization_id" in _MIGRATION_016
+
+    def test_generic_rpc_rejects_approved_firm_knowledge(self):
+        assert re.search(
+            r"if p_item->>'memory_class' = 'APPROVED_FIRM_KNOWLEDGE' then\s*"
+            r"raise exception",
+            _MIGRATION_016)
+
+    def test_both_new_guard_triggers_fire_before_insert_or_update(self):
+        assert re.search(
+            r"before insert or update on public\.organizational_memory_items\s*"
+            r"for each row execute function public\.organizational_memory_items_guard_derived_lineage",
+            _MIGRATION_016)
+        assert re.search(
+            r"before insert or update on public\.organizational_memory_items\s*"
+            r"for each row execute function public\.organizational_memory_items_guard_source_bid_org",
+            _MIGRATION_016)
+
+
+class TestGenericCreatePathRejectsApprovedFirmKnowledge:
+    """tenancy.create_organizational_memory_item_for_organization() is the
+    generic write path. It must reject memory_class =
+    'APPROVED_FIRM_KNOWLEDGE' at the APPLICATION layer -- called directly,
+    bypassing OrganizationalMemoryItem's own __post_init__ entirely (no
+    dataclass is constructed here), to prove this is genuine defense-in-
+    depth and not just a restatement of the dataclass's own validation."""
+
+    def test_rejects_approved_firm_knowledge_via_generic_path(self):
+        with patch.object(tenancy.db, "create_organizational_memory_item") as fake_create:
+            with pytest.raises(ValueError):
+                tenancy.create_organizational_memory_item_for_organization(
+                    ORG_A,
+                    {
+                        "memory_class": "APPROVED_FIRM_KNOWLEDGE",
+                        "title": "t", "content": "manufactured trusted fact",
+                        "approved_by_user_id": "user-1",
+                        "approved_at": "2026-01-01T00:00:00+00:00",
+                        "derived_from_item_id": 1,
+                    },
+                    created_by_user_id="user-1",
+                )
+            # The DB layer must never even be reached -- rejection happens
+            # before any write is attempted.
+            fake_create.assert_not_called()
+
+    def test_source_memory_still_creatable_via_generic_path(self):
+        """The restriction must be scoped to APPROVED_FIRM_KNOWLEDGE only
+        -- SOURCE_MEMORY remains creatable through the same generic path,
+        unaffected."""
+        with patch.object(tenancy.db, "create_organizational_memory_item",
+                          side_effect=lambda payload: {"id": 1, **payload}) as fake_create:
+            result = tenancy.create_organizational_memory_item_for_organization(
+                ORG_A,
+                {
+                    "memory_class": "SOURCE_MEMORY",
+                    "title": "t", "content": "authentic source content",
+                    "source_file_id": "file-9",
+                },
+                created_by_user_id="user-1",
+            )
+        fake_create.assert_called_once()
+        assert result["memory_class"] == "SOURCE_MEMORY"
+
+    def test_proposal_memory_still_creatable_via_generic_path(self):
+        with patch.object(tenancy.db, "create_organizational_memory_item",
+                          side_effect=lambda payload: {"id": 2, **payload}) as fake_create:
+            result = tenancy.create_organizational_memory_item_for_organization(
+                ORG_A,
+                {
+                    "memory_class": "PROPOSAL_MEMORY",
+                    "title": "t", "content": "reusable proposal language",
+                    "source_file_id": "file-10",
+                },
+                created_by_user_id="user-1",
+            )
+        fake_create.assert_called_once()
+        assert result["memory_class"] == "PROPOSAL_MEMORY"
