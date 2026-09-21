@@ -171,6 +171,27 @@ class TestAllPagesRuntime(unittest.TestCase):
     @patch("streamlit.markdown")
     @patch("streamlit.columns", side_effect=mock_cols)
     @patch("streamlit.button", return_value=False)
+    def test_requirement_drafting_workspace_executes(self, *args):
+        """PI-3C: pages/section_drafting_workspace.py's render function,
+        called directly (mirroring pages/stage_build.py's own wiring) with
+        a real requirement from bid 8 -- exercises the READ-ONLY status
+        path (tenancy.get_section_draft_status_for_organization) against
+        live data. `st.button` mocked to False means the (real, network-
+        calling) drafting/generation action is never triggered -- this
+        test only proves the render path itself has no NameError/
+        AttributeError, not that generation works (that is PI-3A/PI-3B's
+        own live-commissioned, separately-tested concern)."""
+        import pages.section_drafting_workspace as workspace
+        requirement = {
+            "id": 144, "req_id": "R1", "category": "Mandatory",
+            "description": "Smoke-test requirement for the drafting workspace render path.",
+            "source_refs": [],
+        }
+        workspace.render_requirement_drafting_workspace(self.bid_id, requirement, outline_section=None)
+
+    @patch("streamlit.markdown")
+    @patch("streamlit.columns", side_effect=mock_cols)
+    @patch("streamlit.button", return_value=False)
     @patch("streamlit.number_input", return_value=0.0)
     @patch("streamlit.selectbox", return_value="Pending")
     @patch("streamlit.form")

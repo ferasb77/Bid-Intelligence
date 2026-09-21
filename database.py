@@ -1395,7 +1395,18 @@ def get_or_create_section_draft(
     back. Do NOT replace this with a separate SELECT-then-INSERT from
     Python -- that is exactly the race this function exists to close. The
     RPC itself rejects an empty draft_text outright -- a failed/empty
-    draft can never be persisted through this path."""
+    draft can never be persisted through this path.
+
+    Deliberately does NOT pass `material_claims` (PI-3C, migration 019 --
+    section_drafting.SectionDraftResult.material_claims/migrations/019_
+    section_draft_claim_mappings.sql) even though that field now exists on
+    the in-memory result: migration 018's LIVE, already-commissioned RPC
+    signature has no `p_material_claims` parameter, and unconditionally
+    including one in this call's payload would break this currently-
+    working live path with a "no matching function" error until migration
+    019 is separately applied and commissioned. That wiring (adding the
+    parameter here) ships together with migration 019's own commissioning
+    task, never ahead of it."""
     return _rpc_one(get_client().rpc("get_or_create_section_draft", {
         "p_bid_id": bid_id, "p_req_id": req_id, "p_input_fingerprint": input_fingerprint,
         "p_contract_version": contract_version, "p_draft_text": draft_text,

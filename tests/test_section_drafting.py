@@ -405,3 +405,170 @@ class TestFailureHandling:
         result = sd.draft_section(brief=brief, draft_fn=_failing_draft_fn())
         assurance = sd.assure_section_draft(brief, result)
         assert assurance.passed is False
+
+
+# ── PI-3C: claim-level evidence support mapping ─────────────────────────
+
+class TestMaterialClaimMapping:
+
+    def test_claim_maps_only_to_valid_evidence_ids(self):
+        om_item = _om_item()
+        brief = _build_brief(persisted_enrichment=_enrichment(organizational_evidence=[om_item]))
+        result = sd.draft_section(brief=brief, draft_fn=_draft_fn_returning({
+            "draft_text": "text", "requirements_addressed": ["R-1"],
+            "material_claims": [
+                {"claim_id": "C1", "claim_text": "Our firm holds the accreditation.",
+                 "claim_type": "ORGANIZATIONAL_KNOWLEDGE", "evidence_ids": ["OM1", "OM99"],
+                 "support_status": "SUPPORTED"},
+            ],
+        }))
+        assert len(result.material_claims) == 1
+        claim = result.material_claims[0]
+        assert claim.evidence_ids == ("OM1",)   # OM99 (invented) silently dropped
+
+    def test_unsupported_claim_never_appears_as_verified(self):
+        brief = _build_brief()
+        result = sd.draft_section(brief=brief, draft_fn=_draft_fn_returning({
+            "draft_text": "text", "requirements_addressed": ["R-1"],
+            "material_claims": [
+                {"claim_id": "C1", "claim_text": "We have delivered this exact scope before.",
+                 "claim_type": "UNSUPPORTED_GAP", "evidence_ids": ["OM1", "PE1"],
+                 "support_status": "SUPPORTED"},
+            ],
+        }))
+        claim = result.material_claims[0]
+        assert claim.claim_type == sd.CLAIM_TYPE_UNSUPPORTED_GAP
+        assert claim.evidence_ids == ()
+        assert claim.support_status == sd.SUPPORT_STATUS_UNSUPPORTED
+
+    def test_proposed_approach_distinguishable_from_historical_fact(self):
+        brief = _build_brief()
+        result = sd.draft_section(brief=brief, draft_fn=_draft_fn_returning({
+            "draft_text": "text", "requirements_addressed": ["R-1"],
+            "material_claims": [
+                {"claim_id": "C1", "claim_text": "We will assign a dedicated compliance lead.",
+                 "claim_type": "PROPOSED_APPROACH", "evidence_ids": [], "support_status": "SUPPORTED"},
+            ],
+        }))
+        claim = result.material_claims[0]
+        assert claim.claim_type == sd.CLAIM_TYPE_PROPOSED_APPROACH
+        assert claim.support_status == sd.SUPPORT_STATUS_COMMITMENT
+        assert claim.support_status != sd.SUPPORT_STATUS_SUPPORTED
+
+    def test_verified_fact_backed_only_by_source_memory_is_downgraded(self):
+        """SOURCE_MEMORY (lower trust) can never by itself back a claim
+        tagged VERIFIED_FACT -- the claim is downgraded to
+        UNSUPPORTED_GAP rather than left as a falsely-verified fact."""
+        om_item = _om_item(item_id="s1", memory_class="SOURCE_MEMORY", is_trusted_fact=False)
+        brief = _build_brief(persisted_enrichment=_enrichment(organizational_evidence=[om_item]))
+        result = sd.draft_section(brief=brief, draft_fn=_draft_fn_returning({
+            "draft_text": "text", "requirements_addressed": ["R-1"],
+            "material_claims": [
+                {"claim_id": "C1", "claim_text": "This is a verified historical fact.",
+                 "claim_type": "VERIFIED_FACT", "evidence_ids": ["OM1"], "support_status": "SUPPORTED"},
+            ],
+        }))
+        claim = result.material_claims[0]
+        assert claim.claim_type == sd.CLAIM_TYPE_UNSUPPORTED_GAP
+        assert claim.evidence_ids == ()
+        assert claim.support_status == sd.SUPPORT_STATUS_UNSUPPORTED
+
+    def test_verified_fact_backed_by_approved_firm_knowledge_is_accepted(self):
+        om_item = _om_item(memory_class="APPROVED_FIRM_KNOWLEDGE")
+        brief = _build_brief(persisted_enrichment=_enrichment(organizational_evidence=[om_item]))
+        result = sd.draft_section(brief=brief, draft_fn=_draft_fn_returning({
+            "draft_text": "text", "requirements_addressed": ["R-1"],
+            "material_claims": [
+                {"claim_id": "C1", "claim_text": "We hold ICF ACTP accreditation.",
+                 "claim_type": "VERIFIED_FACT", "evidence_ids": ["OM1"], "support_status": "SUPPORTED"},
+            ],
+        }))
+        claim = result.material_claims[0]
+        assert claim.claim_type == sd.CLAIM_TYPE_VERIFIED_FACT
+        assert claim.evidence_ids == ("OM1",)
+        assert claim.support_status == sd.SUPPORT_STATUS_SUPPORTED
+
+    def test_verified_fact_backed_by_proposal_evidence_is_accepted(self):
+        assessment = _assessment(proposal_source_refs=[{"section": "3.2", "file_id": "prop-1"}])
+        brief = _build_brief(assessment=assessment)
+        result = sd.draft_section(brief=brief, draft_fn=_draft_fn_returning({
+            "draft_text": "text", "requirements_addressed": ["R-1"],
+            "material_claims": [
+                {"claim_id": "C1", "claim_text": "As stated in our submitted proposal.",
+                 "claim_type": "VERIFIED_FACT", "evidence_ids": ["PE1"], "support_status": "SUPPORTED"},
+            ],
+        }))
+        claim = result.material_claims[0]
+        assert claim.claim_type == sd.CLAIM_TYPE_VERIFIED_FACT
+        assert claim.evidence_ids == ("PE1",)
+
+    def test_organizational_knowledge_with_no_valid_evidence_is_downgraded(self):
+        brief = _build_brief()
+        result = sd.draft_section(brief=brief, draft_fn=_draft_fn_returning({
+            "draft_text": "text", "requirements_addressed": ["R-1"],
+            "material_claims": [
+                {"claim_id": "C1", "claim_text": "Our firm has relevant experience.",
+                 "claim_type": "ORGANIZATIONAL_KNOWLEDGE", "evidence_ids": ["OM1"], "support_status": "SUPPORTED"},
+            ],
+        }))
+        claim = result.material_claims[0]
+        assert claim.claim_type == sd.CLAIM_TYPE_UNSUPPORTED_GAP
+        assert claim.evidence_ids == ()
+
+    def test_unknown_claim_type_drops_the_whole_claim(self):
+        brief = _build_brief()
+        result = sd.draft_section(brief=brief, draft_fn=_draft_fn_returning({
+            "draft_text": "text", "requirements_addressed": ["R-1"],
+            "material_claims": [
+                {"claim_id": "C1", "claim_text": "x", "claim_type": "SORT_OF_TRUE",
+                 "evidence_ids": [], "support_status": "SUPPORTED"},
+            ],
+        }))
+        assert result.material_claims == ()
+
+    def test_duplicate_claim_ids_keep_only_first(self):
+        brief = _build_brief()
+        result = sd.draft_section(brief=brief, draft_fn=_draft_fn_returning({
+            "draft_text": "text", "requirements_addressed": ["R-1"],
+            "material_claims": [
+                {"claim_id": "C1", "claim_text": "first", "claim_type": "PROPOSED_APPROACH", "evidence_ids": []},
+                {"claim_id": "C1", "claim_text": "second", "claim_type": "PROPOSED_APPROACH", "evidence_ids": []},
+            ],
+        }))
+        assert len(result.material_claims) == 1
+        assert result.material_claims[0].claim_text == "first"
+
+    def test_material_claims_bounded(self):
+        brief = _build_brief()
+        many = [
+            {"claim_id": f"C{i}", "claim_text": f"claim {i}", "claim_type": "PROPOSED_APPROACH", "evidence_ids": []}
+            for i in range(sd.MAX_MATERIAL_CLAIMS + 5)
+        ]
+        result = sd.draft_section(brief=brief, draft_fn=_draft_fn_returning({
+            "draft_text": "text", "requirements_addressed": ["R-1"], "material_claims": many,
+        }))
+        assert len(result.material_claims) == sd.MAX_MATERIAL_CLAIMS
+
+    def test_missing_material_claims_key_defaults_to_empty(self):
+        """Backward compatible -- a draft_fn (or a real model response)
+        that omits material_claims entirely must never raise."""
+        brief = _build_brief()
+        result = sd.draft_section(brief=brief, draft_fn=_draft_fn_returning({
+            "draft_text": "text", "requirements_addressed": ["R-1"],
+        }))
+        assert result.material_claims == ()
+
+    def test_material_claim_to_dict_round_trips(self):
+        om_item = _om_item()
+        brief = _build_brief(persisted_enrichment=_enrichment(organizational_evidence=[om_item]))
+        result = sd.draft_section(brief=brief, draft_fn=_draft_fn_returning({
+            "draft_text": "text", "requirements_addressed": ["R-1"],
+            "material_claims": [
+                {"claim_id": "C1", "claim_text": "Firm accreditation claim.",
+                 "claim_type": "ORGANIZATIONAL_KNOWLEDGE", "evidence_ids": ["OM1"],
+                 "support_status": "SUPPORTED"},
+            ],
+        }))
+        payload = result.to_dict()
+        assert payload["material_claims"][0]["claim_id"] == "C1"
+        assert payload["material_claims"][0]["evidence_ids"] == ["OM1"]

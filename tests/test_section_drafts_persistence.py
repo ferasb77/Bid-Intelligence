@@ -48,7 +48,7 @@ class _FakeDraftStore:
                        evaluation_criteria_addressed=None, evidence_items_used=None,
                        unsupported_or_unresolved_points=None, contradictions_or_caveats=None,
                        human_confirmation_required=True, drafting_notes=None, word_count=None,
-                       assurance_issues=None, created_by_user_id=None):
+                       assurance_issues=None, material_claims=None, created_by_user_id=None):
         if not draft_text or not draft_text.strip():
             raise ValueError("get_or_create_section_draft: draft_text must be non-empty")
         for row in self.rows:
@@ -68,6 +68,7 @@ class _FakeDraftStore:
             "human_confirmation_required": human_confirmation_required,
             "drafting_notes": drafting_notes, "word_count": word_count,
             "assurance_passed": assurance_passed, "assurance_issues": assurance_issues or [],
+            "material_claims": material_claims or [],
             "created_by_user_id": created_by_user_id,
             "created_at": f"2026-01-01T00:00:{self._next_id:02d}+00:00",
         }

@@ -15,6 +15,7 @@ from analyst import draft_proposal_section
 from config import api_key_configured
 from components.ui import (metric_card, status_badge, priority_badge, readiness_bar,
                            STATUSES, PRIORITIES, DOC_TYPES)
+from pages.section_drafting_workspace import render_requirement_drafting_workspace
 
 
 def _current_access_token_and_org():
@@ -245,6 +246,28 @@ def page_build(bid_id: int):
                         tenancy.set_section_requirement_mapping_authenticated(
                             _token, bid_id, active_sec["id"], mapped_req_ids)
                         persisted_req_ids = mapped_req_ids
+
+                # ── PI-3C: Requirement Drafting Workspace ────────────────
+                # Requirement -> evaluation intent -> evidence -> gaps ->
+                # grounded draft -> assurance -> evidence behind material
+                # claims, for ONE requirement at a time. Reads ONLY already-
+                # persisted intelligence on render (no Anthropic/OM-retrieval/
+                # reanalysis) -- see pages/section_drafting_workspace.py.
+                with st.expander("🧠 Requirement Drafting Workspace (Bid Intelligence)", expanded=False):
+                    workspace_pool = mapped_reqs if mapped_reqs else reqs
+                    if not workspace_pool:
+                        st.caption("No requirements available to draft against for this bid yet.")
+                    else:
+                        ws_options = {
+                            f"[{r.get('req_id','—')}] {r.get('description','')[:70]}": r
+                            for r in workspace_pool if r.get("id")
+                        }
+                        ws_choice = st.selectbox(
+                            "Open drafting workspace for requirement:",
+                            list(ws_options.keys()), key=f"ws_req_pick_{active_sec['id']}")
+                        if ws_choice:
+                            render_requirement_drafting_workspace(
+                                bid_id, ws_options[ws_choice], outline_section=active_sec)
 
                 # Semantic Content Reuse
                 with st.expander("📚 Relevant Content Library Blocks (Semantic Search)", expanded=False):

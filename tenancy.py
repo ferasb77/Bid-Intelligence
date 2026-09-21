@@ -2124,8 +2124,11 @@ def _assemble_section_drafting_brief(
 
 
 def _section_draft_row_to_dict(row: dict) -> dict:
-    """Adapts a persisted `section_drafts` row (migration 018, PI-3B) into
-    the SAME dict shape section_drafting.SectionDraftResult.to_dict()
+    """Adapts a persisted `section_drafts` row (migration 018, PI-3B; the
+    `material_claims` field is migration 019, PI-3C -- NOT applied live as
+    of this writing, so `row.get("material_claims")` is always absent/None
+    against the current live schema and this correctly degrades to `[]`)
+    into the SAME dict shape section_drafting.SectionDraftResult.to_dict()
     produces -- a cache hit and a fresh computation are indistinguishable
     to a caller."""
     return {
@@ -2142,6 +2145,7 @@ def _section_draft_row_to_dict(row: dict) -> dict:
         "drafting_notes": row.get("drafting_notes"),
         "word_count": row.get("word_count"),
         "failure_reason": None,
+        "material_claims": row.get("material_claims") or [],
     }
 
 
@@ -2244,7 +2248,17 @@ def get_or_generate_section_draft(
         contradictions_or_caveats=list(result.contradictions_or_caveats),
         human_confirmation_required=result.human_confirmation_required,
         drafting_notes=result.drafting_notes, word_count=result.word_count,
-        assurance_issues=list(assurance.issues), created_by_user_id=created_by_user_id,
+        assurance_issues=list(assurance.issues),
+        # material_claims (PI-3C) deliberately NOT passed here -- see
+        # database.get_or_create_section_draft's own docstring: migration
+        # 019 is not yet live, and this call must not break the currently-
+        # working, live-commissioned migration-018 RPC. A freshly generated
+        # draft's material_claims still exist in `result` and are shown by
+        # the UI for that one response; only the PERSISTED round-trip omits
+        # them until migration 019 ships (see tenancy._section_draft_row_
+        # to_dict, which already reads `row.get("material_claims")`
+        # forward-compatibly for the moment this lands).
+        created_by_user_id=created_by_user_id,
     )
     if persisted is None:
         return {"brief": brief.to_dict(), "result": result.to_dict(),
@@ -2254,4 +2268,87 @@ def get_or_generate_section_draft(
         "assurance": {"passed": bool(persisted.get("assurance_passed")),
                       "issues": persisted.get("assurance_issues") or []},
         "reused": False,
+    }
+
+
+def get_section_draft_status_for_organization(
+    bid_id: int, organization_id: str, requirement_id: int,
+    outline_section: dict | None = None,
+    max_related_requirements: int = 5, max_findings: int = 5,
+) -> dict:
+    """PI-3C: the READ-ONLY status check the drafting workspace UI calls
+    on every render (instruction 12: "opening the workspace must not
+    trigger expensive work automatically"). Verifies bid ownership FIRST.
+
+    Assembles the SAME SectionDraftingBrief draft_section_for_organization/
+    get_or_generate_section_draft would (via the shared
+    `_assemble_section_drafting_brief` helper), computes the CURRENT
+    fingerprint, and reads (never writes) this requirement's persisted
+    draft history (`database.get_section_drafts`) to determine:
+
+      - `latest_draft`: the most recent persisted section_drafts row, or
+        None if this requirement has never been drafted;
+      - `is_stale`: True only when a latest_draft EXISTS and its
+        input_fingerprint no longer matches the CURRENT fingerprint (the
+        underlying intelligence has materially changed since that draft
+        was generated);
+      - `history_count`: how many prior versions exist, for a simple
+        version/history affordance (instruction 10) without building
+        visual diffing.
+
+    This function NEVER calls the drafting model, NEVER calls
+    Organizational Memory retrieval, NEVER re-runs Proposal Alignment/Fast
+    Analysis, and NEVER writes to section_drafts or any other table --
+    every read here is against already-persisted, already-bounded
+    intelligence (the exact same reads OM-3B/PI-3B's own cache-check
+    already performs and was live-proven cheap). The UI must call
+    get_or_generate_section_draft (a SEPARATE, explicit action, e.g. a
+    button click) to actually generate or refresh a draft -- this function
+    only ever tells the caller what state already exists."""
+    require_bid_access(bid_id, organization_id)
+    if not organization_id:
+        raise ValueError(
+            "get_section_draft_status_for_organization requires an explicit organization_id")
+
+    import section_drafting as sd
+
+    brief = _assemble_section_drafting_brief(
+        bid_id, organization_id, requirement_id, outline_section,
+        max_related_requirements, max_findings,
+        not_found_caller="get_section_draft_status_for_organization",
+    )
+    current_fingerprint = sd.compute_draft_input_fingerprint(brief)
+
+    history = db.get_section_drafts(bid_id, brief.req_id)
+    latest = history[0] if history else None
+    is_stale = bool(latest) and latest.get("input_fingerprint") != current_fingerprint
+
+    return {
+        "brief": brief.to_dict(),
+        "current_fingerprint": current_fingerprint,
+        "latest_draft": _section_draft_row_to_dict(latest) if latest else None,
+        "latest_draft_assurance": (
+            {"passed": bool(latest.get("assurance_passed")), "issues": latest.get("assurance_issues") or []}
+            if latest else None
+        ),
+        "latest_draft_created_at": latest.get("created_at") if latest else None,
+        "is_current": bool(latest) and not is_stale,
+        "is_stale": is_stale,
+        "history_count": len(history),
+        # Full version history (already fetched above -- no extra query),
+        # each entry {"id", "created_at", "input_fingerprint", "result",
+        # "assurance"} -- small per-requirement volume, bounded enough to
+        # return whole rather than paginate; a simple version selector
+        # (instruction 10) can index into this directly without a second
+        # round trip.
+        "history": [
+            {
+                "id": row.get("id"), "created_at": row.get("created_at"),
+                "input_fingerprint": row.get("input_fingerprint"),
+                "result": _section_draft_row_to_dict(row),
+                "assurance": {"passed": bool(row.get("assurance_passed")),
+                              "issues": row.get("assurance_issues") or []},
+            }
+            for row in history
+        ],
     }

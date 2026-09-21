@@ -124,6 +124,33 @@ SOURCE_KIND_PROCUREMENT = "PROCUREMENT_EVIDENCE"
 SOURCE_KIND_PROPOSAL = "PROPOSAL_EVIDENCE"
 SOURCE_KIND_ORGANIZATIONAL_MEMORY = "ORGANIZATIONAL_MEMORY"
 
+# ---------------------------------------------------------------------------
+# PI-3C: claim-level support status -- a closed vocabulary describing
+# whether a MATERIAL FACTUAL CLAIM in draft_text is actually backed by
+# evidence already present in the brief's registry (see
+# `_evidence_id_registry` / `MaterialClaim` below). Never trusted verbatim
+# from the model -- derived/overridden deterministically during
+# reconciliation from the claim's (fail-closed-filtered) evidence_ids and
+# claim_type, per the hierarchy rules in `_reconcile_material_claims`.
+# ---------------------------------------------------------------------------
+SUPPORT_STATUS_SUPPORTED = "SUPPORTED"
+SUPPORT_STATUS_PARTIALLY_SUPPORTED = "PARTIALLY_SUPPORTED"
+SUPPORT_STATUS_UNSUPPORTED = "UNSUPPORTED"
+# PROPOSED_APPROACH claims are forward-looking commitments, never a
+# historical fact "supported" by evidence -- COMMITMENT is a distinct
+# status so a reader can never mistake a future promise for verified
+# support.
+SUPPORT_STATUS_COMMITMENT = "COMMITMENT"
+SUPPORT_STATUSES = (
+    SUPPORT_STATUS_SUPPORTED, SUPPORT_STATUS_PARTIALLY_SUPPORTED,
+    SUPPORT_STATUS_UNSUPPORTED, SUPPORT_STATUS_COMMITMENT,
+)
+
+# A material claim is a BOUNDED improvement, not an attempt at exhaustive
+# sentence-level citation (instruction 7 explicitly forbids that) -- capped
+# so the drafting model can never turn this into an unbounded list.
+MAX_MATERIAL_CLAIMS = 12
+
 
 @dataclass(frozen=True)
 class RelatedRequirement:
@@ -417,6 +444,33 @@ class EvidenceItemUsed:
 
 
 @dataclass(frozen=True)
+class MaterialClaim:
+    """PI-3C: a bounded claim-level support mapping -- "which evidence
+    item supports THIS specific material factual claim," closing the gap
+    PI-3B identified (draft-wide `evidence_items_used` answers "which
+    evidence was used somewhere," not "which evidence backs this
+    sentence"). Deliberately NOT sentence-level/exhaustive citation
+    (instruction 7) -- a small, bounded set of the draft's MATERIAL
+    claims only, each with `evidence_ids` fail-closed filtered to ids that
+    actually exist in the brief's registry (see
+    `_reconcile_material_claims`) and a `support_status` derived
+    deterministically, never trusted verbatim from the model."""
+
+    claim_id: str
+    claim_text: str
+    claim_type: str
+    evidence_ids: tuple = ()
+    support_status: str = SUPPORT_STATUS_UNSUPPORTED
+
+    def to_dict(self) -> dict:
+        return {
+            "claim_id": self.claim_id, "claim_text": self.claim_text,
+            "claim_type": self.claim_type, "evidence_ids": list(self.evidence_ids),
+            "support_status": self.support_status,
+        }
+
+
+@dataclass(frozen=True)
 class SectionDraftResult:
     """The structured drafting result. `draft_text` is natural-language
     prose; everything else is structured, closed-vocabulary, and
@@ -435,6 +489,7 @@ class SectionDraftResult:
     drafting_notes: Optional[str] = None
     word_count: Optional[int] = None
     failure_reason: Optional[str] = None
+    material_claims: tuple = ()
 
     def to_dict(self) -> dict:
         return {
@@ -450,6 +505,7 @@ class SectionDraftResult:
             "drafting_notes": self.drafting_notes,
             "word_count": self.word_count,
             "failure_reason": self.failure_reason,
+            "material_claims": [c.to_dict() for c in self.material_claims],
         }
 
 
@@ -474,6 +530,7 @@ _DRAFTING_SYSTEM = (
 
 
 def _drafting_prompt(brief: SectionDraftingBrief, registry: dict) -> str:
+    max_claims = MAX_MATERIAL_CLAIMS
     req_block = (
         f"req_id: {brief.req_id}\ncategory: {brief.category or ''} "
         f"(mandatory={brief.is_mandatory})\ndescription: {brief.description}"
@@ -540,6 +597,13 @@ RESPONSE CONSTRAINTS
 
 TASK: draft this ONE requirement's proposal response now, following every rule above.
 
+Additionally, identify up to {max_claims} MATERIAL factual claims in your draft (skip boilerplate/
+transition sentences -- only claims a reviewer would actually need to verify) and map each to the
+evidence id(s) from the registry above that support it. A claim with no genuine supporting evidence
+id must be tagged UNSUPPORTED_GAP with an empty evidence_ids list -- never cite an id merely to make
+a claim look supported. A PROPOSED_APPROACH claim is a future commitment, not a historical fact --
+its evidence_ids (if any) are context only, never proof.
+
 Return ONLY valid JSON:
 {{
   "draft_text": "the drafted proposal prose",
@@ -551,7 +615,8 @@ Return ONLY valid JSON:
   "contradictions_or_caveats": ["<any Organizational Memory contradiction or caveat surfaced>"],
   "human_confirmation_required": true|false,
   "drafting_notes": "<=200 chars or null",
-  "word_count": <integer, actual word count of draft_text>
+  "word_count": <integer, actual word count of draft_text>,
+  "material_claims": [{{"claim_id": "C1", "claim_text": "<=300 chars, the claim as stated in the draft", "claim_type": "VERIFIED_FACT|ORGANIZATIONAL_KNOWLEDGE|PROPOSED_APPROACH|UNSUPPORTED_GAP", "evidence_ids": ["<id from the registry above>"], "support_status": "SUPPORTED|PARTIALLY_SUPPORTED|UNSUPPORTED|COMMITMENT"}}]
 }}"""
 
 
@@ -627,6 +692,8 @@ def _reconcile_draft_response(parsed: dict, brief: SectionDraftingBrief) -> Sect
     drafting_notes = parsed.get("drafting_notes")
     drafting_notes = drafting_notes.strip()[:200] if isinstance(drafting_notes, str) and drafting_notes.strip() else None
 
+    material_claims = _reconcile_material_claims(parsed.get("material_claims"), registry)
+
     return SectionDraftResult(
         requirement_id=brief.requirement_id, req_id=brief.req_id,
         draft_text=parsed.get("draft_text") or "",
@@ -638,7 +705,105 @@ def _reconcile_draft_response(parsed: dict, brief: SectionDraftingBrief) -> Sect
         contradictions_or_caveats=_coerce_str_list(parsed.get("contradictions_or_caveats")),
         human_confirmation_required=bool(parsed.get("human_confirmation_required")),
         drafting_notes=drafting_notes, word_count=word_count,
+        material_claims=material_claims,
     )
+
+
+# Evidence-source-kinds a VERIFIED_FACT claim may legitimately cite --
+# current RFP/procurement evidence, current bid-specific proposal
+# evidence, or APPROVED_FIRM_KNOWLEDGE (tier 3, human-approved reusable
+# firm fact). SOURCE_MEMORY (lower trust, tier 4) can never by itself
+# back a claim tagged VERIFIED_FACT -- exactly PI-3A's own hierarchy,
+# now enforced at the individual-claim level too.
+def _permits_verified_fact(entry: dict) -> bool:
+    if entry["source_kind"] in (SOURCE_KIND_PROCUREMENT, SOURCE_KIND_PROPOSAL):
+        return True
+    if entry["source_kind"] == SOURCE_KIND_ORGANIZATIONAL_MEMORY:
+        return entry["detail"].get("memory_class") == "APPROVED_FIRM_KNOWLEDGE"
+    return False
+
+
+def _reconcile_material_claims(raw_claims, registry: dict) -> tuple:
+    """Fail-closed reconciliation for PI-3C's claim-level support mapping
+    -- mirrors `_reconcile_draft_response`'s evidence_items_used discipline
+    exactly, plus the additional per-claim-type hierarchy rules instruction
+    7 requires:
+
+      - an unknown claim_id, non-string claim_text, or claim_type outside
+        CLAIM_TYPES drops that claim entirely (never guessed);
+      - `evidence_ids` is ALWAYS filtered to ids that actually exist in
+        the registry first -- an invented id can never survive, exactly
+        like evidence_items_used;
+      - UNSUPPORTED_GAP is forced to empty evidence_ids and UNSUPPORTED
+        status regardless of what the model returned -- it can never
+        masquerade as supported;
+      - PROPOSED_APPROACH is forced to COMMITMENT status -- a future
+        commitment is never presented as verified historical support;
+      - VERIFIED_FACT is further filtered to ONLY evidence ids
+        `_permits_verified_fact` allows (current-RFP/proposal evidence or
+        APPROVED_FIRM_KNOWLEDGE) -- a SOURCE_MEMORY-only citation is
+        stripped; if that leaves zero evidence ids, the ENTIRE claim is
+        downgraded to UNSUPPORTED_GAP rather than left as an
+        unsupported-but-still-labeled-VERIFIED_FACT claim;
+      - ORGANIZATIONAL_KNOWLEDGE keeps any registry-valid evidence id
+        (SOURCE_MEMORY included -- organizational knowledge legitimately
+        may rest on lower-trust material, but its trust_class is always
+        readable via the evidence id's own registry entry); if filtering
+        leaves zero evidence ids, it is likewise downgraded to
+        UNSUPPORTED_GAP -- a claim can never keep an "evidence-backed"
+        claim_type with no actual evidence.
+
+    Bounded to MAX_MATERIAL_CLAIMS; duplicate claim_ids keep only the
+    first occurrence."""
+    if not isinstance(raw_claims, list):
+        return ()
+
+    claims = []
+    seen_ids = set()
+    for entry in raw_claims:
+        if len(claims) >= MAX_MATERIAL_CLAIMS:
+            break
+        if not isinstance(entry, dict):
+            continue
+        claim_id = entry.get("claim_id")
+        claim_text = entry.get("claim_text")
+        claim_type = entry.get("claim_type")
+        if (not isinstance(claim_id, str) or not claim_id.strip()
+                or claim_id in seen_ids
+                or not isinstance(claim_text, str) or not claim_text.strip()
+                or claim_type not in CLAIM_TYPES):
+            continue
+
+        raw_evidence_ids = entry.get("evidence_ids")
+        evidence_ids = [e for e in (raw_evidence_ids or []) if isinstance(e, str) and e in registry]
+
+        raw_status = entry.get("support_status")
+
+        if claim_type == CLAIM_TYPE_UNSUPPORTED_GAP:
+            evidence_ids = []
+            support_status = SUPPORT_STATUS_UNSUPPORTED
+        elif claim_type == CLAIM_TYPE_PROPOSED_APPROACH:
+            support_status = SUPPORT_STATUS_COMMITMENT
+        elif claim_type == CLAIM_TYPE_VERIFIED_FACT:
+            evidence_ids = [e for e in evidence_ids if _permits_verified_fact(registry[e])]
+            if not evidence_ids:
+                claim_type = CLAIM_TYPE_UNSUPPORTED_GAP
+                support_status = SUPPORT_STATUS_UNSUPPORTED
+            else:
+                support_status = raw_status if raw_status in SUPPORT_STATUSES else SUPPORT_STATUS_SUPPORTED
+        else:  # CLAIM_TYPE_ORGANIZATIONAL_KNOWLEDGE
+            if not evidence_ids:
+                claim_type = CLAIM_TYPE_UNSUPPORTED_GAP
+                support_status = SUPPORT_STATUS_UNSUPPORTED
+            else:
+                support_status = raw_status if raw_status in SUPPORT_STATUSES else SUPPORT_STATUS_SUPPORTED
+
+        seen_ids.add(claim_id)
+        claims.append(MaterialClaim(
+            claim_id=claim_id, claim_text=claim_text.strip()[:300], claim_type=claim_type,
+            evidence_ids=tuple(evidence_ids), support_status=support_status,
+        ))
+    return tuple(claims)
 
 
 def draft_section(
@@ -730,8 +895,11 @@ __all__ = [
     "CLAIM_TYPE_VERIFIED_FACT", "CLAIM_TYPE_ORGANIZATIONAL_KNOWLEDGE",
     "CLAIM_TYPE_PROPOSED_APPROACH", "CLAIM_TYPE_UNSUPPORTED_GAP", "CLAIM_TYPES",
     "SOURCE_KIND_PROCUREMENT", "SOURCE_KIND_PROPOSAL", "SOURCE_KIND_ORGANIZATIONAL_MEMORY",
+    "SUPPORT_STATUS_SUPPORTED", "SUPPORT_STATUS_PARTIALLY_SUPPORTED",
+    "SUPPORT_STATUS_UNSUPPORTED", "SUPPORT_STATUS_COMMITMENT", "SUPPORT_STATUSES",
+    "MAX_MATERIAL_CLAIMS",
     "RelatedRequirement", "EvaluationContext", "ResponseConstraints",
     "SectionDraftingBrief", "build_brief", "compute_draft_input_fingerprint",
-    "EvidenceItemUsed", "SectionDraftResult", "draft_section",
+    "EvidenceItemUsed", "MaterialClaim", "SectionDraftResult", "draft_section",
     "DraftAssuranceResult", "assure_section_draft",
 ]

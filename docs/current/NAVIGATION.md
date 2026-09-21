@@ -610,6 +610,86 @@ deferred, not started.
   editing, draft comparison UI, whole-proposal generation, proposal-
   outline orchestration, Word export, Ask CapOS, Red Team.
 
+**Proposal Intelligence (PI-3C: Section Drafting Workspace)**
+- `pages/section_drafting_workspace.py` — `render_requirement_drafting_
+  workspace(bid_id, requirement, outline_section=None)`, the public entry
+  point. Calls ONLY `tenancy.get_section_draft_status_for_organization` on
+  render (read-only, no Anthropic/OM-retrieval/reanalysis); an explicit
+  "Generate/Refresh" button click is the ONLY thing that calls `tenancy.
+  get_or_generate_section_draft`. Renders: requirement identity/mandatory
+  flag/related requirements; evaluation intent (criterion/weight/minimum
+  score/response guidance/word limit); evidence state (current-bid
+  assessment_status/evidence_strength, Organizational Memory evidence with
+  trust-class badges — `_TRUST_LABELS` distinguishes APPROVED_FIRM_
+  KNOWLEDGE (✅ green) from SOURCE_MEMORY (explicitly "(unapproved)"),
+  relationship labels including ⚠ Contradiction, remaining gaps); draft
+  state badges (🟢/🔴 assurance, 🟡 human confirmation required, 🟠 stale);
+  the generated draft as a disabled/read-only `st.text_area` (no editor
+  this phase); the coverage/assurance panel (requirements addressed/
+  missing, evaluation criteria addressed, unresolved points, contradictions/
+  caveats, word count, assurance issues); the claim-level evidence mapping
+  (`_render_claim`, PI-3C's own new field — see below); a version-history
+  selector reading the already-fetched `history` list (no extra round
+  trip, no visual diffing).
+- `tenancy.get_section_draft_status_for_organization` — the new read-only
+  status function: shares `_assemble_section_drafting_brief` with PI-3A/
+  PI-3B, computes the current fingerprint, reads `database.
+  get_section_drafts` (never writes), and returns `latest_draft`/
+  `is_stale`/`is_current`/`history_count`/full `history` (each entry
+  already `_section_draft_row_to_dict`-shaped, no second fetch needed to
+  view an older version).
+- `pages/stage_build.py` — one new expander, "🧠 Requirement Drafting
+  Workspace (Bid Intelligence)," added immediately after the existing
+  "🎯 Evaluation Criteria In View (Mapped Requirements)" expander in the
+  Proposal Outline & Integrated Section Drafter tab — a requirement picker
+  (defaults to the active section's own mapped requirements) opens the
+  workspace for one requirement. This is the smallest coherent
+  integration point: no new page, no parallel editor, reuses the existing
+  BUILD tab and visual system.
+- Claim-level traceability (closes the gap PI-3B identified, instruction
+  7): `section_drafting.py` gained `MaterialClaim` (claim_id/claim_text/
+  claim_type/evidence_ids/support_status) and `SectionDraftResult.
+  material_claims`, bounded to `MAX_MATERIAL_CLAIMS = 12`.
+  `_reconcile_material_claims`/`_permits_verified_fact` apply fail-closed
+  hierarchy rules per claim_type: `UNSUPPORTED_GAP` forced to empty
+  evidence_ids/`UNSUPPORTED` status; `PROPOSED_APPROACH` forced to a
+  distinct `COMMITMENT` status (never presented as verified historical
+  fact); `VERIFIED_FACT` restricted to current-RFP/proposal evidence or
+  `APPROVED_FIRM_KNOWLEDGE` only (a SOURCE_MEMORY-only citation downgrades
+  the WHOLE claim to `UNSUPPORTED_GAP`); `ORGANIZATIONAL_KNOWLEDGE` keeps
+  any registry-valid evidence (SOURCE_MEMORY included, trust class always
+  readable) but is likewise downgraded if left with zero evidence. New
+  `SUPPORT_STATUS_*` closed vocabulary (`SUPPORTED`/`PARTIALLY_SUPPORTED`/
+  `UNSUPPORTED`/`COMMITMENT`).
+- `migrations/019_section_draft_claim_mappings.sql` (written, **not
+  applied**) — a single backward-compatible `alter table section_drafts
+  add column material_claims jsonb not null default '[]'::jsonb` plus a
+  dropped-and-recreated `get_or_create_section_draft()` RPC accepting the
+  new field. **Deliberate two-step rollout**: migration 018's RPC is
+  already LIVE and already used by production code, so `database.
+  get_or_create_section_draft`/`tenancy.get_or_generate_section_draft`
+  were NOT wired to pass the new parameter in this same change (doing so
+  would break the currently-working live path with a "no matching
+  function" error) — that one-line wiring ships together with migration
+  019's own future commissioning task. A freshly generated (ephemeral,
+  non-persisted) draft's `material_claims` are still fully computed and
+  shown by the UI for that one response; only the PERSISTED round-trip
+  omits them until then (`tenancy._section_draft_row_to_dict` already
+  reads `row.get("material_claims")` forward-compatibly).
+- Tests: `tests/test_section_drafting.py`'s new `TestMaterialClaimMapping`
+  (12), `tests/test_section_drafting_workspace.py` (12 — status/staleness/
+  no-model-call/no-OM-retrieval/isolation), `tests/smoke/
+  test_all_pages_runtime.py::test_requirement_drafting_workspace_executes`
+  (new — calls the render function directly against real bid 8/
+  requirement R1 data, read-only). No live Anthropic call this task —
+  validated the empty-state render path live; draft-exists/assurance/
+  claim-mapping paths validated via the deterministic suite (deliberately
+  did not generate a live persisted draft against a real bid to avoid
+  leaving permanent residue).
+- Explicitly still deferred: whole-proposal generation, a collaborative
+  editor, visual version diffing, Word export, automated SME messaging,
+  Ask CapOS, Red Team, applying migration 019 live.
+
 **Tenancy / RLS / auth boundary**
 - `tenancy.py` — every `*_for_organization` (service-role, ownership-checked)
   and `*_authenticated` (user's own RLS-scoped client) function.
