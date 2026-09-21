@@ -1519,6 +1519,184 @@ def _row_to_memory_item(row: dict):
     )
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Organizational Memory (OM-2: source ingestion + human approval lifecycle)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def list_organizational_source_documents_for_organization(organization_id: str) -> list[dict]:
+    if not organization_id:
+        raise ValueError(
+            "list_organizational_source_documents_for_organization requires an explicit organization_id")
+    return db.list_organizational_source_documents(organization_id)
+
+
+def ingest_organizational_source_document_for_organization(
+    organization_id: str, filename: str, file_bytes: bytes,
+    created_by_user_id: str | None = None,
+    target_chunk_chars: int | None = None,
+) -> dict:
+    """Single-file, human-initiated source ingestion: extracts text from
+    the uploaded file, splits it into deterministic bounded chunks
+    (organizational_memory.split_source_into_chunks), creates ONE durable
+    organizational_source_documents parent record, and creates one
+    SOURCE_MEMORY item per chunk -- each carrying its own exact char_start/
+    char_end locator plus the parent file's content_hash/filename, never a
+    single giant blob treated as one retrieval unit.
+
+    Deterministic: the same bytes + filename always produce the same
+    content_hash, the same chunk boundaries, and (given the same DB state)
+    the same set of SOURCE_MEMORY rows. Re-uploading a byte-identical file
+    into the same organization is detected via the (organization_id,
+    content_hash) unique constraint on organizational_source_documents --
+    this function returns the EXISTING document (and its already-ingested
+    chunks) instead of re-ingesting, rather than silently duplicating
+    SOURCE_MEMORY items for the same source file.
+
+    Uses extractor.extract_text_from_file -- the same extraction entry
+    point already used elsewhere in this codebase -- so file-type handling
+    (PDF/DOCX/XLSX/XLS/CSV/plain text) is not reinvented here.
+    """
+    if not organization_id:
+        raise ValueError(
+            "ingest_organizational_source_document_for_organization requires an explicit organization_id")
+    if not filename:
+        raise ValueError("ingest_organizational_source_document_for_organization requires a filename")
+
+    import hashlib
+    import organizational_memory as om
+    from extractor import extract_text_from_file
+
+    raw_content_hash = hashlib.sha256(file_bytes or b"").hexdigest()
+
+    existing_docs = db.list_organizational_source_documents(organization_id)
+    existing = next((d for d in existing_docs if d.get("content_hash") == raw_content_hash), None)
+    if existing is not None:
+        existing_items = [
+            row for row in db.list_organizational_memory_items(organization_id, memory_class="SOURCE_MEMORY")
+            if row.get("source_document_id") == existing.get("id")
+        ]
+        return {"document": existing, "items": existing_items, "reused_existing": True}
+
+    text = extract_text_from_file(file_bytes, filename) or ""
+    chunk_size = target_chunk_chars or om.SOURCE_CHUNK_TARGET_CHARS
+    chunks = om.split_source_into_chunks(text, target_chunk_chars=chunk_size)
+
+    document = db.create_organizational_source_document({
+        "organization_id": organization_id,
+        "filename": filename,
+        "content_hash": raw_content_hash,
+        "extracted_char_count": len(text),
+        "chunk_count": len(chunks),
+        "uploaded_by_user_id": created_by_user_id,
+    })
+    if document is None:
+        raise ValueError(
+            "ingest_organizational_source_document_for_organization: failed to create source document record")
+
+    file_id = f"omsrc:{raw_content_hash}"
+    created_items: list[dict] = []
+    for chunk in chunks:
+        title = f"{filename} — chunk {chunk['chunk_index'] + 1}/{len(chunks)}"
+        item = create_organizational_memory_item_for_organization(
+            organization_id,
+            {
+                "memory_class": om.MemoryClass.SOURCE_MEMORY.value,
+                "title": title,
+                "content": chunk["text"],
+                "source_file_id": file_id,
+                "source_content_hash": raw_content_hash,
+                "source_filename": filename,
+                "source_locator": f"chars:{chunk['char_start']}-{chunk['char_end']}",
+                "source_document_id": document["id"],
+            },
+            created_by_user_id=created_by_user_id,
+        )
+        if item is not None:
+            created_items.append(item)
+
+    return {"document": document, "items": created_items, "reused_existing": False}
+
+
+def approve_organizational_memory_item_for_organization(
+    organization_id: str, source_item_id: int, approved_by_user_id: str,
+    fact_title: str | None = None, fact_content: str | None = None,
+) -> dict:
+    """The ONLY path allowed to create an APPROVED_FIRM_KNOWLEDGE item --
+    genuinely separate from create_organizational_memory_item_for_
+    organization (which continues to reject that class outright). This
+    function:
+
+      * fetches the SOURCE_MEMORY parent server-side, by id, via the
+        service-role read path (db.get_organizational_memory_item) --
+        never trusts a client-supplied copy of the parent's content;
+      * verifies the parent belongs to the SAME organization_id as the
+        approving request (rejects otherwise, before ever calling the DB
+        RPC -- application-layer defense-in-depth alongside the RPC's own
+        organization_id-scoped lookup);
+      * verifies the parent's memory_class is ACTUALLY SOURCE_MEMORY
+        (rejects any other class, e.g. approving an already-approved
+        item or a PROPOSAL_MEMORY item);
+      * requires an explicit approved_by_user_id from the CALLER's
+        authenticated context (this function never defaults or infers
+        it -- the caller, e.g. app.py, must pass the real signed-in
+        user's id, exactly like every other *_for_organization write
+        path in this file uses created_by/ctx.user_id);
+      * never accepts an approved_at from the caller at all -- migration
+        016's approve_organizational_memory_item() RPC sets it via now()
+        inside the database, server-side, unconditionally;
+      * creates a NEW APPROVED_FIRM_KNOWLEDGE row -- the parent
+        SOURCE_MEMORY row is never mutated, deleted, or reclassified (the
+        migration's immutable-provenance trigger would reject a mutation
+        attempt regardless);
+      * copies source_file_id/source_content_hash/source_filename/
+        source_package_path/source_locator/source_bid_id/
+        source_document_id from the fetched PARENT row automatically
+        (inside the RPC, server-side) -- this function does not, and
+        cannot, pass provenance fields itself;
+      * lets the human optionally tighten/clarify the approved FACT TEXT
+        (fact_title/fact_content) -- this changes only content/title, and
+        derived_from_item_id still points at the exact reviewed
+        SOURCE_MEMORY id regardless of any text edit.
+    """
+    if not organization_id:
+        raise ValueError(
+            "approve_organizational_memory_item_for_organization requires an explicit organization_id")
+    if not source_item_id:
+        raise ValueError(
+            "approve_organizational_memory_item_for_organization requires an explicit source_item_id")
+    if not approved_by_user_id:
+        raise ValueError(
+            "approve_organizational_memory_item_for_organization requires an explicit "
+            "approved_by_user_id from the authenticated caller -- it is never inferred or defaulted")
+
+    import organizational_memory as om
+
+    parent = db.get_organizational_memory_item(source_item_id)
+    if parent is None:
+        raise ValueError(
+            f"approve_organizational_memory_item_for_organization: source item {source_item_id} not found")
+    if str(parent.get("organization_id")) != str(organization_id):
+        raise ValueError(
+            "approve_organizational_memory_item_for_organization: source item does not belong to "
+            "this organization")
+    if parent.get("memory_class") != om.MemoryClass.SOURCE_MEMORY.value:
+        raise ValueError(
+            "approve_organizational_memory_item_for_organization: source item is not SOURCE_MEMORY "
+            f"(found {parent.get('memory_class')!r}) -- only a genuine SOURCE_MEMORY item may be approved")
+
+    row = db.approve_organizational_memory_item(
+        source_item_id=source_item_id,
+        organization_id=organization_id,
+        approved_by_user_id=approved_by_user_id,
+        fact_title=fact_title,
+        fact_content=fact_content,
+    )
+    if row is None:
+        raise ValueError(
+            "approve_organizational_memory_item_for_organization: approval write failed")
+    return row
+
+
 def retrieve_organizational_memory_for_organization(
     organization_id: str, query: str, *,
     memory_classes: list[str] | None = None,

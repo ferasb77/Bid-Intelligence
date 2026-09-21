@@ -186,6 +186,74 @@ needs that history).
   new, separately human-approved item, never a mutation of an existing
   row).
 
+**OM-2 (source ingestion + human approval lifecycle) is now implemented**
+on top of OM-1, same files plus additions. New durable parent-file record
+**`organizational_source_documents`** (migration 016, edited in place —
+still NOT applied to any live database) tracks one row per uploaded
+source file: organization-scoped, RLS-protected identically to
+`organizational_memory_items`, unique on `(organization_id,
+content_hash)` for re-upload dedup, minimal fields only (filename,
+content_hash, extracted_char_count, chunk_count, uploader, timestamp).
+`organizational_memory_items` gained a nullable `source_document_id`
+column (composite same-organization FK, `ON DELETE RESTRICT`, added to
+the existing immutable-provenance trigger's guarded-column set).
+
+Ingestion: `tenancy.ingest_organizational_source_document_for_
+organization()` — single-file, human-initiated (not a crawler). Extracts
+text via the existing `extractor.extract_text_from_file()` entry point
+(no new extraction logic), then splits it with a new deterministic
+chunker, `organizational_memory.split_source_into_chunks()` (paragraph
+bin-packing toward a target chunk size with a fixed-window fallback for
+one oversized/unbroken paragraph — mirrors the bin-packing principle
+`analyst._merge_and_size_bound_sections()` established for Proposal
+Alignment, but is a smaller self-contained implementation, not a shared
+import). Every chunk becomes its own SOURCE_MEMORY item via the existing
+`create_organizational_memory_item_for_organization` path, with an exact
+`source_locator` of the form `chars:<start>-<end>` into the original
+extracted text — never a fabricated coordinate. Re-ingesting a
+byte-identical file into the same organization detects the existing
+`organizational_source_documents` row (by content_hash) and reuses its
+already-created chunks rather than duplicating them.
+
+Human approval — the only path that may create an APPROVED_FIRM_KNOWLEDGE
+row: `tenancy.approve_organizational_memory_item_for_organization()`,
+calling a new migration-016 RPC, `approve_organizational_memory_item()`.
+Guarantees: fetches the SOURCE_MEMORY parent server-side by id (never
+trusts a client-supplied copy); verifies same-organization; verifies the
+parent's `memory_class` is genuinely `SOURCE_MEMORY` (rejects any other
+class, including an already-approved item); requires an explicit
+`approved_by_user_id` from the caller's authenticated context (never
+inferred/defaulted); sets `approved_at` via the database's own `now()`,
+never from client input; creates a brand-new `APPROVED_FIRM_KNOWLEDGE` row
+— the parent SOURCE_MEMORY row is never mutated (the immutable-provenance
+trigger would reject a mutation attempt regardless); copies
+source_file_id/source_content_hash/source_filename/source_package_path/
+source_locator/source_bid_id/source_document_id from the fetched parent
+row automatically inside the RPC; sets `derived_from_item_id` to the exact
+parent id. The human may edit/tighten the approved fact's title/content
+text (`fact_title`/`fact_content`), which changes only content — lineage
+still points at the exact reviewed SOURCE_MEMORY row regardless. The
+generic `create_organizational_memory_item_for_organization` path
+continues, unchanged, to reject `APPROVED_FIRM_KNOWLEDGE` outright
+(regression-tested).
+
+UI: new page `pages/stage_memory.py` (`page_memory()`), wired into
+`app.py`'s global sidebar navigation (org-scoped, not bid-scoped — same
+nav tier as Content Library) as "🧠 Organizational Memory". Four tabs:
+upload a source file; browse/review SOURCE_MEMORY chunks and approve one
+as firm knowledge; browse APPROVED_FIRM_KNOWLEDGE; browse PROPOSAL_MEMORY
+(read-only, no ingestion path for that class in this phase). Every item
+renders with an explicit trust-label badge distinguishing the three
+memory classes so none is ever mistaken for another.
+
+Zero live Voyage/Anthropic calls in OM-2, same as OM-1 — ingestion does
+not call `embeddings.py` directly (embedding remains opt-in via
+`retrieve()`'s existing `embed_fn` parameter). Explicitly still deferred:
+proposal-text generation from memory, auto-insertion of evidence into a
+proposal, Section Analyzer/Proposal Intelligence integration, archive-
+wide/bulk ingestion (this phase is single-file human-initiated upload
+only), auto-approval of any kind, and any scoring/win-probability signal.
+
 ## Architectural fact-type separation
 
 Every subsystem above keeps these categories distinct, never merges them:
@@ -226,10 +294,12 @@ product area (`organizational_memory.py`,
 bid-scoped) durable memory with three structurally distinct classes
 (SOURCE_MEMORY / APPROVED_FIRM_KNOWLEDGE / PROPOSAL_MEMORY) and a
 deterministic, retrieval-first contract (`organizational_memory.retrieve()`).
-Zero live model/embedding calls this phase. Deferred to a later OM phase:
-proposal-text generation from memory, auto-insertion of evidence, Section
-Analyzer integration, a full ingestion UI, win-probability/scoring, and
-any PROPOSAL_MEMORY → APPROVED_FIRM_KNOWLEDGE promotion mechanism.
+Zero live model/embedding calls this phase. **OM-2 (source ingestion +
+human approval lifecycle) is now also implemented** — see the
+Organizational Memory entry above for full detail. Deferred to a later OM
+phase: proposal-text generation from memory, auto-insertion of evidence,
+Section Analyzer integration, win-probability/scoring, and any
+PROPOSAL_MEMORY → APPROVED_FIRM_KNOWLEDGE promotion mechanism.
 
 Absent an explicit task instruction otherwise, still do not: apply
 migration 013, apply migration 016, alter/reapply migration 015, activate
@@ -268,7 +338,12 @@ below.
 > (Organizational Memory, OM-1) was written on 2026-09-21 and is NOT
 > applied — a fresh table was required (see the Organizational Memory
 > entry above for why `content_library`'s existing bid-scoped schema could
-> not be reused). Treat any future "is migration N live"
+> not be reused). OM-2 (source ingestion + human approval lifecycle) EDITED
+> migration 016 IN PLACE (no new migration 017) to add
+> `organizational_source_documents`, `organizational_memory_items.
+> source_document_id`, and the `approve_organizational_memory_item()` RPC
+> — migration 016 as a whole remains entirely unapplied to any live
+> database. Treat any future "is migration N live"
 > question as requiring a fresh check — `git log` and this file are not a
 > substitute for checking the live database when a task depends on it.
 

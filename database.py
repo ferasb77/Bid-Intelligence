@@ -1336,7 +1336,7 @@ def get_proposal_intelligence_findings(run_id: int) -> list[dict]:
 _ORGANIZATIONAL_MEMORY_ITEM_KEYS = (
     "organization_id", "memory_class", "title", "content", "content_hash",
     "source_file_id", "source_content_hash", "source_filename",
-    "source_package_path", "source_locator", "source_bid_id",
+    "source_package_path", "source_locator", "source_bid_id", "source_document_id",
     "approved_by_user_id", "approved_at", "derived_from_item_id",
     "embedding", "metadata", "created_by_user_id",
 )
@@ -1372,4 +1372,52 @@ def list_organizational_memory_items(
 def get_organizational_memory_item(item_id: int) -> dict | None:
     return _one(get_client().table("organizational_memory_items").select("*")
                .eq("id", item_id).execute())
+
+
+# ── Organizational Memory (OM-2: source documents + human approval) ─────────
+_ORGANIZATIONAL_SOURCE_DOCUMENT_KEYS = (
+    "organization_id", "filename", "content_hash", "extracted_char_count",
+    "chunk_count", "metadata", "uploaded_by_user_id",
+)
+
+
+def create_organizational_source_document(doc: dict) -> dict | None:
+    """The ONLY supported way to persist an organizational source-document
+    record -- calls create_organizational_source_document() (migration
+    016, OM-2 addition)."""
+    clean = {k: doc.get(k) for k in _ORGANIZATIONAL_SOURCE_DOCUMENT_KEYS if k in doc}
+    return _rpc_one(get_client().rpc("create_organizational_source_document", {
+        "p_doc": clean,
+    }).execute())
+
+
+def list_organizational_source_documents(organization_id: str) -> list[dict]:
+    """Service-role, ownership-checked read -- callers must go through
+    tenancy.py's list_organizational_source_documents_for_organization()."""
+    return _rows(get_client().table("organizational_source_documents").select("*")
+                .eq("organization_id", organization_id)
+                .order("uploaded_at", desc=True).execute())
+
+
+def get_organizational_source_document(document_id: int) -> dict | None:
+    return _one(get_client().table("organizational_source_documents").select("*")
+               .eq("id", document_id).execute())
+
+
+def approve_organizational_memory_item(
+    source_item_id: int, organization_id: str, approved_by_user_id: str,
+    fact_title: str | None, fact_content: str | None,
+) -> dict | None:
+    """The ONLY write path that may create an APPROVED_FIRM_KNOWLEDGE row --
+    calls approve_organizational_memory_item() (migration 016, OM-2
+    addition), which fetches the SOURCE_MEMORY parent server-side, verifies
+    same-organization and memory_class = 'SOURCE_MEMORY', and sets
+    approved_at itself via now() -- never accepted from this caller."""
+    return _rpc_one(get_client().rpc("approve_organizational_memory_item", {
+        "p_source_item_id": source_item_id,
+        "p_organization_id": organization_id,
+        "p_approved_by_user_id": approved_by_user_id,
+        "p_fact_title": fact_title,
+        "p_fact_content": fact_content,
+    }).execute())
 

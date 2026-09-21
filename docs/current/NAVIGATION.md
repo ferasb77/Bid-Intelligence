@@ -254,10 +254,55 @@ deferred, not started.
   embedding-unavailable fallback, proposal-memory-never-truth behavior,
   tenancy wiring, provenance-shape compatibility with the existing PI/
   evidence discipline).
-- Explicitly deferred to a later OM phase: proposal-text generation from
-  memory, auto-insertion of evidence, Section Analyzer integration, a full
-  ingestion UI, win-probability/scoring, and any PROPOSAL_MEMORY →
+- Explicitly deferred to a later OM phase (still true after OM-2):
+  proposal-text generation from memory, auto-insertion of evidence, Section
+  Analyzer integration, win-probability/scoring, and any PROPOSAL_MEMORY →
   APPROVED_FIRM_KNOWLEDGE promotion mechanism.
+
+**Organizational Memory (OM-2: source ingestion + human approval lifecycle)**
+- `organizational_memory.py`'s `split_source_into_chunks()` — deterministic
+  paragraph bin-packing chunker (fixed-window fallback for one oversized
+  paragraph); every chunk carries exact `char_start`/`char_end` into the
+  original extracted text.
+- `migrations/016_organizational_memory.sql` (edited in place, same file,
+  still **not applied**) — new `organizational_source_documents` table
+  (organization-scoped, RLS SELECT-only, unique on `(organization_id,
+  content_hash)`), new nullable `organizational_memory_items.
+  source_document_id` column (composite same-org FK, `ON DELETE RESTRICT`,
+  added to the immutable-provenance trigger's guarded columns), new
+  service-role-only RPCs `create_organizational_source_document()` and
+  `approve_organizational_memory_item()` (the ONLY path that may insert
+  `memory_class = 'APPROVED_FIRM_KNOWLEDGE'` — fetches the SOURCE_MEMORY
+  parent server-side, verifies same-org and `memory_class = 'SOURCE_MEMORY'`,
+  sets `approved_at` via `now()`, copies provenance from the parent row).
+- `database.py`'s `create_organizational_source_document`,
+  `list_organizational_source_documents`, `get_organizational_source_document`,
+  `approve_organizational_memory_item`.
+- `tenancy.py`'s `ingest_organizational_source_document_for_organization`
+  (extracts via `extractor.extract_text_from_file`, chunks via
+  `split_source_into_chunks`, creates one source-document parent row + one
+  SOURCE_MEMORY item per chunk; re-uploading an identical file reuses the
+  existing document/chunks instead of duplicating them),
+  `list_organizational_source_documents_for_organization`,
+  `approve_organizational_memory_item_for_organization` (the human-approval
+  entry point — see migration RPC guarantees above; never trusts client-
+  supplied provenance, approver identity, or timestamp).
+- `pages/stage_memory.py`'s `page_memory()` — new global-nav Streamlit page
+  (`app.py` sidebar: "🧠 Organizational Memory", `page == "org_memory"`):
+  upload a source file, browse/review SOURCE_MEMORY chunks, approve one as
+  firm knowledge, browse APPROVED_FIRM_KNOWLEDGE and PROPOSAL_MEMORY with
+  explicit trust-label badges per memory class.
+- Tests: `tests/test_organizational_memory_om2.py` (chunking determinism/
+  contiguity, ingestion determinism + org isolation + dedup-on-re-upload,
+  approval authorization/lineage incl. cross-org and non-SOURCE_MEMORY
+  rejection, provenance copying, generic-create-path regression guard,
+  retrieval-after-approval, embedding-failure fallback, migration DDL-intent
+  assertions for the OM-2 schema/RPC additions).
+- Explicitly still deferred (unchanged from OM-1): proposal-text generation
+  from memory, auto-insertion of evidence into a proposal, Section
+  Analyzer/Proposal Intelligence integration, archive-wide/bulk ingestion
+  (single-file human-initiated upload only), auto-approval, scoring/win
+  probability.
 
 **Tenancy / RLS / auth boundary**
 - `tenancy.py` — every `*_for_organization` (service-role, ownership-checked)

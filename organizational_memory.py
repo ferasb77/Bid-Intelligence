@@ -401,6 +401,104 @@ def retrieve(
     return scored[:top_k]
 
 
+# ── OM-2: deterministic source chunking ──────────────────────────────────
+# Mirrors the bin-packing/window-fallback principles analyst.py already
+# established for Proposal Alignment (_split_proposal_into_sections /
+# _merge_and_size_bound_sections) -- greedy paragraph-bin-packing toward a
+# target chunk size, with a fixed-window fallback for text that has no
+# usable paragraph breaks (e.g. one giant unbroken blob). Deterministic:
+# the same text always produces the same chunk boundaries, no randomness,
+# no model calls. This is intentionally a smaller, self-contained version
+# scoped to Organizational Memory source ingestion -- it does not import
+# analyst.py (which is Proposal-Intelligence-specific and carries heading
+# detection tuned for proposal documents) and it never fabricates a
+# char_start/char_end coordinate beyond what the split itself produces.
+
+SOURCE_CHUNK_TARGET_CHARS = 4000
+SOURCE_CHUNK_MIN_CHARS = 200
+
+_PARAGRAPH_SPLIT = re.compile(r"\n\s*\n")
+
+
+def _fixed_window_chunks(text: str, target: int) -> list[tuple[int, int]]:
+    """Deterministic non-overlapping fixed windows -- the fallback when a
+    paragraph (or single oversized paragraph) has no usable break."""
+    n = len(text)
+    if n == 0:
+        return []
+    bounds = []
+    start = 0
+    while start < n:
+        end = min(start + target, n)
+        bounds.append((start, end))
+        start = end
+    return bounds
+
+
+def split_source_into_chunks(
+    text: str, target_chunk_chars: int = SOURCE_CHUNK_TARGET_CHARS,
+) -> list[dict]:
+    """Splits `text` into deterministic, bounded, non-overlapping chunks
+    with exact char_start/char_end coordinates into the ORIGINAL text --
+    never re-derived/approximate. Every character of `text` is accounted
+    for in exactly one chunk; nothing is dropped, nothing is duplicated.
+
+    Strategy: split on blank-line paragraph boundaries, then greedily
+    bin-pack adjacent paragraphs together while the combined size still
+    fits under `target_chunk_chars` (same bin-packing principle as
+    analyst._merge_and_size_bound_sections). A single paragraph that alone
+    exceeds the target is further split with a deterministic fixed-window
+    fallback rather than kept as one oversized chunk.
+
+    Returns a list of {"chunk_index", "char_start", "char_end", "text"}
+    dicts, in original-document order.
+    """
+    if not text:
+        return []
+
+    n = len(text)
+    # Raw paragraph spans, contiguous and covering 100% of `text`: each
+    # span runs up to (and includes) the blank-line separator that follows
+    # it, so no character -- including whitespace between paragraphs -- is
+    # ever dropped or unaccounted for.
+    bounds = [0] + [m.end() for m in _PARAGRAPH_SPLIT.finditer(text)] + [n]
+    bounds = sorted(set(bounds))
+    raw_spans = [(bounds[i], bounds[i + 1]) for i in range(len(bounds) - 1) if bounds[i + 1] > bounds[i]]
+    if not raw_spans:
+        raw_spans = [(0, n)]
+
+    # Greedy bin-pack adjacent paragraph spans toward target_chunk_chars.
+    merged: list[tuple[int, int]] = []
+    cur_start, cur_end = raw_spans[0]
+    for s, e in raw_spans[1:]:
+        if (e - cur_start) <= target_chunk_chars:
+            cur_end = e
+        else:
+            merged.append((cur_start, cur_end))
+            cur_start, cur_end = s, e
+    merged.append((cur_start, cur_end))
+
+    # Split any still-oversized merged span (e.g. one huge paragraph) with
+    # the deterministic fixed-window fallback.
+    bounded: list[tuple[int, int]] = []
+    for s, e in merged:
+        if (e - s) <= target_chunk_chars:
+            bounded.append((s, e))
+        else:
+            for ws, we in _fixed_window_chunks(text[s:e], target_chunk_chars):
+                bounded.append((s + ws, s + we))
+
+    chunks = []
+    for idx, (s, e) in enumerate(bounded):
+        chunks.append({
+            "chunk_index": idx,
+            "char_start": s,
+            "char_end": e,
+            "text": text[s:e],
+        })
+    return chunks
+
+
 __all__ = [
     "ORGANIZATIONAL_MEMORY_CONTRACT_VERSION",
     "MemoryClass",
@@ -410,4 +508,7 @@ __all__ = [
     "SourceProvenance",
     "content_hash",
     "retrieve",
+    "SOURCE_CHUNK_TARGET_CHARS",
+    "SOURCE_CHUNK_MIN_CHARS",
+    "split_source_into_chunks",
 ]

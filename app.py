@@ -20,6 +20,7 @@ from pages.stage_check import page_check
 from pages.stage_submit import page_submit
 from pages.stage_debrief import page_debrief
 from pages.settings_firm import page_settings_firm
+from pages.stage_memory import page_memory
 from pdf_export import generate_compliance_pdf
 from brand import dashboard_brand_html, sidebar_brand_html
 from components.ui import (inject_css, stage_badge, status_badge, priority_badge,
@@ -225,6 +226,7 @@ with st.sidebar:
         "📋  Bids Directory": "all_bids",
         "➕  New Bid Ingestion": "new_bid",
         "📚  Content Library": "content_library",
+        "🧠  Organizational Memory": "org_memory",
         "👥  Team & Resource Library": "team_roster",
         "📊  Executive View": "exec_dashboard",
         "⚙️  Firm Profile & Settings": "settings_firm",
@@ -2214,6 +2216,8 @@ elif page == "new_bid":
     page_new_bid()
 elif page == "content_library":
     page_content_library()
+elif page == "org_memory":
+    page_memory()
 elif page in ("team_roster", "coach_roster"):
     page_team_roster()
 elif page == "exec_dashboard":

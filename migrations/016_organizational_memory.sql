@@ -12,6 +12,15 @@
 -- were applied. Migration 013 (Section Analyzer) remains unapplied and is
 -- not a dependency of this one.
 --
+-- OM-2 update (source ingestion + human approval lifecycle): this file
+-- was edited IN PLACE (not a new migration 017) to add
+-- `organizational_source_documents` (durable parent-file identity for
+-- chunked uploads), `organizational_memory_items.source_document_id`
+-- (chunk -> parent-file lineage), and `approve_organizational_memory_item()`
+-- (the sole RPC allowed to create an APPROVED_FIRM_KNOWLEDGE row). See the
+-- OM-2 section near the end of this file for full reasoning. Migration 016
+-- remains entirely unapplied to any live database as of this edit.
+--
 -- ── Why this table exists ─────────────────────────────────────────────────
 -- `content_library` (migration 001) is bid-scoped: it carries a single
 -- nullable `bid_id` FK, its own RLS policy (migration 008) requires
@@ -362,6 +371,86 @@ create trigger trg_organizational_memory_items_guard_source_bid_org
     for each row execute function public.organizational_memory_items_guard_source_bid_org();
 
 -- ═══════════════════════════════════════════════════════════════════════════
+-- OM-2: organizational_source_documents — durable parent-file identity
+-- ═══════════════════════════════════════════════════════════════════════════
+-- OM-1 built organizational_memory_items for the memory ITEMS themselves,
+-- not a record of the original uploaded FILE that multiple SOURCE_MEMORY
+-- chunks derive from. This table is that minimal addition: one row per
+-- uploaded source file, organization-scoped, RLS-protected the same way as
+-- organizational_memory_items, tracking exactly file identity/content hash/
+-- filename/upload metadata -- nothing else. It does not itself carry
+-- retrievable content (organizational_memory_items chunks do); it exists so
+-- every SOURCE_MEMORY chunk derived from one file can point back at a
+-- single durable parent record instead of only repeating the same
+-- source_filename/source_content_hash on every chunk row.
+--
+-- Still governed by the same "migration 016 remains unapplied" note at the
+-- top of this file -- this is an in-place edit to the one still-unapplied
+-- migration, not a new migration file.
+create table if not exists organizational_source_documents (
+    id                      bigserial primary key,
+    organization_id         uuid not null references public.organizations(id) on delete cascade,
+
+    filename                text not null,
+    content_hash            text not null,   -- sha256 of the raw uploaded bytes
+    extracted_char_count    integer not null default 0,
+    chunk_count             integer not null default 0,
+
+    metadata                jsonb,
+
+    uploaded_by_user_id     uuid references auth.users(id),
+    uploaded_at             timestamptz not null default now(),
+
+    -- Same duplicate-detection discipline extractor.py's package pipeline
+    -- already uses for content_hash: the same file re-uploaded into the
+    -- same organization is the same source document, not a new one.
+    unique (organization_id, content_hash),
+    -- Lets organizational_memory_items.source_document_id enforce
+    -- "same organization" via a composite FK, mirroring the
+    -- derived_from_item_id pattern above.
+    unique (id, organization_id)
+);
+
+create index if not exists idx_organizational_source_documents_org
+    on organizational_source_documents (organization_id, uploaded_at desc);
+
+alter table organizational_source_documents enable row level security;
+
+create policy organizational_source_documents_select_org_member
+    on public.organizational_source_documents for select to authenticated
+    using (public.is_organization_member(organization_id));
+
+-- Deliberately no INSERT/UPDATE/DELETE policy for authenticated/anon --
+-- identical "RLS enabled + no write policy, service_role/RPC only" pattern
+-- organizational_memory_items already uses above.
+
+-- Durable parent-file link from a SOURCE_MEMORY/PROPOSAL_MEMORY chunk back
+-- to the organizational_source_documents row it was chunked from. Nullable
+-- (a memory item may not originate from a chunked upload at all -- e.g. a
+-- future manually-authored SOURCE_MEMORY item), never a fabricated link.
+-- ON DELETE RESTRICT: the same "provenance must never be silently lost"
+-- reasoning as source_bid_id/derived_from_item_id above.
+alter table organizational_memory_items
+    add column if not exists source_document_id bigint;
+
+do $$
+begin
+    if not exists (
+        select 1 from pg_constraint
+        where conname = 'organizational_memory_items_source_document_org_fk'
+    ) then
+        alter table organizational_memory_items
+            add constraint organizational_memory_items_source_document_org_fk
+            foreign key (source_document_id, organization_id)
+            references organizational_source_documents (id, organization_id)
+            on delete restrict;
+    end if;
+end $$;
+
+create index if not exists idx_organizational_memory_items_source_document
+    on organizational_memory_items (source_document_id) where source_document_id is not null;
+
+-- ═══════════════════════════════════════════════════════════════════════════
 -- create_organizational_memory_item — the ONLY supported write path
 -- ═══════════════════════════════════════════════════════════════════════════
 -- service_role only (mirrors migration 015's write-boundary pattern).
@@ -393,7 +482,7 @@ begin
     insert into public.organizational_memory_items (
         organization_id, memory_class, title, content, content_hash,
         source_file_id, source_content_hash, source_filename,
-        source_package_path, source_locator, source_bid_id,
+        source_package_path, source_locator, source_bid_id, source_document_id,
         approved_by_user_id, approved_at, derived_from_item_id,
         embedding, metadata, created_by_user_id
     ) values (
@@ -401,7 +490,7 @@ begin
         p_item->>'title', p_item->>'content', p_item->>'content_hash',
         p_item->>'source_file_id', p_item->>'source_content_hash', p_item->>'source_filename',
         p_item->>'source_package_path', p_item->>'source_locator',
-        (p_item->>'source_bid_id')::bigint,
+        (p_item->>'source_bid_id')::bigint, (p_item->>'source_document_id')::bigint,
         (p_item->>'approved_by_user_id')::uuid, (p_item->>'approved_at')::timestamptz,
         (p_item->>'derived_from_item_id')::bigint,
         p_item->>'embedding', p_item->'metadata', (p_item->>'created_by_user_id')::uuid
@@ -414,3 +503,147 @@ $$;
 revoke all on function public.create_organizational_memory_item(jsonb) from public;
 revoke all on function public.create_organizational_memory_item(jsonb) from anon, authenticated;
 grant execute on function public.create_organizational_memory_item(jsonb) to service_role;
+
+
+-- source_document_id joins the immutable-provenance trigger's guarded
+-- column set -- it is provenance, exactly like source_file_id/source_
+-- content_hash, and must never change after creation.
+create or replace function public.organizational_memory_items_guard_immutable_provenance()
+returns trigger
+language plpgsql
+as $$
+begin
+    if new.organization_id      is distinct from old.organization_id
+        or new.memory_class     is distinct from old.memory_class
+        or new.content          is distinct from old.content
+        or new.content_hash     is distinct from old.content_hash
+        or new.source_file_id   is distinct from old.source_file_id
+        or new.source_content_hash is distinct from old.source_content_hash
+        or new.source_filename  is distinct from old.source_filename
+        or new.source_package_path is distinct from old.source_package_path
+        or new.source_locator   is distinct from old.source_locator
+        or new.source_bid_id    is distinct from old.source_bid_id
+        or new.source_document_id is distinct from old.source_document_id
+        or new.created_by_user_id is distinct from old.created_by_user_id
+        or new.created_at       is distinct from old.created_at
+        or new.approved_by_user_id is distinct from old.approved_by_user_id
+        or new.approved_at      is distinct from old.approved_at
+        or new.derived_from_item_id is distinct from old.derived_from_item_id
+    then
+        raise exception 'organizational_memory_items: provenance and trust/lineage history fields are immutable after creation';
+    end if;
+    return new;
+end;
+$$;
+
+-- create_organizational_source_document — the ONLY supported write path
+-- for the new table, mirroring create_organizational_memory_item's own
+-- service_role-only RPC pattern exactly.
+create or replace function public.create_organizational_source_document(
+    p_doc jsonb
+) returns public.organizational_source_documents
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_row public.organizational_source_documents;
+begin
+    if p_doc->>'organization_id' is null then
+        raise exception 'create_organizational_source_document: organization_id is required';
+    end if;
+    if p_doc->>'filename' is null then
+        raise exception 'create_organizational_source_document: filename is required';
+    end if;
+    if p_doc->>'content_hash' is null then
+        raise exception 'create_organizational_source_document: content_hash is required';
+    end if;
+
+    insert into public.organizational_source_documents (
+        organization_id, filename, content_hash, extracted_char_count,
+        chunk_count, metadata, uploaded_by_user_id
+    ) values (
+        (p_doc->>'organization_id')::uuid, p_doc->>'filename', p_doc->>'content_hash',
+        coalesce((p_doc->>'extracted_char_count')::integer, 0),
+        coalesce((p_doc->>'chunk_count')::integer, 0),
+        p_doc->'metadata', (p_doc->>'uploaded_by_user_id')::uuid
+    ) returning * into v_row;
+
+    return v_row;
+end;
+$$;
+
+revoke all on function public.create_organizational_source_document(jsonb) from public;
+revoke all on function public.create_organizational_source_document(jsonb) from anon, authenticated;
+grant execute on function public.create_organizational_source_document(jsonb) to service_role;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- OM-2: approve_organizational_memory_item — the ONLY write path allowed to
+-- create an APPROVED_FIRM_KNOWLEDGE row
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Separate, explicit RPC from create_organizational_memory_item(), which
+-- rejects APPROVED_FIRM_KNOWLEDGE outright (see above). This function is
+-- the ONLY server-side path that may insert that class. It re-derives
+-- every provenance/lineage field from the PARENT row fetched inside this
+-- function (never trusts a client-supplied copy of the parent), and
+-- requires the caller (tenancy.py's approve_organizational_memory_item_
+-- for_organization) to have already authenticated the human approver and
+-- pass only p_approved_by_user_id -- approved_at is always now(), server-
+-- side, never client-supplied.
+create or replace function public.approve_organizational_memory_item(
+    p_source_item_id bigint,
+    p_organization_id uuid,
+    p_approved_by_user_id uuid,
+    p_fact_title text,
+    p_fact_content text
+) returns public.organizational_memory_items
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_parent public.organizational_memory_items;
+    v_row public.organizational_memory_items;
+    v_content text;
+    v_content_hash text;
+begin
+    if p_source_item_id is null or p_organization_id is null or p_approved_by_user_id is null then
+        raise exception 'approve_organizational_memory_item: source_item_id, organization_id, and approved_by_user_id are all required';
+    end if;
+
+    select * into v_parent
+    from public.organizational_memory_items
+    where id = p_source_item_id and organization_id = p_organization_id;
+
+    if v_parent.id is null then
+        raise exception 'approve_organizational_memory_item: source item % not found in organization %', p_source_item_id, p_organization_id;
+    end if;
+    if v_parent.memory_class <> 'SOURCE_MEMORY' then
+        raise exception 'approve_organizational_memory_item: source item % is not SOURCE_MEMORY (found %)', p_source_item_id, v_parent.memory_class;
+    end if;
+
+    v_content := coalesce(nullif(p_fact_content, ''), v_parent.content);
+    v_content_hash := encode(digest(v_content, 'sha256'), 'hex');
+
+    insert into public.organizational_memory_items (
+        organization_id, memory_class, title, content, content_hash,
+        source_file_id, source_content_hash, source_filename,
+        source_package_path, source_locator, source_bid_id, source_document_id,
+        approved_by_user_id, approved_at, derived_from_item_id,
+        created_by_user_id
+    ) values (
+        v_parent.organization_id, 'APPROVED_FIRM_KNOWLEDGE',
+        coalesce(nullif(p_fact_title, ''), v_parent.title), v_content, v_content_hash,
+        v_parent.source_file_id, v_parent.source_content_hash, v_parent.source_filename,
+        v_parent.source_package_path, v_parent.source_locator, v_parent.source_bid_id, v_parent.source_document_id,
+        p_approved_by_user_id, now(), v_parent.id,
+        p_approved_by_user_id
+    ) returning * into v_row;
+
+    return v_row;
+end;
+$$;
+
+revoke all on function public.approve_organizational_memory_item(bigint, uuid, uuid, text, text) from public;
+revoke all on function public.approve_organizational_memory_item(bigint, uuid, uuid, text, text) from anon, authenticated;
+grant execute on function public.approve_organizational_memory_item(bigint, uuid, uuid, text, text) to service_role;
