@@ -1375,26 +1375,12 @@ def get_organizational_memory_item(item_id: int) -> dict | None:
 
 
 # ── Organizational Memory (OM-2: source documents + human approval) ─────────
-_ORGANIZATIONAL_SOURCE_DOCUMENT_KEYS = (
-    "organization_id", "filename", "content_hash", "extracted_char_count",
-    "chunk_count", "metadata", "uploaded_by_user_id",
-)
-
-
-def create_organizational_source_document(doc: dict) -> dict | None:
-    """The ONLY supported way to persist an organizational source-document
-    record -- calls create_organizational_source_document() (migration
-    016, OM-2 addition)."""
-    clean = {k: doc.get(k) for k in _ORGANIZATIONAL_SOURCE_DOCUMENT_KEYS if k in doc}
-    return _rpc_one(get_client().rpc("create_organizational_source_document", {
-        "p_doc": clean,
-    }).execute())
 
 
 def upload_organizational_source_file(
     organization_id: str, content_hash: str, file_bytes: bytes,
     content_type: str | None = None,
-) -> str | None:
+) -> str:
     """Persists the ORIGINAL uploaded source-document bytes to Supabase
     Storage -- the same bucket/API this codebase already uses for
     save_upload()/upload_analysis_report() (see database.py's own
@@ -1408,10 +1394,15 @@ def upload_organizational_source_file(
     database.get_signed_url() for the existing, separate, explicit
     signed-URL path this function deliberately does not call.
 
-    Returns the storage_path on success, or None on any Storage failure
-    (mirrors save_upload()'s own graceful-degradation contract -- ingestion
-    still proceeds with storage_path left unset rather than failing the
-    whole ingestion over a Storage outage)."""
+    Second commissioning-review hardening pass fix #2: FAILS CLOSED, unlike
+    save_upload()'s graceful-degradation contract. If the file cannot be
+    durably persisted to Storage, this raises rather than returning None --
+    tenancy.py's ingestion wrapper calls this BEFORE the atomic ingest RPC
+    and does not catch the exception, so no organizational_source_documents/
+    organizational_memory_items row is ever created for an upload whose
+    original artifact was never actually stored. A successfully-returned
+    storage_path is therefore guaranteed to point at a real, durably-stored
+    file."""
     sb = get_client()
     storage_path = f"org/{organization_id}/sources/{content_hash}"
     try:
@@ -1420,8 +1411,12 @@ def upload_organizational_source_file(
             file_options={"content-type": content_type or "application/octet-stream",
                           "upsert": "true"})
         return storage_path
-    except Exception:
-        return None
+    except Exception as exc:
+        raise RuntimeError(
+            f"upload_organizational_source_file: failed to persist source file to Storage "
+            f"at {storage_path} -- refusing to create any organizational_source_documents/"
+            f"organizational_memory_items row for an artifact that was never durably stored"
+        ) from exc
 
 
 _ORGANIZATIONAL_SOURCE_INGEST_CHUNK_KEYS = ("title", "content", "content_hash", "source_locator")

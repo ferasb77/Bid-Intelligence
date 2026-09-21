@@ -1600,10 +1600,13 @@ def ingest_organizational_source_document_for_organization(
     chunks = om.split_source_into_chunks(text, target_chunk_chars=chunk_size)
 
     # Original artifact -> Supabase Storage (never a Postgres bytea
-    # column). A Storage failure degrades to storage_path=None (mirrors
-    # database.save_upload()'s own graceful-degradation contract) rather
-    # than blocking ingestion outright -- the SOURCE_MEMORY text/provenance
-    # is still fully persisted and retrievable either way.
+    # column). Second commissioning-review hardening pass fix #2: this now
+    # FAILS CLOSED -- db.upload_organizational_source_file() raises on any
+    # Storage failure, and that exception is deliberately NOT caught here,
+    # so a Storage failure prevents db.ingest_organizational_source_document
+    # below from ever being called at all. No organizational_source_
+    # documents/organizational_memory_items row can exist without a real,
+    # durably-stored backing file.
     storage_path = db.upload_organizational_source_file(
         organization_id, raw_content_hash, file_bytes, content_type=content_type)
 

@@ -176,7 +176,7 @@ class TestIngestionDeterminism:
                     "items": [], "reused_existing": False}
 
         with patch.object(tenancy.db, "list_organizational_source_documents", side_effect=fake_list_docs), \
-             patch.object(tenancy.db, "upload_organizational_source_file", return_value=None), \
+             patch.object(tenancy.db, "upload_organizational_source_file", return_value="org/x/sources/y"), \
              patch.object(tenancy.db, "ingest_organizational_source_document", side_effect=fake_ingest):
             result = tenancy.ingest_organizational_source_document_for_organization(
                 ORG_A, "f.txt", file_bytes, created_by_user_id="user-1")
@@ -377,10 +377,36 @@ class TestMigrationDDLIntentOM2:
     def test_immutable_provenance_trigger_covers_source_document_id(self):
         assert "new.source_document_id is distinct from old.source_document_id" in _MIGRATION_016
 
-    def test_create_organizational_source_document_rpc_is_service_role_only(self):
-        assert "create_organizational_source_document" in _MIGRATION_016
-        assert "grant execute on function public.create_organizational_source_document(jsonb) to service_role;" in _MIGRATION_016
-        assert "revoke all on function public.create_organizational_source_document(jsonb) from anon, authenticated;" in _MIGRATION_016
+    def test_obsolete_standalone_create_source_document_rpc_is_gone(self):
+        """Second commissioning-review hardening pass fix #3: the obsolete
+        standalone create_organizational_source_document() RPC (leftover
+        scaffolding from before ingest_organizational_source_document()
+        became the atomic path) must no longer exist anywhere in the
+        migration -- not the function definition, not its GRANT/REVOKE
+        statements."""
+        assert "create or replace function public.create_organizational_source_document(" not in _MIGRATION_016
+        assert "grant execute on function public.create_organizational_source_document(jsonb) to service_role;" not in _MIGRATION_016
+        assert "revoke all on function public.create_organizational_source_document(jsonb) from anon, authenticated;" not in _MIGRATION_016
+
+    def test_obsolete_python_helper_is_gone_and_unreferenced(self):
+        """The matching database.py Python wrapper must be actually deleted
+        (not merely unused), and nothing else in the codebase may still
+        reference it."""
+        import database as db_module
+        assert not hasattr(db_module, "create_organizational_source_document")
+
+        repo_root = Path(__file__).resolve().parents[1]
+        hits = []
+        for py_file in repo_root.rglob("*.py"):
+            if "site-packages" in str(py_file) or py_file.name == "test_organizational_memory_om2.py":
+                continue
+            try:
+                text = py_file.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                continue
+            if "create_organizational_source_document" in text:
+                hits.append(str(py_file))
+        assert hits == []
 
     def test_approve_organizational_memory_item_rpc_present_and_locked_down(self):
         assert "create or replace function public.approve_organizational_memory_item(" in _MIGRATION_016
@@ -438,7 +464,6 @@ class TestAtomicIngestionTransactionFailure:
         with patch.object(tenancy.db, "list_organizational_source_documents", return_value=[]), \
              patch.object(tenancy.db, "upload_organizational_source_file", return_value="org/x/sources/y"), \
              patch.object(tenancy.db, "ingest_organizational_source_document", side_effect=fake_ingest_raises), \
-             patch.object(tenancy.db, "create_organizational_source_document") as fake_old_create_doc, \
              patch.object(tenancy.db, "create_organizational_memory_item") as fake_old_create_item:
             with pytest.raises(RuntimeError):
                 tenancy.ingest_organizational_source_document_for_organization(
@@ -446,7 +471,6 @@ class TestAtomicIngestionTransactionFailure:
 
         # The old per-chunk write path must never be used as a fallback --
         # ingestion is exclusively the one atomic RPC call now.
-        fake_old_create_doc.assert_not_called()
         fake_old_create_item.assert_not_called()
 
     def test_ingestion_rpc_returning_no_document_is_rejected_not_silently_accepted(self):
@@ -454,7 +478,7 @@ class TestAtomicIngestionTransactionFailure:
         treated as a failure, never coerced into a fake success."""
         file_bytes = b"Some content for this test."
         with patch.object(tenancy.db, "list_organizational_source_documents", return_value=[]), \
-             patch.object(tenancy.db, "upload_organizational_source_file", return_value=None), \
+             patch.object(tenancy.db, "upload_organizational_source_file", return_value="org/x/sources/y"), \
              patch.object(tenancy.db, "ingest_organizational_source_document", return_value={"items": []}):
             with pytest.raises(ValueError):
                 tenancy.ingest_organizational_source_document_for_organization(
@@ -476,7 +500,7 @@ class TestAtomicIngestionTransactionFailure:
                     "items": [], "reused_existing": False}
 
         with patch.object(tenancy.db, "list_organizational_source_documents", return_value=[]), \
-             patch.object(tenancy.db, "upload_organizational_source_file", return_value=None), \
+             patch.object(tenancy.db, "upload_organizational_source_file", return_value="org/x/sources/y"), \
              patch.object(tenancy.db, "ingest_organizational_source_document", side_effect=fake_ingest) as fake:
             tenancy.ingest_organizational_source_document_for_organization(
                 ORG_A, "doc.txt", file_bytes, created_by_user_id="user-1")
@@ -510,15 +534,45 @@ class TestAtomicIngestionRpcConcurrencyShape:
             _MIGRATION_016)
 
     def test_ingest_rpc_get_or_create_returns_existing_complete_document_verbatim(self):
+        # Second commissioning-review hardening pass fix #1: exact equality,
+        # not >= -- a document with MORE SOURCE_MEMORY rows than expected
+        # must not silently pass a check meant to detect "at least".
         assert re.search(
-            r"if v_doc\.chunk_count > 0 and v_actual_chunks >= v_doc\.chunk_count then",
+            r"if v_doc\.chunk_count > 0 and v_actual_chunks = v_doc\.chunk_count then",
             _MIGRATION_016)
+        assert not re.search(
+            r"v_actual_chunks >= v_doc\.chunk_count", _MIGRATION_016)
         assert "'reused_existing', true" in _MIGRATION_016
+
+    def test_ingest_rpc_completeness_check_counts_only_source_memory_rows(self):
+        """Fix #1: the chunk-count check and the returned items query must
+        both filter to memory_class = 'SOURCE_MEMORY' -- an
+        APPROVED_FIRM_KNOWLEDGE row sharing the same source_document_id
+        must never be counted or returned by the idempotent get-or-create
+        path."""
+        start = _MIGRATION_016.index(
+            "create or replace function public.ingest_organizational_source_document(")
+        end = _MIGRATION_016.index(
+            "revoke all on function public.ingest_organizational_source_document")
+        body = _MIGRATION_016[start:end]
+
+        assert re.search(
+            r"select count\(\*\) into v_actual_chunks\s*"
+            r"from public\.organizational_memory_items\s*"
+            r"where source_document_id = v_doc\.id\s*"
+            r"and memory_class = 'SOURCE_MEMORY';",
+            body)
+        assert re.search(
+            r"select coalesce\(jsonb_agg\(to_jsonb\(i\)\), '\[\]'::jsonb\) into v_items\s*"
+            r"from public\.organizational_memory_items i\s*"
+            r"where i\.source_document_id = v_doc\.id\s*"
+            r"and i\.memory_class = 'SOURCE_MEMORY';",
+            body)
 
     def test_ingest_rpc_never_silently_treats_incomplete_existing_document_as_complete(self):
         assert re.search(
             r"raise exception 'ingest_organizational_source_document: existing document % "
-            r"for organization % has an incomplete chunk set",
+            r"for organization % has an inconsistent SOURCE_MEMORY chunk set",
             _MIGRATION_016)
 
     def test_ingest_rpc_inserts_document_and_all_chunks_in_one_function_body(self):
@@ -541,18 +595,16 @@ class TestAtomicIngestionRpcConcurrencyShape:
         create-then-loop."""
         file_bytes = b"Body text for the concurrency-shape test.\n\nSecond paragraph too."
         with patch.object(tenancy.db, "list_organizational_source_documents", return_value=[]), \
-             patch.object(tenancy.db, "upload_organizational_source_file", return_value=None), \
+             patch.object(tenancy.db, "upload_organizational_source_file", return_value="org/x/sources/y"), \
              patch.object(tenancy.db, "ingest_organizational_source_document",
                            return_value={"document": {"id": 1, "organization_id": ORG_A,
                                                         "content_hash": "x", "chunk_count": 1},
                                          "items": [], "reused_existing": False}) as fake_ingest, \
-             patch.object(tenancy.db, "create_organizational_source_document") as fake_old_doc, \
              patch.object(tenancy.db, "create_organizational_memory_item") as fake_old_item:
             tenancy.ingest_organizational_source_document_for_organization(
                 ORG_A, "doc.txt", file_bytes, created_by_user_id="user-1")
 
         assert fake_ingest.call_count == 1
-        fake_old_doc.assert_not_called()
         fake_old_item.assert_not_called()
 
 
@@ -601,7 +653,7 @@ class TestDurableArtifactIdentity:
         # Simulate a different extraction result each call -- content_hash
         # passed to the RPC must be identical regardless.
         with patch.object(tenancy.db, "list_organizational_source_documents", return_value=[]), \
-             patch.object(tenancy.db, "upload_organizational_source_file", return_value=None), \
+             patch.object(tenancy.db, "upload_organizational_source_file", return_value="org/x/sources/y"), \
              patch.object(tenancy.db, "ingest_organizational_source_document", side_effect=fake_ingest), \
              patch("extractor.extract_text_from_file", side_effect=["Extraction run one.", "Extraction run two, different!"]):
             tenancy.ingest_organizational_source_document_for_organization(
@@ -617,27 +669,48 @@ class TestDurableArtifactIdentity:
         assert "file_size               bigint," in _MIGRATION_016
         assert "content_type            text," in _MIGRATION_016
 
-    def test_storage_failure_degrades_gracefully_ingestion_still_proceeds(self):
-        """Mirrors database.save_upload()'s own graceful-degradation
-        contract -- a Storage failure (returns None) must not block
-        ingestion of the SOURCE_MEMORY text/provenance itself."""
-        file_bytes = b"Some content that should still be ingested even if storage fails."
-
-        def fake_ingest(organization_id, filename, content_hash, chunks, **kwargs):
-            assert kwargs["storage_path"] is None
-            return {"document": {"id": 1, "organization_id": organization_id,
-                                  "content_hash": content_hash, "chunk_count": len(chunks),
-                                  "storage_path": None},
-                    "items": [{"id": 1}], "reused_existing": False}
+    def test_storage_upload_failure_prevents_any_db_bundle_creation(self):
+        """Second commissioning-review hardening pass fix #2: a Storage
+        upload failure must FAIL CLOSED, unlike database.save_upload()'s
+        graceful-degradation contract. db.upload_organizational_source_file
+        raising must propagate straight out of the tenancy wrapper, and the
+        atomic ingest RPC (which would create the organizational_source_
+        documents/organizational_memory_items bundle) must never even be
+        called -- no partial DB state for an artifact that was never
+        durably stored."""
+        file_bytes = b"Some content whose Storage upload will fail."
 
         with patch.object(tenancy.db, "list_organizational_source_documents", return_value=[]), \
-             patch.object(tenancy.db, "upload_organizational_source_file", return_value=None), \
-             patch.object(tenancy.db, "ingest_organizational_source_document", side_effect=fake_ingest):
-            result = tenancy.ingest_organizational_source_document_for_organization(
-                ORG_A, "doc.txt", file_bytes, created_by_user_id="user-1")
+             patch.object(tenancy.db, "upload_organizational_source_file",
+                           side_effect=RuntimeError("simulated Storage outage")), \
+             patch.object(tenancy.db, "ingest_organizational_source_document") as fake_ingest:
+            with pytest.raises(RuntimeError):
+                tenancy.ingest_organizational_source_document_for_organization(
+                    ORG_A, "doc.txt", file_bytes, created_by_user_id="user-1")
 
-        assert result["document"]["storage_path"] is None
-        assert len(result["items"]) == 1
+        fake_ingest.assert_not_called()
+
+    def test_upload_organizational_source_file_raises_on_storage_exception(self):
+        """database.upload_organizational_source_file() itself must raise
+        (not swallow-and-return-None) when the underlying Storage client
+        raises -- the fail-closed contract lives at this layer, not just in
+        the tenancy wrapper that calls it."""
+        import database as db_module
+
+        class _FakeBucket:
+            def upload(self, *a, **k):
+                raise RuntimeError("simulated Storage client failure")
+
+        class _FakeStorage:
+            def from_(self, _bucket):
+                return _FakeBucket()
+
+        class _FakeClient:
+            storage = _FakeStorage()
+
+        with patch.object(db_module, "get_client", return_value=_FakeClient()):
+            with pytest.raises(RuntimeError):
+                db_module.upload_organizational_source_file(ORG_A, "a" * 64, b"bytes")
 
 
 # ── Fix #3: actor membership validation (DB-level) ───────────────────────
@@ -748,3 +821,93 @@ class TestRetrievalLineageExposure:
         # Regression guard: the hardening edits must not have disturbed the
         # existing OM-2 immutability coverage for source_document_id.
         assert "new.source_document_id is distinct from old.source_document_id" in _MIGRATION_016
+
+
+# ── Fix #4: chunk content_hash is verified server-side, not trusted ──────
+
+class TestChunkContentHashServerSideValidation:
+
+    def test_pgcrypto_extension_present(self):
+        assert "create extension if not exists pgcrypto;" in _MIGRATION_016
+
+    def test_ingest_rpc_derives_and_validates_chunk_hash_via_digest(self):
+        start = _MIGRATION_016.index(
+            "create or replace function public.ingest_organizational_source_document(")
+        end = _MIGRATION_016.index(
+            "revoke all on function public.ingest_organizational_source_document")
+        body = _MIGRATION_016[start:end]
+
+        assert "v_expected_chunk_hash" in body
+        assert "digest(" in body
+        assert re.search(
+            r"if v_expected_chunk_hash <> \(v_chunk->>'content_hash'\) then", body)
+        assert "raise exception 'ingest_organizational_source_document: chunk content_hash does not match" in body
+
+    def test_ingest_rpc_hash_derivation_happens_before_chunk_insert(self):
+        start = _MIGRATION_016.index(
+            "create or replace function public.ingest_organizational_source_document(")
+        end = _MIGRATION_016.index(
+            "revoke all on function public.ingest_organizational_source_document")
+        body = _MIGRATION_016[start:end]
+        derive_pos = body.index("v_expected_chunk_hash := encode(")
+        insert_pos = body.index("insert into public.organizational_memory_items")
+        assert derive_pos < insert_pos
+
+    def test_ingest_rpc_inserts_server_derived_hash_not_caller_supplied(self):
+        """The insert must use v_expected_chunk_hash (the server-derived
+        value), never v_chunk->>'content_hash' (the caller-supplied,
+        unverified value) directly, as the row's own content_hash."""
+        start = _MIGRATION_016.index(
+            "create or replace function public.ingest_organizational_source_document(")
+        end = _MIGRATION_016.index(
+            "revoke all on function public.ingest_organizational_source_document")
+        body = _MIGRATION_016[start:end]
+        assert re.search(
+            r"v_chunk->>'title', v_chunk->>'content', v_expected_chunk_hash,", body)
+
+    def test_python_content_hash_normalization_matches_sql_normalization_semantics(self):
+        """organizational_memory.content_hash() normalizes \\r\\n and bare
+        \\r to \\n before hashing UTF-8 bytes. The SQL-side re-derivation
+        (regexp_replace \\r\\n -> \\n, then \\r -> \\n, then digest(...,
+        'sha256')) must apply the SAME normalization before hashing --
+        proven here at the logic level in Python by reimplementing the
+        equivalent transform and comparing against om.content_hash()
+        directly for texts containing both line-ending styles."""
+        import hashlib
+
+        def sql_equivalent_hash(text: str) -> str:
+            normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+            return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+        for sample in (
+            "Line one\r\nLine two\r\nLine three",
+            "Line one\rLine two\rLine three",
+            "Line one\nLine two\nLine three",
+            "Mixed\r\nendings\rhere\nplain",
+        ):
+            assert om.content_hash(sample) == sql_equivalent_hash(sample)
+
+    def test_approve_rpc_derives_content_hash_via_digest_not_caller_input(self):
+        """Fix #4's second half: approve_organizational_memory_item()
+        already derives its own content_hash server-side via digest()
+        rather than trusting any client-supplied hash -- there is no
+        p_content_hash/p_fact_content_hash parameter on this RPC at all,
+        only p_fact_content (the text itself), and v_content_hash is always
+        computed from v_content with digest(), the same canonical
+        pgcrypto-based convention the ingest RPC now also uses."""
+        start = _MIGRATION_016.index(
+            "create or replace function public.approve_organizational_memory_item(")
+        end = _MIGRATION_016.index(
+            "revoke all on function public.approve_organizational_memory_item")
+        body = _MIGRATION_016[start:end]
+
+        assert "p_content_hash" not in body
+        assert "p_fact_content_hash" not in body
+        assert re.search(
+            r"v_content_hash := encode\(digest\(v_content, 'sha256'\), 'hex'\);", body)
+        # content_hash column is populated with v_content_hash, never a
+        # client-supplied value.
+        assert re.search(
+            r"'APPROVED_FIRM_KNOWLEDGE',\s*"
+            r"coalesce\(nullif\(p_fact_title, ''\), v_parent\.title\), v_content, v_content_hash,",
+            body)

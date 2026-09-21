@@ -37,6 +37,40 @@
 -- memory.py) now exposes source_document_id/derived_from_item_id for
 -- lineage tracing. Still entirely unapplied to any live database.
 --
+-- Second OM-2 commissioning-review hardening pass (edited in place, still
+-- no migration 017), four further fixes: (1) the idempotent get-or-return
+-- completeness check inside ingest_organizational_source_document() now
+-- counts/returns ONLY memory_class = 'SOURCE_MEMORY' rows for the parent
+-- source_document_id (an APPROVED_FIRM_KNOWLEDGE row derived from one
+-- chunk shares the same source_document_id by design and must never be
+-- able to mask a genuinely missing SOURCE_MEMORY chunk), and the count
+-- comparison changed from `>=` to exact `=` so a document with MORE
+-- SOURCE_MEMORY rows than its own recorded chunk_count is never silently
+-- treated as "complete enough" either; (2) tenancy.py's ingestion wrapper
+-- and database.upload_organizational_source_file() no longer degrade
+-- gracefully on a Storage failure -- a Storage upload failure now raises
+-- and no organizational_source_documents/organizational_memory_items row
+-- is ever created for that upload, so a successfully-returned document
+-- row is guaranteed to have a real, durably-stored file; (3) the obsolete
+-- standalone `create_organizational_source_document()` RPC (and its
+-- Python wrapper) -- leftover scaffolding from before
+-- ingest_organizational_source_document() became the atomic path, never
+-- called by tenancy.py's ingestion flow -- has been removed outright;
+-- ingest_organizational_source_document() is now the ONLY path that can
+-- create an uploaded organizational_source_documents parent row; (4) each
+-- chunk's caller-supplied content_hash is now re-derived server-side
+-- inside ingest_organizational_source_document() (pgcrypto's digest(),
+-- with the SAME \r\n/\r -> \n normalization organizational_memory.
+-- content_hash() applies before hashing) and the whole transaction is
+-- rejected if any chunk's supplied hash does not match its own actual
+-- text -- a caller can no longer merely assert a chunk's hash.
+-- approve_organizational_memory_item() already derived its own
+-- content_hash server-side via digest() rather than trusting client
+-- input (see that function below); it is unchanged by this pass, and its
+-- v_content is already whatever text the request actually inserts, so
+-- "hash of the text this call is about to write" and "hash validated
+-- against caller input" coincide for that RPC by construction.
+--
 -- ── Why this table exists ─────────────────────────────────────────────────
 -- `content_library` (migration 001) is bid-scoped: it carries a single
 -- nullable `bid_id` FK, its own RLS policy (migration 008) requires
@@ -157,6 +191,13 @@
 -- table GRANT — identical reasoning to migration 015's note on the same
 -- topic.
 -- ═══════════════════════════════════════════════════════════════════════════
+
+-- pgcrypto provides digest()/encode(), used below by
+-- approve_organizational_memory_item() and (second commissioning-review
+-- hardening pass) ingest_organizational_source_document() for server-side
+-- content_hash derivation -- same precedent as migration 010's own
+-- `create extension if not exists pgcrypto;`.
+create extension if not exists pgcrypto;
 
 create table if not exists organizational_memory_items (
     id                      bigserial primary key,
@@ -569,51 +610,18 @@ begin
 end;
 $$;
 
--- create_organizational_source_document — the ONLY supported write path
--- for the new table, mirroring create_organizational_memory_item's own
--- service_role-only RPC pattern exactly. Retained for callers that only
--- need a standalone document record; real ingestion (document + its full
--- chunk set) goes through ingest_organizational_source_document() below,
--- which is atomic and idempotent -- this function alone does NOT insert
--- chunks and must never be used by tenancy.py's ingestion path.
-create or replace function public.create_organizational_source_document(
-    p_doc jsonb
-) returns public.organizational_source_documents
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-    v_row public.organizational_source_documents;
-begin
-    if p_doc->>'organization_id' is null then
-        raise exception 'create_organizational_source_document: organization_id is required';
-    end if;
-    if p_doc->>'filename' is null then
-        raise exception 'create_organizational_source_document: filename is required';
-    end if;
-    if p_doc->>'content_hash' is null then
-        raise exception 'create_organizational_source_document: content_hash is required';
-    end if;
-
-    insert into public.organizational_source_documents (
-        organization_id, filename, content_hash, storage_path, file_size, content_type,
-        extracted_char_count, chunk_count, metadata, uploaded_by_user_id
-    ) values (
-        (p_doc->>'organization_id')::uuid, p_doc->>'filename', p_doc->>'content_hash',
-        p_doc->>'storage_path', (p_doc->>'file_size')::bigint, p_doc->>'content_type',
-        coalesce((p_doc->>'extracted_char_count')::integer, 0),
-        coalesce((p_doc->>'chunk_count')::integer, 0),
-        p_doc->'metadata', (p_doc->>'uploaded_by_user_id')::uuid
-    ) returning * into v_row;
-
-    return v_row;
-end;
-$$;
-
-revoke all on function public.create_organizational_source_document(jsonb) from public;
-revoke all on function public.create_organizational_source_document(jsonb) from anon, authenticated;
-grant execute on function public.create_organizational_source_document(jsonb) to service_role;
+-- Second commissioning-review hardening pass fix #3: the standalone
+-- create_organizational_source_document() RPC that used to live here has
+-- been removed outright. It was leftover scaffolding from before
+-- ingest_organizational_source_document() (below) became the atomic,
+-- sole ingestion path -- it could create an organizational_source_
+-- documents parent row with no chunks at all, entirely outside the
+-- atomic bundle transaction, and tenancy.py's ingestion flow never called
+-- it (grep confirms no caller anywhere in this codebase). Removing it
+-- makes ingest_organizational_source_document() the ONLY supported path
+-- that can create an uploaded organizational_source_documents parent row.
+-- database.py's matching create_organizational_source_document() Python
+-- wrapper has been deleted for the same reason.
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- is_user_organization_member — direct membership check for an EXPLICIT,
@@ -672,13 +680,27 @@ grant execute on function public.is_user_organization_member(uuid, uuid) to serv
 -- remains the final authority even if this function were bypassed.
 --
 -- Idempotent get-or-create: if a document with this (organization_id,
--- content_hash) already exists AND its actual chunk row count already
--- meets its own recorded chunk_count, the EXISTING document + its chunks
--- are returned verbatim (no re-ingestion, no duplicate SOURCE_MEMORY
--- rows). If a document exists but its chunk set is INCOMPLETE (only
--- possible from a pre-this-migration partial-ingestion edge case, since
--- this function's own atomicity makes a new incomplete row impossible),
--- it is NEVER silently treated as complete or returned as-is -- this
+-- content_hash) already exists AND its actual SOURCE_MEMORY chunk row
+-- count EXACTLY equals its own recorded chunk_count, the EXISTING
+-- document + its SOURCE_MEMORY chunks (only -- never any
+-- APPROVED_FIRM_KNOWLEDGE row that happens to share the same
+-- source_document_id) are returned verbatim (no re-ingestion, no
+-- duplicate SOURCE_MEMORY rows). The completeness check counts ONLY
+-- memory_class = 'SOURCE_MEMORY' rows: an APPROVED_FIRM_KNOWLEDGE row
+-- derived from one of this document's chunks (via
+-- approve_organizational_memory_item(), which copies source_document_id
+-- from its SOURCE_MEMORY parent) shares the same source_document_id by
+-- design and must never be able to mask a genuinely missing SOURCE_MEMORY
+-- chunk from this check. The comparison is exact equality, not `>=`: a
+-- document with MORE SOURCE_MEMORY rows than its own recorded chunk_count
+-- (which should not normally happen) is not "at least complete", it is a
+-- different kind of inconsistency, and fail-closed discipline means it
+-- must not silently pass a check meant to detect "at least the expected
+-- count". If a document exists but its SOURCE_MEMORY chunk set is
+-- INCOMPLETE OR carries an unexpected count (only possible from a
+-- pre-this-migration partial-ingestion edge case, since this function's
+-- own atomicity makes a new incomplete row impossible going forward), it
+-- is NEVER silently treated as complete or returned as-is -- this
 -- function raises instead, forcing explicit manual remediation rather
 -- than masking a genuinely inconsistent row.
 --
@@ -713,6 +735,7 @@ declare
     v_items jsonb := '[]'::jsonb;
     v_chunk jsonb;
     v_item public.organizational_memory_items;
+    v_expected_chunk_hash text;
 begin
     if p_organization_id is null then
         raise exception 'ingest_organizational_source_document: organization_id is required';
@@ -742,24 +765,30 @@ begin
     where organization_id = p_organization_id and content_hash = p_content_hash;
 
     if found then
+        -- Completeness fix: count ONLY SOURCE_MEMORY rows for this parent
+        -- -- an APPROVED_FIRM_KNOWLEDGE row derived from one chunk also
+        -- carries this source_document_id and must never be counted here.
         select count(*) into v_actual_chunks
         from public.organizational_memory_items
-        where source_document_id = v_doc.id;
+        where source_document_id = v_doc.id
+          and memory_class = 'SOURCE_MEMORY';
 
-        if v_doc.chunk_count > 0 and v_actual_chunks >= v_doc.chunk_count then
+        if v_doc.chunk_count > 0 and v_actual_chunks = v_doc.chunk_count then
             select coalesce(jsonb_agg(to_jsonb(i)), '[]'::jsonb) into v_items
             from public.organizational_memory_items i
-            where i.source_document_id = v_doc.id;
+            where i.source_document_id = v_doc.id
+              and i.memory_class = 'SOURCE_MEMORY';
 
             return jsonb_build_object(
                 'document', to_jsonb(v_doc), 'items', v_items, 'reused_existing', true);
         end if;
 
         -- Defensive-only path: with this function as the sole ingestion
-        -- write path going forward, an incomplete row can no longer be
-        -- created -- but a pre-existing one (from before this migration
-        -- edit) must never be silently treated as complete. Fail closed.
-        raise exception 'ingest_organizational_source_document: existing document % for organization % has an incomplete chunk set (% of % expected) -- refusing to silently treat it as complete; manual remediation required',
+        -- write path going forward, an incomplete (or over-complete) row
+        -- can no longer be created -- but a pre-existing one (from before
+        -- this migration edit) must never be silently treated as
+        -- complete. Fail closed, exact-count mismatch either direction.
+        raise exception 'ingest_organizational_source_document: existing document % for organization % has an inconsistent SOURCE_MEMORY chunk set (% of % expected) -- refusing to silently treat it as complete; manual remediation required',
             v_doc.id, p_organization_id, v_actual_chunks, v_doc.chunk_count;
     end if;
 
@@ -773,13 +802,34 @@ begin
 
     for v_chunk in select * from jsonb_array_elements(coalesce(p_chunks, '[]'::jsonb))
     loop
+        -- Second commissioning-review hardening pass fix #4: never trust a
+        -- caller-supplied chunk content_hash verbatim. Re-derive it here
+        -- from the chunk's OWN actual text, using the same normalization
+        -- organizational_memory.content_hash() applies in Python (replace
+        -- "\r\n" then any remaining "\r" with "\n", then sha256 the UTF-8
+        -- bytes) so a legitimately-computed hash still matches. Reject the
+        -- whole transaction -- parent document row included -- if any
+        -- chunk's supplied hash does not match what the server computes
+        -- from that chunk's own content.
+        v_expected_chunk_hash := encode(
+            digest(
+                regexp_replace(
+                    regexp_replace(coalesce(v_chunk->>'content', ''), chr(13) || chr(10), chr(10), 'g'),
+                    chr(13), chr(10), 'g'),
+                'sha256'),
+            'hex');
+        if v_expected_chunk_hash <> (v_chunk->>'content_hash') then
+            raise exception 'ingest_organizational_source_document: chunk content_hash does not match its own content (expected %, got %) -- refusing caller-asserted hash',
+                v_expected_chunk_hash, v_chunk->>'content_hash';
+        end if;
+
         insert into public.organizational_memory_items (
             organization_id, memory_class, title, content, content_hash,
             source_file_id, source_content_hash, source_filename, source_locator,
             source_document_id, created_by_user_id
         ) values (
             p_organization_id, 'SOURCE_MEMORY',
-            v_chunk->>'title', v_chunk->>'content', v_chunk->>'content_hash',
+            v_chunk->>'title', v_chunk->>'content', v_expected_chunk_hash,
             'omsrc:' || p_content_hash, p_content_hash, p_filename, v_chunk->>'source_locator',
             v_doc.id, p_uploaded_by_user_id
         ) returning * into v_item;
