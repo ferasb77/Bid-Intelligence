@@ -11,7 +11,7 @@ import streamlit as st
 import auth_session
 import tenancy
 import section_analyzer
-from analyst import draft_proposal_section
+import proposal_outline
 from config import api_key_configured
 from components.ui import (metric_card, status_badge, priority_badge, readiness_bar,
                            STATUSES, PRIORITIES, DOC_TYPES)
@@ -33,6 +33,13 @@ _DIRECTION_LABEL = {
 _REQ_STATUS_COLOR = {
     "COVERED": "#27AE60", "PARTIAL": "#C9A96E", "MISSING": "#C0392B",
     "CONTRADICTED": "#C0392B", "CANNOT_ASSESS": "#6E6C66",
+}
+# PI-3D: BUILD section-list/detail intelligence rollup labels (see
+# proposal_outline.summarize_section_intelligence).
+_READINESS_COLOR = {"Strong": "#27AE60", "Moderate": "#C9A96E", "Weak": "#E67E22", "None": "#6E6C66"}
+_DRAFT_STATUS_LABEL = {
+    "NOT_APPLICABLE": "—", "NOT_GENERATED": "Not generated",
+    "PARTIAL": "Partially drafted", "GENERATED": "Drafted",
 }
 
 
@@ -137,7 +144,6 @@ def page_build(bid_id: int):
     dels = tenancy.get_deliverables_authenticated(_token, bid_id)
     docs = tenancy.get_documents_authenticated(_token, bid_id)
     tasks = tenancy.get_tasks_authenticated(_token, bid_id)
-    firm_profile = tenancy.get_firm_profile_authenticated(_token, _org_id)
 
     st.markdown('<div style="font-size:.72rem;color:#C9A96E;text-transform:uppercase;letter-spacing:.12em;font-weight:600">STAGE 3 · BUILD</div>', unsafe_allow_html=True)
     st.markdown(f"# Proposal Workspace")
@@ -172,18 +178,72 @@ def page_build(bid_id: int):
         st.markdown("### Proposal Outline & Integrated Section Drafter")
         st.markdown(
             '<div style="font-size:.82rem;color:#A9A69D;margin-bottom:.8rem">'
-            'Select any proposal section to view its mapped evaluation criteria, pull semantically matched library content, '
-            'and draft or refine text in-place.'
+            'BI can propose a grounded proposal structure from this bid\'s analyzed requirements and '
+            'evaluation criteria, then draft each section\'s response from persisted, evidence-aware '
+            'intelligence — or you can build and draft the outline manually.'
             '</div>',
             unsafe_allow_html=True
         )
+
+        # ── PI-3D: cheap, read-only BUILD intelligence context (bulk) ────────
+        # Reused by the section list (requirement/criteria/evidence rollups)
+        # AND the active section's detail panel below -- computed ONCE per
+        # page render, never once per section. Advisory-only: a failure here
+        # (e.g. no Fast Analysis snapshot yet) never blocks the manual
+        # workflow, it only omits the AI-assisted rollups/outline generation.
+        try:
+            build_ctx = tenancy.get_build_intelligence_context_for_organization(bid_id, _org_id)
+        except tenancy.AccessDeniedError as e:
+            st.error(f"Not authorized: {e}")
+            build_ctx = None
+        except Exception:
+            build_ctx = None
+        section_req_map = tenancy.get_section_requirement_map_authenticated(_token, bid_id)
+
+        # ── Primary/secondary workflow toggle ─────────────────────────────
+        # AI-Assisted Build is the default/primary path once the bid has
+        # analyzed requirements to build a structure from; Manual stays one
+        # click away and every manual capability below remains functional
+        # regardless of which mode is selected.
+        default_mode = "ai" if reqs else "manual"
+        build_mode = st.session_state.get("build_workflow_mode", default_mode)
+        c_m1, c_m2 = st.columns(2)
+        if c_m1.button("🤖 AI-Assisted Build", key="mode_ai", use_container_width=True,
+                       type="primary" if build_mode == "ai" else "secondary"):
+            st.session_state["build_workflow_mode"] = "ai"
+            st.rerun()
+        if c_m2.button("✍️ Build Manually", key="mode_manual", use_container_width=True,
+                       type="primary" if build_mode == "manual" else "secondary"):
+            st.session_state["build_workflow_mode"] = "manual"
+            st.rerun()
 
         c_sec_list, c_sec_draft = st.columns([1.3, 2])
 
         with c_sec_list:
             st.markdown("#### Sections")
             if not sections:
-                st.markdown('<div class="empty-state">No sections defined yet.</div>', unsafe_allow_html=True)
+                if reqs and build_mode == "ai":
+                    # ── AI-assisted empty state (instruction 8) ──────────
+                    n_cat = len({(r.get("category") or "General") for r in reqs})
+                    n_crit = len(build_ctx["criterion_by_req_id"]) if build_ctx else 0
+                    crit_note = f" and matches {n_crit} evaluation criteria" if n_crit else ""
+                    st.markdown(
+                        f'<div class="info-box">🧠 <strong>BI has analyzed this RFP</strong> — '
+                        f'{len(reqs)} requirements across {n_cat} categories{crit_note}. BI can propose '
+                        f'a response structure from this intelligence.</div>',
+                        unsafe_allow_html=True)
+                    if st.button("🪄 Generate Proposal Structure", type="primary",
+                                use_container_width=True, key="gen_outline_btn"):
+                        st.session_state["proposed_outline"] = proposal_outline.derive_outline_sections(reqs)
+                        st.rerun()
+                elif not reqs:
+                    st.markdown(
+                        '<div class="info-box">No analyzed requirements found for this bid yet. '
+                        'Complete DECIDE-stage analysis (Fast Analysis) first — BI can then propose a '
+                        'response structure here. You can still add a section manually below.</div>',
+                        unsafe_allow_html=True)
+                else:
+                    st.markdown('<div class="empty-state">No sections defined yet.</div>', unsafe_allow_html=True)
             else:
                 for sec in sections:
                     s_id = sec["id"]
@@ -197,7 +257,72 @@ def page_build(bid_id: int):
                         st.rerun()
                     c_stat.markdown(f'<span style="font-size:.7rem;color:{st_col};font-weight:600">{sec.get("status","Not Started")}</span>', unsafe_allow_html=True)
 
-            with st.expander("➕ Add Outline Section"):
+                    # ── PI-3D: per-section intelligence rollup (instruction 5) ──
+                    mapped_ids = section_req_map.get(s_id, [])
+                    if build_ctx:
+                        s_sum = proposal_outline.summarize_section_intelligence(
+                            mapped_ids, build_ctx.get("criterion_by_req_id"), build_ctx.get("assessment_by_req_id"))
+                        readiness_c = _READINESS_COLOR.get(s_sum["evidence_readiness"], "#6E6C66")
+                        st.markdown(
+                            f'<div style="font-size:.7rem;color:#A9A69D;margin:-.3rem 0 .5rem .1rem">'
+                            f'{s_sum["requirement_count"]} reqs · {s_sum["evaluation_criteria_count"]} criteria · '
+                            f'Evidence: <span style="color:{readiness_c};font-weight:600">{s_sum["evidence_readiness"]}</span>'
+                            f'</div>', unsafe_allow_html=True)
+                    else:
+                        st.markdown(
+                            f'<div style="font-size:.7rem;color:#A9A69D;margin:-.3rem 0 .5rem .1rem">{len(mapped_ids)} reqs</div>',
+                            unsafe_allow_html=True)
+
+            # ── Proposed-outline review/edit/approve (instruction 4) ──────
+            # Nothing above is persisted automatically -- the user must
+            # explicitly approve, and may rename/reorder/remove/add sections
+            # first. Approval reuses the EXISTING outline_sections/
+            # outline_section_requirements CRUD verbatim (no new table).
+            if st.session_state.get("proposed_outline"):
+                st.markdown("---")
+                st.markdown("#### 🪄 Proposed Structure — review before creating")
+                st.caption("Nothing is created yet. Rename, reorder, or remove sections, then approve.")
+                proposed = st.session_state["proposed_outline"]
+                for i, psec in enumerate(proposed):
+                    c_p1, c_p2, c_p3, c_p4 = st.columns([3, 1, 0.5, 0.5])
+                    psec["title"] = c_p1.text_input(
+                        "Title", value=psec["title"], key=f"prop_title_{i}", label_visibility="collapsed")
+                    c_p2.caption(f"{len(psec['requirement_ids'])} reqs")
+                    if c_p3.button("↑", key=f"prop_up_{i}", disabled=(i == 0), help="Move up"):
+                        proposed[i - 1], proposed[i] = proposed[i], proposed[i - 1]
+                        st.rerun()
+                    if c_p4.button("🗑", key=f"prop_del_{i}", help="Remove"):
+                        proposed.pop(i)
+                        st.rerun()
+                c_a1, c_a2, c_a3 = st.columns([1.3, 1, 1.7])
+                if c_a1.button("➕ Add Blank Section", key="prop_add_blank", use_container_width=True):
+                    proposed.append({"title": "New Section", "section_num": f"{len(proposed) + 1}.0",
+                                     "requirement_ids": [], "word_limit": proposal_outline.DEFAULT_WORD_LIMIT})
+                    st.rerun()
+                if c_a2.button("❌ Cancel", key="prop_cancel", use_container_width=True):
+                    st.session_state.pop("proposed_outline", None)
+                    st.rerun()
+                if c_a3.button("✅ Approve & Create Sections", type="primary",
+                               use_container_width=True, key="prop_approve"):
+                    created = 0
+                    for i, psec in enumerate(proposed):
+                        if not (psec.get("title") or "").strip():
+                            continue
+                        new_id = tenancy.upsert_section_authenticated(_token, {
+                            "id": None, "bid_id": bid_id, "title": psec["title"].strip(),
+                            "section_num": psec.get("section_num") or f"{i + 1}.0",
+                            "owner": "", "word_limit": psec.get("word_limit") or proposal_outline.DEFAULT_WORD_LIMIT,
+                            "sort_order": i, "status": "Not Started", "notes": "",
+                        })
+                        if new_id and psec.get("requirement_ids"):
+                            tenancy.set_section_requirement_mapping_authenticated(
+                                _token, bid_id, new_id, psec["requirement_ids"])
+                        created += 1
+                    st.session_state.pop("proposed_outline", None)
+                    st.success(f"Created {created} proposal section(s) from BI's analysis.")
+                    st.rerun()
+
+            with st.expander("➕ Add Section Manually", expanded=(not sections and not reqs)):
                 with st.form("add_outline_sec_form", clear_on_submit=True):
                     n_title = st.text_input("Section Title *")
                     c_n1, c_n2 = st.columns(2)
@@ -222,7 +347,7 @@ def page_build(bid_id: int):
             if not active_sec:
                 st.markdown('<div class="info-box">Select or add a section to start drafting.</div>', unsafe_allow_html=True)
             else:
-                st.markdown(f"#### ✍️ Drafting: [{active_sec.get('section_num','')}] {active_sec['title']}")
+                st.markdown(f"#### [{active_sec.get('section_num','')}] {active_sec['title']}")
                 st.markdown(f'<div style="font-size:.78rem;color:#A9A69D;margin-bottom:.5rem">Owner: <strong>{active_sec.get("owner") or "Unassigned"}</strong> · Target: <strong>{active_sec.get("word_limit") or 500} words</strong></div>', unsafe_allow_html=True)
 
                 # Requirements mapped in-view -- durably persisted (migrations/
@@ -243,31 +368,61 @@ def page_build(bid_id: int):
                     mapped_reqs = [req_options[k] for k in selected_req_keys]
                     mapped_req_ids = sorted(r["id"] for r in mapped_reqs if r.get("id"))
                     if set(mapped_req_ids) != set(persisted_req_ids):
-                        tenancy.set_section_requirement_mapping_authenticated(
-                            _token, bid_id, active_sec["id"], mapped_req_ids)
-                        persisted_req_ids = mapped_req_ids
+                        try:
+                            tenancy.set_section_requirement_mapping_authenticated(
+                                _token, bid_id, active_sec["id"], mapped_req_ids)
+                            persisted_req_ids = mapped_req_ids
+                        except tenancy.SectionMappingUnavailableError as e:
+                            st.caption(f"⚠ {e} Drafting below still uses all bid requirements meanwhile.")
 
-                # ── PI-3C: Requirement Drafting Workspace ────────────────
-                # Requirement -> evaluation intent -> evidence -> gaps ->
-                # grounded draft -> assurance -> evidence behind material
-                # claims, for ONE requirement at a time. Reads ONLY already-
-                # persisted intelligence on render (no Anthropic/OM-retrieval/
-                # reanalysis) -- see pages/section_drafting_workspace.py.
-                with st.expander("🧠 Requirement Drafting Workspace (Bid Intelligence)", expanded=False):
-                    workspace_pool = mapped_reqs if mapped_reqs else reqs
-                    if not workspace_pool:
-                        st.caption("No requirements available to draft against for this bid yet.")
-                    else:
-                        ws_options = {
-                            f"[{r.get('req_id','—')}] {r.get('description','')[:70]}": r
-                            for r in workspace_pool if r.get("id")
-                        }
-                        ws_choice = st.selectbox(
-                            "Open drafting workspace for requirement:",
-                            list(ws_options.keys()), key=f"ws_req_pick_{active_sec['id']}")
-                        if ws_choice:
-                            render_requirement_drafting_workspace(
-                                bid_id, ws_options[ws_choice], outline_section=active_sec)
+                # ── PI-3D: section intelligence summary (instruction 5) ──────
+                # Pure rollup (proposal_outline.summarize_section_intelligence)
+                # over the bulk context fetched once above plus a bounded,
+                # section-scoped draft-existence read -- never a new evidence
+                # model, never a per-requirement Anthropic/OM call.
+                try:
+                    draft_exists_by_req_id = tenancy.get_draft_existence_map_for_organization(
+                        bid_id, _org_id, mapped_reqs) if mapped_reqs else {}
+                except tenancy.AccessDeniedError:
+                    draft_exists_by_req_id = {}
+                sec_summary = proposal_outline.summarize_section_intelligence(
+                    mapped_req_ids,
+                    build_ctx.get("criterion_by_req_id") if build_ctx else None,
+                    build_ctx.get("assessment_by_req_id") if build_ctx else None,
+                    draft_exists_by_req_id,
+                )
+                readiness_c = _READINESS_COLOR.get(sec_summary["evidence_readiness"], "#6E6C66")
+                st.markdown(
+                    f'<div style="background:#111118;border:1px solid #292832;border-radius:6px;'
+                    f'padding:.6rem .9rem;margin:.4rem 0;font-size:.78rem;color:#A9A69D">'
+                    f'<strong style="color:#EDEAE3">{sec_summary["requirement_count"]}</strong> requirements · '
+                    f'<strong style="color:#EDEAE3">{sec_summary["evaluation_criteria_count"]}</strong> evaluation criteria · '
+                    f'Evidence: <strong style="color:{readiness_c}">{sec_summary["evidence_readiness"]}</strong> · '
+                    f'<strong style="color:#EDEAE3">{sec_summary["unresolved_gap_count"]}</strong> unresolved · '
+                    f'Draft: <strong style="color:#EDEAE3">{_DRAFT_STATUS_LABEL.get(sec_summary["draft_status"], sec_summary["draft_status"])}</strong>'
+                    f'</div>', unsafe_allow_html=True)
+
+                # ── PI-3D: AI-assisted drafting, made prominent (instructions
+                # 6/7) -- reuses PI-3C's render_requirement_drafting_workspace
+                # verbatim, one requirement at a time (never a whole-section or
+                # whole-proposal call). Was previously buried in a collapsed,
+                # third-level nested expander below a competing, non-evidence-
+                # aware "quick draft" button -- this is now the primary,
+                # expanded-by-default AI drafting surface for this section.
+                st.markdown("##### 🧠 Draft with BI — Evidence-Aware Section Drafting")
+                workspace_pool = mapped_reqs if mapped_reqs else reqs
+                if not workspace_pool:
+                    st.caption("Map requirements to this section above to enable evidence-aware drafting.")
+                else:
+                    ws_options = {
+                        f"[{r.get('req_id','—')}] {r.get('description','')[:70]}": r
+                        for r in workspace_pool if r.get("id")
+                    }
+                    ws_choice = st.selectbox(
+                        "Requirement:", list(ws_options.keys()), key=f"ws_req_pick_{active_sec['id']}")
+                    if ws_choice:
+                        render_requirement_drafting_workspace(
+                            bid_id, ws_options[ws_choice], outline_section=active_sec)
 
                 # Semantic Content Reuse
                 with st.expander("📚 Relevant Content Library Blocks (Semantic Search)", expanded=False):
@@ -279,31 +434,11 @@ def page_build(bid_id: int):
                     else:
                         st.markdown('<div style="font-size:.75rem;color:#6E6C66">No library items found. Add items to the Content Library.</div>', unsafe_allow_html=True)
 
-                # AI Draft Action
-                c_d1, c_d2 = st.columns([2, 1])
-                if c_d1.button("✨ Draft / Refine Section with Claude", key=f"btn_draft_{active_sec['id']}", use_container_width=True, type="primary"):
-                    if not (api_key_configured() or st.session_state.get("anthropic_api_key")):
-                        st.error("Configure Anthropic API key to use Section Drafter.")
-                    else:
-                        with st.spinner("Drafting section against criteria… 15–25s"):
-                            try:
-                                firm_summary = f"{firm_profile.get('company_name','')}: {firm_profile.get('overview','')} Capabilities: {firm_profile.get('core_capabilities','')}"
-                                draft_res = draft_proposal_section(
-                                    section_title=active_sec["title"],
-                                    requirements=mapped_reqs if mapped_reqs else reqs[:4],
-                                    library_items=lib_results if lib_results else [],
-                                    bid_context=bid,
-                                    firm_context=firm_summary,
-                                    word_limit=active_sec.get("word_limit") or 500
-                                )
-                                st.session_state[f"draft_text_{active_sec['id']}"] = draft_res.get("draft", "")
-                                st.success("Draft generated successfully.")
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"Drafting failed: {e}")
-
-                # Section Editor Form
-                current_draft = st.session_state.get(f"draft_text_{active_sec['id']}") or active_sec.get("notes") or ""
+                # ── Manual section content (instruction 2: manual control
+                # preserved) -- direct authoring/editing, independent of the
+                # AI drafting workspace above (never auto-populated from it).
+                st.markdown("##### ✍️ Manual Section Content")
+                current_draft = active_sec.get("notes") or ""
                 edited_draft = st.text_area("Section Content", value=current_draft, height=260, key=f"txt_draft_{active_sec['id']}")
 
                 c_s1, c_s2, c_s3 = st.columns([1.5, 1.5, 1])

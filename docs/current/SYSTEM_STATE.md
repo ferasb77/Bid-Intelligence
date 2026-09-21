@@ -832,6 +832,165 @@ total. Explicitly still deferred: whole-proposal generation, a
 collaborative editor, visual version diffing, Word export, automated SME
 messaging, Ask CapOS, Red Team.
 
+**PI-3D (AI-Assisted BUILD Workflow) is now implemented** — a product/UI
+orchestration task, not a new domain phase: no new migration, no new
+drafting architecture. Makes PI-3A/PI-3B/PI-3C's already-live, already-
+commissioned evidence-aware drafting the PRIMARY BUILD experience instead
+of a capability that existed but was never actually reachable in practice.
+
+**Root cause (why PI-3C was live but not visible/useful from BUILD):**
+two compounding defects, both pre-existing, neither introduced by PI-3A/
+3B/3C themselves:
+1. The PI-3C requirement drafting workspace was wired into `pages/
+   stage_build.py`, but only inside the ACTIVE outline section's detail
+   panel — reachable only after a user manually created a section first
+   (the only offered action on an empty outline was "➕ Add Outline
+   Section"), and even then it sat in a THIRD-level nested, collapsed-
+   by-default expander ("🧠 Requirement Drafting Workspace (Bid
+   Intelligence)", `expanded=False`) directly below a separate, more
+   visually prominent (`type="primary"`, not in an expander) OLDER "✨
+   Draft / Refine Section with Claude" button calling `analyst.
+   draft_proposal_section` — a genuinely different, non-evidence-aware,
+   non-persisted, non-claim-mapped drafting path with its own session-
+   state-only draft text. A user had no reason to ever open the collapsed
+   PI-3C expander when a more prominent AI button already sat right above
+   the editor.
+2. **A second, deeper, previously-undiscovered gap**: `migrations/
+   013_section_analyzer.sql` (which creates `outline_section_requirements`
+   and `section_reviews`) is written but **was never applied to any live
+   database** (confirmed live via `information_schema.tables` during this
+   task: only `outline_sections` exists; `outline_section_requirements`
+   does not). This means the ENTIRE section-to-requirement mapping
+   feature (the "🎯 Evaluation Criteria In View" multiselect, in
+   production since before this series began) has never actually been
+   able to persist a mapping for any bid with a real outline section --
+   `tenancy.get_section_requirement_ids_authenticated`/`set_section_
+   requirement_mapping_authenticated` would raise a raw PostgREST
+   "relation does not exist" error the moment a user opened that
+   expander on a section-bearing bid. It was invisible only because no
+   bid in this environment happened to have both an outline section AND
+   an attempt to map requirements to it before now. **This migration
+   remains unapplied** -- applying it was out of this task's stated scope
+   (UI orchestration only) and is not authorized by this task; a future
+   "PI-3D Live Commissioning" task, mirroring this series' established
+   write-then-commission pattern, should apply it. Until then, `tenancy.
+   get_section_requirement_ids_authenticated`/`get_section_requirement_
+   map_authenticated` degrade to an empty mapping and `set_section_
+   requirement_mapping_authenticated` raises a new, distinctly-typed
+   `tenancy.SectionMappingUnavailableError` (never a raw PostgREST
+   traceback) -- the BUILD page shows an honest inline caption instead of
+   crashing, and requirement-to-section mapping simply cannot persist
+   across reloads yet. Drafting itself is unaffected: `render_requirement_
+   drafting_workspace` falls back to the bid's full requirement list
+   when no mapping is available, exactly as it already did before this
+   task.
+
+**Workflow changes** (`pages/stage_build.py`'s "Proposal Outline &
+Section Drafter" tab only -- no other BUILD tab touched):
+- A primary/secondary toggle ("🤖 AI-Assisted Build" / "✍️ Build
+  Manually") at the top of the tab; AI-Assisted is the default whenever
+  the bid has analyzed requirements, Manual is the default otherwise --
+  every manual capability (add/edit/save/delete a section, map
+  requirements, run the Section Analyzer) remains fully functional
+  regardless of which is selected.
+- Empty-state redesign (zero outline sections): when analyzed
+  requirements exist, offers "🪄 Generate Proposal Structure" as the
+  primary action (`proposal_outline.derive_outline_sections`) alongside
+  "➕ Add Section Manually" (unchanged, always available); when no
+  requirements exist yet, explains the upstream step (complete DECIDE-
+  stage Fast Analysis first) instead of just showing an empty list.
+- The generated structure is a PROPOSAL, never auto-committed: a review
+  UI lets the user rename (text input), reorder (↑), remove (🗑), or add
+  a blank section, then either "✅ Approve & Create Sections" (persists
+  via the EXISTING `tenancy.upsert_section_authenticated`/`set_section_
+  requirement_mapping_authenticated` -- no new table) or "❌ Cancel"
+  (discards the proposal, nothing persisted). Outline generation and
+  section drafting remain two separate explicit actions -- approving a
+  structure never triggers drafting.
+- The OLD "✨ Draft / Refine Section with Claude" button (`analyst.
+  draft_proposal_section`, the competing non-evidence-aware path
+  identified as the primary root cause above) is REMOVED from this page
+  -- `analyst.draft_proposal_section` itself is untouched and still used
+  elsewhere (`pages_extra.py`). PI-3C's `render_requirement_drafting_
+  workspace` is now the SOLE AI drafting surface here, promoted out of
+  its collapsed nested expander to a prominent, always-visible "🧠 Draft
+  with BI — Evidence-Aware Section Drafting" section directly under a
+  new intelligence summary card -- reused verbatim (instruction 6: "do
+  not create a second drafting implementation"), never reproduced.
+- New section-level intelligence rollup (`proposal_outline.
+  summarize_section_intelligence`, pure): the section list shows "N
+  reqs · M criteria · Evidence: <bucket>" per section; the active
+  section's detail panel additionally shows unresolved-gap count and a
+  draft-status rollup ("Not generated"/"Partially drafted"/"Drafted").
+  Reuses existing canonical sources only -- `section_analyzer.
+  _match_evaluation_criterion` (the SAME deterministic matcher PI-3A's
+  own brief assembly uses) for evaluation-criteria mapping,
+  `proposal_intelligence.ASSESSMENT_STATUSES`/`EVIDENCE_STRENGTH_VALUES`
+  for the evidence-readiness bucket, `database.get_section_drafts` for
+  draft existence -- never a parallel evidence/matching model.
+- New `tenancy.get_build_intelligence_context_for_organization` (Category
+  B, `require_bid_access` first) computes the criterion/assessment maps
+  ONCE per bid (never once per requirement/section); new `tenancy.
+  get_section_requirement_map_authenticated` (Category A) is the bulk
+  equivalent of the existing per-section reader; new `tenancy.
+  get_draft_existence_map_for_organization` (Category B) is a bounded,
+  section-scoped, existence-only read (never the heavier fingerprint/
+  staleness computation `get_section_draft_status_for_organization`
+  performs). All three are read-only, NEVER call Anthropic, NEVER call
+  `organizational_memory.retrieve()` -- proven via the poisoned-function
+  technique in `tests/test_build_workflow_tenancy.py`, mirroring OM-3B/
+  PI-3C's own "opening the workspace must not trigger expensive work"
+  discipline.
+- `tenancy.upsert_section_authenticated` now returns the section's id
+  (existing on update, freshly assigned on insert) -- needed so the
+  outline-approval flow can map requirements to a just-created section
+  in the same script run; existing callers that ignored the return value
+  are unaffected.
+
+**No new drafting architecture**: `render_requirement_drafting_workspace`
+is called from exactly one call site (proven by `tests/
+test_build_workflow_ui.py::TestNoWholeProposalModelCall`, a structural
+source-grep test), one requirement at a time, exactly as PI-3C built it --
+no batch/whole-section/whole-proposal drafting call exists anywhere in
+this task's changes.
+
+Live-validated against the real Bank of Canada bid (bid_id=8, 98 real
+requirements, 0 outline sections) with zero Anthropic calls: `tenancy.
+get_build_intelligence_context_for_organization` and `proposal_outline.
+derive_outline_sections` correctly proposed a 4-section structure
+(Mandatory: 48 reqs, Rated: 39, Supporting: 10, Financial: 1) from the
+bid's real requirement categories; a full `page_build(8)` render captured
+via monkeypatched `st.button`/`st.markdown`/`st.expander` confirmed the
+"🪄 Generate Proposal Structure" button and "BI has analyzed this RFP"
+empty-state copy both actually appear, "➕ Add Section Manually" remains
+available, and rendering raises no exception. Evaluation-criteria/
+evidence-readiness rollups show 0/None for bid 8 specifically because its
+only COMPLETE Fast Analysis run predates raw-snapshot persistence (`db.
+get_analysis_result(run_id=1)` returns no row) -- a pre-existing data gap
+already identical for PI-3A/PI-3B/PI-3C's own evaluation-criterion
+matching on this bid, not a PI-3D defect; the rollup correctly shows
+"None"/0 rather than fabricating a value.
+
+Tests: `tests/test_proposal_outline.py` (28, pure -- category grouping,
+determinism, bounding, evidence-readiness bucketing, rollup counting,
+draft-status transitions, no-model-call-surface); `tests/
+test_build_workflow_tenancy.py` (13 -- bid-access gating, no-Anthropic/
+no-OM-retrieval proofs, migration-013-missing graceful degradation for
+both the pre-existing per-section functions and PI-3D's new bulk one);
+`tests/test_build_workflow_ui.py` (6 -- AI empty state offers generation,
+manual Add Section always available, no-requirements state explains the
+upstream step, AI drafting workspace actually invoked for a mapped
+section, single call site / no whole-proposal call). Full existing
+PI-3A/PI-3B/PI-3C suites (142 tests total across all PI-3 files) and the
+whole-app smoke suite pass unchanged.
+
+Explicitly NOT built (instruction 13): one-call whole-proposal
+generation, Word export, collaborative editing, Red Team, Ask CapOS,
+Arabic, SME messaging, a proposal template designer, visual draft diffs,
+or any other BUILD redesign beyond this tab. Migration 013 remains
+unapplied -- do not apply it without a future task's explicit
+authorization.
+
 ## Architectural fact-type separation
 
 Every subsystem above keeps these categories distinct, never merges them:

@@ -217,6 +217,15 @@ class AccessDeniedError(Exception):
     any privileged write."""
 
 
+class SectionMappingUnavailableError(Exception):
+    """Raised by set_section_requirement_mapping_authenticated when
+    outline_section_requirements (migrations/013_section_analyzer.sql) is
+    not yet live -- distinct from a genuine write failure, so the BUILD UI
+    can show an honest "not saved -- pending a schema update" message
+    instead of either crashing or silently pretending the mapping
+    persisted."""
+
+
 def authorize_bid_access(bid_id: int, organization_id: str) -> bool:
     """True iff bid_id belongs to organization_id. A thin, explicit wrapper
     around get_bid_for_organization() -- kept as its own named function so
@@ -843,13 +852,22 @@ def get_outline_authenticated(access_token: str, bid_id: int) -> list[dict]:
     return client.table("outline_sections").select("*").eq("bid_id", bid_id).order("sort_order").execute().data or []
 
 
-def upsert_section_authenticated(access_token: str, data: dict) -> None:
+def upsert_section_authenticated(access_token: str, data: dict) -> int | None:
+    """Returns the section's id (existing, on update; newly assigned, on
+    insert) -- PI-3D's outline-approval flow (pages/stage_build.py) needs
+    the fresh id immediately, to map requirements to a just-created
+    section in the SAME script run, without a second round trip. Existing
+    callers that ignore the return value are unaffected."""
     client = auth_client.get_authenticated_client(access_token)
     keys = ["sort_order", "section_num", "title", "owner", "word_limit", "status", "notes"]
     if data.get("id"):
         client.table("outline_sections").update({k: data.get(k) for k in keys}).eq("id", data["id"]).execute()
+        return data["id"]
     else:
-        client.table("outline_sections").insert({k: data.get(k) for k in ["bid_id"] + keys}).execute()
+        clean = {k: data.get(k) for k in ["bid_id"] + keys}
+        res = client.table("outline_sections").insert(clean).execute()
+        rows = res.data or []
+        return rows[0]["id"] if rows else None
 
 
 def delete_section_authenticated(access_token: str, sec_id: int) -> None:
@@ -863,22 +881,76 @@ def delete_section_authenticated(access_token: str, sec_id: int) -> None:
 # authorization shape for the same reason: it spends a model call, this
 # read/write CRUD does not.
 
+def _is_missing_table_error(e: Exception) -> bool:
+    """True for PostgREST's "relation does not exist in the schema cache"
+    response (code PGRST205) -- this repo's own standing rule is that a
+    migration FILE existing in migrations/ is never the same as it being
+    applied to any live database (see docs/current/SYSTEM_STATE.md);
+    outline_section_requirements/section_reviews (migrations/
+    013_section_analyzer.sql) are a real, currently-live example: written
+    but not yet applied. Callers use this to degrade gracefully (no
+    mapping persisted yet) rather than crash the BUILD page -- any OTHER
+    error (a genuine RLS denial, a network failure, a malformed payload)
+    still propagates unchanged."""
+    msg = str(e)
+    return "PGRST205" in msg or "schema cache" in msg.lower()
+
+
 def get_section_requirement_ids_authenticated(access_token: str, section_id: int) -> list[int]:
     client = auth_client.get_authenticated_client(access_token)
-    rows = client.table("outline_section_requirements").select("requirement_id") \
-        .eq("section_id", section_id).execute().data or []
+    try:
+        rows = client.table("outline_section_requirements").select("requirement_id") \
+            .eq("section_id", section_id).execute().data or []
+    except Exception as e:
+        if _is_missing_table_error(e):
+            return []
+        raise
     return [r["requirement_id"] for r in rows]
+
+
+def get_section_requirement_map_authenticated(access_token: str, bid_id: int) -> dict[int, list[int]]:
+    """PI-3D: bulk equivalent of get_section_requirement_ids_authenticated
+    -- ONE query for every outline_sections -> requirements mapping in
+    this bid, instead of one query per section, so the BUILD section list
+    can show a per-section requirement count without O(sections) round
+    trips (outline_section_requirements already carries bid_id directly,
+    exactly like set_section_requirement_mapping_authenticated's own
+    insert)."""
+    client = auth_client.get_authenticated_client(access_token)
+    try:
+        rows = client.table("outline_section_requirements").select("section_id, requirement_id") \
+            .eq("bid_id", bid_id).execute().data or []
+    except Exception as e:
+        if _is_missing_table_error(e):
+            return {}
+        raise
+    result: dict[int, list[int]] = {}
+    for row in rows:
+        result.setdefault(row["section_id"], []).append(row["requirement_id"])
+    return result
 
 
 def set_section_requirement_mapping_authenticated(access_token: str, bid_id: int, section_id: int,
                                                    requirement_ids: list[int]) -> None:
+    """Raises SectionMappingUnavailableError (never a raw PostgREST
+    traceback) if outline_section_requirements is not yet live -- see
+    _is_missing_table_error's docstring. Any other error still
+    propagates unchanged."""
     client = auth_client.get_authenticated_client(access_token)
-    client.table("outline_section_requirements").delete().eq("section_id", section_id).execute()
-    if requirement_ids:
-        client.table("outline_section_requirements").insert([
-            {"bid_id": bid_id, "section_id": section_id, "requirement_id": rid}
-            for rid in sorted(set(requirement_ids))
-        ]).execute()
+    try:
+        client.table("outline_section_requirements").delete().eq("section_id", section_id).execute()
+        if requirement_ids:
+            client.table("outline_section_requirements").insert([
+                {"bid_id": bid_id, "section_id": section_id, "requirement_id": rid}
+                for rid in sorted(set(requirement_ids))
+            ]).execute()
+    except Exception as e:
+        if _is_missing_table_error(e):
+            raise SectionMappingUnavailableError(
+                "Requirement-to-section mapping cannot be saved yet -- a required schema update "
+                "(migrations/013_section_analyzer.sql) has not been applied to this database."
+            ) from e
+        raise
 
 
 def get_section_reviews_authenticated(access_token: str, bid_id: int, section_id: int) -> list[dict]:
@@ -1981,6 +2053,99 @@ def strengthen_requirement_evidence_for_organization(
         # time is missing, nothing about this response is wrong.
         return result.to_dict()
     return _enrichment_row_to_dict(persisted)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Proposal Intelligence (PI-3D: AI-assisted BUILD workflow)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def get_build_intelligence_context_for_organization(bid_id: int, organization_id: str) -> dict:
+    """PI-3D: cheap, read-only aggregate context for the BUILD workspace's
+    section list / outline-generation UI (pages/stage_build.py). Verifies
+    bid ownership FIRST.
+
+    Reuses section_analyzer.procurement_basis (an already-persisted Fast
+    Analysis snapshot, never re-run) and section_analyzer.
+    _match_evaluation_criterion (the SAME deterministic requirement<->
+    criterion match PI-3A's own brief assembly already uses, imported not
+    reimplemented) plus the latest usable Proposal Intelligence run's
+    already-persisted assessments -- each read ONCE per bid, never once
+    per requirement, so a BUILD page with many sections/requirements does
+    not multiply reads. NEVER calls Anthropic, NEVER calls
+    organizational_memory.retrieve() -- every field here is already-
+    persisted, already-bounded intelligence (same token/execution
+    discipline as PI-3C's own get_section_draft_status_for_organization).
+
+    Returns a dict with `criterion_by_req_id`/`assessment_by_req_id`
+    (keyed by requirement `id`, the same key outline_section_requirements
+    uses) for proposal_outline.summarize_section_intelligence to roll up,
+    plus `page_limits` (Fast Analysis's deterministic page-limit
+    extraction) and availability flags. A failure to resolve the
+    (advisory-only) evaluation/response-guideline context never raises --
+    exactly like section_analyzer.procurement_basis's own callers already
+    treat it -- since a genuinely absent or stale Fast Analysis snapshot
+    must never block the BUILD workflow itself."""
+    require_bid_access(bid_id, organization_id)
+    import section_analyzer as sa
+
+    basis = sa.procurement_basis(bid_id)
+    raw = basis.get("raw_snapshot")
+    evaluation_criteria = (raw.evaluation_criteria if raw else []) or []
+    page_limits = dict(raw.page_limits) if raw and raw.page_limits else {}
+
+    all_requirements = db.get_requirements(bid_id)
+    criterion_by_req_id: dict[int, dict] = {}
+    for r in all_requirements:
+        if r.get("id") is None:
+            continue
+        try:
+            crit = sa._match_evaluation_criterion(r, evaluation_criteria)
+        except Exception:
+            crit = None
+        if crit:
+            criterion_by_req_id[r["id"]] = crit
+
+    run = db.get_latest_usable_proposal_intelligence_run(bid_id)
+    assessment_by_req_id: dict[int, dict] = {}
+    if run is not None:
+        req_id_to_id = {r.get("req_id"): r.get("id") for r in all_requirements if r.get("req_id")}
+        for a in db.get_proposal_requirement_assessments(run["id"]):
+            rid = req_id_to_id.get(a.get("req_id"))
+            if rid is not None:
+                assessment_by_req_id[rid] = a
+
+    return {
+        "advisory_intelligence_available": raw is not None,
+        "evaluation_criteria_available": bool(evaluation_criteria),
+        "criterion_by_req_id": criterion_by_req_id,
+        "assessment_by_req_id": assessment_by_req_id,
+        "page_limits": page_limits,
+        "procurement_truth_status": basis.get("procurement_truth_status"),
+    }
+
+
+def get_draft_existence_map_for_organization(
+    bid_id: int, organization_id: str, requirements: list[dict],
+) -> dict[int, bool]:
+    """PI-3D: per-requirement "does at least one persisted section_drafts
+    row exist" map, for the CALLER-BOUNDED requirement set only (e.g. one
+    section's mapped requirements -- never the whole bid at once, to keep
+    this cheap). Verifies bid ownership FIRST.
+
+    A plain existence read (database.get_section_drafts, the same table
+    PI-3B/PI-3C already read) -- never the heavier staleness/fingerprint
+    computation get_section_draft_status_for_organization performs, and
+    never a drafting call. Keyed by requirement `id`, matching
+    outline_section_requirements/get_build_intelligence_context_for_
+    organization's own key."""
+    require_bid_access(bid_id, organization_id)
+    result: dict[int, bool] = {}
+    for r in requirements:
+        rid, req_id = r.get("id"), r.get("req_id")
+        if rid is None or not req_id:
+            continue
+        result[rid] = bool(db.get_section_drafts(bid_id, req_id))
+    return result
 
 
 # ═══════════════════════════════════════════════════════════════════════════

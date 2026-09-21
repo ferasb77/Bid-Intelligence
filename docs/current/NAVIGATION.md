@@ -56,9 +56,13 @@ Where to look, not what everything means. Read
   (`buyer_intelligence` parameter), consumed in `pages/stage_understand.py`.
 
 **BUILD (Proposal Workspace)**
-- `pages/stage_build.py` — the Streamlit page (outline, drafter, Section
-  Analyzer UI).
-- `analyst.py`'s `draft_proposal_section`.
+- `pages/stage_build.py` — the Streamlit page (outline, AI-assisted
+  structure generation, evidence-aware drafter, Section Analyzer UI). See
+  "Proposal Intelligence (PI-3D: AI-Assisted BUILD Workflow)" below for
+  the current outline/drafting UI.
+- `analyst.py`'s `draft_proposal_section` — no longer called from
+  `stage_build.py` (PI-3D removed the competing, non-evidence-aware
+  "quick draft" button); still used by `pages_extra.py`.
 
 **Section Analyzer**
 - `section_analyzer.py` — context assembly, the bounded model call,
@@ -689,6 +693,69 @@ deferred, not started.
 - Explicitly still deferred: whole-proposal generation, a collaborative
   editor, visual version diffing, Word export, automated SME messaging,
   Ask CapOS, Red Team.
+
+**Proposal Intelligence (PI-3D: AI-Assisted BUILD Workflow)**
+- Product/UI orchestration only -- no new migration, no new drafting
+  architecture. `proposal_outline.py` (new, pure, no I/O) --
+  `derive_outline_sections` groups active requirements by `category` into
+  a proposed outline (deterministic only, no model call in this
+  increment); `evidence_readiness_bucket`/`weakest_readiness`/
+  `summarize_section_intelligence` are the pure rollups the section list/
+  detail views render from maps `tenancy.py` builds once per bid.
+- `tenancy.get_build_intelligence_context_for_organization` (new,
+  Category B) -- `criterion_by_req_id` via `section_analyzer.
+  _match_evaluation_criterion` (reused, not reimplemented) and
+  `assessment_by_req_id` via the latest usable Proposal Intelligence
+  run's assessments, each computed ONCE per bid. `tenancy.
+  get_section_requirement_map_authenticated` (new, Category A, bulk) and
+  `get_draft_existence_map_for_organization` (new, Category B, bounded
+  existence read via `database.get_section_drafts`) round out the section
+  list/detail rollups. None call Anthropic or `organizational_memory.
+  retrieve()` -- proven via poisoned-function tests.
+- `pages/stage_build.py`'s "Proposal Outline & Section Drafter" tab: a
+  primary "🤖 AI-Assisted Build" / secondary "✍️ Build Manually" toggle;
+  an empty-state "🪄 Generate Proposal Structure" action (offered
+  alongside the unchanged, always-available "➕ Add Section Manually")
+  that computes a PROPOSED structure via `derive_outline_sections` into
+  `st.session_state["proposed_outline"]` -- reviewable (rename/reorder/
+  remove/add), never auto-committed; "✅ Approve & Create Sections"
+  persists it via the EXISTING `tenancy.upsert_section_authenticated`/
+  `set_section_requirement_mapping_authenticated` (no new table).
+  `upsert_section_authenticated` now returns the section's id (existing
+  callers unaffected) so approval can map requirements to a
+  just-created section in the same run.
+- The OLD "✨ Draft / Refine Section with Claude" button (`analyst.
+  draft_proposal_section`, a non-evidence-aware, non-persisted, session-
+  state-only draft path) is REMOVED from this page -- PI-3C's `render_
+  requirement_drafting_workspace` is now the sole AI drafting surface
+  here, promoted from a collapsed, third-level-nested expander to a
+  prominent, always-visible "🧠 Draft with BI" section under a new
+  section-level intelligence summary card. Reused verbatim (one call
+  site, one requirement at a time) -- no batch/whole-proposal drafting
+  call introduced.
+- **Root-cause discovery**: `migrations/013_section_analyzer.sql`
+  (`outline_section_requirements`/`section_reviews`) is confirmed live-
+  verified as still NOT applied to any live database -- the pre-existing
+  per-section requirement-mapping expander would have raised a raw
+  PostgREST error the moment any bid actually had both an outline section
+  and a mapping attempt. `tenancy.get_section_requirement_ids_
+  authenticated`/`get_section_requirement_map_authenticated` now degrade
+  to an empty mapping and `set_section_requirement_mapping_authenticated`
+  raises the new, distinctly-typed `tenancy.SectionMappingUnavailableError`
+  instead of a raw traceback; the BUILD page shows an inline caption
+  instead of crashing. Migration 013 remains unapplied -- see
+  SYSTEM_STATE.md's PI-3D entry; applying it needs its own future,
+  explicitly-authorized commissioning task.
+- Tests: `tests/test_proposal_outline.py` (28, pure), `tests/
+  test_build_workflow_tenancy.py` (13 -- bid-access gating, no-Anthropic/
+  no-OM-retrieval proofs, migration-013-missing degradation), `tests/
+  test_build_workflow_ui.py` (6 -- AI empty state, manual-always-available,
+  AI drafting workspace actually invoked, single-call-site/no-whole-
+  proposal-call structural check).
+- Explicitly still deferred/excluded: one-call whole-proposal generation,
+  Word export, collaborative editing, Red Team, Ask CapOS, Arabic, SME
+  messaging, a proposal template designer, visual draft diffs, applying
+  migration 013.
 
 **Tenancy / RLS / auth boundary**
 - `tenancy.py` — every `*_for_organization` (service-role, ownership-checked)
