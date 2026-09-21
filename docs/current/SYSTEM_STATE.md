@@ -1128,6 +1128,193 @@ prose generation changes, new evidence architecture, new OM work, Word
 export, collaborative editing, Ask CapOS, Red Team, Arabic support, a
 proposal template designer, visual version diffing.
 
+**Full-Package Analysis Integrity Remediation is now implemented**
+(2026-09-22) -- corrects five real analysis-quality defects a full-
+package run of the Bank of Canada RFP exposed, entirely inside the FAST
+ANALYSIS engine (`fast_analysis.py`) and its report/structured-
+intelligence rendering layer (`fast_analysis_app_adapter.py`, `scripts/
+fast_analysis_report_adapter.py`, `scripts/build_boc_bid_intelligence_
+preview_pdf.py`) -- no new migration, no live migration touched, no new
+domain model beyond what the defects genuinely required.
+
+**Two new pure, deterministic, no-Anthropic-call modules** -- deliberately
+split along the SAME boundary this task's multi-agent-readiness framing
+asks for (see below):
+- `document_provenance.py` -- CANONICAL SOURCE LAYER. `classify_document_
+  relationships` (Defect E): filename-pattern classification (CANONICAL/
+  AMENDS/AMENDED_BY/SUPERSEDES/SUPERSEDED_BY/DUPLICATE_REPRESENTATION/
+  REDUNDANT_DERIVATIVE/TRANSLATION_EQUIVALENT/INDEPENDENT_SOURCE), never
+  inferring legal precedence beyond what an `Amendment1/`/`OriginalRevision/`
+  directory or a "REVISED" filename marker itself states; defaults to
+  INDEPENDENT_SOURCE (fails conservatively) rather than guessing. Found
+  and fixed one real bug during live validation: short letter+digit
+  identifiers ("D1"/"D2"/"C1"/"C2") were being dropped by the shared
+  >=4-character word filter, so two genuinely DIFFERENT appendices
+  ("Appendix C1"/"Appendix C2") shared enough generic wording to falsely
+  cross the similarity threshold -- fixed with an explicit "disjoint
+  short-identifier sets are never similar" guard, live-reverified against
+  the real 32-document Bank of Canada corpus. `assess_package_
+  completeness` (section 8): a bounded, deterministic warning
+  ("Possible incomplete procurement package...") when no IDENTITY-family
+  signal plus a substantive requirements/evaluation body was found
+  alongside appendix/addendum-shaped filenames -- never blocks analysis.
+- `procurement_normalization.py` -- CANONICAL PROCUREMENT INTELLIGENCE.
+  `extract_criterion_response_prompts` (Defect A): deterministic
+  "criterion label as its own heading, followed by prose" segmentation --
+  a SECOND, independent deterministic convention alongside the existing
+  `extract_response_guideline_sections`' "Response Guideline N | ..."
+  table convention, never a replacement or a new evaluation model. Live-
+  verified against the REAL Appendix D1/D2/D3 documents: 7/7, 5/7, 4/6
+  criteria respectively captured with their real, buyer-written response
+  instructions, zero LLM calls. `canonicalize_requirements` (Defect B):
+  Tier 1 exact-normalized-text match (`requirement_semantics.
+  normalize_requirement_identity_text`, reused) + Tier 2 near-duplicate
+  match (`scripts.fast_analysis_report_adapter._is_near_duplicate`/
+  `_fuzzy_word_set`, reused, the SAME primitive already used for
+  qualification-mechanism/tie-break-rule collapsing) -- bounded to
+  same-`category` candidate pairs only (never all-vs-all across the
+  corpus), entirely deterministic (no model call). `canonicalize_
+  milestones` (Defect C): groups by (scope, near-duplicate label,
+  overlapping date window) -- an exact ISO date and a "Week of <Month>
+  <Day>" mention of the SAME category-scoped event collapse to one
+  canonical milestone with every original wording/source ref preserved;
+  a genuinely different date, or an unparseable one, is NEVER merged
+  (surfaces as a distinct `ambiguity_state` instead of a false dedup).
+  `derive_category_scope_summaries` (Defect D): the ACTUAL root cause of
+  "Not stated in the extracted data" under each service category was
+  `scripts/fast_analysis_report_adapter.py`'s `_service_category_rows`
+  requiring the category's own label to appear VERBATIM inside a
+  requirement's description -- almost never true. Fixed by falling back
+  to that category's own criteria's captured response prompts (Defect A)
+  and any enumerated service-scope items, both already source-grounded
+  -- never a summary invented from the category title alone.
+- One real bug found and fixed in requirement-classification keyword
+  matching too, while wiring these modules together: plain `in` substring
+  checks for pricing/form/informational keywords false-positived ("rate"
+  inside "corpoRATE") -- fixed with a shared word-boundary
+  `_contains_keyword` helper (mirrors PI-3D1's own identical fix for the
+  same class of bug).
+
+**Wiring** (`fast_analysis.py`'s `run_fast_analysis_corpus`, step 5, after
+all extraction/aggregation completes): `deterministic_criterion_response_
+prompts`/`canonical_milestones`/`document_relationships`/`package_
+completeness` are new `FastAnalysisResult` fields (raw-snapshot schema
+MINOR-bumped to 1.1, purely additive, `deserialize_fast_analysis_result`
+already tolerates unknown/missing fields across the same MAJOR version);
+`result.requirements` is canonicalized IN PLACE (same field/shape, three
+new keys added: `source_variants`/`source_docs`/`source_refs_all`/
+`duplicate_count`) so every existing downstream consumer sees de-
+duplicated requirements automatically, with zero opt-in wiring. `fast_
+analysis_app_adapter.build_opportunity_intelligence` threads
+`response_prompt`/`response_prompt_truncated` onto each `evaluation.
+raw_occurrences` entry, adds top-level `package_completeness` and
+`source_map.document_relationships`, and uses `canonical_milestones` for
+`dates_and_mechanics.raw_date_observations` when available. `scripts/
+fast_analysis_report_adapter.py`'s `_rg_evidence_map`/`_service_category_
+rows`/`KEY_DATES`/`_source_documents` were extended (never replaced) with
+these as ADDITIONAL fallback sources, in priority order, always keeping
+`_NOT_EXTRACTED` as the final, honest fallback. `scripts/build_boc_bid_
+intelligence_preview_pdf.py` (the shared PDF renderer every bid's report
+uses, despite its Bank-of-Canada-era name) gained one new prominent
+banner, rendered FIRST on the body pages, for `PACKAGE_COMPLETENESS_
+WARNING` when present.
+
+**FAST vs FULL analysis contract (section 9)**: no new analysis mode was
+built -- `analysis_runs.analysis_mode` remains FAST-only in practice
+(free-text column, no `COMPREHENSIVE`/`FULL` value ever populated). This
+remediation genuinely improves FAST mode's OWN coverage guarantees
+(deduplicated requirements/milestones, criterion-level requested-evidence
+capture, category scope derivation, document-relationship/completeness
+awareness) without making it read every document exhaustively -- the
+`VALIDATION_FOOTER_NOTE` disclaimer was updated to state the new
+guarantees honestly (deduplication/cross-referencing) while still
+correctly calling itself "a narrowed, targeted extraction pass rather
+than an exhaustive reading of every document." A genuine FULL/
+comprehensive-coverage mode remains unbuilt; building one was explicitly
+out of this task's scope ("do not implement an unnecessarily expensive
+full-corpus workflow").
+
+**Multi-agent readiness** (the user's own mid-task architecture
+constraint): the two new modules' boundary is a DELIBERATE preview of the
+four-layer structure a future multi-agent phase would need:
+- CANONICAL SOURCE LAYER (`document_provenance.py`) and CANONICAL
+  PROCUREMENT INTELLIGENCE (`procurement_normalization.py`) are already
+  separate files with zero cross-imports between them -- a future
+  "procurement/document structure" specialist would own exactly the
+  first; a future "evaluation criteria and requested evidence"/"schedule/
+  submission mechanics"/"SOW/scope/deliverables" specialist would each
+  own one function group inside the second (`extract_criterion_response_
+  prompts`, `canonicalize_milestones`, `derive_category_scope_summaries`
+  respectively already have NO shared mutable state between them beyond
+  read-only input).
+- `canonicalize_requirements` is closest to a future "requirements/
+  compliance" specialist's own concern, and is the one function among the
+  four most likely to eventually need a genuine bounded LLM call (cross-
+  language/deep-paraphrase duplicate detection -- explicitly deferred
+  this task, see below) -- it is already isolated enough to become that
+  specialist's own reconciliation step without touching the other three.
+- Both modules share exactly ONE dependency
+  (`scripts.fast_analysis_report_adapter._fuzzy_word_set`/
+  `_is_near_duplicate`) -- a shared, stateless, pure primitive, not a
+  shared mutable data structure -- so parallelizing these into
+  independent specialist passes later requires no coordination beyond
+  each one reading the same already-persisted `FastAnalysisResult`/
+  `structured_intelligence`; nothing here holds a lock, a session, or
+  in-process state across calls.
+- What must remain CENTRALIZED even after a future multi-agent split:
+  `fast_analysis.py`'s own step-5 orchestration order (Defect A's known-
+  criterion-labels must exist before criterion-response-prompt extraction
+  can run; Defect D's category summaries depend on Defect A's captured
+  prompts) -- a RECONCILIATION/ASSURANCE layer coordinating specialist
+  outputs' dependencies is still necessary, this task did not eliminate
+  that need, only kept today's version of it small and in one place.
+- No architectural blocker was found preventing a later multi-agent
+  phase from building on this split -- the remaining work for that phase
+  is orchestration (dispatching to N specialists and reconciling their
+  outputs), not restructuring these two modules again.
+
+**Explicitly deferred / out of scope for this task**: a genuine FULL/
+comprehensive analysis mode; cross-language (e.g. EN/FR) duplicate-
+requirement detection (deterministic dedup here correctly, conservatively
+keeps a bilingual restatement pair as two separate, fully source-
+traceable rows rather than guessing a translation-equivalence it cannot
+verify -- see `TestBilingualRequirementHandling`); Section Analyzer/
+SectionDraftingBrief wiring of `deterministic_criterion_response_prompts`
+via the ADVISORY raw-snapshot path specifically (the structured_
+intelligence path IS wired; the raw-snapshot path exists on the new
+dataclass field and its serialization but bid 8 itself has no raw
+snapshot to verify against, so this wiring was deferred rather than
+shipped unverified); sub-parsing a captured response prompt into finer
+categories ("required examples" vs. "required personnel evidence" vs.
+"methodology description") -- the verbatim prompt already contains all of
+these inline, and further splitting risked misclassifying real buyer text
+via a naive heuristic.
+
+**Live validation against the real Bank of Canada bid** (bid_id=8, 32
+real documents, zero new Anthropic calls -- reused already-persisted
+structured_intelligence plus direct, cheap file downloads of the 3 real
+Appendix D documents): all 5 defects confirmed fixed against real data
+(see the final report for the full before/after). A full re-run of Fast
+Analysis's own 30-document extraction pass (a real, expensive multi-call
+LLM operation) was deliberately NOT performed -- "do not repeatedly
+regenerate expensive analysis while debugging if a smaller fixture can
+prove the behavior first" (task's own instruction); each new function was
+instead validated directly against real inputs assembled from already-
+persisted data and cheap file downloads, which is sufficient to prove
+correctness without spending a new expensive run.
+
+No migration was required -- every new field lives inside the already-
+JSON `structured_intelligence`/`report_content_snapshot` columns (via the
+raw-snapshot dataclass's own additive-field convention), never a new
+table or column.
+
+Tests: `tests/test_document_provenance.py` (14), `tests/test_procurement_
+normalization.py` (33, including the bilingual-handling regression),
+`tests/test_fast_analysis_remediation_report.py` (11, report-rendering
+wiring). Full existing fast_analysis/report-adapter/app-adapter/PI-3/
+Section-Analyzer/migration-013 suites re-run and pass unchanged (zero
+regressions) -- 2987 passed, 2 skipped (pre-existing) full-suite total.
+
 ## Architectural fact-type separation
 
 Every subsystem above keeps these categories distinct, never merges them:

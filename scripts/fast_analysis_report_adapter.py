@@ -962,7 +962,20 @@ def _shorten_to_sentence(text: str, limit: int = 280) -> str:
 
 def _service_category_rows(result: FastAnalysisResult, categories: list[str]) -> list[tuple[str, str, str]]:
     """Phase 5 generic version of category loop: ensures evaluation terms
-    (Weighted Criteria, Pricing) are never displayed as Service Categories."""
+    (Weighted Criteria, Pricing) are never displayed as Service Categories.
+
+    Full-Package Analysis Integrity Remediation Defect D: when the
+    literal-substring match against requirement descriptions finds
+    nothing (the common case -- a buyer's category LABEL, e.g. "Category
+    1 — Learning & Development (Form D1)", rarely appears verbatim inside
+    a requirement's own text), falls back to procurement_normalization.
+    derive_category_scope_summaries -- source-grounded scope material
+    from that SAME category's own criteria response prompts (Defect A)
+    and any enumerated service-scope items, NEVER a summary invented from
+    the category title alone. A category with neither signal still shows
+    _NOT_EXTRACTED, honestly."""
+    import procurement_normalization as _proc_norm
+
     clean_categories = [c for c in categories if not _is_evaluation_category_label(c)]
     if not clean_categories:
         clean_categories = _discover_service_categories_from_scope(result)
@@ -983,9 +996,26 @@ def _service_category_rows(result: FastAnalysisResult, categories: list[str]) ->
                 "pricing evaluation formula", "ranked lowest to highest", "multiplier", "points available",
             ))
         ]
-        desc = " ".join((clean_matches or matches)[:2]) if matches else _NOT_EXTRACTED
-        if desc != _NOT_EXTRACTED:
-            desc = _shorten_to_sentence(desc)
+        desc = " ".join((clean_matches or matches)[:2]) if matches else None
+
+        if not desc:
+            weight_rows = _weight_rows_for_category(result, label)
+            weights_by_category = {label: [{"criterion": c, "weight": w} for c, w in weight_rows]} if weight_rows else {}
+            det_prompts = getattr(result, "deterministic_criterion_response_prompts", None) or {}
+            summaries = _proc_norm.derive_category_scope_summaries(
+                weights_by_category, det_prompts, getattr(result, "deterministic_service_scope", None))
+            cat_summary = summaries.get(label) or {}
+            if cat_summary.get("summary_available"):
+                parts = [cp["response_prompt"] for cp in cat_summary["criteria_prompts"][:2]]
+                if parts:
+                    desc = " ".join(parts)
+                elif cat_summary.get("enumerated_scope_items"):
+                    desc = "; ".join(cat_summary["enumerated_scope_items"][:5])
+
+        if not desc:
+            desc = _NOT_EXTRACTED
+        else:
+            desc = _shorten_to_sentence(desc, limit=320)
         rows.append((label, f"Category {i}", desc))
     return rows
 
@@ -1121,30 +1151,38 @@ def _rg_evidence_map(result: FastAnalysisResult, weighted_criteria: list[tuple[s
     criterion name or evidence text, both of which are the corpus's own
     extracted data either way.
 
-    Each row's "requested evidence" text prefers
-    result.deterministic_response_guidelines (structural, no-LLM parsing
-    of the response form's own "Response Guideline N" table -- see
-    extract_response_guideline_sections) when available, by ordinal
-    position matching the same generic RG-numbers-match-table-order
-    convention above; this is materially more reliable than substring-
-    matching a criterion's own name against requirements text (confirmed
-    live: that substring match found nothing for any of this corpus's six
-    criteria, since the actual evidence-prompt text doesn't repeat the
-    criterion's exact name). Falls back to the substring-match technique
-    _service_category_rows also uses for a corpus with no deterministic
-    RG sections; a criterion with neither shows _NOT_EXTRACTED rather
-    than inventing one."""
+    Each row's "requested evidence" text tries THREE sources, most
+    reliable first, never inventing one the source doesn't state:
+      1. result.deterministic_criterion_response_prompts (Full-Package
+         Analysis Integrity Remediation Defect A) -- an EXACT match on
+         THIS criterion's own label against a response-form heading the
+         buyer's own Appendix D-style document restated verbatim (e.g.
+         "Curriculum & Program Design Capability" as a heading, followed
+         by the buyer's own prose describing what to include). This is
+         the most reliable source: an exact label match, not a
+         positional or substring guess.
+      2. result.deterministic_response_guidelines (structural, no-LLM
+         parsing of the response form's own "Response Guideline N" table
+         -- see extract_response_guideline_sections) by ordinal position
+         matching the generic RG-numbers-match-table-order convention --
+         a DIFFERENT response-form convention than (1), kept as a
+         fallback for a corpus using that table layout instead.
+      3. The substring-match technique _service_category_rows also uses,
+         for a corpus with neither of the above. A criterion with none of
+         the three shows _NOT_EXTRACTED rather than inventing one."""
     rows: list[tuple[str, str, str]] = []
     det_rgs = getattr(result, "deterministic_response_guidelines", None) or []
+    det_prompts = getattr(result, "deterministic_criterion_response_prompts", None) or {}
     rg_num = 0
     for label, _weight in weighted_criteria:
         if "pricing" in label.lower():
             continue
         rg_num += 1
-        if rg_num <= len(det_rgs):
+        evidence = _NOT_EXTRACTED
+        if label in det_prompts and det_prompts[label].get("response_prompt"):
+            evidence = _shorten_to_sentence(det_prompts[label]["response_prompt"], limit=280)
+        if evidence == _NOT_EXTRACTED and rg_num <= len(det_rgs):
             evidence = _summarize_evidence_prompts(det_rgs[rg_num - 1].get("evidence_prompts") or [])
-        else:
-            evidence = _NOT_EXTRACTED
         if evidence == _NOT_EXTRACTED:
             matches = [r.get("description") for r in result.requirements
                       if r.get("description") and label.lower() in r["description"].lower()]
@@ -1214,19 +1252,58 @@ def _compact_citation(raw: str) -> str:
     return raw
 
 
+_RELATIONSHIP_ANNOTATIONS = {
+    "AMENDS": "amends {related}",
+    "AMENDED_BY": "amended by {related}",
+    "SUPERSEDES": "supersedes {related}",
+    "SUPERSEDED_BY": "superseded by {related}",
+    "DUPLICATE_REPRESENTATION": "duplicate representation of {related}",
+    "REDUNDANT_DERIVATIVE": "redundant derivative of {related}",
+    "TRANSLATION_EQUIVALENT": "translation-equivalent of {related}",
+}
+
+
+def _relationship_annotation(result: FastAnalysisResult, name: str) -> str:
+    """Full-Package Analysis Integrity Remediation Defect E: a short,
+    parenthetical annotation for the Source Map's "Content" column when
+    this document's filename-pattern-classified relationship
+    (document_provenance.classify_document_relationships) is anything
+    other than INDEPENDENT_SOURCE -- makes a repeated/renamed filename's
+    relationship to another listed document explicit instead of leaving
+    the reader to guess why two similarly-named entries both appear.
+    Returns "" (no annotation) for INDEPENDENT_SOURCE or an unclassified
+    name, never invents a relationship the classifier itself didn't find."""
+    rel = (result.document_relationships or {}).get(name) or {}
+    kind = rel.get("relationship")
+    related = rel.get("related_to")
+    if not kind or kind == "INDEPENDENT_SOURCE" or not related:
+        return ""
+    template = _RELATIONSHIP_ANNOTATIONS.get(kind)
+    if not template:
+        return ""
+    return f" ({template.format(related=_compact_citation(related))})"
+
+
 def _source_documents(result: FastAnalysisResult) -> list[tuple[str, str]]:
     """Phase 5 generic Source Map (instruction 8/16): derived from the
     engine's own routing decisions (`documents_by_route`) plus whichever
     documents it explicitly skipped or batched, rather than a hand-written,
     corpus-specific document list -- this is honest about what the engine
-    actually looked at for THIS corpus, for any corpus."""
+    actually looked at for THIS corpus, for any corpus.
+
+    Defect E: each row's "Content" description gets a short relationship
+    annotation (see `_relationship_annotation`) when this document's
+    filename-pattern-classified relationship to another listed document
+    is known -- e.g. "Response Guideline / rated-criteria form (amends
+    OriginalRevision/RFP ... Appendix D2 ...)"."""
     rows: list[tuple[str, str]] = []
     for route, filenames in (result.documents_by_route or {}).items():
         desc = _ROUTE_DOC_DESCRIPTIONS.get(route, "Supporting document")
         for name in filenames:
-            rows.append((_compact_citation(name), desc))
+            rows.append((_compact_citation(name), desc + _relationship_annotation(result, name)))
     for name in result.skipped_documents:
-        rows.append((_compact_citation(name), "Skipped (redundant or not separately analyzed)"))
+        rows.append((_compact_citation(name),
+                    "Skipped (redundant or not separately analyzed)" + _relationship_annotation(result, name)))
     return rows
 
 
@@ -1460,7 +1537,24 @@ def build_fast_report_content(result: FastAnalysisResult,
     _clar_text = _clarification_deadline_text(meta, result.typed_observations)
     dates = [("Clarification deadline", _clar_text if _clar_text != _NOT_EXTRACTED else None),
             ("Submission deadline", _submission_deadline_text(meta))]
-    for date, scope in _presentation_dates(result.typed_observations):
+    # Full-Package Analysis Integrity Remediation Defect C: feeds
+    # _presentation_dates the ALREADY-CANONICALIZED milestone list
+    # (alternate wordings of the SAME event -- e.g. "Week of October 26"
+    # and "2026-10-26" -- already collapsed to one row) instead of the
+    # raw per-observation typed_observations list, converted back into
+    # the same MILESTONE-observation shape _presentation_dates already
+    # expects so its own scope/date filtering is reused unchanged.
+    _milestone_source = result.typed_observations
+    if result.canonical_milestones:
+        _milestone_source = [
+            {
+                "family": "MILESTONE", "semantic_kind": m["label"],
+                "date": m["normalized_date_start"], "original_value": " / ".join(m["original_wording"]),
+                "scope": m["scope"],
+            }
+            for m in result.canonical_milestones
+        ]
+    for date, scope in _presentation_dates(_milestone_source):
         dates.append((date or "Date not extracted", f"Presentation / demonstration — {scope or 'category not specified'}"))
     C.KEY_DATES = [(d or "Not extracted", label) for d, label in dates if label]
     # Submission-mechanics narrative prose (how/where to submit) lives in
@@ -1888,14 +1982,30 @@ def build_fast_report_content(result: FastAnalysisResult,
     # ---- Section 10: Source Map ----
     C.SOURCE_DOCUMENTS = _source_documents(result)
     C.SOURCE_REF_TABLE = _source_ref_table(result)
+    # FAST vs FULL analysis contract (task section 9): this remains an
+    # honest FAST/targeted-extraction disclaimer -- this remediation adds
+    # canonical requirement/milestone deduplication, criterion response-
+    # prompt capture, and category-scope derivation, but does NOT make
+    # Fast Analysis read every document exhaustively; it is still not a
+    # FULL/comprehensive-coverage analysis mode (none exists yet -- see
+    # docs/current/SYSTEM_STATE.md's FAST/FULL contract note).
     C.VALIDATION_FOOTER_NOTE = (
         "Procurement-specific figures in this Fast Analysis preview are drawn from a narrowed, "
         "targeted extraction pass rather than an exhaustive reading of every document. Source "
         "references are retained for every material fact where extraction captured one; source "
-        "inconsistencies are preserved and flagged rather than silently resolved. Buyer "
-        "Intelligence (Section 2), when present, draws on a separate, externally sourced layer "
-        "kept clearly apart from the RFP's own evaluation criteria."
+        "inconsistencies are preserved and flagged rather than silently resolved. Requirements, "
+        "milestones, and evaluated-criterion response prompts shown here have been deduplicated "
+        "and cross-referenced across the corpus where the same obligation or event was restated "
+        "in more than one source document, with every contributing source reference retained. "
+        "Buyer Intelligence (Section 2), when present, draws on a separate, externally sourced "
+        "layer kept clearly apart from the RFP's own evaluation criteria."
     )
+
+    # Section 8: bounded package-completeness warning -- never blocks
+    # analysis, only surfaces when no primary-solicitation document was
+    # confidently identified alongside appendix/addendum-shaped filenames.
+    completeness = getattr(result, "package_completeness", None) or {}
+    C.PACKAGE_COMPLETENESS_WARNING = completeness.get("warning")
 
     # PDF header/metadata identity string (see build_boc_bid_intelligence_preview_pdf.py's
     # on_body/build) -- built here, once, from the same buyer/solnum already

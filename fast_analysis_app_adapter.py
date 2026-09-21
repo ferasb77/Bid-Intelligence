@@ -73,12 +73,31 @@ def build_opportunity_intelligence(result: FastAnalysisResult) -> dict:
             # 12: material facts retain source references), the same way
             # evaluation.raw_occurrences and pricing_and_commercial.
             # raw_pricing_occurrences already do.
-            "raw_date_observations": [
-                {k: obs.get(k) for k in
-                 ("semantic_kind", "original_value", "date", "scope", "source_doc", "source_refs")}
-                for obs in result.typed_observations
-                if isinstance(obs, dict) and obs.get("family") == "MILESTONE"
-            ],
+            #
+            # Full-Package Analysis Integrity Remediation Defect C: uses
+            # result.canonical_milestones (alternate wordings of the SAME
+            # event already collapsed to one row, genuinely different
+            # dates never merged) instead of the raw per-observation list
+            # -- a "Week of October 26" mention and a "2026-10-26" mention
+            # of the same category-scoped event no longer render as two
+            # rows. Falls back to the raw list only if canonicalization
+            # produced nothing (e.g. no MILESTONE observations at all).
+            "raw_date_observations": (
+                [
+                    {
+                        "semantic_kind": m["label"], "original_value": " / ".join(m["original_wording"]),
+                        "date": m["normalized_date_start"], "scope": m["scope"],
+                        "source_doc": None, "source_refs": m["source_refs"],
+                        "ambiguity_state": m["ambiguity_state"], "confidence": m["confidence"],
+                    }
+                    for m in result.canonical_milestones
+                ] if result.canonical_milestones else [
+                    {k: obs.get(k) for k in
+                     ("semantic_kind", "original_value", "date", "scope", "source_doc", "source_refs")}
+                    for obs in result.typed_observations
+                    if isinstance(obs, dict) and obs.get("family") == "MILESTONE"
+                ]
+            ),
         },
         "evaluation": {
             "stages": [
@@ -94,10 +113,22 @@ def build_opportunity_intelligence(result: FastAnalysisResult) -> dict:
             # Raw, occurrence-preserving evaluation facts with full source
             # provenance -- the durable record behind the summarized table
             # above (instruction 12: material facts retain source refs).
+            # `response_prompt`/`response_prompt_truncated` (Full-Package
+            # Analysis Integrity Remediation Defect A) are attached here,
+            # keyed by this SAME occurrence's own criterion_label, from
+            # result.deterministic_criterion_response_prompts -- absent
+            # (both None) when the source genuinely never restated this
+            # criterion as a response-form heading, never fabricated.
             "raw_occurrences": [
-                {k: occ.get(k) for k in
-                 ("criterion_label", "weight", "category_scope", "evaluation_stage",
-                  "parent_heading", "source_doc", "source_refs")}
+                {
+                    **{k: occ.get(k) for k in
+                       ("criterion_label", "weight", "category_scope", "evaluation_stage",
+                        "parent_heading", "source_doc", "source_refs")},
+                    "response_prompt": (result.deterministic_criterion_response_prompts
+                                        .get(occ.get("criterion_label"), {}).get("response_prompt")),
+                    "response_prompt_truncated": (result.deterministic_criterion_response_prompts
+                                                  .get(occ.get("criterion_label"), {}).get("truncated", False)),
+                }
                 for occ in carry_forward_category_scope(result.evaluation_occurrences)
             ],
         },
@@ -150,7 +181,20 @@ def build_opportunity_intelligence(result: FastAnalysisResult) -> dict:
                 {"finding": r[0], "reference": r[1]} for r in content.SOURCE_REF_TABLE
             ],
             "validation_note": content.VALIDATION_FOOTER_NOTE,
+            # Full-Package Analysis Integrity Remediation Defect E:
+            # filename-pattern-based document relationship classification
+            # (document_provenance.classify_document_relationships) --
+            # CANONICAL/AMENDS/AMENDED_BY/DUPLICATE_REPRESENTATION/
+            # REDUNDANT_DERIVATIVE/INDEPENDENT_SOURCE, never inferring
+            # legal precedence beyond what the directory/filename
+            # convention itself states.
+            "document_relationships": dict(result.document_relationships),
         },
+        # Section 8: bounded, deterministic package-completeness warning
+        # -- never blocks analysis, only surfaces a warning when no
+        # confident primary-solicitation signal was found alongside
+        # appendix/addendum-shaped filenames.
+        "package_completeness": dict(result.package_completeness) if result.package_completeness else None,
         # Phase 5: Buyer Intelligence (an external, hand-curated layer with
         # real content for only one buyer today) is only present when the
         # report adapter actually matched the current procurement's buyer

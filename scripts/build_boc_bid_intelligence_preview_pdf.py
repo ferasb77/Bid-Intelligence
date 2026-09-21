@@ -222,6 +222,29 @@ def build(content=None, out_path=None):
         sec_num += 1
         section_header(f"Section {sec_num}", title, story)
 
+    # ---------------- PACKAGE COMPLETENESS WARNING (task section 8) ----
+    # Rendered FIRST, before any section, so a genuinely incomplete
+    # package is impossible to miss -- never blocks the report itself
+    # from rendering, only makes the caveat prominent.
+    completeness_warning = getattr(C, "PACKAGE_COMPLETENESS_WARNING", None)
+    if completeness_warning:
+        warn_style = ParagraphStyle(
+            "completeness_warning", fontName="Body", fontSize=9.6, leading=13.6,
+            textColor=HexColor("#C0392B"))
+        warn_table = Table(
+            [[Paragraph(f"<b>⚠ {completeness_warning}</b>", warn_style)]],
+            colWidths=[6.4 * inch])
+        warn_table.setStyle(TableStyle([
+            ("BOX", (0, 0), (-1, -1), 1, HexColor("#C0392B")),
+            ("BACKGROUND", (0, 0), (-1, -1), HexColor("#FBEAEA")),
+            ("TOPPADDING", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ("LEFTPADDING", (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ]))
+        story.append(warn_table)
+        story.append(Spacer(1, 10))
+
     # ---------------- EXECUTIVE OPPORTUNITY SNAPSHOT ----------------
     emit_section("Executive Opportunity Snapshot")
     story.append(fact_card_table(C.SNAPSHOT_FACTS))

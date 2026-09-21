@@ -1377,6 +1377,25 @@ class FastAnalysisResult:
     # extract_enumerated_service_scope / extract_response_guideline_sections.
     deterministic_service_scope: dict | None = None
     deterministic_response_guidelines: list = field(default_factory=list)
+    # Full-Package Analysis Integrity Remediation (2026-09-22). All four
+    # deterministic, no-LLM, no-new-model-call -- see procurement_
+    # normalization.py / document_provenance.py for the functions that
+    # populate these.
+    #   Defect A: per-criterion requested-response/evidence text, keyed by
+    #   the SAME criterion labels evaluation extraction already produced.
+    deterministic_criterion_response_prompts: dict = field(default_factory=dict)
+    #   Defect C: canonicalized milestones (see procurement_normalization.
+    #   canonicalize_milestones) -- alternate wordings of the SAME event
+    #   collapsed to one row; genuinely different dates never merged.
+    canonical_milestones: list = field(default_factory=list)
+    #   Defect E: filename-pattern-based document relationship
+    #   classification (see document_provenance.classify_document_
+    #   relationships) -- CANONICAL/AMENDS/AMENDED_BY/DUPLICATE_
+    #   REPRESENTATION/REDUNDANT_DERIVATIVE/INDEPENDENT_SOURCE.
+    document_relationships: dict = field(default_factory=dict)
+    #   Section 8: bounded package-completeness assessment (see
+    #   document_provenance.assess_package_completeness).
+    package_completeness: dict | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -1400,7 +1419,7 @@ class FastAnalysisResult:
 # a field is removed, renamed, or its meaning changes). Bump MINOR for a
 # purely additive change (a new optional field) -- deserialize_fast_analysis_result
 # tolerates a payload from any MINOR version within the same MAJOR.
-FAST_ANALYSIS_RAW_SNAPSHOT_SCHEMA_VERSION = "1.0"
+FAST_ANALYSIS_RAW_SNAPSHOT_SCHEMA_VERSION = "1.1"
 
 # Every FastAnalysisResult field EXCEPT `telemetry`, which is deliberately
 # reduced to a compact audit summary rather than stored verbatim -- see
@@ -1874,6 +1893,66 @@ def run_fast_analysis_corpus(documents: list[tuple[str, str]], api_key: str,
             result.evaluation_criteria, combined_pricing_occurrences),
         "category_date_distinctions": detect_category_date_distinctions(result.typed_observations),
     }
+
+    # 5. Full-Package Analysis Integrity Remediation (2026-09-22) -- all
+    # deterministic, no new model call, run AFTER extraction/aggregation
+    # above since each needs already-aggregated data (known criterion
+    # labels, the full requirements list, typed_observations) as input.
+    import document_provenance as _doc_provenance
+    import procurement_normalization as _proc_norm
+
+    # Defect A: per-criterion requested-response/evidence prompts, keyed
+    # to the SAME criterion labels evaluation extraction already produced
+    # (never invents a new criterion). Runs over every document's own
+    # text -- cheap, pure string search, no LLM call.
+    known_criterion_labels = sorted({
+        (occ.get("criterion_label") or "").strip()
+        for occ in result.evaluation_occurrences
+        if isinstance(occ, dict) and (occ.get("criterion_label") or "").strip()
+    } | {
+        (ec.get("stage") or "").strip()
+        for ec in result.evaluation_criteria
+        if isinstance(ec, dict) and (ec.get("stage") or "").strip()
+    })
+    if known_criterion_labels:
+        for name, doc_text in documents:
+            prompts = _proc_norm.extract_criterion_response_prompts(doc_text, known_criterion_labels)
+            for label, entry in prompts.items():
+                result.deterministic_criterion_response_prompts.setdefault(label, entry)
+
+    # Defect B: cross-document duplicate requirement canonicalization --
+    # replaces result.requirements IN PLACE (same field, same shape plus
+    # new source_variants/source_docs/source_refs_all/duplicate_count
+    # keys) so every downstream consumer (report adapter, structured_
+    # intelligence, BUILD/proposal_outline) sees de-duplicated
+    # requirements without a separate opt-in field.
+    result.requirements = _proc_norm.canonicalize_requirements(result.requirements)
+
+    # Defect C: milestone canonicalization over MILESTONE-family typed
+    # observations -- a SEPARATE field (canonical_milestones), never
+    # mutating typed_observations itself, so ambiguity detection and any
+    # other typed_observations consumer above is completely unaffected.
+    milestone_observations = [
+        o for o in result.typed_observations
+        if isinstance(o, dict) and o.get("family") == "MILESTONE"
+    ]
+    if milestone_observations:
+        assumed_year = None
+        for doc_meta in result.doc_metadata_by_doc.values():
+            deadline = (doc_meta or {}).get("submission_deadline")
+            if isinstance(deadline, str) and len(deadline) >= 4 and deadline[:4].isdigit():
+                assumed_year = int(deadline[:4])
+                break
+        result.canonical_milestones = _proc_norm.canonicalize_milestones(
+            milestone_observations, assumed_year=assumed_year)
+
+    # Defect E + section 8: document relationships and package
+    # completeness -- filename/typed-observation-only, no file re-read.
+    result.document_relationships = _doc_provenance.classify_document_relationships(list(texts_by_name.keys()))
+    result.package_completeness = _doc_provenance.assess_package_completeness(
+        result.typed_observations, result.requirements,
+        bool(result.evaluation_occurrences or result.evaluation_criteria),
+        list(texts_by_name.keys()))
 
     result.wall_seconds = round(time.monotonic() - wall_start, 6)
     return result

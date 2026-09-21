@@ -50,6 +50,64 @@ Where to look, not what everything means. Read
 - `database.py`'s `_guard_canonical_requirement_write`,
   `get_bid_procurement_state`.
 - Tests: `tests/test_tenant_rls_enforcement.py`, `tests/test_auth_tenancy.py`.
+- Note: `extractor.py`'s own separate Stage A/B/C pipeline
+  (`aggregate_stage_a_facts`/`normalize_package_facts`/`build_submission_
+  documents`, tested by `tests/test_stage_b_requirement_dedup_integrity.py`/
+  `tests/test_submission_document_provenance.py`) feeds this CANONICAL-
+  procurement-truth layer -- a genuinely separate pipeline from Fast
+  Analysis's own `fast_analysis.py`, with its own EXACT-match-only
+  requirement dedup. Do not confuse the two; see "Full-Package Analysis
+  Integrity Remediation" below for which layer that task's fuzzy dedup
+  actually lives in (Fast Analysis's advisory report, not this one).
+
+**Full-Package Analysis Integrity Remediation** (Defects A-E, 2026-09-22)
+- `document_provenance.py` (new, pure, CANONICAL SOURCE LAYER) --
+  `classify_document_relationships` (Defect E: filename-pattern-based
+  CANONICAL/AMENDS/AMENDED_BY/DUPLICATE_REPRESENTATION/REDUNDANT_
+  DERIVATIVE/INDEPENDENT_SOURCE classification), `assess_package_
+  completeness` (section 8).
+- `procurement_normalization.py` (new, pure, CANONICAL PROCUREMENT
+  INTELLIGENCE) -- `extract_criterion_response_prompts` (Defect A: a
+  second deterministic "criterion-label-as-heading" convention alongside
+  `extract_response_guideline_sections`' table convention),
+  `canonicalize_requirements` (Defect B: Tier-1 exact + Tier-2 fuzzy
+  dedup, bounded to same-category candidates, reuses `requirement_
+  semantics.normalize_requirement_identity_text` and `scripts.
+  fast_analysis_report_adapter._is_near_duplicate`/`_fuzzy_word_set`),
+  `canonicalize_milestones` (Defect C: scope+label+date-window merge),
+  `derive_category_scope_summaries` (Defect D: derives "What Is Being
+  Procured" scope from Defect A's own captured response prompts +
+  enumerated service-scope items, never the category title alone).
+- `fast_analysis.py`'s `run_fast_analysis_corpus` step 5 (after all
+  extraction) wires all four in; `FastAnalysisResult` gained
+  `deterministic_criterion_response_prompts`/`canonical_milestones`/
+  `document_relationships`/`package_completeness` (raw-snapshot schema
+  MINOR-bumped 1.0 -> 1.1, purely additive); `result.requirements` is
+  canonicalized IN PLACE.
+- `fast_analysis_app_adapter.py` threads `response_prompt` onto each
+  `evaluation.raw_occurrences` entry, adds `package_completeness`/
+  `source_map.document_relationships`, uses `canonical_milestones` for
+  `raw_date_observations`.
+- `scripts/fast_analysis_report_adapter.py`'s `_rg_evidence_map`/
+  `_service_category_rows`/the `KEY_DATES` builder/`_source_documents`
+  extended with these as additional fallback sources (never replacing
+  the existing literal/ordinal-match paths, always `_NOT_EXTRACTED` as
+  the final honest fallback); `VALIDATION_FOOTER_NOTE` updated to state
+  the new dedup/cross-reference guarantee honestly, without claiming
+  exhaustive per-document coverage (FAST vs FULL contract, task section
+  9 -- no FULL mode was built).
+- `scripts/build_boc_bid_intelligence_preview_pdf.py` (the shared PDF
+  renderer every bid's report uses) gained one new prominent banner for
+  `PACKAGE_COMPLETENESS_WARNING`, rendered first on the body pages.
+- No migration -- every new field lives inside the existing
+  `structured_intelligence`/`report_content_snapshot` JSON columns.
+- Tests: `tests/test_document_provenance.py` (14), `tests/
+  test_procurement_normalization.py` (33, includes bilingual-handling
+  regression), `tests/test_fast_analysis_remediation_report.py` (11).
+- Live-validated against the real 32-document Bank of Canada corpus
+  (bid_id=8) with zero new Anthropic calls -- see SYSTEM_STATE.md's own
+  entry for the full before/after and the multi-agent-readiness boundary
+  writeup.
 
 **Buyer Intelligence**
 - Produced/threaded via `scripts/fast_analysis_report_adapter.py`
