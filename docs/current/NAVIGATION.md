@@ -228,7 +228,8 @@ deferred, not started.
   cosine-similarity ranking, degrading to keyword/Jaccard filtering on any
   failure or when no candidate has a usable embedding).
 - `migrations/016_organizational_memory.sql` — `organizational_memory_items`
-  (written, **not applied** — see SYSTEM_STATE.md), organization-scoped via
+  (written, **applied and live-commissioned 2026-09-21** — see
+  SYSTEM_STATE.md), organization-scoped via
   `organization_id` (reuses `is_organization_member(uuid)` from migration
   008, the same function firm_profiles' policies use), RLS-enabled with
   authenticated SELECT only (no write policy — service_role only, via
@@ -265,7 +266,7 @@ deferred, not started.
   paragraph); every chunk carries exact `char_start`/`char_end` into the
   original extracted text.
 - `migrations/016_organizational_memory.sql` (edited in place, same file,
-  still **not applied**) — new `organizational_source_documents` table
+  **applied and live-commissioned 2026-09-21**) — new `organizational_source_documents` table
   (organization-scoped, RLS SELECT-only, unique on `(organization_id,
   content_hash)`), new nullable `organizational_memory_items.
   source_document_id` column (composite same-org FK, `ON DELETE RESTRICT`,

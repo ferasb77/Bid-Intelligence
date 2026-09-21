@@ -19,7 +19,8 @@
 -- (chunk -> parent-file lineage), and `approve_organizational_memory_item()`
 -- (the sole RPC allowed to create an APPROVED_FIRM_KNOWLEDGE row). See the
 -- OM-2 section near the end of this file for full reasoning. Migration 016
--- remains entirely unapplied to any live database as of this edit.
+-- was applied live on 2026-09-21 -- see the live-commissioning note below
+-- and SYSTEM_STATE.md for the full record.
 --
 -- OM-2 commissioning-review hardening pass (edited in place, still no
 -- migration 017): (1) `ingest_organizational_source_document()` -- atomic,
@@ -35,7 +36,8 @@
 -- uploaded_by_user_id/approved_by_user_id genuinely belongs to the target
 -- organization before any write; (4) RetrievalResult (organizational_
 -- memory.py) now exposes source_document_id/derived_from_item_id for
--- lineage tracing. Still entirely unapplied to any live database.
+-- lineage tracing. (Applied live 2026-09-21 -- see the live-commissioning
+-- note above.)
 --
 -- Second OM-2 commissioning-review hardening pass (edited in place, still
 -- no migration 017), four further fixes: (1) the idempotent get-or-return
@@ -70,6 +72,23 @@
 -- v_content is already whatever text the request actually inserts, so
 -- "hash of the text this call is about to write" and "hash validated
 -- against caller input" coincide for that RPC by construction.
+--
+-- Live commissioning pass (2026-09-21, applied to Supabase project
+-- whonalbdpbubaqhpzrnw, ledger entry `20260921132121 organizational_memory`):
+-- migration 016 is no longer unapplied -- see SYSTEM_STATE.md's Migrations
+-- section for the full commissioning record. Two real defects surfaced and
+-- were fixed in place (still no migration 017): (1) `digest()` calls in
+-- ingest_organizational_source_document() and
+-- approve_organizational_memory_item() are now schema-qualified to
+-- `extensions.digest(...)` -- this project's pgcrypto extension lives in
+-- the `extensions` schema, not `public`, so `create extension if not
+-- exists pgcrypto` below is a no-op and an unqualified digest() call is
+-- unresolvable under these functions' `set search_path = public`; (2) the
+-- three guard-trigger functions below now also set
+-- `search_path = public`, matching every other function in this migration
+-- and migration 010's established "every function: fixed search_path"
+-- convention (Supabase's security advisor flagged the prior omission as a
+-- WARN).
 --
 -- ── Why this table exists ─────────────────────────────────────────────────
 -- `content_library` (migration 001) is bid-scoped: it carries a single
@@ -320,6 +339,7 @@ create policy organizational_memory_items_select_org_member
 create or replace function public.organizational_memory_items_guard_immutable_provenance()
 returns trigger
 language plpgsql
+set search_path = public
 as $$
 begin
     if new.organization_id      is distinct from old.organization_id
@@ -362,6 +382,7 @@ create trigger trg_organizational_memory_items_immutable_provenance
 create or replace function public.organizational_memory_items_guard_derived_lineage()
 returns trigger
 language plpgsql
+set search_path = public
 as $$
 declare
     v_source_class text;
@@ -401,6 +422,7 @@ create trigger trg_organizational_memory_items_guard_derived_lineage
 create or replace function public.organizational_memory_items_guard_source_bid_org()
 returns trigger
 language plpgsql
+set search_path = public
 as $$
 declare
     v_bid_org uuid;
@@ -598,6 +620,7 @@ grant execute on function public.create_organizational_memory_item(jsonb) to ser
 create or replace function public.organizational_memory_items_guard_immutable_provenance()
 returns trigger
 language plpgsql
+set search_path = public
 as $$
 begin
     if new.organization_id      is distinct from old.organization_id
@@ -837,7 +860,7 @@ begin
         -- chunk's supplied hash does not match what the server computes
         -- from that chunk's own content.
         v_expected_chunk_hash := encode(
-            digest(
+            extensions.digest(
                 regexp_replace(
                     regexp_replace(coalesce(v_chunk->>'content', ''), chr(13) || chr(10), chr(10), 'g'),
                     chr(13), chr(10), 'g'),
@@ -934,7 +957,7 @@ begin
     -- hashed v_content raw, with no newline normalization, which could
     -- diverge from the Python-side hash for the same logical text.
     v_content_hash := encode(
-        digest(
+        extensions.digest(
             regexp_replace(
                 regexp_replace(coalesce(v_content, ''), chr(13) || chr(10), chr(10), 'g'),
                 chr(13), chr(10), 'g'),

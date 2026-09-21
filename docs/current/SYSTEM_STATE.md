@@ -136,8 +136,8 @@ needs that history).
   deferred (not implemented). See [NAVIGATION.md](NAVIGATION.md) for the
   full file map.
 - **Organizational Memory** (`organizational_memory.py` +
-  `migrations/016_organizational_memory.sql`, **OM-1, implemented, NOT
-  applied to any live database** — see Migrations section below) — a new,
+  `migrations/016_organizational_memory.sql`, **OM-1/OM-2, implemented AND
+  live-commissioned on 2026-09-21** — see Migrations section below) — a new,
   organization-scoped (never bid-scoped) durable memory foundation,
   unrelated to and never mixed with Proposal Intelligence's bid-scoped
   persistence. Three structurally distinct memory classes, enforced by
@@ -186,10 +186,11 @@ needs that history).
   new, separately human-approved item, never a mutation of an existing
   row).
 
-**OM-2 (source ingestion + human approval lifecycle) is now implemented**
-on top of OM-1, same files plus additions. New durable parent-file record
+**OM-2 (source ingestion + human approval lifecycle) is now implemented
+AND live-commissioned (2026-09-21)** on top of OM-1, same files plus
+additions. New durable parent-file record
 **`organizational_source_documents`** (migration 016, edited in place —
-still NOT applied to any live database) tracks one row per uploaded
+applied and live-commissioned 2026-09-21) tracks one row per uploaded
 source file: organization-scoped, RLS-protected identically to
 `organizational_memory_items`, unique on `(organization_id,
 content_hash)` for re-upload dedup, minimal fields only (filename,
@@ -288,22 +289,23 @@ likewise **NOT live-provider commissioned**. Future work should
 build on PI-2A/PI-2A.1/PI-2B1/PI-2B2, not re-litigate their schema/
 adapter/ledger design without cause.
 
-**Organizational Memory (OM-1) is now implemented** — a new, unrelated
-product area (`organizational_memory.py`,
+**Organizational Memory (OM-1) is now implemented and live-commissioned**
+— a new, unrelated product area (`organizational_memory.py`,
 `migrations/016_organizational_memory.sql`), organization-scoped (never
 bid-scoped) durable memory with three structurally distinct classes
 (SOURCE_MEMORY / APPROVED_FIRM_KNOWLEDGE / PROPOSAL_MEMORY) and a
 deterministic, retrieval-first contract (`organizational_memory.retrieve()`).
 Zero live model/embedding calls this phase. **OM-2 (source ingestion +
-human approval lifecycle) is now also implemented** — see the
-Organizational Memory entry above for full detail. Deferred to a later OM
-phase: proposal-text generation from memory, auto-insertion of evidence,
-Section Analyzer integration, win-probability/scoring, and any
-PROPOSAL_MEMORY → APPROVED_FIRM_KNOWLEDGE promotion mechanism.
+human approval lifecycle) is now also implemented and live-commissioned**
+(migration 016 applied 2026-09-21) — see the Organizational Memory entry
+above for full detail. Deferred to a later OM phase: proposal-text
+generation from memory, auto-insertion of evidence, Section Analyzer
+integration, win-probability/scoring, and any PROPOSAL_MEMORY →
+APPROVED_FIRM_KNOWLEDGE promotion mechanism.
 
 Absent an explicit task instruction otherwise, still do not: apply
-migration 013, apply migration 016, alter/reapply migration 015, activate
-the compact-wire prototype, change chunk sizes/max_tokens/model
+migration 013, alter/reapply migration 015 or 016, activate the
+compact-wire prototype, change chunk sizes/max_tokens/model
 routing/caching, or merge `main`/deploy.
 
 ## Migrations known in this repository (files, not live-database state)
@@ -335,17 +337,54 @@ below.
 > CONTRADICTION/INTERNAL_INCONSISTENCY/UNSUPPORTED_CLAIM finding_type
 > values already existed there from PI-1's forward-looking taxonomy — so
 > no new migration was needed for PI-2B1 either. Migration 016
-> (Organizational Memory, OM-1) was written on 2026-09-21 and is NOT
-> applied — a fresh table was required (see the Organizational Memory
-> entry above for why `content_library`'s existing bid-scoped schema could
-> not be reused). OM-2 (source ingestion + human approval lifecycle) EDITED
-> migration 016 IN PLACE (no new migration 017) to add
-> `organizational_source_documents`, `organizational_memory_items.
-> source_document_id`, and the `approve_organizational_memory_item()` RPC
-> — migration 016 as a whole remains entirely unapplied to any live
-> database. Treat any future "is migration N live"
-> question as requiring a fresh check — `git log` and this file are not a
-> substitute for checking the live database when a task depends on it.
+> (Organizational Memory, OM-1) was written on 2026-09-21 — a fresh table
+> was required (see the Organizational Memory entry above for why
+> `content_library`'s existing bid-scoped schema could not be reused). OM-2
+> (source ingestion + human approval lifecycle) EDITED migration 016 IN
+> PLACE (no new migration 017) to add `organizational_source_documents`,
+> `organizational_memory_items.source_document_id`, and the
+> `approve_organizational_memory_item()` RPC. Migration 016 was **applied
+> live on 2026-09-21** and is formally recorded in Supabase's migration
+> ledger as `20260921132121 organizational_memory`. Live OM-1/OM-2
+> commissioning also passed on 2026-09-21: table/RLS/policy/constraint/
+> trigger/RPC-grant verification, RLS write-boundary denial for both
+> `anon` and `authenticated` on both new tables (despite default Supabase
+> schema-level table GRANTs to those roles — same baseline pattern as
+> migration 015's tables; RLS absence-of-policy still fail-closed, verified
+> by direct probe, not assumed), atomic multi-chunk ingestion, idempotent
+> byte-identical re-ingest (zero duplicate rows), zero-chunk/null-storage-
+> identity/bad-chunk-hash/non-member-uploader rejection, generic-create
+> APPROVED_FIRM_KNOWLEDGE rejection, human approval with provenance/lineage
+> copy-through and canonical CRLF/CR→LF content-hash normalization,
+> non-member-approver rejection, immutable-provenance mutation rejection,
+> fail-closed FK deletion restriction on both `source_document_id` and
+> `derived_from_item_id`, and correct SOURCE_MEMORY-only completeness
+> counting (a linked APPROVED_FIRM_KNOWLEDGE row does not mask/inflate
+> completeness) were all exercised against the real project with disposable
+> rows, all cleaned up afterward (verified zero remaining). Two real defects
+> were found and fixed during commissioning, both in migration 016 only:
+> (1) `ingest_organizational_source_document()` and
+> `approve_organizational_memory_item()` called `digest()` unqualified
+> while running `set search_path = public`; on this project pgcrypto lives
+> in the `extensions` schema (not `public`), so `create extension if not
+> exists pgcrypto` was a silent no-op and both RPCs failed at runtime until
+> the `digest()` calls were schema-qualified to `extensions.digest(...)`;
+> (2) the three OM guard-trigger functions
+> (`organizational_memory_items_guard_immutable_provenance`,
+> `_guard_derived_lineage`, `_guard_source_bid_org`) were missing
+> `set search_path = public`, inconsistent with every other function in
+> this migration and with migration 010's established "every function:
+> fixed search_path" convention (flagged as a live WARN by Supabase's
+> security advisor, resolved and re-verified clean). Real Storage smoke
+> (upload/readback/SHA-256 verify/delete via the OM storage helper's
+> `org/{organization_id}/sources/{content_hash}` path convention) was
+> **not exercised** — the task's `bid-supabase` MCP server exposes no
+> Storage read/write tool, so this was explicitly reported as unexercised
+> rather than fabricated. Migration 013 remains unapplied — not a
+> dependency of 016 and out of scope for this commissioning pass. Treat any
+> future "is migration N live" question as requiring a fresh check —
+> `git log` and this file are not a substitute for checking the live
+> database when a task depends on it.
 
 ## Where NOT to look first
 
