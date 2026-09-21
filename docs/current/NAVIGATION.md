@@ -517,8 +517,9 @@ deferred, not started.
   Ask CapOS integration, Red Team, Section Analyzer UI wiring.
 
 **Proposal Intelligence (PI-3B: durable section drafts)**
-- `migrations/018_section_drafts.sql` (written, **not applied**) — new
-  bid-scoped `section_drafts` table, mirroring migration 017's OM-3B
+- `migrations/018_section_drafts.sql` (written, **applied and
+  live-commissioned 2026-09-21** — see SYSTEM_STATE.md) — new bid-scoped
+  `section_drafts` table, mirroring migration 017's OM-3B
   persistence pattern exactly (bid_id-direct RLS via `can_access_bid`,
   authenticated SELECT only, service_role-only write, advisory-lock
   get-or-insert, write-once rows — no UPDATE path). Stores PI-3A's
@@ -588,13 +589,26 @@ deferred, not started.
   `evidence_strengthening.strengthen_requirement_evidence`/the drafting
   model) — against an in-memory fake standing in for migration 018's
   table/RPC, no live database, no live provider call.
-- No live commissioning this task (migration 018 not applied); PI-3A's
-  drafting call remains the only live-commissioned model call in this
-  area.
+- Live commissioning (2026-09-21, ledger `20260921155315 section_drafts`):
+  full schema/RLS/grant/idempotency/immutable-version/round-trip
+  verification against the real project (including a committed
+  `authenticated` UPDATE/DELETE probe proving zero rows affected and a
+  real row left byte-for-byte unchanged), plus a genuinely live
+  end-to-end run proving (not inferring) that a second identical call
+  never invokes Anthropic — `section_drafting._call_section_draft` was
+  temporarily replaced with a function that raises if called at all, and
+  the call still succeeded with a byte-identical result — and that
+  replacing the persisted OM-3B enrichment changes the fingerprint and
+  forces a genuine new drafting call. Confirmed a cache CHECK loads only
+  already-persisted bounded intelligence (the requirement row, siblings,
+  latest PI assessment/findings, Fast Analysis's evaluation context, and
+  the single latest `requirement_evidence_enrichments` row) — no semantic
+  retrieval, no full-document load, no model work; not a design defect.
+  No code defect found this pass. See SYSTEM_STATE.md for the full
+  commissioning record.
 - Explicitly still deferred: Section Analyzer/UI integration, user
   editing, draft comparison UI, whole-proposal generation, proposal-
-  outline orchestration, Word export, Ask CapOS, Red Team, applying
-  migration 018 live.
+  outline orchestration, Word export, Ask CapOS, Red Team.
 
 **Tenancy / RLS / auth boundary**
 - `tenancy.py` — every `*_for_organization` (service-role, ownership-checked)

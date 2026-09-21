@@ -570,8 +570,8 @@ commissioning pass. Tests: `tests/test_section_drafting.py` (30, pure
 domain layer), `tests/test_section_drafting_tenancy.py` (9, wiring/
 architecture-discipline).
 
-**PI-3B (durable section drafts) is now implemented, written but NOT
-applied to any live database** — "analyze once, draft once, persist,
+**PI-3B (durable section drafts) is now implemented AND live-commissioned**
+(migration 018 applied 2026-09-21) — "analyze once, draft once, persist,
 reuse" on top of PI-3A's pure logic, which is completely unchanged. New
 `migrations/018_section_drafts.sql`: one new bid-scoped table,
 `section_drafts`, mirroring migration 017's OM-3B persistence pattern
@@ -639,10 +639,42 @@ structural change was made for it here, since PI-3A's existing shape was
 judged safe to persist as-is and the task explicitly scoped this as
 report-only.
 
-No migration was applied to any live database this task; live
-commissioning of migration 018 is an explicitly separate, later task. No
-live Anthropic call was needed (PI-3A's drafting call is already
-live-commissioned; nothing about the drafting call itself changed).
+Live commissioning (2026-09-21, project `whonalbdpbubaqhpzrnw`, ledger
+entry `20260921155315 section_drafts`): schema/RLS/constraint/grant
+verification (including a direct probe — a committed `authenticated`
+UPDATE/DELETE against a real row affected zero rows and left it
+byte-for-byte unchanged); RPC persistence/idempotency (first write
+persists with full round-trip fidelity across every field including
+assurance_passed/assurance_issues; an exact-fingerprint re-request returns
+the SAME row un-mutated — a differing second payload could not overwrite
+draft_text/evidence_items_used/assurance_passed; a changed fingerprint
+creates a genuinely NEW immutable row while the prior row remains
+untouched, proving append-only version history); malformed payload
+(empty/whitespace-only `draft_text`) rejected outright with zero rows
+written; an assurance-FAILED draft (`assurance_passed=false`) persists
+correctly and distinctly from an assurance-passed one, with its issues
+preserved. A genuinely live end-to-end run through `tenancy.
+get_or_generate_section_draft` (real bid/requirement, a disposable
+persisted OM-3B enrichment) proved the reuse claim conclusively: the
+SECOND identical call was made with `section_drafting._call_section_draft`
+temporarily replaced by a function that raises if invoked at all, and
+that call still succeeded with a byte-identical result — a live cache hit
+that provably never called Anthropic. A THIRD call, after replacing the
+persisted OM-3B enrichment with a different one, produced a different
+fingerprint, a new persisted row, and a genuine new drafting call,
+live-proving OM-enrichment-change invalidation specifically (the property
+this phase's own instructions called out as needing direct proof). What a
+cache CHECK must load to compute the fingerprint was confirmed to be
+exactly "already-persisted bounded intelligence" (the requirement row,
+sibling requirements, the latest PI assessment/findings, Fast Analysis's
+evaluation context, and the single latest persisted
+`requirement_evidence_enrichments` row) — no semantic retrieval, no full
+RFP/document load, no model work on a cache check; not a design defect.
+Security advisors clean of any migration-018-attributable finding. All
+disposable rows (2 section_drafts, 2 requirement_evidence_enrichments)
+cleaned up, verified zero residue. No defect found this commissioning
+pass — no code change was required.
+
 Tests: `tests/test_section_drafts_persistence.py` (22 — compute-once/
 reuse-without-a-model-call, invalidation on changed requirement text/
 evaluation criterion/evidence state/OM enrichment/related PI finding,
@@ -655,7 +687,7 @@ calls `organizational_memory.retrieve`/`evidence_strengthening.
 strengthen_requirement_evidence`/the drafting model). Explicitly still
 deferred: Section Analyzer/UI integration, user editing, draft comparison
 UI, whole-proposal generation, proposal-outline orchestration, Word
-export, Ask CapOS, Red Team, applying migration 018 live.
+export, Ask CapOS, Red Team.
 
 ## Architectural fact-type separation
 
@@ -727,29 +759,31 @@ drafting ONE requirement's response from EXISTING persisted intelligence
 and OM-3B's already-persisted enrichment) with no independent
 retrieval/re-analysis and structural claim/evidence-traceability
 guardrails; no new migration, compute-and-return only this phase.
-**PI-3B (durable section drafts, `migrations/018_section_drafts.sql`,
-written but NOT applied) is now also implemented** — persists PI-3A's
-result keyed by a deterministic input fingerprint over PI-3A's own
-`SectionDraftingBrief`, and reuses it (no drafting call, no OM retrieval,
-no RFP read, no reanalysis) whenever the fingerprint is unchanged;
-identified but did not close a claim-level traceability gap (draft-wide
-evidence usage is tracked, sentence/claim-level citation is not — see the
+**PI-3B (durable section drafts, `migrations/018_section_drafts.sql`) is
+now implemented AND live-commissioned** (migration 018 applied
+2026-09-21) — persists PI-3A's result keyed by a deterministic input
+fingerprint over PI-3A's own `SectionDraftingBrief`, and reuses it (no
+drafting call, no OM retrieval, no RFP read, no reanalysis — live-proven,
+not merely inferred) whenever the fingerprint is unchanged; identified
+but did not close a claim-level traceability gap (draft-wide evidence
+usage is tracked, sentence/claim-level citation is not — see the
 Organizational Memory entry above for the full assessment). See that
 entry for full detail on both PI-3A and PI-3B. Deferred: whole-proposal
 generation, a UI, Word export, Ask CapOS integration, Red Team, Section
-Analyzer UI wiring, applying migration 018 live.
+Analyzer UI wiring.
 
 Absent an explicit task instruction otherwise, still do not: apply
-migration 013, 017, or 018, alter/reapply migration 015 or 016, activate
+migration 013, alter/reapply migration 015, 016, 017, or 018, activate
 the compact-wire prototype, change chunk sizes/max_tokens/model
 routing/caching, or merge `main`/deploy.
 
 ## Migrations known in this repository (files, not live-database state)
 
-Highest migration file present: **018** (`018_section_drafts.sql`, written,
-**NOT applied**). Migration 017 (`017_requirement_evidence_enrichment.sql`)
-remains **applied and live-commissioned 2026-09-21**. Files 001–018 exist
-in `migrations/`. This describes what's **written in the repo**, not
+Highest migration file present: **018** (`018_section_drafts.sql`,
+**applied and live-commissioned 2026-09-21**). Migration 017
+(`017_requirement_evidence_enrichment.sql`) also remains **applied and
+live-commissioned 2026-09-21**. Files 001–018 exist in `migrations/`.
+This describes what's **written in the repo**, not
 what's applied to any Supabase project — see the note below (which is the
 current source of truth for live status; always verify explicitly rather
 than trusting this sentence in isolation).
@@ -846,13 +880,29 @@ than trusting this sentence in isolation).
 > genuine cache miss. No migration change was needed for this fix. All
 > disposable rows (4 enrichment rows, 3 Organizational Memory items)
 > cleaned up, verified zero residue. Migration 018 (Section Drafts, PI-3B)
-> was written on 2026-09-21 and is **NOT applied to any live database** —
-> this task's own instruction explicitly excluded applying it; live
-> commissioning of migration 018 (its `section_drafts` table and
-> `get_or_create_section_draft()` RPC) is an explicitly separate, later
-> task. Treat any future "is migration N live" question as requiring a
-> fresh check — `git log` and this file are not a substitute for checking
-> the live database when a task depends on it.
+> was written on 2026-09-21 and **applied live on 2026-09-21**, formally
+> recorded in Supabase's migration ledger as `20260921155315
+> section_drafts`. Live PI-3B commissioning also passed on 2026-09-21:
+> schema/RLS/constraint/grant verification (including a committed
+> `authenticated` UPDATE/DELETE probe proving zero rows affected and a
+> real row left byte-for-byte unchanged); RPC persistence/idempotency/
+> round-trip fidelity across every field; malformed-payload (empty
+> `draft_text`) rejection with zero rows written; a changed fingerprint
+> creating a genuinely new immutable row while the prior row remained
+> untouched; an assurance-failed draft persisting correctly and distinctly
+> from an assurance-passed one; and a genuinely live end-to-end run
+> through `tenancy.get_or_generate_section_draft` in which a second
+> identical call succeeded with `section_drafting._call_section_draft`
+> temporarily replaced by a function that raises if invoked at all
+> (proving the cache hit never calls Anthropic), and a third call after
+> replacing the persisted OM-3B enrichment produced a new fingerprint, a
+> new row, and a genuine new drafting call (proving OM-enrichment-change
+> invalidation). No defect was found this commissioning pass — no code
+> change was required. All disposable rows (2 section_drafts, 2
+> requirement_evidence_enrichments) cleaned up, verified zero residue.
+> Treat any future "is migration N live" question as requiring a fresh
+> check — `git log` and this file are not a substitute for checking the
+> live database when a task depends on it.
 
 ## Where NOT to look first
 
