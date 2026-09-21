@@ -752,7 +752,17 @@ def page_check(bid_id: int):
             # deficiency classification lives under its own key,
             # `deficiency_type`, and must never be confused with it here.
             typed_findings = [f for f in findings if f.get("deficiency_type") not in (None, "OTHER")]
-            if weak_or_moderate_evidence or observations or typed_findings:
+            # PI-2B1 step 21/22: whole-package findings -- persisted
+            # separately by proposal_intelligence.reconstruct_legacy_align_
+            # result as `package_findings` (payload["scope"] == "package"),
+            # never mixed into the LOCAL `typed_findings` list above even
+            # though the finding_type vocabulary overlaps (CONTRADICTION/
+            # INTERNAL_INCONSISTENCY/UNSUPPORTED_CLAIM). Renders purely
+            # from persisted rows -- no rerun, no model call -- and a
+            # historical run with none renders nothing (never an empty
+            # section, step 22).
+            package_findings = align_data.get("package_findings") or []
+            if weak_or_moderate_evidence or observations or typed_findings or package_findings:
                 st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
                 st.markdown("### 🔎 Proposal Intelligence")
 
@@ -805,6 +815,40 @@ def page_check(bid_id: int):
                             f'<div style="font-size:.76rem;color:#A9A69D;margin:.15rem 0">'
                             f'<span style="color:#C9A96E;font-weight:600">[{dtype}]</span> '
                             f'{f.get("title","")} <span style="color:#6E6C66">— Req: {f.get("req_id") or "—"}</span></div>',
+                            unsafe_allow_html=True,
+                        )
+
+                if package_findings:
+                    _pkg_severity_color = {
+                        "Critical": "#C0392B", "High": "#E67E22", "Medium": "#C9A96E", "Low": "#6E6C66",
+                    }
+                    st.markdown(f"#### Whole-Package Consistency ({len(package_findings)})")
+                    st.caption("Package-level -- reasoned across the whole proposal package, not a single section.")
+                    for pf in package_findings:
+                        ftype = pf.get("finding_type") or "OTHER"
+                        sev = pf.get("severity") or "Medium"
+                        sev_color = _pkg_severity_color.get(sev, "#C9A96E")
+                        refs = pf.get("proposal_source_refs") or []
+                        sources_html = "".join(
+                            f'<div style="font-size:.7rem;color:#6E6C66">📍 '
+                            f'{r.get("filename") or r.get("package_path") or "—"}'
+                            + (f' — {r.get("section")}' if r.get("section") else "")
+                            + '</div>'
+                            for r in refs
+                        ) or '<div style="font-size:.7rem;color:#6E6C66">📍 —</div>'
+                        st.markdown(
+                            f'<div style="background:#111118;border:1px solid #292832;border-left:3px solid {sev_color};'
+                            f'border-radius:0 4px 4px 0;padding:.5rem 1rem;margin:.25rem 0">'
+                            f'<span style="color:{sev_color};font-weight:700;font-size:.72rem">[{ftype}] {sev}</span> '
+                            f'<span style="color:#C9A96E;font-size:.72rem">Req: {pf.get("req_id") or "—"}</span> '
+                            f'<span style="background:#2A2836;color:#A9A69D;font-size:.62rem;padding:1px 5px;'
+                            f'border-radius:3px;margin-left:.35rem">PACKAGE-LEVEL</span>'
+                            f'<div style="font-weight:600;font-size:.82rem;margin-top:.2rem">{pf.get("title") or ""}</div>'
+                            f'<div style="font-size:.78rem;color:#EDEAE3;margin-top:.15rem">{pf.get("explanation") or ""}</div>'
+                            + (f'<div style="font-size:.74rem;color:#A9A69D;margin-top:.1rem">→ {pf.get("recommended_action")}</div>'
+                               if pf.get("recommended_action") else "")
+                            + sources_html
+                            + '</div>',
                             unsafe_allow_html=True,
                         )
 

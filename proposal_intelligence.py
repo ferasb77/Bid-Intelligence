@@ -38,7 +38,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-PROPOSAL_INTELLIGENCE_ANALYSIS_VERSION = "proposal-intelligence-v2"
+PROPOSAL_INTELLIGENCE_ANALYSIS_VERSION = "proposal-intelligence-v3"
 
 # ---------------------------------------------------------------------------
 # Section 3: finding taxonomy -- bounded, sufficient to normalize CURRENT
@@ -358,6 +358,14 @@ def adapt_findings(alignment_result: dict, requirements: list[dict] | None = Non
     id_lookup = _requirement_id_lookup(requirements) if requirements else {}
     procurement_refs_lookup_top = _requirement_source_refs_lookup(requirements) if requirements else {}
 
+    # PI-2B1 step 17: every finding this adapter emits is a LOCAL
+    # (per-chunk/per-requirement) finding -- tagged `payload["scope"] =
+    # "local"` explicitly so CHECK/reload code can tell it apart from a
+    # PI-2B1 whole-package finding (adapt_package_findings below, which
+    # tags "package") without guessing from finding_type alone (a package
+    # run can ALSO emit CONTRADICTION/INTERNAL_INCONSISTENCY/
+    # UNSUPPORTED_CLAIM, so finding_type is not sufficient to distinguish
+    # scope). Additive key on an existing jsonb column -- no migration.
     rows = []
     for mf in alignment_result.get("mandatory_failures") or []:
         mf_req_id = mf.get("req_id")
@@ -371,7 +379,7 @@ def adapt_findings(alignment_result: dict, requirements: list[dict] | None = Non
             "related_requirement_id": id_lookup.get(mf_req_id),
             "proposal_source_refs": [],
             "procurement_source_refs": procurement_refs_lookup_top.get(mf_req_id, []) if mf_req_id else [],
-            "payload": dict(mf),
+            "payload": dict(mf, scope="local"),
         })
 
     coverage_metadata = alignment_result.get("coverage_metadata") or {}
@@ -385,7 +393,7 @@ def adapt_findings(alignment_result: dict, requirements: list[dict] | None = Non
             "related_req_id": None,
             "proposal_source_refs": [],
             "procurement_source_refs": [],
-            "payload": dict(uf),
+            "payload": dict(uf, scope="local"),
         })
 
     procurement_refs_lookup = _requirement_source_refs_lookup(requirements) if requirements else {}
@@ -414,7 +422,7 @@ def adapt_findings(alignment_result: dict, requirements: list[dict] | None = Non
             "related_requirement_id": id_lookup.get(req_id),
             "proposal_source_refs": proposal_refs,
             "procurement_source_refs": procurement_refs_lookup.get(req_id, []) if req_id else [],
-            "payload": dict(f),
+            "payload": dict(f, scope="local"),
         })
 
     # PI-2A step 13C: proposal_observations (DELIVERY_COMMITMENT /
@@ -440,13 +448,78 @@ def adapt_findings(alignment_result: dict, requirements: list[dict] | None = Non
             "related_requirement_id": id_lookup.get(req_id),
             "proposal_source_refs": o.get("proposal_source_refs") or [],
             "procurement_source_refs": procurement_refs_lookup.get(req_id, []) if req_id else [],
-            "payload": dict(o),
+            "payload": dict(o, scope="local"),
+        })
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# PI-2B1: whole-package finding adapter (analyst.analyze_proposal_package_
+# intelligence()'s output -> proposal_intelligence_findings rows). Reuses
+# the EXISTING findings table/vocabulary (CONTRADICTION/
+# INTERNAL_INCONSISTENCY/UNSUPPORTED_CLAIM were already part of
+# FINDING_TYPES from PI-1's forward-looking taxonomy -- see the module's
+# taxonomy comment above) -- no migration. Every row's payload carries
+# `scope: "package"` (see adapt_findings' "local" tagging above) plus the
+# model-cited claim/source IDs and the ledger digest that produced it, for
+# audit traceability, never raw ledger content.
+# ---------------------------------------------------------------------------
+
+def adapt_package_findings(package_result: dict, requirements: list[dict] | None = None) -> list[dict]:
+    """analyst.analyze_proposal_package_intelligence()'s already-reconciled,
+    fail-closed `package_findings` -> proposal_intelligence_findings rows.
+    Only ALREADY-VALIDATED findings reach this adapter (analyst.py's
+    _reconcile_package_findings rejected anything with an unknown claim/
+    source id, unknown finding_type/severity, or a non-ledger-verbatim
+    req_id) -- this function does no further semantic validation, only
+    requirement-id RESOLUTION via the SAME `_requirement_id_lookup`/
+    `_requirement_source_refs_lookup` helpers every other adapter here
+    uses (step 14: 'reuse, don't reimplement'; exact req_id identity only,
+    never fuzzy-matched -- an req_id that doesn't resolve is simply left
+    with related_requirement_id=None and no procurement_source_refs,
+    never guessed).
+
+    A FAILED/SKIPPED_EMPTY_LEDGER package_reasoning_status naturally
+    yields package_findings == [] here -- callers persist the (empty)
+    result list plus the run's own package_reasoning_status/ledger digest
+    metadata (see build_run_payload's coverage_metadata carrying a
+    `package_intelligence` block) themselves; this adapter never invents
+    a placeholder finding to represent a failure."""
+    id_lookup = _requirement_id_lookup(requirements) if requirements else {}
+    procurement_refs_lookup = _requirement_source_refs_lookup(requirements) if requirements else {}
+    digest = package_result.get("package_ledger_digest")
+
+    rows = []
+    for pf in package_result.get("package_findings") or []:
+        req_id = pf.get("req_id")
+        rows.append({
+            "finding_type": pf.get("finding_type"),
+            "severity": pf.get("severity"),
+            "title": pf.get("title") or "Whole-package finding",
+            "message": pf.get("explanation"),
+            "explanation": pf.get("recommended_action"),
+            "related_req_id": req_id,
+            "related_requirement_id": id_lookup.get(req_id) if req_id else None,
+            "proposal_source_refs": pf.get("proposal_source_refs") or [],
+            "procurement_source_refs": procurement_refs_lookup.get(req_id, []) if req_id else [],
+            "payload": dict(
+                pf,
+                scope="package",
+                package_ledger_digest=digest,
+                # Carried into payload too (not just the top-level finding
+                # row) so reconstruct_legacy_align_result -> CHECK's reload
+                # path can render every cited proposal source without a
+                # DB round trip, exactly like a local finding's payload
+                # already self-contains everything it needs.
+                proposal_source_refs=pf.get("proposal_source_refs") or [],
+            ),
         })
     return rows
 
 
 def build_run_payload(alignment_result: dict, *, procurement_state: dict,
-                      started_at: str | None = None, completed_at: str | None = None) -> dict:
+                      started_at: str | None = None, completed_at: str | None = None,
+                      package_intelligence: dict | None = None) -> dict:
     """The proposal_intelligence_runs row body (minus id/bid_id/
     proposal_package_snapshot_id/created_by_user_id, which the caller/
     persistence layer supplies). Never mutates canonical procurement
@@ -472,13 +545,31 @@ def build_run_payload(alignment_result: dict, *, procurement_state: dict,
             "priority_actions", "partial_summary", "message", "reason",
         ) if k in alignment_result
     }
+    # PI-2B1 step 17/26: no new run-level column -- the package reasoning
+    # call's own status/digest/rejected-count metadata (never raw ledger
+    # content, never raw proposal text) rides inside the EXISTING
+    # coverage_metadata jsonb column, alongside (never replacing) the
+    # local-analysis coverage_metadata it already carries. Absent when the
+    # caller never ran PI-2B1 (e.g. a historical v2 run, or this run's
+    # local PI-2A result itself failed before PI-2B1 could run) -- never
+    # fabricated as a placeholder.
+    coverage_metadata = alignment_result.get("coverage_metadata")
+    if package_intelligence is not None:
+        coverage_metadata = dict(coverage_metadata or {})
+        coverage_metadata["package_intelligence"] = {
+            "package_reasoning_status": package_intelligence.get("package_reasoning_status"),
+            "package_ledger_digest": package_intelligence.get("package_ledger_digest"),
+            "rejected_count": package_intelligence.get("rejected_count"),
+            "claims_dropped_for_budget": package_intelligence.get("claims_dropped_for_budget"),
+            "failure_reason": package_intelligence.get("failure_reason"),
+        }
     return {
         "based_on_procurement_revision": procurement_state.get("procurement_revision"),
         "based_on_procurement_truth_status": procurement_state.get("procurement_truth_status"),
         "analysis_version": PROPOSAL_INTELLIGENCE_ANALYSIS_VERSION,
         "status": status,
         "failure_reason": None,
-        "coverage_metadata": alignment_result.get("coverage_metadata"),
+        "coverage_metadata": coverage_metadata,
         "legacy_result": legacy_result,
         "started_at": started_at,
         "completed_at": completed_at,
@@ -535,8 +626,25 @@ def reconstruct_legacy_align_result(run: dict, assessments: list[dict], findings
         FINDING_TYPE_MISSING_REQUIREMENT, FINDING_TYPE_SUBMISSION_ARTIFACT_GAP,
         FINDING_TYPE_DELIVERY_COMMITMENT, FINDING_TYPE_COMMERCIAL_EXPOSURE,
     }
-    general_findings = [f["payload"] for f in findings
-                        if f.get("finding_type") not in _non_general_types and f.get("payload")]
+    # PI-2B1 step 21/22: a package-scope finding (payload["scope"] ==
+    # "package", stamped by adapt_package_findings) is split into its own
+    # `package_findings` list here rather than mixed into general_findings
+    # -- CHECK's "Whole-Package Consistency" section (below) renders these
+    # separately and MUST be able to tell one apart from a same-typed
+    # LOCAL finding (a package run can also emit CONTRADICTION/
+    # INTERNAL_INCONSISTENCY/UNSUPPORTED_CLAIM, so finding_type alone
+    # cannot distinguish scope -- see adapt_findings' scope tagging
+    # comment). A historical run with no package findings at all yields
+    # [] here and renders safely (step 22).
+    general_findings = [
+        f["payload"] for f in findings
+        if f.get("finding_type") not in _non_general_types and f.get("payload")
+        and (f["payload"] or {}).get("scope") != "package"
+    ]
+    package_findings = [
+        f["payload"] for f in findings
+        if f.get("payload") and (f["payload"] or {}).get("scope") == "package"
+    ]
     proposal_observations = [
         f["payload"] for f in findings
         if f.get("finding_type") in (FINDING_TYPE_DELIVERY_COMMITMENT, FINDING_TYPE_COMMERCIAL_EXPOSURE)
@@ -555,6 +663,7 @@ def reconstruct_legacy_align_result(run: dict, assessments: list[dict], findings
         "requirement_coverage": requirement_coverage,
         "mandatory_failures": mandatory_failures,
         "findings": general_findings,
+        "package_findings": package_findings,
         "proposal_observations": proposal_observations,
         "coverage_metadata": run.get("coverage_metadata") or {},
         "based_on_procurement_revision": run.get("based_on_procurement_revision"),

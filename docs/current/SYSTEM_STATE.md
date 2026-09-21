@@ -62,11 +62,47 @@ needs that history).
   `proposal_observations` (DELIVERY_COMMITMENT/COMMERCIAL_EXPOSURE) —
   all additive to the unchanged chunk request/response call topology
   (still exactly one call per chunk plus the existing optional narrative
-  synthesis call). Cross-document contradiction detection, package-wide
-  unsupported-claim adjudication, Response Guideline coverage, a proposal
-  quality score, win probability, and proposal rewriting remain explicitly
-  deferred to PI-2B (not implemented). See [NAVIGATION.md](NAVIGATION.md)
-  for the full file map.
+  synthesis call).
+  `PROPOSAL_INTELLIGENCE_ANALYSIS_VERSION` is now `proposal-intelligence-v3`
+  (PI-2B1, implemented, **NOT live-provider commissioned** — every
+  provider-call site is exercised only against mocked/frozen responses in
+  tests; the real `_call_package_reasoning` code path has never been
+  invoked against the live Anthropic API): a whole-package reasoning layer
+  on top of PI-2A's per-chunk output. Each chunk call now also extracts
+  `proposal_claims` (a closed-vocabulary, provenance-bearing affirmative
+  proposal statement — EXPERIENCE/CAPABILITY/RESOURCE/CREDENTIAL/
+  METHODOLOGY/DELIVERY/QUANTITY/DATE/DURATION/STAFFING/COMMERCIAL/PRICING/
+  COMPLIANCE/OTHER), deterministically deduped into a package-wide
+  `proposal_claim_ledger` (`analyst._aggregate_proposal_claims`) — never
+  merging claims that actually conflict (e.g. "8 coaches" vs "10
+  coaches" stay two claims). `analyst._build_package_intelligence_ledger`
+  compresses the claim ledger + requirement evidence + observations +
+  local deficiencies into a compact ledger addressed only by short IDs
+  (`C#` claims, `P#` sources) — the raw proposal is NEVER resent.
+  `analyst.analyze_proposal_package_intelligence()` issues exactly ONE
+  new bounded provider call (`_call_package_reasoning`, telemetry
+  workflow="proposal_intelligence" operation="package_reasoning") per
+  completed alignment run, asking only for CONTRADICTION/
+  INTERNAL_INCONSISTENCY/UNSUPPORTED_CLAIM findings that cite ledger IDs;
+  every returned finding is individually validated fail-closed
+  (`analyst._reconcile_package_findings` — unknown claim/source id, an
+  unrecognized finding_type/severity, or a non-ledger-verbatim req_id
+  rejects that finding only) and an UNSUPPORTED_CLAIM is structurally
+  rejected outright whenever local coverage is incomplete, regardless of
+  what the model returned. A package-call failure never destroys the
+  already-valid local PI-2A result — it's recorded as
+  `coverage_metadata.package_intelligence.package_reasoning_status =
+  "FAILED"` alongside zero fabricated findings. Package findings persist
+  into the SAME `proposal_intelligence_findings` table (no migration —
+  CONTRADICTION/INTERNAL_INCONSISTENCY/UNSUPPORTED_CLAIM were already in
+  migration 015's enum) tagged `payload.scope = "package"` (a local
+  finding is now tagged `payload.scope = "local"` for the same reason);
+  CHECK's "Proposal Intelligence" section renders them in their own
+  "Whole-Package Consistency" cards, labeled "Package-level", from
+  persisted rows only (no rerun). PI-2B2 (Response Guideline coverage /
+  evaluator usability), a proposal quality score, win probability, and
+  proposal rewriting remain explicitly deferred (not implemented). See
+  [NAVIGATION.md](NAVIGATION.md) for the full file map.
 
 ## Architectural fact-type separation
 
@@ -94,9 +130,12 @@ so it never collapses findings across different `deficiency_type` values
 or observations with matching statements but different implications, and
 always unions (never drops) distinct structured `proposal_source_refs`
 across a merged cluster (exact-match-per-field; stable first-seen order).
-PI-2B (cross-document/whole-package reasoning) is explicitly NOT started.
-Future work should build on PI-2A/PI-2A.1, not re-litigate PI-1/PI-2A's
-schema/adapter without cause.
+PI-2B1 (cross-document/whole-package claim, contradiction, and consistency
+reasoning) is now **implemented** (analysis_version
+`proposal-intelligence-v3`) but **NOT live-provider commissioned** — see
+above. PI-2B2 (Response Guideline coverage / evaluator usability) is
+explicitly NOT started. Future work should build on PI-2A/PI-2A.1/PI-2B1,
+not re-litigate their schema/adapter/ledger design without cause.
 
 Absent an explicit task instruction otherwise, still do not: apply
 migration 013, alter/reapply migration 015, activate the compact-wire
@@ -125,9 +164,13 @@ below.
 > contains `20260920211025 proposal_intelligence_commissioning`, a
 > commissioning-only assertion run with no lasting schema or data changes
 > and no corresponding numbered repo migration file. Migration 013 remains
-> unapplied. PI-2A (this phase) added richer per-chunk evidence/provenance/
-> observation fields on top of the SAME live migration 015 schema — no new
-> migration was needed or created. Treat any future "is migration N live"
+> unapplied. PI-2A added richer per-chunk evidence/provenance/observation
+> fields on top of the SAME live migration 015 schema — no new migration
+> was needed or created. PI-2B1 (whole-package reasoning) reuses the same
+> migration 015 `proposal_intelligence_findings` table/enum again — its
+> CONTRADICTION/INTERNAL_INCONSISTENCY/UNSUPPORTED_CLAIM finding_type
+> values already existed there from PI-1's forward-looking taxonomy — so
+> no new migration was needed for PI-2B1 either. Treat any future "is migration N live"
 > question as requiring a fresh check — `git log` and this file are not a
 > substitute for checking the live database when a task depends on it.
 

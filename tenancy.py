@@ -1295,17 +1295,41 @@ def run_proposal_intelligence_for_organization(
         raise
     completed_at = datetime.now(timezone.utc).isoformat()
 
+    # PI-2B1: the ONE whole-package reasoning call is enrichment ON TOP OF
+    # an already-valid local PI-2A alignment_result (step 19) -- it never
+    # runs when the local analyzer produced no result at all (the
+    # exception path above already returned/raised), and a package-call
+    # failure here must never destroy or downgrade the local result.
+    # analyze_proposal_package_intelligence() itself never raises (it
+    # fail-closes internally to package_reasoning_status "FAILED"), but a
+    # bounding try/except is kept anyway so a genuinely unexpected defect
+    # in this brand-new PI-2B1 code path can never take down an otherwise-
+    # successful PI-2A run.
+    try:
+        package_intelligence = analyst.analyze_proposal_package_intelligence(
+            alignment_result, requirements, bid_info, bid_id=bid_id,
+        )
+    except Exception as exc:
+        package_intelligence = {
+            "package_findings": [], "package_reasoning_status": "FAILED",
+            "package_ledger_digest": None, "rejected_count": 0,
+            "claims_dropped_for_budget": 0,
+            "failure_reason": f"{type(exc).__name__}: {exc}",
+        }
+
     run_payload = pi.build_run_payload(alignment_result, procurement_state=procurement_state,
-                                       started_at=started_at, completed_at=completed_at)
+                                       started_at=started_at, completed_at=completed_at,
+                                       package_intelligence=package_intelligence)
     run_payload.update({
         "bid_id": bid_id, "proposal_package_snapshot_id": snapshot["id"],
         "created_by_user_id": user_id,
     })
     assessments = pi.adapt_requirement_assessments(alignment_result, requirements)
     findings = pi.adapt_findings(alignment_result, requirements)
+    findings += pi.adapt_package_findings(package_intelligence, requirements)
     run = db.create_proposal_intelligence_bundle(run_payload, assessments, findings)
 
-    return {"run": run, "alignment_result": alignment_result}
+    return {"run": run, "alignment_result": alignment_result, "package_intelligence": package_intelligence}
 
 
 def get_latest_proposal_intelligence_run_authenticated(access_token: str, bid_id: int) -> dict | None:

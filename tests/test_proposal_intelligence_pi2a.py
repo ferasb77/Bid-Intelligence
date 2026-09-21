@@ -383,7 +383,13 @@ class TestIncompleteCoverageNeverManufacturesAbsence:
 class TestAnalysisVersioning:
 
     def test_version_bumped_to_v2(self):
-        assert pi.PROPOSAL_INTELLIGENCE_ANALYSIS_VERSION == "proposal-intelligence-v2"
+        # PI-2B1 bumped ANALYSIS_VERSION again, to "proposal-intelligence-v3"
+        # (see tests/test_proposal_intelligence_pi2b1.py's
+        # TestAnalysisVersionBump) -- this test now only asserts the
+        # version is NOT the pre-PI-2A "v1"-equivalent baseline value it
+        # originally guarded against; the current literal is checked in
+        # the PI-2B1 test file, kept as the single source of truth for it.
+        assert pi.PROPOSAL_INTELLIGENCE_ANALYSIS_VERSION != "proposal-intelligence-v1"
 
     def test_old_v1_run_is_correctly_flagged_stale_against_v2(self):
         old_run = {

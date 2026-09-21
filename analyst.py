@@ -12,6 +12,7 @@ Provides decision-oriented intelligence across the bid lifecycle:
   9. proposal_alignment        — two-call comprehensive proposal alignment audit
 """
 import concurrent.futures
+import hashlib
 import json
 import re
 from typing import Any
@@ -1182,6 +1183,17 @@ For THIS SECTION ONLY, return ONLY valid JSON:
       "implication": "<brief, no external knowledge>",
       "confidence": "High|Medium|Low"
     }}
+  ],
+  "proposal_claims": [
+    {{
+      "claim_type": "EXPERIENCE|CAPABILITY|RESOURCE|CREDENTIAL|METHODOLOGY|DELIVERY|QUANTITY|DATE|DURATION|STAFFING|COMMERCIAL|PRICING|COMPLIANCE|OTHER",
+      "req_id": "<exact requirement id or null>",
+      "subject": "<short noun phrase this claim is about>",
+      "statement": "<the affirmative proposal statement itself, from THIS section only>",
+      "value": "<normalized value or null>",
+      "unit": "<days|hours|people|percent|currency|etc or null>",
+      "confidence": "High|Medium|Low"
+    }}
   ]
 }}
 CRITICAL RULES for chunk_findings:
@@ -1189,7 +1201,8 @@ CRITICAL RULES for chunk_findings:
 - Do NOT create a chunk_finding that merely restates a requirement is satisfied, has no gap, or needs no action ("No gap identified", "Requirement satisfied", "Maintain current documentation") -- if there is nothing wrong, do not emit a finding for it at all.
 - deficiency_type: classify ONLY what THIS passage alone safely establishes. UNSUPPORTED_CLAIM only if a substantive claim in this SAME visible passage is asserted with no support where support is intrinsically needed -- never because evidence merely wasn't shown here (it may exist elsewhere). CONTRADICTION/INTERNAL_INCONSISTENCY only when both conflicting statements are directly visible within this SAME passage. WEAK_EVIDENCE when the evidence actually shown is materially weak or generic. Use OTHER for any other substantive deficiency. Never claim a package-wide or cross-document conclusion from one section.
 Only include a requirement_assertion when THIS section actually contains evidence for it -- do not list requirements this section does not address. evidence_strength (STRONG/MODERATE/WEAK) describes only how concrete/substantiated the evidence you cited actually is -- STRONG = named experience, quantified outcomes, explicit credentials/methods/resources, precise commitments; MODERATE = relevant but generic/incomplete; WEAK = capability asserted with little concrete support.
-proposal_observations is OPTIONAL and separate from chunk_findings (these are not deficiencies): DELIVERY_COMMITMENT = a promised staffing/turnaround/SLA/schedule/resource/methodology/availability/quantity commitment; COMMERCIAL_EXPOSURE = a pricing assumption, cost the bidder absorbs, uncapped effort, dependency on the client, travel/scope assumption, or other commercial qualifier. Only report what THIS section's own text actually states -- no inferred legal consequences, no outside knowledge, and never an RFP/contract clause merely because it appears in the procurement context above."""
+proposal_observations is OPTIONAL and separate from chunk_findings (these are not deficiencies): DELIVERY_COMMITMENT = a promised staffing/turnaround/SLA/schedule/resource/methodology/availability/quantity commitment; COMMERCIAL_EXPOSURE = a pricing assumption, cost the bidder absorbs, uncapped effort, dependency on the client, travel/scope assumption, or other commercial qualifier. Only report what THIS section's own text actually states -- no inferred legal consequences, no outside knowledge, and never an RFP/contract clause merely because it appears in the procurement context above.
+proposal_claims is OPTIONAL: extract only AFFIRMATIVE factual propositions THIS section's own text actually states about the bidder/proposal itself (e.g. "we have delivered 42 engagements", "our team includes 8 certified coaches", "implementation completed within 30 days") -- never a requirement copied from the compliance matrix or procurement context, never marketing language with no checkable content ("industry-leading", "best-in-class"), never an aspiration/plan phrased as future intent with no concrete commitment, and never reviewer/chunk commentary. statement must be non-empty. value/unit are only populated when THIS passage states a concrete number/date/duration -- otherwise null. Each claim must be a single checkable proposition, not a paragraph summary."""
 
 
 _CHUNK_FAILURE_API_ERROR = "api_error"
@@ -1246,6 +1259,14 @@ _EVIDENCE_STRENGTH_VALUES = {"STRONG", "MODERATE", "WEAK"}
 _CHUNK_DEFICIENCY_TYPES = {"WEAK_EVIDENCE", "UNSUPPORTED_CLAIM", "CONTRADICTION", "INTERNAL_INCONSISTENCY", "OTHER"}
 _OBSERVATION_TYPES = {"DELIVERY_COMMITMENT", "COMMERCIAL_EXPOSURE"}
 
+# PI-2B1 step 3: closed proposal_claims claim_type vocabulary -- an
+# unrecognized value is coerced to OTHER (fail-closed, never rejects the
+# whole chunk for one bad optional claim -- step 5).
+_CLAIM_TYPES = {
+    "EXPERIENCE", "CAPABILITY", "RESOURCE", "CREDENTIAL", "METHODOLOGY", "DELIVERY",
+    "QUANTITY", "DATE", "DURATION", "STAFFING", "COMMERCIAL", "PRICING", "COMPLIANCE", "OTHER",
+}
+
 
 def _build_proposal_source_ref(chunk: dict) -> dict:
     """One chunk's deterministic ProposalSourceRef -- physical identity
@@ -1297,6 +1318,33 @@ def _attach_chunk_provenance(parsed: dict, chunk: dict, chunk_label: str) -> dic
         o["proposal_location"] = chunk_label
         valid_observations.append(o)
     parsed["proposal_observations"] = valid_observations
+
+    # PI-2B1 step 4/5: proposal_claims -- the model never produces a
+    # physical identifier; every surviving claim gets the SAME
+    # deterministic ProposalSourceRef this chunk's other outputs get.
+    # Malformed/optional-claim validation happens HERE, one claim at a
+    # time, so one bad claim never rejects the whole chunk response
+    # (step 5).
+    valid_claims = []
+    for c in parsed.get("proposal_claims") or []:
+        if not isinstance(c, dict):
+            continue
+        statement = (c.get("statement") or "").strip()
+        if not statement:
+            continue  # step 5: statement must be non-empty
+        subject = (c.get("subject") or "").strip()
+        claim_type = c.get("claim_type") if c.get("claim_type") in _CLAIM_TYPES else "OTHER"
+        c = dict(c)
+        c["claim_type"] = claim_type
+        c["statement"] = statement
+        c["subject"] = subject
+        c["req_id"] = c.get("req_id") or None
+        c["value"] = c.get("value") if c.get("value") not in ("", None) else None
+        c["unit"] = c.get("unit") if c.get("unit") not in ("", None) else None
+        c["confidence"] = c.get("confidence") if c.get("confidence") in ("High", "Medium", "Low") else None
+        c["_source_ref"] = ref
+        valid_claims.append(c)
+    parsed["proposal_claims"] = valid_claims
     return parsed
 
 
@@ -1638,6 +1686,431 @@ def _aggregate_proposal_observations(chunk_results: list[dict]) -> list[dict]:
             seen[key] = row
             ordered.append(row)
     return ordered
+
+
+def _aggregate_proposal_claims(chunk_results: list[dict]) -> list[dict]:
+    """PI-2B1 step 6: deterministic package-level proposal_claim_ledger.
+    Dedupes only EXACT equivalent claims (claim_type + req_id + normalized
+    subject + normalized statement + value + unit) while unioning ALL
+    provenance (_union_source_refs) -- two claims that merely share a
+    subject but differ in value/unit/statement (e.g. "8 coaches" vs
+    "10 coaches") are NEVER merged, they stay two distinct ledger entries
+    (step 6's explicit non-negotiable). Stable first-seen order."""
+    seen: dict[tuple, dict] = {}
+    ordered: list[dict] = []
+    for cr in chunk_results:
+        for c in cr.get("proposal_claims") or []:
+            key = (
+                c.get("claim_type"), c.get("req_id"),
+                (c.get("subject") or "").strip().lower(),
+                (c.get("statement") or "").strip().lower(),
+                c.get("value"), c.get("unit"),
+            )
+            ref = c.get("_source_ref") or {}
+            if key in seen:
+                existing = seen[key]
+                if ref:
+                    existing["proposal_source_refs"] = _union_source_refs(
+                        existing["proposal_source_refs"] + [ref]
+                    )
+                continue
+            row = {
+                "claim_type": c.get("claim_type"),
+                "req_id": c.get("req_id"),
+                "subject": c.get("subject"),
+                "statement": c.get("statement"),
+                "value": c.get("value"),
+                "unit": c.get("unit"),
+                "confidence": c.get("confidence"),
+                "proposal_source_refs": [ref] if ref else [],
+            }
+            seen[key] = row
+            ordered.append(row)
+    return ordered
+
+
+# ── PI-2B1: whole-package claim/consistency reasoning ─────────────────────
+# See module docstring section above the chunk helpers for the local
+# (per-chunk) machinery this builds on. Everything below operates on
+# ALREADY-AGGREGATED, deterministic package-level structures -- never on
+# raw proposal text, and issues at most ONE new provider call per
+# completed alignment analysis (step 9/24).
+
+_PACKAGE_FINDING_TYPES = {"CONTRADICTION", "INTERNAL_INCONSISTENCY", "UNSUPPORTED_CLAIM"}
+_PACKAGE_SEVERITIES = {"Critical", "High", "Medium", "Low"}
+
+# Hard ledger byte budget (step 23): the compact, canonical-JSON-serialized
+# ledger (see _build_package_intelligence_ledger) must not exceed this many
+# UTF-8 bytes. Chosen well under a single bounded model call's practical
+# input budget for this codebase's existing haiku-4-5 chunk/synthesis
+# calls (which already bound proposal text per-chunk far below this), while
+# comfortably holding several hundred claims/requirements for a realistic
+# proposal package. When exceeded, claims are dropped by the deterministic
+# priority order documented in _prioritize_claims_for_budget() until the
+# ledger fits -- requirement evidence/observations/deficiencies are never
+# dropped (they are already bounded by the existing per-chunk/aggregation
+# machinery, not by claim volume).
+_LEDGER_BYTE_BUDGET = 60_000
+
+
+def _canonical_json_bytes(obj) -> bytes:
+    return json.dumps(obj, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def _claim_priority_key(claim: dict, mandatory_rated_req_ids: set) -> tuple:
+    """Lower sorts first (kept preferentially). Step 23's exact 5-tier
+    deterministic prioritization:
+      1. claims linked to a mandatory/rated requirement
+      2. quantitative/date/staffing/commercial claims
+      3. explicit commitments/exposures (DELIVERY/COMMERCIAL claim_type)
+      4. stronger material claims (High > Medium > Low confidence)
+      5. everything else
+    Ties broken by stable first-seen index (the caller sorts with this key
+    using Python's stable sort, so original order survives within a tier)."""
+    req_id = claim.get("req_id")
+    tier1 = 0 if (req_id and req_id in mandatory_rated_req_ids) else 1
+    tier2 = 0 if claim.get("claim_type") in ("QUANTITY", "DATE", "DURATION", "STAFFING", "COMMERCIAL") else 1
+    tier3 = 0 if claim.get("claim_type") in ("DELIVERY", "COMMERCIAL") else 1
+    conf_rank = {"High": 0, "Medium": 1, "Low": 2}.get(claim.get("confidence"), 3)
+    return (tier1, tier2, tier3, conf_rank)
+
+
+def _prioritize_claims_for_budget(claims: list[dict], requirements: list[dict]) -> tuple[list[dict], int]:
+    """Applies the step-23 priority order to drop the LOWEST-priority
+    claims first until the claims themselves (canonical JSON) fit the
+    remaining ledger budget share. Returns (kept_claims_in_ORIGINAL_ORDER,
+    dropped_count). A caller that never exceeds budget gets every claim
+    back unchanged and dropped_count == 0."""
+    if not claims:
+        return claims, 0
+    mandatory_rated = {
+        r.get("req_id") for r in requirements
+        if r.get("req_id") and (r.get("is_mandatory") or r.get("mandatory") or r.get("rated") or r.get("weight"))
+    }
+    indexed = list(enumerate(claims))
+    ranked = sorted(indexed, key=lambda pair: _claim_priority_key(pair[1], mandatory_rated) + (pair[0],))
+    kept_indices: set = set()
+    running = 0
+    for idx, claim in ranked:
+        size = len(_canonical_json_bytes(claim))
+        if running + size > _LEDGER_BYTE_BUDGET:
+            continue
+        running += size
+        kept_indices.add(idx)
+    dropped = len(claims) - len(kept_indices)
+    kept = [c for i, c in indexed if i in kept_indices]
+    return kept, dropped
+
+
+def _build_package_intelligence_ledger(alignment_result: dict, requirements: list[dict]) -> dict:
+    """PI-2B1 step 7: the compact ledger the ONE whole-package model call
+    consumes -- built entirely from already-aggregated, deterministic
+    package-level structures (never raw proposal text, never full chunk
+    text). Assigns compact deterministic IDs (step 7F): claims get
+    C1, C2, ... in first-seen ledger order; every distinct
+    ProposalSourceRef across claims/requirement evidence/deficiencies
+    gets a P1, P2, ... id, each full ref appearing in the registry exactly
+    once. Sections B-E reference claims/sources only by these short IDs.
+    Deterministic: identical input (alignment_result, requirements)
+    always produces an identical ledger."""
+    claims = alignment_result.get("proposal_claim_ledger") or []
+    claims, claims_dropped = _prioritize_claims_for_budget(claims, requirements)
+
+    source_registry: list[dict] = []
+    source_ids: dict[tuple, str] = {}
+
+    def _register_source(ref: dict) -> str | None:
+        if not ref:
+            return None
+        key = tuple(sorted(ref.items()))
+        if key in source_ids:
+            return source_ids[key]
+        sid = f"P{len(source_registry) + 1}"
+        source_ids[key] = sid
+        source_registry.append({"source_id": sid, **ref})
+        return sid
+
+    claim_entries = []
+    for i, c in enumerate(claims):
+        cid = f"C{i + 1}"
+        src_ids = [sid for sid in (_register_source(r) for r in c.get("proposal_source_refs") or []) if sid]
+        claim_entries.append({
+            "claim_id": cid, "claim_type": c.get("claim_type"), "req_id": c.get("req_id"),
+            "subject": c.get("subject"), "statement": c.get("statement"),
+            "value": c.get("value"), "unit": c.get("unit"), "source_ids": src_ids,
+        })
+
+    requirement_evidence = []
+    for row in alignment_result.get("requirement_coverage") or []:
+        src_ids = [sid for sid in (_register_source(r) for r in row.get("proposal_source_refs") or []) if sid]
+        requirement_evidence.append({
+            "req_id": row.get("req_id"), "coverage": row.get("coverage"),
+            "evidence_strength": row.get("evidence_strength"),
+            "excerpt": (row.get("notes") or "")[:200] or None,
+            "source_ids": src_ids,
+        })
+
+    def _observation_rows(observation_type: str) -> list[dict]:
+        rows = []
+        for o in alignment_result.get("proposal_observations") or []:
+            if o.get("observation_type") != observation_type:
+                continue
+            src_ids = [sid for sid in (_register_source(r) for r in o.get("proposal_source_refs") or []) if sid]
+            rows.append({
+                "req_id": o.get("req_id"), "title": o.get("title"),
+                "statement": o.get("statement"), "source_ids": src_ids,
+            })
+        return rows
+
+    local_deficiencies = []
+    for f in alignment_result.get("findings") or []:
+        deficiency_type = f.get("deficiency_type")
+        if deficiency_type not in _CHUNK_DEFICIENCY_TYPES:
+            continue
+        src_ids = [sid for sid in (_register_source(r) for r in f.get("proposal_source_refs") or []) if sid]
+        local_deficiencies.append({
+            "req_id": f.get("req_id"), "deficiency_type": deficiency_type,
+            "title": f.get("title"), "source_ids": src_ids,
+        })
+
+    coverage_metadata = alignment_result.get("coverage_metadata") or {}
+    ledger = {
+        "coverage_complete": bool(coverage_metadata.get("coverage_complete")),
+        "claims": claim_entries,
+        "requirement_evidence": requirement_evidence,
+        "delivery_commitments": _observation_rows("DELIVERY_COMMITMENT"),
+        "commercial_exposures": _observation_rows("COMMERCIAL_EXPOSURE"),
+        "local_deficiencies": local_deficiencies,
+        "source_registry": source_registry,
+        "_claims_dropped_for_budget": claims_dropped,
+    }
+    return ledger
+
+
+def package_ledger_digest(ledger: dict) -> str:
+    """PI-2B1 step 8: sha256 over the ledger's canonical serialization --
+    deterministic, order-stable, distinct from
+    proposal_intelligence.compute_package_digest (which identifies the
+    SUBMITTED FILE package, not this derived reasoning ledger)."""
+    canonical = json.dumps(ledger, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _package_reasoning_prompt(bid_header: str, ledger: dict) -> str:
+    """PI-2B1 step 9/2: the ONE whole-package call's input -- the compact
+    ledger (short IDs only) plus bid context. Raw proposal text/full
+    chunks/full procurement documents are NEVER included here."""
+    ledger_json = json.dumps(ledger, sort_keys=True, separators=(",", ":"))
+    return f"""{bid_header}
+
+=== PROPOSAL INTELLIGENCE LEDGER (compact, IDs only -- C#=claim, P#=source) ===
+{ledger_json}
+
+TASK: find WHOLE-PACKAGE problems that no single passage above can show alone:
+  CONTRADICTION -- two or more claims above (cite their claim_ids) that
+    assert INCOMPATIBLE facts under the same interpretation (e.g. "8
+    coaches" vs "10 coaches", "30 days" vs "45 days", "travel included"
+    vs "travel billed separately"). NEVER flag different detail levels,
+    different wording of the same fact, non-overlapping claims, or one
+    claim simply not appearing elsewhere -- that is not a contradiction.
+  INTERNAL_INCONSISTENCY -- a broader but still claim-grounded mismatch
+    across the package (e.g. a staffing claim that cannot support a
+    delivery commitment also present in the ledger). Must cite specific
+    claim_ids -- never a vague "ensure consistency" finding with no
+    citation.
+  UNSUPPORTED_CLAIM -- only when coverage_complete is true above: a
+    material claim (cite its claim_id) with no credible support anywhere
+    else in this ledger. Ordinary marketing language is never material.
+    If coverage_complete is false, do NOT emit ANY UNSUPPORTED_CLAIM --
+    package coverage is incomplete, so absence of support elsewhere
+    cannot be trusted; this rule is enforced again on our side regardless
+    of what you return.
+
+Cite ONLY claim_id/source_id values that literally appear in the ledger
+above -- never invent one. Cite ONLY a req_id that appears verbatim in
+the ledger's requirement_evidence/claims -- never approximate or infer one.
+
+Return ONLY valid JSON:
+{{
+  "package_findings": [
+    {{
+      "finding_type": "CONTRADICTION|INTERNAL_INCONSISTENCY|UNSUPPORTED_CLAIM",
+      "severity": "Critical|High|Medium|Low",
+      "req_id": "<exact req_id from the ledger, or null>",
+      "title": "<short title>",
+      "explanation": "<why these specific claims conflict/are unsupported>",
+      "recommended_action": "<actionable fix>",
+      "supporting_claim_ids": ["C1", "C7"],
+      "supporting_source_ids": ["P2", "P9"]
+    }}
+  ]
+}}
+If there are no genuine whole-package findings, return {{"package_findings": []}}."""
+
+
+_PACKAGE_FAILURE_API_ERROR = "api_error"
+_PACKAGE_FAILURE_PARSE_ERROR = "parse_error"
+_PACKAGE_FAILURE_MALFORMED_RESPONSE = "malformed_response"
+
+
+def _call_package_reasoning(prompt: str, max_tokens: int = 2500, bid_id: int | None = None) -> tuple[dict | None, str | None]:
+    """PI-2B1 step 9/24: the SINGLE new provider call this phase adds.
+    Mirrors _call_alignment_chunk's one-attempt-plus-one-bounded-retry,
+    fail-closed contract exactly -- never trusts a truncated/malformed
+    response, never raises past this function. Telemetry: workflow=
+    "proposal_intelligence", operation="package_reasoning" (step 26)."""
+    last_category = _PACKAGE_FAILURE_API_ERROR
+    for attempt in range(2):
+        try:
+            raw = _call(
+                "You are a precise, evidence-bound proposal-consistency reviewer. "
+                "You reason ONLY over the compact ledger you are given -- never assume "
+                "or invent proposal content outside it.",
+                prompt, max_tokens=max_tokens,
+                operation="package_reasoning", bid_id=bid_id, retry_number=attempt,
+            )
+        except Exception:
+            last_category = _PACKAGE_FAILURE_API_ERROR
+            continue
+        try:
+            parsed = _parse_json(raw)
+        except Exception:
+            last_category = _PACKAGE_FAILURE_PARSE_ERROR
+            continue
+        if not isinstance(parsed, dict) or not isinstance(parsed.get("package_findings"), list):
+            last_category = _PACKAGE_FAILURE_MALFORMED_RESPONSE
+            continue
+        return parsed, None
+    return None, last_category
+
+
+def _reconcile_package_findings(raw_findings: list, ledger: dict, requirements: list[dict]) -> tuple[list[dict], int]:
+    """PI-2B1 steps 10-16/20: validates every model-returned package
+    finding INDIVIDUALLY and fail-closed -- an unknown claim_id, unknown
+    source_id, unknown finding_type/severity, or a req_id that doesn't
+    appear verbatim in the ledger rejects THAT finding only (never the
+    whole run). UNSUPPORTED_CLAIM is structurally rejected outright when
+    ledger["coverage_complete"] is False, regardless of what the model
+    returned (step 20) -- this is enforced here, not merely in the
+    prompt. Returns (accepted_findings_with_expanded_refs, rejected_count)."""
+    claim_ids = {c["claim_id"] for c in ledger.get("claims") or []}
+    source_lookup = {s["source_id"]: {k: v for k, v in s.items() if k != "source_id"}
+                      for s in ledger.get("source_registry") or []}
+    known_req_ids = {c.get("req_id") for c in ledger.get("claims") or [] if c.get("req_id")}
+    known_req_ids |= {r.get("req_id") for r in ledger.get("requirement_evidence") or [] if r.get("req_id")}
+    valid_req_ids = {r.get("req_id") for r in requirements if r.get("req_id")}
+    coverage_complete = bool(ledger.get("coverage_complete"))
+
+    accepted, rejected = [], 0
+    for item in raw_findings or []:
+        if not isinstance(item, dict):
+            rejected += 1
+            continue
+        finding_type = item.get("finding_type")
+        severity = item.get("severity")
+        req_id = item.get("req_id")
+        title = (item.get("title") or "").strip()
+        supporting_claim_ids = item.get("supporting_claim_ids")
+        supporting_source_ids = item.get("supporting_source_ids") or []
+
+        if finding_type not in _PACKAGE_FINDING_TYPES:
+            rejected += 1
+            continue
+        if severity not in _PACKAGE_SEVERITIES:
+            rejected += 1
+            continue
+        if not title:
+            rejected += 1
+            continue
+        if req_id is not None and (req_id not in known_req_ids or req_id not in valid_req_ids):
+            # step 14: only an EXACT, ledger-verbatim req_id resolves --
+            # never fuzzy-matched. Anything else rejects the finding.
+            rejected += 1
+            continue
+        if not isinstance(supporting_claim_ids, list) or not supporting_claim_ids:
+            rejected += 1
+            continue
+        if not all(cid in claim_ids for cid in supporting_claim_ids):
+            rejected += 1
+            continue
+        if not isinstance(supporting_source_ids, list):
+            rejected += 1
+            continue
+        if not all(sid in source_lookup for sid in supporting_source_ids):
+            rejected += 1
+            continue
+        if finding_type == "UNSUPPORTED_CLAIM" and not coverage_complete:
+            # step 20: structural enforcement AFTER model output -- an
+            # UNSUPPORTED_CLAIM is never persisted from an incomplete
+            # package, no matter what the (mocked) model returned.
+            rejected += 1
+            continue
+        if finding_type in ("CONTRADICTION", "INTERNAL_INCONSISTENCY") and len(supporting_claim_ids) < 1:
+            rejected += 1
+            continue
+
+        proposal_source_refs = [source_lookup[sid] for sid in supporting_source_ids]
+        accepted.append({
+            "finding_type": finding_type,
+            "severity": severity,
+            "req_id": req_id,
+            "title": title,
+            "explanation": item.get("explanation"),
+            "recommended_action": item.get("recommended_action"),
+            "supporting_claim_ids": list(supporting_claim_ids),
+            "supporting_source_ids": list(supporting_source_ids),
+            "proposal_source_refs": proposal_source_refs,
+        })
+    return accepted, rejected
+
+
+def analyze_proposal_package_intelligence(
+    alignment_result: dict, requirements: list[dict], bid_info: dict, bid_id: int | None = None,
+) -> dict:
+    """PI-2B1 step 9: the single whole-package Proposal Intelligence
+    reasoning entry point. Enrichment ONLY on top of an already-valid
+    local PI-2A alignment_result (step 19) -- never invoked, and never
+    able to destroy, a valid local result; the caller persists this
+    function's output ADDITIONALLY alongside the unmodified local result.
+
+    Returns {"package_findings": [...], "package_reasoning_status":
+    "OK"|"FAILED"|"SKIPPED_EMPTY_LEDGER", "package_ledger_digest": str,
+    "rejected_count": int, "claims_dropped_for_budget": int}. Never
+    raises -- a provider/parse failure becomes package_reasoning_status
+    "FAILED" with zero fabricated findings (step 19)."""
+    ledger = _build_package_intelligence_ledger(alignment_result, requirements)
+    digest = package_ledger_digest(ledger)
+    claims_dropped = ledger.pop("_claims_dropped_for_budget", 0)
+
+    if not ledger["claims"] and not ledger["requirement_evidence"]:
+        return {
+            "package_findings": [], "package_reasoning_status": "SKIPPED_EMPTY_LEDGER",
+            "package_ledger_digest": digest, "rejected_count": 0,
+            "claims_dropped_for_budget": claims_dropped,
+        }
+
+    bid_header = f"BID: {bid_info.get('title', '')} | CLIENT: {bid_info.get('client', '')}"
+    prompt = _package_reasoning_prompt(bid_header, ledger)
+
+    try:
+        parsed, failure_category = _call_package_reasoning(prompt, bid_id=bid_id)
+    except Exception:
+        parsed, failure_category = None, _PACKAGE_FAILURE_API_ERROR
+
+    if parsed is None:
+        return {
+            "package_findings": [], "package_reasoning_status": "FAILED",
+            "package_ledger_digest": digest, "rejected_count": 0,
+            "claims_dropped_for_budget": claims_dropped,
+            "failure_reason": failure_category,
+        }
+
+    accepted, rejected = _reconcile_package_findings(parsed.get("package_findings"), ledger, requirements)
+    return {
+        "package_findings": accepted, "package_reasoning_status": "OK",
+        "package_ledger_digest": digest, "rejected_count": rejected,
+        "claims_dropped_for_budget": claims_dropped,
+    }
 
 
 # ── PACKAGE-LEVEL FINDING RECONCILIATION ──────────────────────────────────
@@ -2801,6 +3274,12 @@ def analyze_proposal_alignment_package(
     requirement_coverage = _aggregate_requirement_coverage(requirements, chunk_results, coverage_complete)
     findings = _aggregate_findings(chunk_results)
     proposal_observations = _aggregate_proposal_observations(chunk_results)
+    # PI-2B1 step 6: package-wide proposal claim ledger, built the same
+    # deterministic way as proposal_observations above -- additive, never
+    # consumed by anything in this function except being carried through
+    # on the result for analyze_proposal_package_intelligence() to ledger-
+    # ify later.
+    proposal_claim_ledger = _aggregate_proposal_claims(chunk_results)
     # Package-level reconciliation (before _is_qualification_gate is
     # popped, so unresolved_items can still tell a mandatory/
     # qualification-gate requirement apart): neither a chunk-local
@@ -2864,6 +3343,7 @@ def analyze_proposal_alignment_package(
             "partial_summary": partial_summary,
             "coverage_metadata": coverage_metadata,
             "proposal_observations": proposal_observations,
+            "proposal_claim_ledger": proposal_claim_ledger,
         }
 
     weight_by_req = {r.get("req_id"): r.get("weight") for r in requirements}
@@ -2909,6 +3389,7 @@ def analyze_proposal_alignment_package(
         "priority_actions": priority_actions,
         "coverage_metadata": coverage_metadata,
         "proposal_observations": proposal_observations,
+        "proposal_claim_ledger": proposal_claim_ledger,
     }
 
     if not _validate_alignment_contract(result):

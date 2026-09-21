@@ -72,36 +72,65 @@ Where to look, not what everything means. Read
 **CHECK / Proposal Alignment**
 - `pages/stage_check.py` — including the PI-2A "Proposal Intelligence"
   surface (Evidence Quality / Commitments & Commercial Exposure / Typed
-  Findings), rendered from the same persisted PI result CHECK already
-  reloads, never a new model call.
+  Findings / **Whole-Package Consistency** — PI-2B1), rendered from the
+  same persisted PI result CHECK already reloads, never a new model call.
 - `analyst.py`'s `analyze_proposal_alignment` / `analyze_proposal_alignment_package`
   / `submission_readiness_check` — the analytical engine itself. Core
   scoring/coverage-classification/mandatory-failure logic is unchanged by
   Proposal Intelligence; PI-2A additively enriched the EXISTING per-chunk
   request/response schema only (no new LLM call, no chunk-count/topology
   change) — see `_align_chunk_prompt`, `_build_proposal_source_ref`,
-  `_attach_chunk_provenance`, `_aggregate_proposal_observations`.
+  `_attach_chunk_provenance`, `_aggregate_proposal_observations`. PI-2B1
+  adds the `proposal_claims` field to that SAME per-chunk schema
+  (`_aggregate_proposal_claims` for the deterministic package-wide claim
+  ledger) plus one entirely new, bounded, whole-package call:
+  `analyze_proposal_package_intelligence` →
+  `_build_package_intelligence_ledger` (compact claims/requirement-
+  evidence/observations/deficiencies + a `P#`/`C#` short-id source
+  registry — the ONLY thing sent to the model, never raw proposal text)
+  → `package_ledger_digest` → `_package_reasoning_prompt` →
+  `_call_package_reasoning` (the one new provider call site) →
+  `_reconcile_package_findings` (fail-closed validation: unknown claim/
+  source id, bad finding_type/severity, or a non-ledger-verbatim req_id
+  rejects that finding only; UNSUPPORTED_CLAIM is structurally rejected
+  whenever local coverage is incomplete, regardless of model output).
 
 **Proposal Intelligence (PI-1, hardened in PI-1.1/PI-1.2, deepened in
-PI-2A)** — durable persistence for CHECK's Proposal Alignment output.
-PI-2A added structured proposal/procurement provenance (`ProposalSourceRef`
-built deterministically from chunk metadata, never the model), an
-evidence-strength rating, locally-safe typed findings, and
-`proposal_observations` (DELIVERY_COMMITMENT/COMMERCIAL_EXPOSURE) — all as
-additive fields on the EXISTING per-chunk analyzer call/schema (zero new
-model calls). `analysis_version` is `proposal-intelligence-v2`.
-PI-2B (cross-document contradiction, package-wide unsupported-claim
-adjudication, Response Guideline coverage, a proposal quality score, win
-probability, proposal rewriting) is explicitly deferred, not started.
+PI-2A/PI-2A.1, extended in PI-2B1)** — durable persistence for CHECK's
+Proposal Alignment output. PI-2A added structured proposal/procurement
+provenance (`ProposalSourceRef` built deterministically from chunk
+metadata, never the model), an evidence-strength rating, locally-safe
+typed findings, and `proposal_observations` (DELIVERY_COMMITMENT/
+COMMERCIAL_EXPOSURE) — all as additive fields on the EXISTING per-chunk
+analyzer call/schema (zero new model calls).
+PI-2B1 (**implemented, NOT live-provider commissioned** — every real call
+site is exercised only against mocked/frozen responses in tests) adds
+whole-package claim/contradiction/consistency reasoning: `proposal_claims`
+on the per-chunk schema, a deterministic `proposal_claim_ledger`, a
+compact short-ID package ledger, and exactly ONE new bounded whole-package
+model call producing CONTRADICTION/INTERNAL_INCONSISTENCY/UNSUPPORTED_CLAIM
+findings — persisted into the SAME `proposal_intelligence_findings` table
+(those finding_types already existed in migration 015's enum; no new
+migration) tagged `payload.scope = "package"` (a PI-2A/local finding is
+now tagged `payload.scope = "local"`, for the same reason). `analysis_version`
+is `proposal-intelligence-v3`.
+PI-2B2 (Response Guideline coverage / evaluator usability), a proposal
+quality score, win probability, and proposal rewriting are explicitly
+deferred, not started.
 - `proposal_intelligence.py` — the pure, deterministic adapter: package
   digest over the FULL submitted package, included and excluded alike
   (`compute_package_digest`), the current-alignment-result → PI adapter
   (`adapt_requirement_assessments`/`adapt_findings`/`build_run_payload`/
   `build_failed_run_payload` — both now take explicit `started_at`/
   `completed_at`, captured by the caller around the actual analyzer call,
-  never DB-defaulted), the inverse adapter for CHECK reload
+  never DB-defaulted), the PI-2B1 whole-package finding adapter
+  (`adapt_package_findings` — maps `analyze_proposal_package_intelligence`'s
+  already-reconciled output into finding rows, `payload.scope = "package"`,
+  requirement linking via the SAME `_requirement_id_lookup` every other
+  adapter uses), the inverse adapter for CHECK reload
   (`reconstruct_legacy_align_result`, `restore_package_manifest_dict` for
-  the historical package manifest), and staleness helpers
+  the historical package manifest — now also splits `package_findings` out
+  from local `findings` by `payload.scope`), and staleness helpers
   (`staleness_reasons`/`is_current`). `PROPOSAL_INTELLIGENCE_ANALYSIS_VERSION`
   is the PI analytical-contract version, not the model name.
 - `migrations/015_proposal_intelligence.sql` — the four PI tables
@@ -111,7 +140,12 @@ probability, proposal rewriting) is explicitly deferred, not started.
   disposable commissioning assertions and made no lasting schema/data
   changes; do not reapply or alter — PI-2A populates columns this schema
   already had (proposal_source_refs/procurement_source_refs/
-  evidence_strength/finding_type/payload), no migration 016 needed),
+  evidence_strength/finding_type/payload), no migration 016 needed; PI-2B1
+  reuses the SAME columns again — its package-reasoning status/ledger
+  digest metadata rides inside the existing `coverage_metadata` jsonb
+  column on the run, and its CONTRADICTION/INTERNAL_INCONSISTENCY/
+  UNSUPPORTED_CLAIM finding rows use finding_type values already in this
+  table's check constraint — no migration 016 needed for PI-2B1 either),
   each child table tied
   to its parent by a COMPOSITE foreign key against `(id, bid_id)` (never a
   same-table `bid_id` column trusted independently — a run/assessment/
@@ -140,6 +174,12 @@ probability, proposal rewriting) is explicitly deferred, not started.
   `tests/test_proposal_intelligence_pi2a.py` (PI-2A: structured provenance,
   evidence strength, procurement provenance, typed findings, observations,
   incomplete-coverage fail-closed behavior, versioning, legacy reload),
+  `tests/test_proposal_intelligence_pi2b1.py` (PI-2B1: claim schema/
+  provenance/aggregation, ledger determinism/digest/byte-budget
+  prioritization, package-finding fail-closed reconciliation, contradiction/
+  inconsistency/unsupported-claim standards including the incomplete-
+  coverage structural rejection, package-call failure behavior, persistence
+  mapping, scope separation on reload, call-count, version bump),
   `tests/test_proposal_intelligence_tenancy.py` (authorization boundary +
   atomic persistence), `tests/test_proposal_intelligence_database.py`
   (RPC-boundary persistence + migration DDL-intent checks).
