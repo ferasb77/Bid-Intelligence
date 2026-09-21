@@ -454,3 +454,246 @@ class TestAnalysisVersionBump:
         reasons = pi.staleness_reasons(
             run, current_procurement_revision=1, current_package_snapshot_id=5)
         assert pi.STALE_ANALYSIS_VERSION_CHANGED not in reasons
+
+
+# ── COMMISSIONING HARDENING: 6 targeted regression tests ──────────────────
+# ZERO live provider calls -- analyst._call / config.execute_messages_create
+# are always mocked here, mirroring the rest of this file's style.
+
+class TestPackageReasoningSingleAttempt:
+    """Fix #1: package reasoning is exactly ONE provider attempt -- no
+    automatic retry -- unlike the existing chunk/synthesis calls."""
+
+    def test_failure_makes_exactly_one_call_not_two(self):
+        call_count = {"n": 0}
+
+        def failing_call(system, user, max_tokens=2500, **kwargs):
+            call_count["n"] += 1
+            raise RuntimeError("simulated provider failure")
+
+        orig = analyst._call
+        analyst._call = failing_call
+        try:
+            parsed, failure_category = analyst._call_package_reasoning("prompt", bid_id=1)
+        finally:
+            analyst._call = orig
+        assert call_count["n"] == 1
+        assert parsed is None
+        assert failure_category == analyst._PACKAGE_FAILURE_API_ERROR
+
+    def test_end_to_end_failure_preserves_local_result_after_one_attempt(self):
+        call_count = {"n": 0}
+
+        def failing_call(system, user, max_tokens=2500, **kwargs):
+            call_count["n"] += 1
+            raise RuntimeError("simulated provider failure")
+
+        claims = [dict(_claim(), proposal_source_refs=[{"file_id": "f1"}])]
+        result = _alignment_result(claims=claims)
+        orig = analyst._call
+        analyst._call = failing_call
+        try:
+            out = analyst.analyze_proposal_package_intelligence(result, [{"req_id": "R1"}], {"title": "Bid"})
+        finally:
+            analyst._call = orig
+        assert call_count["n"] == 1
+        assert out["package_reasoning_status"] == "FAILED"
+
+
+class TestLedgerWideByteBudget:
+    """Fix #2: the byte budget is enforced against the FULL serialized
+    ledger, not just the claims section -- requirement_evidence rows are
+    dropped too when needed, and the actual bytes are re-measured (never
+    estimated) after each drop."""
+
+    def test_oversized_requirement_evidence_alone_is_pruned_to_fit_budget(self):
+        big_notes = "x" * 3000
+        req_coverage = [
+            {"req_id": f"R{i}", "coverage": "Fully Addressed", "evidence_strength": "Strong",
+             "notes": big_notes, "proposal_source_refs": [{"file_id": f"f{i}"}]}
+            for i in range(600)
+        ]
+        result = _alignment_result(claims=[], req_coverage=req_coverage)
+        ledger = analyst._build_package_intelligence_ledger(result, [])
+        assert ledger is not None
+        model_ledger, bookkeeping = analyst._split_ledger_bookkeeping(ledger)
+        assert len(analyst._canonical_json_bytes(model_ledger)) <= analyst._LEDGER_BYTE_BUDGET
+        assert len(model_ledger["requirement_evidence"]) < len(req_coverage)
+        assert bookkeeping["requirement_evidence_dropped_for_budget"] > 0
+
+    def test_mixed_sections_over_budget_all_stay_under_the_actual_limit(self):
+        big_statement = "y" * 2500
+        claims = [dict(_claim(claim_type="OTHER", req_id=None, subject=f"c{i}",
+                              statement=big_statement, confidence="Low"),
+                       proposal_source_refs=[{"file_id": f"cf{i}"}]) for i in range(15)]
+        observations = [
+            {"observation_type": "DELIVERY_COMMITMENT", "req_id": None, "title": f"D{i}",
+             "statement": big_statement, "proposal_source_refs": [{"file_id": f"df{i}"}]}
+            for i in range(15)
+        ]
+        findings = [
+            {"deficiency_type": "MISSING", "req_id": None, "title": big_statement,
+             "proposal_source_refs": [{"file_id": f"ff{i}"}]}
+            for i in range(15)
+        ]
+        result = _alignment_result(claims=claims, findings=findings, observations=observations)
+        ledger = analyst._build_package_intelligence_ledger(result, [])
+        assert ledger is not None
+        model_ledger, _ = analyst._split_ledger_bookkeeping(ledger)
+        assert len(analyst._canonical_json_bytes(model_ledger)) <= analyst._LEDGER_BYTE_BUDGET
+
+
+class TestPackageLedgerDigestMatchesModelInput:
+    """Fix #3: package_ledger_digest hashes ONLY the exact payload sent to
+    the model -- bookkeeping/diagnostic fields (e.g. dropped-for-budget
+    counters) must never affect it."""
+
+    def test_digest_identical_whether_bookkeeping_attached_or_not(self):
+        big_statement = "z" * 2500
+        claims = [dict(_claim(claim_type="OTHER", req_id=None, subject=f"c{i}",
+                              statement=big_statement, confidence="Low"),
+                       proposal_source_refs=[{"file_id": f"cf{i}"}]) for i in range(40)]
+        result = _alignment_result(claims=claims)
+        raw_ledger = analyst._build_package_intelligence_ledger(result, [])
+        assert raw_ledger is not None
+        assert "_budget_bookkeeping" in raw_ledger
+        model_ledger, bookkeeping = analyst._split_ledger_bookkeeping(raw_ledger)
+        assert "_budget_bookkeeping" not in model_ledger
+        assert bookkeeping.get("claims_dropped_for_budget", 0) > 0
+        assert analyst.package_ledger_digest(raw_ledger) == analyst.package_ledger_digest(model_ledger)
+
+    def test_changing_only_bookkeeping_does_not_change_digest(self):
+        ledger = {"coverage_complete": True, "claims": [], "requirement_evidence": [],
+                  "delivery_commitments": [], "commercial_exposures": [], "local_deficiencies": [],
+                  "source_registry": []}
+        d1 = analyst.package_ledger_digest(dict(ledger, _budget_bookkeeping={"claims_dropped_for_budget": 0}))
+        d2 = analyst.package_ledger_digest(dict(ledger, _budget_bookkeeping={"claims_dropped_for_budget": 99}))
+        assert d1 == d2
+
+    def test_prompt_never_receives_bookkeeping_key(self):
+        big_statement = "w" * 2500
+        claims = [dict(_claim(claim_type="OTHER", req_id=None, subject=f"c{i}",
+                              statement=big_statement, confidence="Low"),
+                       proposal_source_refs=[{"file_id": f"cf{i}"}]) for i in range(40)]
+        result = _alignment_result(claims=claims)
+        raw_ledger = analyst._build_package_intelligence_ledger(result, [])
+        model_ledger, _ = analyst._split_ledger_bookkeeping(raw_ledger)
+        prompt = analyst._package_reasoning_prompt("BID: x", model_ledger)
+        assert "_budget_bookkeeping" not in prompt
+
+
+class TestSourceToClaimAssociation:
+    """Fix #4: a finding's supporting_source_ids must actually be
+    associated with (traceable to) its own supporting_claim_ids -- a real
+    claim cited with a real-but-unrelated source must be rejected."""
+
+    def test_source_unrelated_to_cited_claim_is_rejected(self):
+        ledger = _ledger_with_two_claims()  # C1 -> P1(f1), C2 -> P2(f2)
+        raw = [{"finding_type": "UNSUPPORTED_CLAIM", "severity": "Medium", "req_id": "R1",
+               "title": "t", "explanation": "e", "recommended_action": "a",
+               "supporting_claim_ids": ["C1"], "supporting_source_ids": ["P2"]}]
+        accepted, rejected = analyst._reconcile_package_findings(raw, ledger, [{"req_id": "R1"}])
+        assert accepted == [] and rejected == 1
+
+    def test_source_associated_via_any_cited_claim_is_accepted(self):
+        ledger = _ledger_with_two_claims()
+        raw = [{"finding_type": "CONTRADICTION", "severity": "High", "req_id": "R1",
+               "title": "t", "explanation": "e", "recommended_action": "a",
+               "supporting_claim_ids": ["C1", "C2"], "supporting_source_ids": ["P1", "P2"]}]
+        accepted, rejected = analyst._reconcile_package_findings(raw, ledger, [{"req_id": "R1"}])
+        assert rejected == 0 and len(accepted) == 1
+
+
+class TestContradictionRequiresTwoDistinctClaims:
+    """Fix #5: CONTRADICTION requires >=2 DISTINCT valid supporting
+    claims; a single claim (even repeated) cannot be a contradiction.
+    INTERNAL_INCONSISTENCY's existing >=1-claim requirement is unchanged."""
+
+    def test_single_claim_contradiction_is_rejected(self):
+        ledger = _ledger_with_two_claims()
+        raw = [{"finding_type": "CONTRADICTION", "severity": "High", "req_id": "R1",
+               "title": "t", "explanation": "e", "recommended_action": "a",
+               "supporting_claim_ids": ["C1"], "supporting_source_ids": []}]
+        accepted, rejected = analyst._reconcile_package_findings(raw, ledger, [{"req_id": "R1"}])
+        assert accepted == [] and rejected == 1
+
+    def test_duplicate_claim_id_does_not_satisfy_two_distinct_claims(self):
+        ledger = _ledger_with_two_claims()
+        raw = [{"finding_type": "CONTRADICTION", "severity": "High", "req_id": "R1",
+               "title": "t", "explanation": "e", "recommended_action": "a",
+               "supporting_claim_ids": ["C1", "C1"], "supporting_source_ids": []}]
+        accepted, rejected = analyst._reconcile_package_findings(raw, ledger, [{"req_id": "R1"}])
+        assert accepted == [] and rejected == 1
+
+    def test_two_distinct_claims_contradiction_is_accepted(self):
+        ledger = _ledger_with_two_claims()
+        raw = [{"finding_type": "CONTRADICTION", "severity": "High", "req_id": "R1",
+               "title": "t", "explanation": "e", "recommended_action": "a",
+               "supporting_claim_ids": ["C1", "C2"], "supporting_source_ids": []}]
+        accepted, rejected = analyst._reconcile_package_findings(raw, ledger, [{"req_id": "R1"}])
+        assert rejected == 0 and len(accepted) == 1
+
+    def test_internal_inconsistency_single_claim_still_accepted(self):
+        ledger = _ledger_with_two_claims()
+        raw = [{"finding_type": "INTERNAL_INCONSISTENCY", "severity": "Medium", "req_id": "R1",
+               "title": "t", "explanation": "e", "recommended_action": "a",
+               "supporting_claim_ids": ["C1"], "supporting_source_ids": []}]
+        accepted, rejected = analyst._reconcile_package_findings(raw, ledger, [{"req_id": "R1"}])
+        assert rejected == 0 and len(accepted) == 1
+
+
+class TestTelemetryWorkflowParameter:
+    """Fix #6: analyst._call takes a backward-compatible `workflow` param
+    (default "analyst") -- existing call sites are unaffected, and
+    package reasoning opts in to workflow="proposal_intelligence"."""
+
+    def _patch_provider(self, monkeypatch):
+        captured = []
+
+        class _FakeContent:
+            def __init__(self, text):
+                self.text = text
+
+        class _FakeResponse:
+            def __init__(self, text):
+                self.content = [_FakeContent(text)]
+
+        def fake_client():
+            return object()
+
+        def fake_execute(client, *, telemetry_context=None, retry_number=0, **kwargs):
+            captured.append(telemetry_context)
+            return _FakeResponse('{"package_findings": []}')
+
+        monkeypatch.setattr(analyst, "get_anthropic_client", fake_client)
+        monkeypatch.setattr(analyst, "execute_messages_create", fake_execute)
+        return captured
+
+    def test_ordinary_call_defaults_to_analyst_workflow(self, monkeypatch):
+        captured = self._patch_provider(monkeypatch)
+        analyst._call("sys", "user", operation="alignment_chunk", bid_id=1)
+        assert captured[-1]["workflow"] == "analyst"
+        assert captured[-1]["operation"] == "alignment_chunk"
+
+    def test_explicit_workflow_override_is_honored(self, monkeypatch):
+        captured = self._patch_provider(monkeypatch)
+        analyst._call("sys", "user", operation="package_reasoning", bid_id=1,
+                      workflow="proposal_intelligence")
+        assert captured[-1]["workflow"] == "proposal_intelligence"
+        assert captured[-1]["operation"] == "package_reasoning"
+
+    def test_package_reasoning_call_site_uses_proposal_intelligence_workflow(self, monkeypatch):
+        captured = []
+
+        def fake_call(system, user, max_tokens=2500, **kwargs):
+            captured.append(kwargs)
+            return json.dumps({"package_findings": []})
+
+        orig = analyst._call
+        analyst._call = fake_call
+        try:
+            analyst._call_package_reasoning("prompt", bid_id=1)
+        finally:
+            analyst._call = orig
+        assert captured[-1]["workflow"] == "proposal_intelligence"
+        assert captured[-1]["operation"] == "package_reasoning"

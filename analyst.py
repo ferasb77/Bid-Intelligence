@@ -21,14 +21,19 @@ from requirement_semantics import has_supplier_qualification_evidence
 
 
 def _call(system: str, user: str, max_tokens: int = 2048, *, operation: str = "unknown",
-         bid_id: int | None = None, retry_number: int = 0) -> str:
+         bid_id: int | None = None, retry_number: int = 0, workflow: str = "analyst") -> str:
     """`operation` identifies which of this module's 11 distinct model-
     calling workflows made this call (Phase 4, BI Context & Token
     Optimization Program) -- every caller below passes its own, so usage
     is never collapsed into one undifferentiated "analyst" bucket. Passing
     it only attaches a `model_telemetry` event via
     config.execute_messages_create's `telemetry_context`; it changes
-    nothing about the request itself or this function's return value."""
+    nothing about the request itself or this function's return value.
+
+    `workflow` defaults to "analyst" so every existing call site is
+    unaffected; a caller opts in to a different telemetry workflow bucket
+    (e.g. PI-2B1's package reasoning passes workflow="proposal_intelligence")
+    explicitly."""
     client = get_anthropic_client()
     response = execute_messages_create(
         client,
@@ -36,7 +41,7 @@ def _call(system: str, user: str, max_tokens: int = 2048, *, operation: str = "u
         max_tokens=max_tokens,
         system=system,
         messages=[{"role": "user", "content": user}],
-        telemetry_context={"workflow": "analyst", "operation": operation, "bid_id": bid_id},
+        telemetry_context={"workflow": workflow, "operation": operation, "bid_id": bid_id},
         retry_number=retry_number,
     )
     return response.content[0].text.strip()
@@ -1739,160 +1744,305 @@ def _aggregate_proposal_claims(chunk_results: list[dict]) -> list[dict]:
 _PACKAGE_FINDING_TYPES = {"CONTRADICTION", "INTERNAL_INCONSISTENCY", "UNSUPPORTED_CLAIM"}
 _PACKAGE_SEVERITIES = {"Critical", "High", "Medium", "Low"}
 
-# Hard ledger byte budget (step 23): the compact, canonical-JSON-serialized
-# ledger (see _build_package_intelligence_ledger) must not exceed this many
-# UTF-8 bytes. Chosen well under a single bounded model call's practical
-# input budget for this codebase's existing haiku-4-5 chunk/synthesis
-# calls (which already bound proposal text per-chunk far below this), while
+# Hard ledger byte budget (step 23, hardened): the compact, canonical-
+# JSON-serialized ledger ACTUALLY SENT TO THE MODEL (see
+# _build_package_intelligence_ledger) must not exceed this many UTF-8
+# bytes. Chosen well under a single bounded model call's practical input
+# budget for this codebase's existing haiku-4-5 chunk/synthesis calls
+# (which already bound proposal text per-chunk far below this), while
 # comfortably holding several hundred claims/requirements for a realistic
-# proposal package. When exceeded, claims are dropped by the deterministic
-# priority order documented in _prioritize_claims_for_budget() until the
-# ledger fits -- requirement evidence/observations/deficiencies are never
-# dropped (they are already bounded by the existing per-chunk/aggregation
-# machinery, not by claim volume).
+# proposal package. When exceeded, entries are dropped -- lowest priority
+# first, per the deterministic order in _entry_priority_key() -- from
+# EVERY prunable section (claims, requirement_evidence,
+# delivery_commitments/commercial_exposures, local_deficiencies), not
+# just claims, and the ACTUAL serialized ledger is re-measured after each
+# drop (never estimated). If a valid bounded ledger still cannot be
+# produced after maximal pruning, the ledger is discarded entirely and
+# package reasoning is skipped for that run (see
+# analyze_proposal_package_intelligence's SKIPPED_LEDGER_OVER_BUDGET
+# path) -- an over-budget ledger is never sent.
 _LEDGER_BYTE_BUDGET = 60_000
+
+# Deterministic, fixed tie-break order between sections when two entries
+# from different sections land in the same priority tier. Arbitrary but
+# stable -- only used to keep pruning order reproducible.
+_ENTRY_KIND_ORDER = {
+    "claim": 0, "requirement_evidence": 1, "delivery": 2, "commercial": 3, "deficiency": 4,
+}
+_ENTRY_KIND_TIER3 = frozenset({"delivery", "commercial"})
 
 
 def _canonical_json_bytes(obj) -> bytes:
     return json.dumps(obj, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
-def _claim_priority_key(claim: dict, mandatory_rated_req_ids: set) -> tuple:
+def _entry_priority_key(kind: str, entry: dict, mandatory_rated_req_ids: set) -> tuple:
     """Lower sorts first (kept preferentially). Step 23's exact 5-tier
-    deterministic prioritization:
-      1. claims linked to a mandatory/rated requirement
+    deterministic prioritization, generalized (hardening fix #2) from
+    claims-only to every prunable ledger section:
+      1. entries linked to a mandatory/rated requirement
       2. quantitative/date/staffing/commercial claims
-      3. explicit commitments/exposures (DELIVERY/COMMERCIAL claim_type)
-      4. stronger material claims (High > Medium > Low confidence)
+      3. explicit commitments/exposures (DELIVERY/COMMERCIAL claim_type,
+         or any delivery_commitments/commercial_exposures entry)
+      4. stronger material claims (High > Medium > Low confidence;
+         entries with no confidence signal fall to the same rank as
+         "rest")
       5. everything else
-    Ties broken by stable first-seen index (the caller sorts with this key
-    using Python's stable sort, so original order survives within a tier)."""
-    req_id = claim.get("req_id")
+    Ties (including across sections) are broken by the caller with a
+    fixed (kind, first-seen index) tuple so pruning order is always
+    reproducible."""
+    req_id = entry.get("req_id")
     tier1 = 0 if (req_id and req_id in mandatory_rated_req_ids) else 1
-    tier2 = 0 if claim.get("claim_type") in ("QUANTITY", "DATE", "DURATION", "STAFFING", "COMMERCIAL") else 1
-    tier3 = 0 if claim.get("claim_type") in ("DELIVERY", "COMMERCIAL") else 1
-    conf_rank = {"High": 0, "Medium": 1, "Low": 2}.get(claim.get("confidence"), 3)
+    claim_type = entry.get("claim_type")
+    tier2 = 0 if claim_type in ("QUANTITY", "DATE", "DURATION", "STAFFING", "COMMERCIAL") else 1
+    tier3 = 0 if (claim_type in ("DELIVERY", "COMMERCIAL") or kind in _ENTRY_KIND_TIER3) else 1
+    conf_rank = {"High": 0, "Medium": 1, "Low": 2}.get(entry.get("confidence"), 3)
     return (tier1, tier2, tier3, conf_rank)
 
 
-def _prioritize_claims_for_budget(claims: list[dict], requirements: list[dict]) -> tuple[list[dict], int]:
-    """Applies the step-23 priority order to drop the LOWEST-priority
-    claims first until the claims themselves (canonical JSON) fit the
-    remaining ledger budget share. Returns (kept_claims_in_ORIGINAL_ORDER,
-    dropped_count). A caller that never exceeds budget gets every claim
-    back unchanged and dropped_count == 0."""
-    if not claims:
-        return claims, 0
+# Retained for any external caller that still wants claims-only ranking;
+# the ledger builder itself now uses the generalized _entry_priority_key
+# across all sections (hardening fix #2).
+def _claim_priority_key(claim: dict, mandatory_rated_req_ids: set) -> tuple:
+    return _entry_priority_key("claim", claim, mandatory_rated_req_ids)
+
+
+class _LedgerCandidate:
+    """One prunable ledger entry, kept in its section's original
+    first-seen order until/unless dropped for budget."""
+    __slots__ = ("kind", "orig_index", "req_id", "claim_type", "confidence", "source_refs", "build")
+
+    def __init__(self, kind, orig_index, req_id, claim_type, confidence, source_refs, build):
+        self.kind = kind
+        self.orig_index = orig_index
+        self.req_id = req_id
+        self.claim_type = claim_type
+        self.confidence = confidence
+        self.source_refs = source_refs
+        self.build = build  # callable(source_ids: list[str]) -> entry dict
+
+
+def _build_package_intelligence_ledger(alignment_result: dict, requirements: list[dict]) -> dict:
+    """PI-2B1 step 7 (hardened, fix #2/#3): the compact ledger the ONE
+    whole-package model call consumes -- built entirely from
+    already-aggregated, deterministic package-level structures (never raw
+    proposal text, never full chunk text). Assigns compact deterministic
+    IDs (step 7F): claims get C1, C2, ... in first-seen ledger order
+    (among SURVIVING claims); every distinct ProposalSourceRef across
+    surviving claims/requirement evidence/observations/deficiencies gets
+    a P1, P2, ... id, each full ref appearing in the registry exactly
+    once. Sections B-E reference claims/sources only by these short IDs.
+    Deterministic: identical input (alignment_result, requirements)
+    always produces an identical ledger.
+
+    Returns a PURE model-input payload -- no bookkeeping/diagnostic keys
+    (fix #3: package_ledger_digest must hash only what the model actually
+    sees). Bookkeeping is attached separately via
+    ledger_budget_bookkeeping(), which the caller reads before/alongside
+    computing the digest, never inside the hashed payload. If a valid
+    ledger cannot be produced within _LEDGER_BYTE_BUDGET even after
+    dropping every prunable entry, returns None (fail closed -- the
+    caller must skip package reasoning for that run)."""
     mandatory_rated = {
         r.get("req_id") for r in requirements
         if r.get("req_id") and (r.get("is_mandatory") or r.get("mandatory") or r.get("rated") or r.get("weight"))
     }
-    indexed = list(enumerate(claims))
-    ranked = sorted(indexed, key=lambda pair: _claim_priority_key(pair[1], mandatory_rated) + (pair[0],))
-    kept_indices: set = set()
-    running = 0
-    for idx, claim in ranked:
-        size = len(_canonical_json_bytes(claim))
-        if running + size > _LEDGER_BYTE_BUDGET:
-            continue
-        running += size
-        kept_indices.add(idx)
-    dropped = len(claims) - len(kept_indices)
-    kept = [c for i, c in indexed if i in kept_indices]
-    return kept, dropped
+    coverage_metadata = alignment_result.get("coverage_metadata") or {}
+    coverage_complete = bool(coverage_metadata.get("coverage_complete"))
 
+    candidates: list[_LedgerCandidate] = []
 
-def _build_package_intelligence_ledger(alignment_result: dict, requirements: list[dict]) -> dict:
-    """PI-2B1 step 7: the compact ledger the ONE whole-package model call
-    consumes -- built entirely from already-aggregated, deterministic
-    package-level structures (never raw proposal text, never full chunk
-    text). Assigns compact deterministic IDs (step 7F): claims get
-    C1, C2, ... in first-seen ledger order; every distinct
-    ProposalSourceRef across claims/requirement evidence/deficiencies
-    gets a P1, P2, ... id, each full ref appearing in the registry exactly
-    once. Sections B-E reference claims/sources only by these short IDs.
-    Deterministic: identical input (alignment_result, requirements)
-    always produces an identical ledger."""
-    claims = alignment_result.get("proposal_claim_ledger") or []
-    claims, claims_dropped = _prioritize_claims_for_budget(claims, requirements)
+    for i, c in enumerate(alignment_result.get("proposal_claim_ledger") or []):
+        def _mk(c=c):
+            def build(source_ids):
+                return {
+                    "claim_id": None, "claim_type": c.get("claim_type"), "req_id": c.get("req_id"),
+                    "subject": c.get("subject"), "statement": c.get("statement"),
+                    "value": c.get("value"), "unit": c.get("unit"), "source_ids": source_ids,
+                }
+            return build
+        candidates.append(_LedgerCandidate(
+            "claim", i, c.get("req_id"), c.get("claim_type"), c.get("confidence"),
+            c.get("proposal_source_refs") or [], _mk(),
+        ))
 
-    source_registry: list[dict] = []
-    source_ids: dict[tuple, str] = {}
+    for i, row in enumerate(alignment_result.get("requirement_coverage") or []):
+        def _mk(row=row):
+            def build(source_ids):
+                return {
+                    "req_id": row.get("req_id"), "coverage": row.get("coverage"),
+                    "evidence_strength": row.get("evidence_strength"),
+                    "excerpt": (row.get("notes") or "")[:200] or None,
+                    "source_ids": source_ids,
+                }
+            return build
+        candidates.append(_LedgerCandidate(
+            "requirement_evidence", i, row.get("req_id"), None, None,
+            row.get("proposal_source_refs") or [], _mk(),
+        ))
 
-    def _register_source(ref: dict) -> str | None:
-        if not ref:
-            return None
-        key = tuple(sorted(ref.items()))
-        if key in source_ids:
-            return source_ids[key]
-        sid = f"P{len(source_registry) + 1}"
-        source_ids[key] = sid
-        source_registry.append({"source_id": sid, **ref})
-        return sid
-
-    claim_entries = []
-    for i, c in enumerate(claims):
-        cid = f"C{i + 1}"
-        src_ids = [sid for sid in (_register_source(r) for r in c.get("proposal_source_refs") or []) if sid]
-        claim_entries.append({
-            "claim_id": cid, "claim_type": c.get("claim_type"), "req_id": c.get("req_id"),
-            "subject": c.get("subject"), "statement": c.get("statement"),
-            "value": c.get("value"), "unit": c.get("unit"), "source_ids": src_ids,
-        })
-
-    requirement_evidence = []
-    for row in alignment_result.get("requirement_coverage") or []:
-        src_ids = [sid for sid in (_register_source(r) for r in row.get("proposal_source_refs") or []) if sid]
-        requirement_evidence.append({
-            "req_id": row.get("req_id"), "coverage": row.get("coverage"),
-            "evidence_strength": row.get("evidence_strength"),
-            "excerpt": (row.get("notes") or "")[:200] or None,
-            "source_ids": src_ids,
-        })
-
-    def _observation_rows(observation_type: str) -> list[dict]:
-        rows = []
+    for kind, observation_type in (("delivery", "DELIVERY_COMMITMENT"), ("commercial", "COMMERCIAL_EXPOSURE")):
+        i = 0
         for o in alignment_result.get("proposal_observations") or []:
             if o.get("observation_type") != observation_type:
                 continue
-            src_ids = [sid for sid in (_register_source(r) for r in o.get("proposal_source_refs") or []) if sid]
-            rows.append({
-                "req_id": o.get("req_id"), "title": o.get("title"),
-                "statement": o.get("statement"), "source_ids": src_ids,
-            })
-        return rows
 
-    local_deficiencies = []
+            def _mk(o=o):
+                def build(source_ids):
+                    return {
+                        "req_id": o.get("req_id"), "title": o.get("title"),
+                        "statement": o.get("statement"), "source_ids": source_ids,
+                    }
+                return build
+            candidates.append(_LedgerCandidate(
+                kind, i, o.get("req_id"), None, None, o.get("proposal_source_refs") or [], _mk(),
+            ))
+            i += 1
+
+    i = 0
     for f in alignment_result.get("findings") or []:
         deficiency_type = f.get("deficiency_type")
         if deficiency_type not in _CHUNK_DEFICIENCY_TYPES:
             continue
-        src_ids = [sid for sid in (_register_source(r) for r in f.get("proposal_source_refs") or []) if sid]
-        local_deficiencies.append({
-            "req_id": f.get("req_id"), "deficiency_type": deficiency_type,
-            "title": f.get("title"), "source_ids": src_ids,
-        })
 
-    coverage_metadata = alignment_result.get("coverage_metadata") or {}
-    ledger = {
-        "coverage_complete": bool(coverage_metadata.get("coverage_complete")),
-        "claims": claim_entries,
-        "requirement_evidence": requirement_evidence,
-        "delivery_commitments": _observation_rows("DELIVERY_COMMITMENT"),
-        "commercial_exposures": _observation_rows("COMMERCIAL_EXPOSURE"),
-        "local_deficiencies": local_deficiencies,
-        "source_registry": source_registry,
-        "_claims_dropped_for_budget": claims_dropped,
+        def _mk(f=f, deficiency_type=deficiency_type):
+            def build(source_ids):
+                return {
+                    "req_id": f.get("req_id"), "deficiency_type": deficiency_type,
+                    "title": f.get("title"), "source_ids": source_ids,
+                }
+            return build
+        candidates.append(_LedgerCandidate(
+            "deficiency", i, f.get("req_id"), None, None, f.get("proposal_source_refs") or [], _mk(),
+        ))
+        i += 1
+
+    def _assemble(kept: list[_LedgerCandidate]) -> dict:
+        source_registry: list[dict] = []
+        source_ids: dict[tuple, str] = {}
+
+        def _register_source(ref: dict) -> str | None:
+            if not ref:
+                return None
+            key = tuple(sorted(ref.items()))
+            if key in source_ids:
+                return source_ids[key]
+            sid = f"P{len(source_registry) + 1}"
+            source_ids[key] = sid
+            source_registry.append({"source_id": sid, **ref})
+            return sid
+
+        by_kind: dict[str, list[_LedgerCandidate]] = {}
+        for cand in kept:
+            by_kind.setdefault(cand.kind, []).append(cand)
+        for lst in by_kind.values():
+            lst.sort(key=lambda c: c.orig_index)
+
+        claim_entries = []
+        for idx, cand in enumerate(by_kind.get("claim", [])):
+            src_ids = [sid for sid in (_register_source(r) for r in cand.source_refs) if sid]
+            entry = cand.build(src_ids)
+            entry["claim_id"] = f"C{idx + 1}"
+            claim_entries.append(entry)
+
+        requirement_evidence = [
+            cand.build([sid for sid in (_register_source(r) for r in cand.source_refs) if sid])
+            for cand in by_kind.get("requirement_evidence", [])
+        ]
+        delivery_commitments = [
+            cand.build([sid for sid in (_register_source(r) for r in cand.source_refs) if sid])
+            for cand in by_kind.get("delivery", [])
+        ]
+        commercial_exposures = [
+            cand.build([sid for sid in (_register_source(r) for r in cand.source_refs) if sid])
+            for cand in by_kind.get("commercial", [])
+        ]
+        local_deficiencies = [
+            cand.build([sid for sid in (_register_source(r) for r in cand.source_refs) if sid])
+            for cand in by_kind.get("deficiency", [])
+        ]
+
+        return {
+            "coverage_complete": coverage_complete,
+            "claims": claim_entries,
+            "requirement_evidence": requirement_evidence,
+            "delivery_commitments": delivery_commitments,
+            "commercial_exposures": commercial_exposures,
+            "local_deficiencies": local_deficiencies,
+            "source_registry": source_registry,
+        }
+
+    kept_ids = set(range(len(candidates)))
+    ledger = _assemble([candidates[i] for i in kept_ids])
+    size = len(_canonical_json_bytes(ledger))
+
+    # Worst (lowest-priority) entries first -- fixed, deterministic total
+    # order via (priority_tuple, kind_order, orig_index).
+    drop_order = sorted(
+        range(len(candidates)),
+        key=lambda i: (
+            _entry_priority_key(candidates[i].kind, {
+                "req_id": candidates[i].req_id, "claim_type": candidates[i].claim_type,
+                "confidence": candidates[i].confidence,
+            }, mandatory_rated),
+            _ENTRY_KIND_ORDER.get(candidates[i].kind, 99),
+            candidates[i].orig_index,
+        ),
+        reverse=True,
+    )
+
+    dropped_by_kind: dict[str, int] = {}
+    ptr = 0
+    while size > _LEDGER_BYTE_BUDGET and ptr < len(drop_order):
+        victim = drop_order[ptr]
+        ptr += 1
+        if victim not in kept_ids:
+            continue
+        kept_ids.discard(victim)
+        dropped_by_kind[candidates[victim].kind] = dropped_by_kind.get(candidates[victim].kind, 0) + 1
+        ledger = _assemble([candidates[i] for i in kept_ids])
+        size = len(_canonical_json_bytes(ledger))  # always re-measure actual bytes, never estimate
+
+    if size > _LEDGER_BYTE_BUDGET:
+        # Fail closed: even a fully pruned ledger (every prunable entry
+        # dropped) still exceeds budget -- never send an over-budget
+        # ledger. The caller skips package reasoning for this run.
+        return None
+
+    ledger["_budget_bookkeeping"] = {
+        "claims_dropped_for_budget": dropped_by_kind.get("claim", 0),
+        "requirement_evidence_dropped_for_budget": dropped_by_kind.get("requirement_evidence", 0),
+        "delivery_commitments_dropped_for_budget": dropped_by_kind.get("delivery", 0),
+        "commercial_exposures_dropped_for_budget": dropped_by_kind.get("commercial", 0),
+        "local_deficiencies_dropped_for_budget": dropped_by_kind.get("deficiency", 0),
     }
     return ledger
+
+
+def _split_ledger_bookkeeping(ledger: dict) -> tuple[dict, dict]:
+    """Fix #3: separate bookkeeping/diagnostic metadata from the model-
+    input ledger BEFORE it is hashed or sent to the model. Returns
+    (model_input_ledger, bookkeeping). A ledger with no bookkeeping
+    attached yields an empty bookkeeping dict."""
+    model_ledger = {k: v for k, v in ledger.items() if k != "_budget_bookkeeping"}
+    bookkeeping = dict(ledger.get("_budget_bookkeeping") or {})
+    return model_ledger, bookkeeping
 
 
 def package_ledger_digest(ledger: dict) -> str:
     """PI-2B1 step 8: sha256 over the ledger's canonical serialization --
     deterministic, order-stable, distinct from
     proposal_intelligence.compute_package_digest (which identifies the
-    SUBMITTED FILE package, not this derived reasoning ledger)."""
-    canonical = json.dumps(ledger, sort_keys=True, separators=(",", ":"))
+    SUBMITTED FILE package, not this derived reasoning ledger).
+
+    Fix #3: computed ONLY over the exact payload the model receives --
+    bookkeeping/diagnostic metadata (e.g. per-section dropped-for-budget
+    counts) is stripped first via _split_ledger_bookkeeping() so it can
+    never influence the digest a caller passed a raw ledger (with
+    bookkeeping still attached) to; a caller that already split it off
+    gets the identical digest either way."""
+    model_ledger, _ = _split_ledger_bookkeeping(ledger)
+    canonical = json.dumps(model_ledger, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
@@ -1955,33 +2105,31 @@ _PACKAGE_FAILURE_MALFORMED_RESPONSE = "malformed_response"
 
 def _call_package_reasoning(prompt: str, max_tokens: int = 2500, bid_id: int | None = None) -> tuple[dict | None, str | None]:
     """PI-2B1 step 9/24: the SINGLE new provider call this phase adds.
-    Mirrors _call_alignment_chunk's one-attempt-plus-one-bounded-retry,
-    fail-closed contract exactly -- never trusts a truncated/malformed
+    Exactly ONE provider attempt -- unlike _call_alignment_chunk's
+    one-attempt-plus-one-bounded-retry, package reasoning is an enrichment
+    layered on top of an already-valid local PI-2A result, so a failure
+    here must fail closed immediately (preserving that local result)
+    rather than spend a second retry. Never trusts a truncated/malformed
     response, never raises past this function. Telemetry: workflow=
     "proposal_intelligence", operation="package_reasoning" (step 26)."""
-    last_category = _PACKAGE_FAILURE_API_ERROR
-    for attempt in range(2):
-        try:
-            raw = _call(
-                "You are a precise, evidence-bound proposal-consistency reviewer. "
-                "You reason ONLY over the compact ledger you are given -- never assume "
-                "or invent proposal content outside it.",
-                prompt, max_tokens=max_tokens,
-                operation="package_reasoning", bid_id=bid_id, retry_number=attempt,
-            )
-        except Exception:
-            last_category = _PACKAGE_FAILURE_API_ERROR
-            continue
-        try:
-            parsed = _parse_json(raw)
-        except Exception:
-            last_category = _PACKAGE_FAILURE_PARSE_ERROR
-            continue
-        if not isinstance(parsed, dict) or not isinstance(parsed.get("package_findings"), list):
-            last_category = _PACKAGE_FAILURE_MALFORMED_RESPONSE
-            continue
-        return parsed, None
-    return None, last_category
+    try:
+        raw = _call(
+            "You are a precise, evidence-bound proposal-consistency reviewer. "
+            "You reason ONLY over the compact ledger you are given -- never assume "
+            "or invent proposal content outside it.",
+            prompt, max_tokens=max_tokens,
+            operation="package_reasoning", bid_id=bid_id, retry_number=0,
+            workflow="proposal_intelligence",
+        )
+    except Exception:
+        return None, _PACKAGE_FAILURE_API_ERROR
+    try:
+        parsed = _parse_json(raw)
+    except Exception:
+        return None, _PACKAGE_FAILURE_PARSE_ERROR
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("package_findings"), list):
+        return None, _PACKAGE_FAILURE_MALFORMED_RESPONSE
+    return parsed, None
 
 
 def _reconcile_package_findings(raw_findings: list, ledger: dict, requirements: list[dict]) -> tuple[list[dict], int]:
@@ -1992,8 +2140,29 @@ def _reconcile_package_findings(raw_findings: list, ledger: dict, requirements: 
     whole run). UNSUPPORTED_CLAIM is structurally rejected outright when
     ledger["coverage_complete"] is False, regardless of what the model
     returned (step 20) -- this is enforced here, not merely in the
-    prompt. Returns (accepted_findings_with_expanded_refs, rejected_count)."""
+    prompt. Returns (accepted_findings_with_expanded_refs, rejected_count).
+
+    Fix #4 (source-to-claim association): a finding's cited
+    supporting_source_ids are not merely checked for EXISTENCE in the
+    source registry -- each one must also be traceable to (i.e. appear in
+    the ledger's own source_ids for) at least one of the finding's own
+    supporting_claim_ids. This blocks a finding that pairs a real claim
+    with an unrelated real source that has nothing to do with it (e.g.
+    claim C1 cited together with source P9 that only ever appeared on an
+    unrelated claim). "Where applicable": every accepted finding here
+    already has a non-empty, fully-valid supporting_claim_ids list (the
+    earlier checks in this function reject anything else), so the
+    association is always checked against those claims -- there is no
+    zero-claims case to special-case for THIS finding shape.
+
+    Fix #5 (contradiction needs >=2 supporting claims): a CONTRADICTION
+    finding requires at least two DISTINCT valid claim_ids -- one claim
+    alone cannot contradict itself, and duplicate ids in the model's list
+    do not count twice. INTERNAL_INCONSISTENCY's existing (already
+    broader) >=1-claim, evidence-grounded requirement is left exactly as
+    it was."""
     claim_ids = {c["claim_id"] for c in ledger.get("claims") or []}
+    claim_source_ids = {c["claim_id"]: set(c.get("source_ids") or []) for c in ledger.get("claims") or []}
     source_lookup = {s["source_id"]: {k: v for k, v in s.items() if k != "source_id"}
                       for s in ledger.get("source_registry") or []}
     known_req_ids = {c.get("req_id") for c in ledger.get("claims") or [] if c.get("req_id")}
@@ -2039,13 +2208,30 @@ def _reconcile_package_findings(raw_findings: list, ledger: dict, requirements: 
         if not all(sid in source_lookup for sid in supporting_source_ids):
             rejected += 1
             continue
+        # Fix #4: every cited source must be traceable to at least one of
+        # THIS finding's own cited claims -- existing-in-the-registry is
+        # not enough; it must actually be associated with what it's
+        # paired with here.
+        allowed_source_ids: set = set()
+        for cid in supporting_claim_ids:
+            allowed_source_ids |= claim_source_ids.get(cid, set())
+        if not all(sid in allowed_source_ids for sid in supporting_source_ids):
+            rejected += 1
+            continue
         if finding_type == "UNSUPPORTED_CLAIM" and not coverage_complete:
             # step 20: structural enforcement AFTER model output -- an
             # UNSUPPORTED_CLAIM is never persisted from an incomplete
             # package, no matter what the (mocked) model returned.
             rejected += 1
             continue
-        if finding_type in ("CONTRADICTION", "INTERNAL_INCONSISTENCY") and len(supporting_claim_ids) < 1:
+        distinct_valid_claim_ids = {cid for cid in supporting_claim_ids if cid in claim_ids}
+        if finding_type == "CONTRADICTION" and len(distinct_valid_claim_ids) < 2:
+            # Fix #5: a contradiction needs at least TWO distinct
+            # incompatible affirmative claims to compare -- one claim
+            # (or the same claim repeated) cannot contradict itself.
+            rejected += 1
+            continue
+        if finding_type == "INTERNAL_INCONSISTENCY" and len(supporting_claim_ids) < 1:
             rejected += 1
             continue
 
@@ -2074,13 +2260,31 @@ def analyze_proposal_package_intelligence(
     function's output ADDITIONALLY alongside the unmodified local result.
 
     Returns {"package_findings": [...], "package_reasoning_status":
-    "OK"|"FAILED"|"SKIPPED_EMPTY_LEDGER", "package_ledger_digest": str,
-    "rejected_count": int, "claims_dropped_for_budget": int}. Never
-    raises -- a provider/parse failure becomes package_reasoning_status
-    "FAILED" with zero fabricated findings (step 19)."""
-    ledger = _build_package_intelligence_ledger(alignment_result, requirements)
+    "OK"|"FAILED"|"SKIPPED_EMPTY_LEDGER"|"SKIPPED_LEDGER_OVER_BUDGET",
+    "package_ledger_digest": str, "rejected_count": int,
+    "claims_dropped_for_budget": int}. Never raises -- a provider/parse
+    failure becomes package_reasoning_status "FAILED" with zero
+    fabricated findings (step 19).
+
+    Fix #2 (ledger-wide byte budget): _build_package_intelligence_ledger
+    returns None when even a maximally-pruned ledger still exceeds
+    _LEDGER_BYTE_BUDGET -- that run gets package_reasoning_status
+    "SKIPPED_LEDGER_OVER_BUDGET" with zero calls and zero fabricated
+    findings, the same fail-closed shape as the pre-existing empty-ledger
+    skip path, and never sends an over-budget ledger to the model."""
+    raw_ledger = _build_package_intelligence_ledger(alignment_result, requirements)
+    if raw_ledger is None:
+        return {
+            "package_findings": [], "package_reasoning_status": "SKIPPED_LEDGER_OVER_BUDGET",
+            "package_ledger_digest": None, "rejected_count": 0,
+            "claims_dropped_for_budget": 0,
+        }
+
+    # Fix #3: strip bookkeeping BEFORE hashing/prompting -- the digest and
+    # the model both see only `ledger`, never the diagnostic counters.
+    ledger, bookkeeping = _split_ledger_bookkeeping(raw_ledger)
     digest = package_ledger_digest(ledger)
-    claims_dropped = ledger.pop("_claims_dropped_for_budget", 0)
+    claims_dropped = bookkeeping.get("claims_dropped_for_budget", 0)
 
     if not ledger["claims"] and not ledger["requirement_evidence"]:
         return {
