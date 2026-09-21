@@ -50,25 +50,36 @@ verdict.
 
 This module performs no I/O and no persistence of its own -- exactly like
 proposal_intelligence.py, tenancy.py owns fetching the requirement/
-assessment/candidate rows and wiring this module's pure functions together
-(see tenancy.strengthen_requirement_evidence_for_organization). The one
-external call this module DOES make -- the adjudication classification --
-reuses this codebase's existing structured-output model-call infrastructure
-(config.get_anthropic_client/execute_messages_create, the same pattern as
+assessment/candidate rows, wiring this module's pure functions together
+(see tenancy.strengthen_requirement_evidence_for_organization), and
+persisting the result (migrations/017_requirement_evidence_enrichment.sql,
+OM-3B). The one external call this module DOES make -- the adjudication
+classification -- reuses this codebase's existing structured-output
+model-call infrastructure (config.get_anthropic_client/
+execute_messages_create, the same pattern as
 analyst._call_package_reasoning) and is fully injectable via `adjudicate_fn`
 for deterministic, mocked testing.
 
+OM-3B (durable persistence, migration 017): `compute_input_fingerprint()`
+below is this module's own contribution to that reuse layer -- a pure,
+deterministic sha256 fingerprint (same canonicalization convention as
+proposal_intelligence.compute_package_digest) over exactly what
+`strengthen_requirement_evidence()`'s output actually depends on, so a
+caller can persist a result keyed by this fingerprint and skip recomputing
+(including the adjudication model call) whenever the fingerprint is
+unchanged. This module still performs no persistence itself -- the
+fingerprint is a pure function callers use however they choose.
+
 Explicitly NOT built here (OM-3 scope, see docs/current/SYSTEM_STATE.md):
 proposal-text generation, UI, auto-approval/auto-promotion of any
-Organizational Memory item, a generic free-form
-`searchOrganizationalMemory(query)` capability, and any schema change (the
-existing `requirements` / `proposal_requirement_assessments` /
-`proposal_intelligence_findings` / `organizational_memory_items` tables are
-sufficient).
+Organizational Memory item, and a generic free-form
+`searchOrganizationalMemory(query)` capability.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, Iterable, Optional
@@ -252,6 +263,71 @@ def _build_requirement_query(requirement: dict) -> str:
     searchOrganizationalMemory(query) capability")."""
     parts = [requirement.get("description") or "", requirement.get("category") or ""]
     return " ".join(p for p in parts if p).strip()
+
+
+def compute_input_fingerprint(
+    requirement: dict,
+    evidence_state: RequirementEvidenceState,
+    candidate_items: Iterable["om.OrganizationalMemoryItem"],
+) -> str:
+    """OM-3B: a deterministic sha256 fingerprint over exactly what
+    `strengthen_requirement_evidence()`'s output depends on -- nothing more,
+    nothing less. Same canonicalization convention as
+    proposal_intelligence.compute_package_digest (sorted-key JSON, sha256
+    hex over UTF-8 bytes), so a byte-identical set of inputs always
+    produces the identical fingerprint and a caller can key a persisted
+    result by it (instruction 3: "a simpler deterministic input fingerprint"
+    rather than a broader dependency graph).
+
+    Covers, in order:
+      - the requirement's own identity/text (req_id/description/category)
+        -- hierarchy tier 1/2 input;
+      - the CURRENT-BID evidence-gap state (assessment_status/
+        evidence_strength/has_contradiction_finding/gap_kind) -- tier 2;
+      - the FULL considered Organizational Memory candidate pool's identity
+        (item_id + item_content_hash + memory_class for every candidate
+        handed to `retrieve()`, sorted by item_id) -- tier 3/4. This is
+        deliberately the whole pool evidence_strengthening was GIVEN, not
+        only the top_k actually ranked/returned: a newly-added or newly-
+        changed memory item that would change what top_k selects must
+        still invalidate a prior result, even if that item itself never
+        makes the final ranked set. Never includes item content/text --
+        identity only, exactly like compute_package_digest never includes
+        raw extracted text;
+      - EVIDENCE_STRENGTHENING_CONTRACT_VERSION -- bumping this constant
+        (an adjudication prompt/logic change) invalidates every previously
+        computed fingerprint even when every other input is identical,
+        exactly like PROPOSAL_INTELLIGENCE_ANALYSIS_VERSION already does
+        for Proposal Intelligence.
+
+    Deliberately excludes internal database row ids (requirement_id) and
+    anything not actually read by `strengthen_requirement_evidence()` --
+    an unrelated column changing on the requirement row must never
+    invalidate a still-accurate enrichment."""
+    requirement_identity = {
+        "req_id": requirement.get("req_id"),
+        "description": requirement.get("description"),
+        "category": requirement.get("category"),
+    }
+    candidate_identity = sorted(
+        (
+            {
+                "item_id": item.id,
+                "memory_class": item.memory_class.value,
+                "item_content_hash": item.item_content_hash,
+            }
+            for item in candidate_items
+        ),
+        key=lambda row: row["item_id"] or "",
+    )
+    payload = {
+        "contract_version": EVIDENCE_STRENGTHENING_CONTRACT_VERSION,
+        "requirement": requirement_identity,
+        "evidence_state": evidence_state.to_dict(),
+        "candidates": candidate_identity,
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 _ADJUDICATION_SYSTEM = (
@@ -522,4 +598,5 @@ __all__ = [
     "MemoryEvidenceCandidate",
     "EvidenceEnrichmentResult",
     "strengthen_requirement_evidence",
+    "compute_input_fingerprint",
 ]

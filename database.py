@@ -1326,6 +1326,49 @@ def get_proposal_intelligence_findings(run_id: int) -> list[dict]:
                 .eq("run_id", run_id).execute())
 
 
+# ── Requirement Evidence Enrichment (OM-3B) ──────────────────────────────────
+# Bid-scoped durable persistence of evidence_strengthening.strengthen_
+# requirement_evidence()'s output (migrations/017_requirement_evidence_
+# enrichment.sql). get_or_create_requirement_evidence_enrichment is the
+# ONLY write path (the migration 017 RPC) -- concurrency-safe, idempotent on
+# (bid_id, req_id, input_fingerprint), mirroring get_or_create_proposal_
+# package_snapshot exactly.
+
+def get_or_create_requirement_evidence_enrichment(
+    bid_id: int, req_id: str, input_fingerprint: str, contract_version: str,
+    evidence_state_before: dict, evidence_state_after: dict,
+    requirement_id: int | None = None, organizational_evidence: list | None = None,
+    remaining_gaps: list | None = None, requires_human_confirmation: bool = False,
+    retrieval_skipped_reason: str | None = None, created_by_user_id: str | None = None,
+) -> dict | None:
+    """Concurrency-safe get-or-create via the SQL function of the same name
+    (migration 017) -- two simultaneous callers computing the SAME
+    fingerprint for the SAME (bid_id, req_id) can never create duplicate
+    rows; the loser of the race gets the winner's already-persisted row
+    back. Do NOT replace this with a separate SELECT-then-INSERT from
+    Python -- that is exactly the race this function exists to close."""
+    return _rpc_one(get_client().rpc("get_or_create_requirement_evidence_enrichment", {
+        "p_bid_id": bid_id, "p_req_id": req_id, "p_input_fingerprint": input_fingerprint,
+        "p_contract_version": contract_version,
+        "p_evidence_state_before": evidence_state_before,
+        "p_evidence_state_after": evidence_state_after,
+        "p_requirement_id": requirement_id,
+        "p_organizational_evidence": organizational_evidence or [],
+        "p_remaining_gaps": remaining_gaps or [],
+        "p_requires_human_confirmation": bool(requires_human_confirmation),
+        "p_retrieval_skipped_reason": retrieval_skipped_reason,
+        "p_created_by_user_id": created_by_user_id,
+    }).execute())
+
+
+def get_requirement_evidence_enrichments(bid_id: int, req_id: str) -> list[dict]:
+    """Full history for one requirement, most recent first -- callers that
+    only need the latest usable row take index 0."""
+    return _rows(get_client().table("requirement_evidence_enrichments").select("*")
+                .eq("bid_id", bid_id).eq("req_id", req_id)
+                .order("created_at", desc=True).order("id", desc=True).execute())
+
+
 # ── Organizational Memory (OM-1) ─────────────────────────────────────────────
 # organization-scoped (never bid-scoped -- see migrations/016_organizational_
 # memory.sql for why content_library's bid-scoped model was not reused).

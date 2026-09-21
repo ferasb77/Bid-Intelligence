@@ -304,7 +304,7 @@ deferred, not started.
   Analyzer integration, archive-wide/bulk ingestion (single-file
   human-initiated upload only), auto-approval, scoring/win probability.
 
-**Organizational Memory (OM-3: requirement evidence strengthening)**
+**Organizational Memory (OM-3A: requirement evidence strengthening)**
 - `evidence_strengthening.py` — the first product-value integration
   reading Organizational Memory INTO existing requirement analysis. Pure,
   deterministic, no I/O of its own (same posture as `proposal_
@@ -333,20 +333,13 @@ deferred, not started.
   — current RFP/bid evidence always outranks Organizational Memory.
   `MemoryEvidenceCandidate` preserves item id, trust class, relationship,
   rationale, full provenance, and approval lineage.
-  `EvidenceEnrichmentResult` is computed and returned, never persisted;
-  this module never mutates an Organizational Memory item, never converts
-  SOURCE_MEMORY into APPROVED_FIRM_KNOWLEDGE, and never drafts proposal
-  text.
-- `tenancy.strengthen_requirement_evidence_for_organization` — the auth
-  boundary (`require_bid_access` first), wiring `database.
-  get_requirements_by_ids`/`get_latest_usable_proposal_intelligence_run`/
-  `get_proposal_requirement_assessments`/`get_proposal_intelligence_
-  findings` for current-bid evidence state and (only when strengthening
-  is actually needed) `database.list_organizational_memory_items` +
-  `tenancy._row_to_memory_item` for the organization-scoped candidate
-  pool. Read-only; no new migration (the existing `requirements`/
-  `proposal_requirement_assessments`/`proposal_intelligence_findings`/
-  `organizational_memory_items` schema was already sufficient).
+  `EvidenceEnrichmentResult` is computed and returned; OM-3A itself never
+  persists it (see OM-3B below for durable reuse on top of this same,
+  unchanged pure logic). This module never mutates an Organizational
+  Memory item, never converts SOURCE_MEMORY into APPROVED_FIRM_KNOWLEDGE,
+  and never drafts proposal text. `compute_input_fingerprint()` (OM-3B) —
+  a pure sha256 fingerprint over exactly this module's own inputs, see
+  below.
 - Tests: `tests/test_evidence_strengthening.py` (gap-state classification,
   strong-requirement retrieval skip, approved-knowledge/source-memory
   surfacing, irrelevant-candidate exclusion, contradiction handling and
@@ -355,9 +348,75 @@ deferred, not started.
   default-adjudicator fail-closed reconciliation, tenancy wiring). No
   live provider call — the one model call is always injected via
   `adjudicate_fn` or monkeypatched at `_call_memory_adjudication`.
-- Explicitly still deferred: proposal-text generation, persisting an
-  `EvidenceEnrichmentResult`, a UI, Ask CapOS integration, Section
-  Analyzer integration, auto-approval of any kind.
+
+**Organizational Memory (OM-3B: durable requirement evidence enrichment)**
+- `migrations/017_requirement_evidence_enrichment.sql` (written, **not
+  applied**) — new bid-scoped `requirement_evidence_enrichments` table,
+  mirroring migration 015's Proposal Intelligence persistence pattern
+  exactly (bid_id-direct RLS via `can_access_bid`, authenticated SELECT
+  only, service_role-only write). Stores OM-3A's `EvidenceEnrichmentResult`
+  fields (evidence_state_before/organizational_evidence/
+  evidence_state_after/remaining_gaps/requires_human_confirmation/
+  retrieval_skipped_reason as jsonb/columns) plus `contract_version` and
+  `input_fingerprint`, unique on `(bid_id, req_id, input_fingerprint)` —
+  never a copy of a whole source document or memory-item chunk content
+  (`MemoryEvidenceCandidate` never carries the item's own `content` field
+  at all). `get_or_create_requirement_evidence_enrichment()` RPC mirrors
+  `get_or_create_proposal_package_snapshot()` exactly: advisory lock keyed
+  on `(bid_id, req_id)`, idempotent get-or-insert, never an UPDATE. The
+  migration file's own header documents, in detail, why three existing
+  tables (`proposal_requirement_assessments`, `proposal_intelligence_
+  findings`, `organizational_memory_items`) were considered and rejected
+  before adding this one.
+- `evidence_strengthening.compute_input_fingerprint()` — deterministic
+  sha256 (same canonicalization convention as `proposal_intelligence.
+  compute_package_digest`) over the requirement's own req_id/description/
+  category, the current `RequirementEvidenceState`, the FULL considered
+  Organizational Memory candidate pool's identity (item_id +
+  item_content_hash + memory_class, sorted — never raw content, never only
+  the top_k actually ranked), and `EVIDENCE_STRENGTHENING_CONTRACT_
+  VERSION`. A single fingerprint, not a dependency graph.
+- `database.get_or_create_requirement_evidence_enrichment` / `get_
+  requirement_evidence_enrichments` (bid-scoped read, most-recent-first) —
+  the only new persistence functions; no per-column UPDATE helper exists
+  (rows are write-once, exactly like every other OM/PI persisted table).
+- `tenancy.strengthen_requirement_evidence_for_organization` (same
+  function/signature OM-3A introduced, now with persistence) — an
+  already-sufficient requirement is answered directly, exactly as OM-3A
+  (never reads `organizational_memory_items` or the enrichment table).
+  Otherwise: fetches the OM candidate pool, computes the fingerprint,
+  searches this requirement's persisted history for an exact match (a hit
+  skips retrieval AND the adjudication model call entirely), and on a miss
+  recomputes via `evidence_strengthening.strengthen_requirement_evidence`
+  (unchanged) then persists via `get_or_create_requirement_evidence_
+  enrichment`. An exception during recomputation propagates without
+  writing anything — a prior persisted row for a different fingerprint is
+  never touched. `_enrichment_row_to_dict` adapts a persisted row back
+  into the SAME dict shape `EvidenceEnrichmentResult.to_dict()` produces,
+  so a cache hit and a fresh computation are indistinguishable to a
+  caller.
+- Tests: `tests/test_requirement_evidence_enrichment.py` (compute-once/
+  reuse-without-a-model-call, invalidation on changed requirement text/
+  assessment/OM pool, no-invalidation on an unrelated change, provenance/
+  lineage survive the persistence round trip, bid-scoped isolation across
+  a same-numbered requirement id in a different bid, cross-organization OM
+  item never reaching adjudication, no OM write function ever called, no
+  proposal text anywhere in the persisted or returned result,
+  already-sufficient requirement skips the enrichment store entirely, a
+  simulated persistence failure during recompute leaves a prior valid row
+  byte-for-byte untouched and still raises) — all against an in-memory
+  fake standing in for migration 017's table/RPC, no live database, no
+  live provider call.
+- Live commissioning (2026-09-21): `evidence_strengthening.
+  _call_memory_adjudication` was run ONCE against the real Anthropic API
+  with synthetic, disposable, in-memory-only inputs (no Supabase
+  interaction) — structured response parsed, candidate ids reconciled,
+  relationship vocabulary honored, result bounded, two deliberately
+  irrelevant synthetic candidates correctly omitted by the model. Migration
+  017 itself was not applied live.
+- Explicitly still deferred: proposal-text generation, a UI, Ask CapOS
+  integration, Section Analyzer integration, auto-approval of any kind,
+  applying migration 017 live.
 
 **Tenancy / RLS / auth boundary**
 - `tenancy.py` — every `*_for_organization` (service-role, ownership-checked)

@@ -1768,29 +1768,70 @@ def retrieve_organizational_memory_for_organization(
 # Organizational Memory (OM-3: requirement evidence strengthening)
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _enrichment_row_to_dict(row: dict) -> dict:
+    """Adapts a persisted `requirement_evidence_enrichments` row (migration
+    017, OM-3B) into the SAME dict shape evidence_strengthening.
+    EvidenceEnrichmentResult.to_dict() produces -- a cache hit and a fresh
+    computation are indistinguishable to a caller."""
+    return {
+        "requirement_id": row.get("requirement_id"),
+        "req_id": row.get("req_id"),
+        "evidence_state_before": row.get("evidence_state_before") or {},
+        "organizational_evidence": row.get("organizational_evidence") or [],
+        "evidence_state_after": row.get("evidence_state_after") or {},
+        "remaining_gaps": row.get("remaining_gaps") or [],
+        "requires_human_confirmation": bool(row.get("requires_human_confirmation")),
+        "retrieval_skipped_reason": row.get("retrieval_skipped_reason"),
+    }
+
+
 def strengthen_requirement_evidence_for_organization(
     bid_id: int, organization_id: str, requirement_id: int,
-    top_k: int = 5, embed_fn=None,
+    top_k: int = 5, embed_fn=None, created_by_user_id: str | None = None,
 ) -> dict:
-    """The requirement-aware Organizational Memory strengthening boundary
-    (evidence_strengthening.strengthen_requirement_evidence), wired to real
-    persistence. Verifies bid ownership FIRST, before any read.
+    """OM-3B: "reason once, persist structured intelligence, reuse
+    downstream" -- the requirement-aware Organizational Memory strengthening
+    boundary (evidence_strengthening.strengthen_requirement_evidence), wired
+    to real, durable persistence (migrations/017_requirement_evidence_
+    enrichment.sql). Verifies bid ownership FIRST, before any read.
 
     Derives the requirement's CURRENT-BID evidence state (hierarchy tier 2)
     entirely from its own canonical row (database.get_requirements_by_ids,
     defensively bid_id-scoped) and its latest usable Proposal Intelligence
     assessment/findings -- never from Organizational Memory, and never from
-    a caller-supplied query. Organizational Memory candidates (tiers 3-4)
-    are fetched ONLY when the requirement's own evidence state actually
-    needs strengthening (an additional, cheap short-circuit on top of
-    evidence_strengthening's own -- avoids even the candidate-pool DB read
-    for an already-strong requirement), restricted to
-    APPROVED_FIRM_KNOWLEDGE and eligible SOURCE_MEMORY, organization-scoped
-    by list_organizational_memory_items exactly like every other OM read
-    path in this module.
+    a caller-supplied query.
 
-    Read-only end to end: writes nothing, mutates no Organizational Memory
-    item, creates no APPROVED_FIRM_KNOWLEDGE row, drafts no proposal text."""
+    An already-sufficient requirement (evidence_state.needs_strengthening is
+    False) is answered directly, exactly like OM-3A -- it never reads
+    organizational_memory_items, never computes a fingerprint, and is never
+    persisted (nothing worth caching).
+
+    Otherwise: fetches the organization-scoped Organizational Memory
+    candidate pool (APPROVED_FIRM_KNOWLEDGE + eligible SOURCE_MEMORY, via
+    list_organizational_memory_items exactly like every other OM read path
+    in this module), computes evidence_strengthening.compute_input_
+    fingerprint() over the requirement/evidence-state/candidate-pool
+    identity, and checks this requirement's PERSISTED history
+    (database.get_requirement_evidence_enrichments) for a row matching that
+    EXACT fingerprint. A match is returned directly -- retrieval and the
+    adjudication model call are both skipped entirely (the reuse path this
+    function exists for). No match means the requirement text, its
+    current-bid evidence state, or the relevant Organizational Memory pool
+    has materially changed (or this requirement has never been enriched) --
+    evidence_strengthening.strengthen_requirement_evidence() is invoked to
+    recompute, then persisted via database.get_or_create_requirement_
+    evidence_enrichment (concurrency-safe; a race against another caller
+    computing the SAME fingerprint returns the winner's row, never a
+    duplicate). A genuine exception during recomputation propagates to the
+    caller WITHOUT writing anything -- any previously persisted row for a
+    different (now-stale) fingerprint is left completely untouched, never
+    corrupted or silently replaced by a failed attempt.
+
+    Read-only with respect to Organizational Memory end to end: writes
+    nothing to organizational_memory_items, mutates no Organizational
+    Memory item, creates no APPROVED_FIRM_KNOWLEDGE row, drafts no proposal
+    text. The only table this function ever writes to is
+    requirement_evidence_enrichments itself."""
     require_bid_access(bid_id, organization_id)
     if not organization_id:
         raise ValueError(
@@ -1832,16 +1873,53 @@ def strengthen_requirement_evidence_for_organization(
         has_contradiction_finding=has_contradiction,
     )
 
-    candidate_items = []
-    if evidence_state.needs_strengthening:
-        rows = []
-        for memory_class in (om.MemoryClass.APPROVED_FIRM_KNOWLEDGE.value, om.MemoryClass.SOURCE_MEMORY.value):
-            rows.extend(db.list_organizational_memory_items(organization_id, memory_class=memory_class))
-        candidate_items = [_row_to_memory_item(row) for row in rows]
+    if not evidence_state.needs_strengthening:
+        result = es.strengthen_requirement_evidence(
+            organization_id=organization_id, bid_id=bid_id, requirement=requirement,
+            evidence_state=evidence_state, candidate_items=[],
+        )
+        return result.to_dict()
 
+    rows = []
+    for memory_class in (om.MemoryClass.APPROVED_FIRM_KNOWLEDGE.value, om.MemoryClass.SOURCE_MEMORY.value):
+        rows.extend(db.list_organizational_memory_items(organization_id, memory_class=memory_class))
+    candidate_items = [_row_to_memory_item(row) for row in rows]
+
+    fingerprint = es.compute_input_fingerprint(requirement, evidence_state, candidate_items)
+
+    # Reuse: search this requirement's FULL persisted history (bid-scoped,
+    # never another bid's rows -- database.get_requirement_evidence_
+    # enrichments already filters by bid_id) for a row matching the exact
+    # fingerprint just computed. A match means retrieval and the
+    # adjudication model call are both skipped entirely.
+    for existing_row in db.get_requirement_evidence_enrichments(bid_id, req_id):
+        if existing_row.get("input_fingerprint") == fingerprint:
+            return _enrichment_row_to_dict(existing_row)
+
+    # No fresh row -- recompute. Any exception here propagates untouched;
+    # nothing is written below unless this call returns successfully, so a
+    # failed attempt can never corrupt or replace a prior valid row.
     result = es.strengthen_requirement_evidence(
         organization_id=organization_id, bid_id=bid_id, requirement=requirement,
         evidence_state=evidence_state, candidate_items=candidate_items,
         top_k=top_k, embed_fn=embed_fn,
     )
-    return result.to_dict()
+
+    persisted = db.get_or_create_requirement_evidence_enrichment(
+        bid_id=bid_id, req_id=req_id, input_fingerprint=fingerprint,
+        contract_version=es.EVIDENCE_STRENGTHENING_CONTRACT_VERSION,
+        evidence_state_before=result.evidence_state_before,
+        evidence_state_after=result.evidence_state_after,
+        requirement_id=result.requirement_id,
+        organizational_evidence=[c.to_dict() for c in result.organizational_evidence],
+        remaining_gaps=list(result.remaining_gaps),
+        requires_human_confirmation=result.requires_human_confirmation,
+        retrieval_skipped_reason=result.retrieval_skipped_reason,
+        created_by_user_id=created_by_user_id,
+    )
+    if persisted is None:
+        # Persistence itself failed -- still return the freshly computed,
+        # correct result rather than losing it; only the cache for next
+        # time is missing, nothing about this response is wrong.
+        return result.to_dict()
+    return _enrichment_row_to_dict(persisted)

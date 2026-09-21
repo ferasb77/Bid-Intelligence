@@ -333,10 +333,86 @@ verbatim. Read-only end to end — writes nothing, and this task added no
 migration: the existing `requirements` / `proposal_requirement_
 assessments` / `proposal_intelligence_findings` / `organizational_memory_
 items` schema (migrations 015/016, both live) was already sufficient.
-`EvidenceEnrichmentResult`/its contents are computed and returned, not
-persisted, by this phase — persistence, a UI, Ask CapOS integration, and
-proposal-generation integration are all explicitly deferred to a later OM
-phase. Tests: `tests/test_evidence_strengthening.py`.
+`EvidenceEnrichmentResult`/its contents were computed and returned, not
+persisted, by OM-3A — see OM-3B immediately below, which adds durable
+reuse on top of this same pure logic without changing it. Tests:
+`tests/test_evidence_strengthening.py`.
+
+**OM-3B (durable requirement evidence enrichment) is now implemented,
+written but NOT applied to any live database** — "reason once, persist
+structured intelligence, reuse downstream" on top of OM-3A's pure logic,
+which is completely unchanged. New `migrations/017_requirement_evidence_
+enrichment.sql`: one new bid-scoped table, `requirement_evidence_
+enrichments`, mirroring migration 015's Proposal Intelligence persistence
+pattern exactly (bid_id-direct RLS via `can_access_bid`, authenticated
+SELECT only, service_role-only write via one RPC). A new table was
+justified only after three existing tables were considered and rejected
+(documented in the migration file's own header): `proposal_requirement_
+assessments` cannot hold it because an enrichment must be persistable even
+when NO Proposal Intelligence run exists at all (the MISSING gap case) —
+there is structurally no parent assessment row to attach a column to, and
+that table's rows are immutable outputs of one specific PI run with no
+UPDATE path anywhere in this schema; `proposal_intelligence_findings`
+would conflate two unrelated finding taxonomies under one CHECK
+constraint; `organizational_memory_items` would mean writing a
+multi-item-referencing derived artifact into the table migration 016's own
+immutable-provenance trigger exists specifically to protect. The
+`get_or_create_requirement_evidence_enrichment()` RPC mirrors migration
+015's `get_or_create_proposal_package_snapshot()` exactly — a
+transaction-scoped advisory lock keyed on `(bid_id, req_id)`, idempotent
+get-or-insert keyed on `(bid_id, req_id, input_fingerprint)`, never an
+UPDATE.
+
+Freshness: `evidence_strengthening.compute_input_fingerprint()` — a single
+deterministic sha256 (same canonicalization convention as
+`proposal_intelligence.compute_package_digest`: sorted-key JSON, sha256
+hex) over exactly what the enrichment output depends on — the
+requirement's own req_id/description/category, the current
+`RequirementEvidenceState` (assessment_status/evidence_strength/
+has_contradiction_finding/gap_kind — bid-specific evidence, hierarchy tier
+2), the FULL considered Organizational Memory candidate pool's identity
+(item_id + item_content_hash + memory_class for every candidate handed to
+`retrieve()`, not only the top_k actually ranked — a newly-added item that
+would change what top_k selects still invalidates a prior result even if
+it never makes the final ranked set), and
+`EVIDENCE_STRENGTHENING_CONTRACT_VERSION` (bumping it invalidates every
+prior fingerprint, exactly like `PROPOSAL_INTELLIGENCE_ANALYSIS_VERSION`).
+Deliberately a single fingerprint rather than a broader dependency graph
+(per this phase's own instruction) — content OM items outside the
+candidate pool, or unrelated requirement columns, never affect it.
+
+Reuse orchestration lives in `tenancy.strengthen_requirement_evidence_
+for_organization` (rewritten, same function/signature OM-3A introduced,
+now with persistence): an already-sufficient requirement is answered
+directly, exactly as OM-3A, without ever reading `organizational_memory_
+items` or the enrichment table (nothing worth caching). Otherwise: fetches
+the OM candidate pool, computes the fingerprint, searches this
+requirement's persisted history (`database.get_requirement_evidence_
+enrichments`, bid-scoped) for an exact match — a match is returned
+directly with retrieval AND the adjudication model call both skipped
+entirely; no match recomputes via `evidence_strengthening.
+strengthen_requirement_evidence()` (completely unchanged from OM-3A) and
+persists the result via `database.get_or_create_requirement_evidence_
+enrichment`. A genuine exception during recomputation propagates to the
+caller without writing anything — any previously persisted row for a
+different (now-stale) fingerprint is left completely untouched. Evidence
+hierarchy is unaffected: `evidence_state_after` on a persisted row is
+still the OM-3A `before` state copied verbatim, extended only with
+additive support/contradiction flags — Organizational Memory can never
+override tier-2 current-bid evidence, cached or not.
+
+Live commissioning: `evidence_strengthening._call_memory_adjudication`
+(OM-3A's one model call, previously exercised only via mocks) was run ONCE
+against the real Anthropic API with entirely synthetic, disposable
+in-memory inputs (no Supabase read/write) on 2026-09-21 — structured
+response parsed correctly, all returned candidate ids reconciled against
+the known set, the relationship vocabulary was honored, and the result was
+correctly bounded (the model correctly omitted two deliberately-irrelevant
+synthetic candidates from its response). Migration 017 itself was NOT
+applied to any live database this task — see the Migrations section below.
+Tests: `tests/test_requirement_evidence_enrichment.py`. Explicitly still
+deferred: a UI, Ask CapOS integration, Section Analyzer integration,
+proposal-generation integration, and applying migration 017 live.
 
 ## Architectural fact-type separation
 
@@ -381,30 +457,34 @@ deterministic, retrieval-first contract (`organizational_memory.retrieve()`).
 Zero live model/embedding calls this phase. **OM-2 (source ingestion +
 human approval lifecycle) is now also implemented and live-commissioned**
 (migration 016 applied 2026-09-21) — see the Organizational Memory entry
-above for full detail. **OM-3 (requirement evidence strengthening,
+above for full detail. **OM-3A (requirement evidence strengthening,
 `evidence_strengthening.py` + `tenancy.strengthen_requirement_evidence_
 for_organization`) is now implemented** — the first product-value
 integration reading Organizational Memory INTO existing Bid Intelligence
 requirement analysis (Proposal Intelligence's per-requirement
 assessment_status/evidence_strength/finding vocabulary), read-only, no
-new migration; see the Organizational Memory entry above for full detail.
-Deferred to a later OM phase: proposal-text generation from memory,
-auto-insertion of evidence, Section Analyzer integration, persisting an
-`EvidenceEnrichmentResult`, a UI for it, Ask CapOS integration,
-win-probability/scoring, and any PROPOSAL_MEMORY → APPROVED_FIRM_KNOWLEDGE
-promotion mechanism.
+new migration. **OM-3B (durable requirement evidence enrichment,
+`migrations/017_requirement_evidence_enrichment.sql`, written but NOT
+applied) is now also implemented** — persists OM-3A's result, keyed by a
+deterministic input fingerprint, and reuses it (no retrieval, no model
+call) whenever the fingerprint is unchanged; see the Organizational
+Memory entry above for full detail on both. Deferred to a later OM phase:
+proposal-text generation from memory, auto-insertion of evidence, Section
+Analyzer integration, a UI, Ask CapOS integration, win-probability/
+scoring, applying migration 017 live, and any PROPOSAL_MEMORY →
+APPROVED_FIRM_KNOWLEDGE promotion mechanism.
 
 Absent an explicit task instruction otherwise, still do not: apply
-migration 013, alter/reapply migration 015 or 016, activate the
+migration 013 or 017, alter/reapply migration 015 or 016, activate the
 compact-wire prototype, change chunk sizes/max_tokens/model
 routing/caching, or merge `main`/deploy.
 
 ## Migrations known in this repository (files, not live-database state)
 
-Highest migration file present: **016** (`016_organizational_memory.sql`).
-Files 001–016 exist in `migrations/`. This describes what's **written in
-the repo**, not what's applied to any Supabase project — see the note
-below.
+Highest migration file present: **017**
+(`017_requirement_evidence_enrichment.sql`). Files 001–017 exist in
+`migrations/`. This describes what's **written in the repo**, not what's
+applied to any Supabase project — see the note below.
 
 > **LAST VERIFIED EXTERNAL STATE** (as of the audit that wrote this file):
 > migration 012 was applied to the project's Supabase database by the repo
@@ -472,10 +552,17 @@ below.
 > **not exercised** — the task's `bid-supabase` MCP server exposes no
 > Storage read/write tool, so this was explicitly reported as unexercised
 > rather than fabricated. Migration 013 remains unapplied — not a
-> dependency of 016 and out of scope for this commissioning pass. Treat any
-> future "is migration N live" question as requiring a fresh check —
-> `git log` and this file are not a substitute for checking the live
-> database when a task depends on it.
+> dependency of 016 and out of scope for this commissioning pass. Migration
+> 017 (Requirement Evidence Enrichment, OM-3B) was written on 2026-09-21
+> and is **NOT applied to any live database** — this task's own
+> instruction explicitly excluded applying it. Its one RPC,
+> `get_or_create_requirement_evidence_enrichment()`, was NOT exercised
+> live (no Supabase interaction of any kind this task); OM-3A's live model
+> call (`evidence_strengthening._call_memory_adjudication`) WAS exercised
+> live, once, with synthetic disposable inputs — see the Organizational
+> Memory entry above. Treat any future "is migration N live" question as
+> requiring a fresh check — `git log` and this file are not a substitute
+> for checking the live database when a task depends on it.
 
 ## Where NOT to look first
 
