@@ -1595,18 +1595,36 @@ def _aggregate_proposal_observations(chunk_results: list[dict]) -> list[dict]:
     across chunks -- stable ordering (original chunk order, already
     `chunk_results`' own order), provenance preserved, and only clear
     exact/near-identical duplicates from overlapping chunks collapsed
-    (same observation_type + req_id + same normalized statement text).
-    Never merges two observations whose statements actually differ, and
-    never uses a model call to consolidate."""
+    (same observation_type + req_id + same normalized statement text AND
+    same normalized implication -- PI-2A.1: implication now participates
+    in the equivalence key so two observations that share statement
+    wording but carry materially different implications are never
+    merged; title is excluded from the key since it's presentation-only).
+    When duplicates ARE collapsed, every distinct structured source ref is
+    unioned (not just the first), and confidence is resolved via an
+    explicit High > Medium > Low rank rather than iteration order. Never
+    merges two observations whose statements or implications actually
+    differ, and never uses a model call to consolidate."""
+    _CONFIDENCE_RANK = {"High": 3, "Medium": 2, "Low": 1}
     seen: dict[tuple, dict] = {}
     ordered: list[dict] = []
     for cr in chunk_results:
         for o in cr.get("proposal_observations") or []:
             statement = (o.get("statement") or "").strip().lower()
-            key = (o.get("observation_type"), o.get("req_id"), statement)
-            if key in seen:
-                continue  # exact/near-identical duplicate from an overlapping chunk
+            implication = (o.get("implication") or "").strip().lower()
+            key = (o.get("observation_type"), o.get("req_id"), statement, implication)
             ref = o.get("_source_ref") or {}
+            if key in seen:
+                existing = seen[key]
+                if ref:
+                    existing["proposal_source_refs"] = _union_source_refs(
+                        existing["proposal_source_refs"] + [ref]
+                    )
+                if not existing.get("title") and o.get("title"):
+                    existing["title"] = o.get("title")
+                if _CONFIDENCE_RANK.get(o.get("confidence"), 0) > _CONFIDENCE_RANK.get(existing.get("confidence"), 0):
+                    existing["confidence"] = o.get("confidence")
+                continue
             row = {
                 "observation_type": o.get("observation_type"),
                 "req_id": o.get("req_id"),
@@ -2031,7 +2049,16 @@ def _reconcile_findings_with_package_evidence(
 
 
 def _findings_describe_same_theme(a: dict, b: dict) -> bool:
-    if (a.get("req_id"), a.get("category"), a.get("finding_type")) != (b.get("req_id"), b.get("category"), b.get("finding_type")):
+    # PI-2A.1: deficiency_type now participates in dedup identity -- two
+    # findings with different WEAK_EVIDENCE/UNSUPPORTED_CLAIM/CONTRADICTION/
+    # INTERNAL_INCONSISTENCY/OTHER classifications are never the same
+    # underlying defect, even if req_id/category/theme/issue-text all
+    # match. Legacy/pre-PI-2A findings with no deficiency_type (None) are
+    # a deterministic "legacy" bucket: None only equals None, so absent
+    # values never silently collapse into (or split apart from) a typed
+    # OTHER finding.
+    if (a.get("req_id"), a.get("category"), a.get("finding_type"), a.get("deficiency_type")) != \
+            (b.get("req_id"), b.get("category"), b.get("finding_type"), b.get("deficiency_type")):
         return False
     ka, kb = _issue_keywords(a.get("issue", "")), _issue_keywords(b.get("issue", ""))
     if not ka or not kb:
@@ -2050,6 +2077,24 @@ _DEDUP_STOPWORDS = {
 def _issue_keywords(text: str) -> frozenset:
     words = re.findall(r"[a-z]{4,}", (text or "").lower())
     return frozenset(w for w in words if w not in _DEDUP_STOPWORDS)
+
+
+def _union_source_refs(refs_iter) -> list[dict]:
+    """PI-2A.1: deterministic stable union of ProposalSourceRef dicts --
+    two refs are identical only when ALL their fields match exactly
+    (file_id, content_hash, filename, package_path, file_type, section,
+    char_start, char_end, excerpt); first-seen order is preserved and no
+    field of any distinct ref is ever discarded."""
+    union, seen = [], set()
+    for ref in refs_iter:
+        if not ref:
+            continue
+        key = tuple(sorted(ref.items()))
+        if key in seen:
+            continue
+        seen.add(key)
+        union.append(ref)
+    return union
 
 
 def _deduplicate_findings(findings: list[dict]) -> list[dict]:
@@ -2090,6 +2135,14 @@ def _deduplicate_findings(findings: list[dict]) -> list[dict]:
             shown = locations[:3]
             extra = len(locations) - len(shown)
             merged["proposal_location"] = "; ".join(shown) + (f" (+{extra} more)" if extra > 0 else "")
+        # PI-2A.1: union structured proposal_source_refs across every
+        # cluster member instead of keeping only the surviving `best`
+        # finding's single ref -- legacy proposal_location-only members
+        # with no structured ref simply contribute nothing here (their
+        # text is already folded into proposal_location above).
+        merged["proposal_source_refs"] = _union_source_refs(
+            ref for f in cluster for ref in (f.get("proposal_source_refs") or [])
+        )
         deduped.append(merged)
 
     deduped.sort(key=lambda f: _FINDING_SEVERITY_ORDER.get(f.get("severity", "Medium"), 2))

@@ -88,9 +88,15 @@ credits; do not activate them without a task explicitly requesting it.
 **Proposal Intelligence development is explicitly active** (PI-1
 established the durable domain foundation on this branch; PI-2A added
 richer per-chunk evidence/provenance/observation depth on top of it, with
-no new model call). PI-2B (cross-document/whole-package reasoning) is
-explicitly NOT started. Future work should build on PI-2A, not re-litigate
-PI-1/PI-2A's schema/adapter without cause.
+no new model call). PI-2A.1 hardened the deterministic post-response dedup
+in `analyst._deduplicate_findings()`/`_aggregate_proposal_observations()`
+so it never collapses findings across different `deficiency_type` values
+or observations with matching statements but different implications, and
+always unions (never drops) distinct structured `proposal_source_refs`
+across a merged cluster (exact-match-per-field; stable first-seen order).
+PI-2B (cross-document/whole-package reasoning) is explicitly NOT started.
+Future work should build on PI-2A/PI-2A.1, not re-litigate PI-1/PI-2A's
+schema/adapter without cause.
 
 Absent an explicit task instruction otherwise, still do not: apply
 migration 013, alter/reapply migration 015, activate the compact-wire
