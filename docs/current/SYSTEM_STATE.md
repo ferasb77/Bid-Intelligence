@@ -338,14 +338,16 @@ persisted, by OM-3A — see OM-3B immediately below, which adds durable
 reuse on top of this same pure logic without changing it. Tests:
 `tests/test_evidence_strengthening.py`.
 
-**OM-3B (durable requirement evidence enrichment) is now implemented,
-written but NOT applied to any live database** — "reason once, persist
-structured intelligence, reuse downstream" on top of OM-3A's pure logic,
-which is completely unchanged. New `migrations/017_requirement_evidence_
-enrichment.sql`: one new bid-scoped table, `requirement_evidence_
-enrichments`, mirroring migration 015's Proposal Intelligence persistence
-pattern exactly (bid_id-direct RLS via `can_access_bid`, authenticated
-SELECT only, service_role-only write via one RPC). A new table was
+**OM-3B (durable requirement evidence enrichment) is now implemented AND
+live-commissioned** (migration 017 applied 2026-09-21) — "reason once,
+persist structured intelligence, reuse downstream" on top of OM-3A's pure
+logic, which is unchanged in its analytical behavior (see the live-fix
+note below for one caller-side query-shape fix). New `migrations/017_
+requirement_evidence_enrichment.sql`: one new bid-scoped table,
+`requirement_evidence_enrichments`, mirroring migration 015's Proposal
+Intelligence persistence pattern exactly (bid_id-direct RLS via
+`can_access_bid`, authenticated SELECT only, service_role-only write via
+one RPC). A new table was
 justified only after three existing tables were considered and rejected
 (documented in the migration file's own header): `proposal_requirement_
 assessments` cannot hold it because an enrichment must be persistable even
@@ -401,18 +403,68 @@ still the OM-3A `before` state copied verbatim, extended only with
 additive support/contradiction flags — Organizational Memory can never
 override tier-2 current-bid evidence, cached or not.
 
-Live commissioning: `evidence_strengthening._call_memory_adjudication`
-(OM-3A's one model call, previously exercised only via mocks) was run ONCE
-against the real Anthropic API with entirely synthetic, disposable
-in-memory inputs (no Supabase read/write) on 2026-09-21 — structured
-response parsed correctly, all returned candidate ids reconciled against
-the known set, the relationship vocabulary was honored, and the result was
-correctly bounded (the model correctly omitted two deliberately-irrelevant
-synthetic candidates from its response). Migration 017 itself was NOT
-applied to any live database this task — see the Migrations section below.
-Tests: `tests/test_requirement_evidence_enrichment.py`. Explicitly still
-deferred: a UI, Ask CapOS integration, Section Analyzer integration,
-proposal-generation integration, and applying migration 017 live.
+Live commissioning (2026-09-21, project `whonalbdpbubaqhpzrnw`, ledger entry
+`20260921142902 requirement_evidence_enrichment`): schema/RLS/constraint/
+grant verification (including a direct probe — a committed `authenticated`
+UPDATE/DELETE against a real row affected zero rows and left it byte-for-
+byte unchanged, not merely a rolled-back no-op); RPC persistence (first
+write persists; an exact-fingerprint re-request returns the SAME row
+un-mutated, no duplicate; full payload — requirement identity, both
+evidence states, every organizational-evidence field including trust
+class/relationship/provenance/approval lineage/caveat, remaining gaps,
+`requires_human_confirmation` — round-trips exactly); a malformed payload
+(`NULL` evidence_state) is rejected outright with zero rows written; a
+genuinely live end-to-end run (`tenancy.strengthen_requirement_evidence_
+for_organization` against a real bid/requirement with disposable
+Organizational Memory rows) proved the reuse claim conclusively, not just
+by inference: the SECOND identical call was made with
+`_call_memory_adjudication` temporarily replaced by a function that raises
+if invoked at all, and that call still succeeded and returned a
+byte-identical result — a live cache hit that provably never called
+Anthropic; a THIRD call, after adding one new (irrelevant) Organizational
+Memory item to the pool, produced a different fingerprint, a new persisted
+row, and a genuine new adjudication call, live-proving pool-change
+invalidation specifically (the property this phase's own instructions
+called out as needing direct proof, not inference). Security advisors
+clean of any migration-017-attributable finding. All disposable
+commissioning rows (4 enrichment rows, 3 Organizational Memory items)
+cleaned up, verified zero residue in both tables.
+
+One real defect was found and fixed during commissioning — application
+code, not migration 017's SQL: `tenancy.strengthen_requirement_evidence_
+for_organization`'s freshness CHECK (the "does a fresh row already exist"
+read, meant to be a cheap identity-only query per this phase's own
+instructions) was calling `database.list_organizational_memory_items`,
+which does `select("*")` — loading every candidate's full `content` and
+`embedding` text on EVERY check, including a guaranteed cache hit, even
+though `compute_input_fingerprint()` only ever reads `id`/`memory_class`/
+`content_hash`. Fixed by adding `database.
+list_organizational_memory_item_identities` (a `select("id,memory_class,
+content_hash")` projection) and a matching lightweight `tenancy.
+_MemoryItemIdentity` duck-type, used ONLY for the freshness check; the
+full-content read now happens only on a genuine cache MISS, where
+retrieval/adjudication legitimately need it. No migration change was
+required — purely a query-shape fix, verified by three new tests
+(`TestFreshnessCheckNeverReadsFullContent`) plus the live end-to-end proof
+above.
+
+One pre-existing architectural characteristic was observed, not changed:
+`requirement_evidence_enrichments.requirement_id` has no composite FK
+tying it to the SAME `bid_id` as its own row (a live probe confirmed a
+requirement belonging to a DIFFERENT bid's numeric id CAN be attached) —
+this exactly matches `proposal_requirement_assessments.requirement_id`'s
+own existing, deliberate precedent (migration 015 has the identical
+characteristic) and is not a regression introduced by migration 017.
+In practice this column is only ever populated from `database.
+get_requirements_by_ids(bid_id, ...)`, which is itself already bid_id-
+scoped at the fetch, so the application's own calling code cannot exercise
+this gap; documented here rather than silently left unmentioned or
+speculatively "fixed" with a schema change beyond this task's scope.
+
+Tests: `tests/test_requirement_evidence_enrichment.py` (17, including the
+new freshness-content-read guard). Explicitly still deferred: a UI, Ask
+CapOS integration, Section Analyzer integration, proposal-generation
+integration.
 
 ## Architectural fact-type separation
 
@@ -464,27 +516,32 @@ integration reading Organizational Memory INTO existing Bid Intelligence
 requirement analysis (Proposal Intelligence's per-requirement
 assessment_status/evidence_strength/finding vocabulary), read-only, no
 new migration. **OM-3B (durable requirement evidence enrichment,
-`migrations/017_requirement_evidence_enrichment.sql`, written but NOT
-applied) is now also implemented** — persists OM-3A's result, keyed by a
-deterministic input fingerprint, and reuses it (no retrieval, no model
-call) whenever the fingerprint is unchanged; see the Organizational
-Memory entry above for full detail on both. Deferred to a later OM phase:
-proposal-text generation from memory, auto-insertion of evidence, Section
-Analyzer integration, a UI, Ask CapOS integration, win-probability/
-scoring, applying migration 017 live, and any PROPOSAL_MEMORY →
-APPROVED_FIRM_KNOWLEDGE promotion mechanism.
+`migrations/017_requirement_evidence_enrichment.sql`) is now implemented
+AND live-commissioned** (migration 017 applied 2026-09-21) — persists
+OM-3A's result, keyed by a deterministic input fingerprint, and reuses it
+(no retrieval, no model call — live-proven, not merely inferred) whenever
+the fingerprint is unchanged; see the Organizational Memory entry above
+for full detail on both, including the one live-commissioning defect found
+and fixed (a caller-side query-shape fix, no migration change). Deferred
+to a later OM phase: proposal-text generation from memory, auto-insertion
+of evidence, Section Analyzer integration, a UI, Ask CapOS integration,
+win-probability/scoring, and any PROPOSAL_MEMORY → APPROVED_FIRM_KNOWLEDGE
+promotion mechanism.
 
 Absent an explicit task instruction otherwise, still do not: apply
-migration 013 or 017, alter/reapply migration 015 or 016, activate the
+migration 013, alter/reapply migration 015, 016, or 017, activate the
 compact-wire prototype, change chunk sizes/max_tokens/model
 routing/caching, or merge `main`/deploy.
 
 ## Migrations known in this repository (files, not live-database state)
 
 Highest migration file present: **017**
-(`017_requirement_evidence_enrichment.sql`). Files 001–017 exist in
-`migrations/`. This describes what's **written in the repo**, not what's
-applied to any Supabase project — see the note below.
+(`017_requirement_evidence_enrichment.sql`, **applied and
+live-commissioned 2026-09-21**). Files 001–017 exist in `migrations/`.
+This describes what's **written in the repo**, not what's applied to any
+Supabase project — see the note below (which is the current source of
+truth for live status; always verify explicitly rather than trusting this
+sentence in isolation).
 
 > **LAST VERIFIED EXTERNAL STATE** (as of the audit that wrote this file):
 > migration 012 was applied to the project's Supabase database by the repo
@@ -554,15 +611,33 @@ applied to any Supabase project — see the note below.
 > rather than fabricated. Migration 013 remains unapplied — not a
 > dependency of 016 and out of scope for this commissioning pass. Migration
 > 017 (Requirement Evidence Enrichment, OM-3B) was written on 2026-09-21
-> and is **NOT applied to any live database** — this task's own
-> instruction explicitly excluded applying it. Its one RPC,
-> `get_or_create_requirement_evidence_enrichment()`, was NOT exercised
-> live (no Supabase interaction of any kind this task); OM-3A's live model
-> call (`evidence_strengthening._call_memory_adjudication`) WAS exercised
-> live, once, with synthetic disposable inputs — see the Organizational
-> Memory entry above. Treat any future "is migration N live" question as
-> requiring a fresh check — `git log` and this file are not a substitute
-> for checking the live database when a task depends on it.
+> and **applied live on 2026-09-21**, formally recorded in Supabase's
+> migration ledger as `20260921142902 requirement_evidence_enrichment`.
+> Live OM-3B commissioning also passed on 2026-09-21: schema/RLS/
+> constraint/grant verification including a direct committed-transaction
+> probe proving `authenticated` UPDATE/DELETE affect zero rows and leave a
+> real row byte-for-byte unchanged; RPC persistence/idempotency/round-trip
+> fidelity; malformed-payload rejection with zero partial rows; and — the
+> specific claim this phase's own instructions singled out for direct
+> proof rather than inference — a genuinely live end-to-end run through
+> `tenancy.strengthen_requirement_evidence_for_organization` in which a
+> second identical call succeeded with `_call_memory_adjudication`
+> temporarily replaced by a function that raises if invoked at all (proving
+> the cache hit never calls Anthropic), and a third call after adding one
+> new Organizational Memory item produced a different fingerprint, a new
+> row, and a genuine new adjudication call (proving pool-change
+> invalidation). One real defect was found and fixed during this
+> commissioning pass — in application code, not migration 017's SQL: the
+> freshness check was fetching every candidate's full content/embedding
+> via `select("*")` even on a cache hit; fixed with a new identity-only
+> projection (`database.list_organizational_memory_item_identities`) used
+> only for the freshness check, with the full-content read reserved for a
+> genuine cache miss. No migration change was needed for this fix. All
+> disposable rows (4 enrichment rows, 3 Organizational Memory items)
+> cleaned up, verified zero residue. Treat any future "is migration N
+> live" question as requiring a fresh check — `git log` and this file are
+> not a substitute for checking the live database when a task depends on
+> it.
 
 ## Where NOT to look first
 

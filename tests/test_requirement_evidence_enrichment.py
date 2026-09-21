@@ -122,11 +122,26 @@ class _Harness:
             om.MemoryClass.SOURCE_MEMORY.value: [],
         }
         self.adjudication_calls = 0
+        self.full_content_reads = 0
+        self.identity_reads = 0
 
     def list_om_items(self, organization_id, memory_class=None):
+        self.full_content_reads += 1
         if organization_id != ORG_A:
             return []
         return list(self.om_rows.get(memory_class, []))
+
+    def list_om_item_identities(self, organization_id, memory_class=None):
+        """Mirrors database.list_organizational_memory_item_identities'
+        cheap id/memory_class/content_hash-only projection -- used to prove
+        the freshness check never reads full item content on a cache hit."""
+        self.identity_reads += 1
+        if organization_id != ORG_A:
+            return []
+        return [
+            {"id": row["id"], "memory_class": row["memory_class"], "content_hash": row["content_hash"]}
+            for row in self.om_rows.get(memory_class, [])
+        ]
 
     def adjudicate(self, prompt, *, bid_id, max_tokens=1200):
         self.adjudication_calls += 1
@@ -140,6 +155,7 @@ class _Harness:
             patch.object(db, "get_proposal_requirement_assessments", side_effect=lambda run_id: [self.assessment]),
             patch.object(db, "get_proposal_intelligence_findings", side_effect=lambda run_id: self.findings),
             patch.object(db, "list_organizational_memory_items", side_effect=self.list_om_items),
+            patch.object(db, "list_organizational_memory_item_identities", side_effect=self.list_om_item_identities),
             patch.object(db, "get_requirement_evidence_enrichments", side_effect=self.store.history),
             patch.object(db, "get_or_create_requirement_evidence_enrichment", side_effect=self.store.get_or_create),
             patch.object(es, "_call_memory_adjudication", side_effect=self.adjudicate),
@@ -188,6 +204,42 @@ class TestComputeOnceReuseDownstream:
             result = _call(h)
             assert result["organizational_evidence"] == row["organizational_evidence"]
             assert result["evidence_state_after"] == row["evidence_state_after"]
+
+
+# ── Freshness check is a cheap identity-only query, never full content ─────
+# (live-commissioning finding, 2026-09-21: the ORIGINAL freshness check
+# fetched every item's full content/embedding via list_organizational_
+# memory_items' select("*") even on a guaranteed cache hit -- fixed to use
+# list_organizational_memory_item_identities instead; these tests guard the
+# fix.)
+
+class TestFreshnessCheckNeverReadsFullContent:
+
+    def test_cache_hit_never_calls_the_full_content_read(self):
+        # Both counters increment once per memory_class looped over
+        # (APPROVED_FIRM_KNOWLEDGE, SOURCE_MEMORY) -- 2 calls per fetch
+        # phase, not 1.
+        with _Harness() as h:
+            _call(h)                       # first request: genuine miss, reads full content once
+            assert h.full_content_reads == 2
+            assert h.identity_reads == 2
+
+            _call(h)                       # second, identical request: must be a pure cache hit
+            assert h.full_content_reads == 2   # UNCHANGED -- no additional full-content read
+            assert h.identity_reads == 4       # the cheap identity check still runs every time
+
+    def test_cache_miss_reads_identities_before_full_content(self):
+        with _Harness() as h:
+            _call(h)
+            assert h.identity_reads == 2
+            assert h.full_content_reads == 2
+
+    def test_sufficient_requirement_reads_neither(self):
+        with _Harness() as h:
+            h.assessment = dict(h.assessment, assessment_status="Fully Addressed", evidence_strength="STRONG")
+            _call(h)
+            assert h.identity_reads == 0
+            assert h.full_content_reads == 0
 
 
 # ── Invalidation ─────────────────────────────────────────────────────────

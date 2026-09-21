@@ -1768,6 +1768,22 @@ def retrieve_organizational_memory_for_organization(
 # Organizational Memory (OM-3: requirement evidence strengthening)
 # ═══════════════════════════════════════════════════════════════════════════
 
+@dataclass(frozen=True)
+class _MemoryItemIdentity:
+    """Minimal duck-typed stand-in for organizational_memory.
+    OrganizationalMemoryItem, carrying ONLY the three fields
+    evidence_strengthening.compute_input_fingerprint() actually reads
+    (`id`, `memory_class`, `item_content_hash`) -- never content/embedding/
+    metadata/provenance. Lets OM-3B's freshness check compute a fingerprint
+    from database.list_organizational_memory_item_identities' cheap
+    projection without needing a full OrganizationalMemoryItem (which
+    requires non-empty content and would defeat the point)."""
+
+    id: str
+    memory_class: "om.MemoryClass"
+    item_content_hash: str | None = None
+
+
 def _enrichment_row_to_dict(row: dict) -> dict:
     """Adapts a persisted `requirement_evidence_enrichments` row (migration
     017, OM-3B) into the SAME dict shape evidence_strengthening.
@@ -1806,26 +1822,34 @@ def strengthen_requirement_evidence_for_organization(
     organizational_memory_items, never computes a fingerprint, and is never
     persisted (nothing worth caching).
 
-    Otherwise: fetches the organization-scoped Organizational Memory
-    candidate pool (APPROVED_FIRM_KNOWLEDGE + eligible SOURCE_MEMORY, via
-    list_organizational_memory_items exactly like every other OM read path
-    in this module), computes evidence_strengthening.compute_input_
-    fingerprint() over the requirement/evidence-state/candidate-pool
-    identity, and checks this requirement's PERSISTED history
-    (database.get_requirement_evidence_enrichments) for a row matching that
-    EXACT fingerprint. A match is returned directly -- retrieval and the
-    adjudication model call are both skipped entirely (the reuse path this
-    function exists for). No match means the requirement text, its
-    current-bid evidence state, or the relevant Organizational Memory pool
-    has materially changed (or this requirement has never been enriched) --
-    evidence_strengthening.strengthen_requirement_evidence() is invoked to
-    recompute, then persisted via database.get_or_create_requirement_
-    evidence_enrichment (concurrency-safe; a race against another caller
-    computing the SAME fingerprint returns the winner's row, never a
-    duplicate). A genuine exception during recomputation propagates to the
-    caller WITHOUT writing anything -- any previously persisted row for a
-    different (now-stale) fingerprint is left completely untouched, never
-    corrupted or silently replaced by a failed attempt.
+    Otherwise: the freshness CHECK itself must stay cheap -- it fetches
+    ONLY the organization-scoped Organizational Memory candidate pool's
+    IDENTITY (database.list_organizational_memory_item_identities:
+    id/memory_class/content_hash, never content/embedding/metadata/
+    provenance text), computes evidence_strengthening.compute_input_
+    fingerprint() over the requirement/evidence-state/candidate-identity
+    set, and checks this requirement's PERSISTED history (database.
+    get_requirement_evidence_enrichments) for a row matching that EXACT
+    fingerprint. A match is returned directly -- this is a genuine cheap
+    metadata query, never a semantic retrieval or model call, and a cache
+    HIT never once calls list_organizational_memory_items (the full-row
+    read) at all. No match means the requirement text, its current-bid
+    evidence state, or the relevant Organizational Memory pool has
+    materially changed (or this requirement has never been enriched) --
+    ONLY THEN does this function fetch the full candidate rows (content
+    included -- genuinely required for retrieval/ranking and the
+    adjudication prompt) and call evidence_strengthening.
+    strengthen_requirement_evidence() to recompute, reusing the SAME
+    fingerprint already computed from the identity pass (never
+    recomputed a second time, so a miss can never persist under a
+    different fingerprint than the one it was found stale against), then
+    persists via database.get_or_create_requirement_evidence_enrichment
+    (concurrency-safe; a race against another caller computing the SAME
+    fingerprint returns the winner's row, never a duplicate). A genuine
+    exception during recomputation propagates to the caller WITHOUT
+    writing anything -- any previously persisted row for a different
+    (now-stale) fingerprint is left completely untouched, never corrupted
+    or silently replaced by a failed attempt.
 
     Read-only with respect to Organizational Memory end to end: writes
     nothing to organizational_memory_items, mutates no Organizational
@@ -1880,25 +1904,43 @@ def strengthen_requirement_evidence_for_organization(
         )
         return result.to_dict()
 
-    rows = []
+    identity_rows = []
     for memory_class in (om.MemoryClass.APPROVED_FIRM_KNOWLEDGE.value, om.MemoryClass.SOURCE_MEMORY.value):
-        rows.extend(db.list_organizational_memory_items(organization_id, memory_class=memory_class))
-    candidate_items = [_row_to_memory_item(row) for row in rows]
+        identity_rows.extend(
+            db.list_organizational_memory_item_identities(organization_id, memory_class=memory_class))
+    candidate_identities = [
+        _MemoryItemIdentity(
+            id=str(row["id"]), memory_class=om.MemoryClass(row["memory_class"]),
+            item_content_hash=row.get("content_hash"),
+        )
+        for row in identity_rows
+    ]
 
-    fingerprint = es.compute_input_fingerprint(requirement, evidence_state, candidate_items)
+    fingerprint = es.compute_input_fingerprint(requirement, evidence_state, candidate_identities)
 
     # Reuse: search this requirement's FULL persisted history (bid-scoped,
     # never another bid's rows -- database.get_requirement_evidence_
     # enrichments already filters by bid_id) for a row matching the exact
     # fingerprint just computed. A match means retrieval and the
-    # adjudication model call are both skipped entirely.
+    # adjudication model call are both skipped entirely -- and note this
+    # entire check above never read a single memory item's content.
     for existing_row in db.get_requirement_evidence_enrichments(bid_id, req_id):
         if existing_row.get("input_fingerprint") == fingerprint:
             return _enrichment_row_to_dict(existing_row)
 
-    # No fresh row -- recompute. Any exception here propagates untouched;
-    # nothing is written below unless this call returns successfully, so a
-    # failed attempt can never corrupt or replace a prior valid row.
+    # No fresh row -- recompute. Only now is the FULL candidate pool
+    # (content/embedding included) actually read -- genuinely required for
+    # retrieval/ranking and the adjudication prompt, unlike the identity-
+    # only fetch above. Reuses the SAME `fingerprint` already computed;
+    # never recomputed from the full rows. Any exception here propagates
+    # untouched; nothing is written below unless this call returns
+    # successfully, so a failed attempt can never corrupt or replace a
+    # prior valid row.
+    rows = []
+    for memory_class in (om.MemoryClass.APPROVED_FIRM_KNOWLEDGE.value, om.MemoryClass.SOURCE_MEMORY.value):
+        rows.extend(db.list_organizational_memory_items(organization_id, memory_class=memory_class))
+    candidate_items = [_row_to_memory_item(row) for row in rows]
+
     result = es.strengthen_requirement_evidence(
         organization_id=organization_id, bid_id=bid_id, requirement=requirement,
         evidence_state=evidence_state, candidate_items=candidate_items,

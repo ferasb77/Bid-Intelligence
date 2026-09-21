@@ -1412,6 +1412,28 @@ def list_organizational_memory_items(
     return _rows(query.order("created_at", desc=True).execute())
 
 
+def list_organizational_memory_item_identities(
+    organization_id: str, memory_class: str | None = None
+) -> list[dict]:
+    """OM-3B live-commissioning fix: an identity-only projection of
+    list_organizational_memory_items -- `id`/`memory_class`/`content_hash`
+    ONLY, never `content`/`embedding`/`metadata`/provenance text. Exists
+    so a caller that only needs to compute evidence_strengthening.
+    compute_input_fingerprint() (tenancy.strengthen_requirement_evidence_
+    for_organization's freshness CHECK, before deciding whether a
+    persisted enrichment can be reused) never has to load the full text of
+    every organization memory item just to find out whether a cache hit is
+    possible. A cache HIT never touches list_organizational_memory_items
+    at all -- only a genuine cache MISS (which must retrieve/rank real
+    content anyway) does."""
+    query = (get_client().table("organizational_memory_items")
+            .select("id,memory_class,content_hash")
+            .eq("organization_id", organization_id))
+    if memory_class:
+        query = query.eq("memory_class", memory_class)
+    return _rows(query.execute())
+
+
 def get_organizational_memory_item(item_id: int) -> dict | None:
     return _one(get_client().table("organizational_memory_items").select("*")
                .eq("id", item_id).execute())

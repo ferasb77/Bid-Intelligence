@@ -350,8 +350,9 @@ deferred, not started.
   `adjudicate_fn` or monkeypatched at `_call_memory_adjudication`.
 
 **Organizational Memory (OM-3B: durable requirement evidence enrichment)**
-- `migrations/017_requirement_evidence_enrichment.sql` (written, **not
-  applied**) — new bid-scoped `requirement_evidence_enrichments` table,
+- `migrations/017_requirement_evidence_enrichment.sql` (written, **applied
+  and live-commissioned 2026-09-21** — see SYSTEM_STATE.md) — new
+  bid-scoped `requirement_evidence_enrichments` table,
   mirroring migration 015's Proposal Intelligence persistence pattern
   exactly (bid_id-direct RLS via `can_access_bid`, authenticated SELECT
   only, service_role-only write). Stores OM-3A's `EvidenceEnrichmentResult`
@@ -377,25 +378,37 @@ deferred, not started.
   the top_k actually ranked), and `EVIDENCE_STRENGTHENING_CONTRACT_
   VERSION`. A single fingerprint, not a dependency graph.
 - `database.get_or_create_requirement_evidence_enrichment` / `get_
-  requirement_evidence_enrichments` (bid-scoped read, most-recent-first) —
-  the only new persistence functions; no per-column UPDATE helper exists
-  (rows are write-once, exactly like every other OM/PI persisted table).
+  requirement_evidence_enrichments` (bid-scoped read, most-recent-first) /
+  `list_organizational_memory_item_identities` (live-commissioning fix
+  below) — the persistence + cheap-identity read functions; no per-column
+  UPDATE helper exists (rows are write-once, exactly like every other
+  OM/PI persisted table).
 - `tenancy.strengthen_requirement_evidence_for_organization` (same
   function/signature OM-3A introduced, now with persistence) — an
   already-sufficient requirement is answered directly, exactly as OM-3A
   (never reads `organizational_memory_items` or the enrichment table).
-  Otherwise: fetches the OM candidate pool, computes the fingerprint,
-  searches this requirement's persisted history for an exact match (a hit
-  skips retrieval AND the adjudication model call entirely), and on a miss
-  recomputes via `evidence_strengthening.strengthen_requirement_evidence`
-  (unchanged) then persists via `get_or_create_requirement_evidence_
+  Otherwise: fetches the OM candidate pool's IDENTITY ONLY (`database.
+  list_organizational_memory_item_identities` — id/memory_class/
+  content_hash, never content/embedding), computes the fingerprint via
+  `tenancy._MemoryItemIdentity` (a minimal duck-typed stand-in for
+  `OrganizationalMemoryItem` carrying only the three fields the
+  fingerprint reads), and searches this requirement's persisted history
+  for an exact match — a hit skips retrieval AND the adjudication model
+  call AND the full-content read entirely, live-proven (see commissioning
+  note below), not merely inferred. Only on a miss does it fetch the FULL
+  candidate rows (`database.list_organizational_memory_items`, content
+  included — genuinely required for retrieval/ranking and the adjudication
+  prompt) and recompute via `evidence_strengthening.
+  strengthen_requirement_evidence` (unchanged), reusing the SAME
+  fingerprint already computed from the identity pass (never recomputed a
+  second time), then persists via `get_or_create_requirement_evidence_
   enrichment`. An exception during recomputation propagates without
   writing anything — a prior persisted row for a different fingerprint is
   never touched. `_enrichment_row_to_dict` adapts a persisted row back
   into the SAME dict shape `EvidenceEnrichmentResult.to_dict()` produces,
   so a cache hit and a fresh computation are indistinguishable to a
   caller.
-- Tests: `tests/test_requirement_evidence_enrichment.py` (compute-once/
+- Tests: `tests/test_requirement_evidence_enrichment.py` (17: compute-once/
   reuse-without-a-model-call, invalidation on changed requirement text/
   assessment/OM pool, no-invalidation on an unrelated change, provenance/
   lineage survive the persistence round trip, bid-scoped isolation across
@@ -404,19 +417,25 @@ deferred, not started.
   proposal text anywhere in the persisted or returned result,
   already-sufficient requirement skips the enrichment store entirely, a
   simulated persistence failure during recompute leaves a prior valid row
-  byte-for-byte untouched and still raises) — all against an in-memory
-  fake standing in for migration 017's table/RPC, no live database, no
-  live provider call.
-- Live commissioning (2026-09-21): `evidence_strengthening.
-  _call_memory_adjudication` was run ONCE against the real Anthropic API
-  with synthetic, disposable, in-memory-only inputs (no Supabase
-  interaction) — structured response parsed, candidate ids reconciled,
-  relationship vocabulary honored, result bounded, two deliberately
-  irrelevant synthetic candidates correctly omitted by the model. Migration
-  017 itself was not applied live.
+  byte-for-byte untouched and still raises, and `TestFreshnessCheckNever
+  ReadsFullContent` guarding the live-commissioning fix below) — all
+  against an in-memory fake standing in for migration 017's table/RPC, no
+  live database, no live provider call.
+- Live commissioning (2026-09-21, ledger `20260921142902
+  requirement_evidence_enrichment`): full schema/RLS/grant/idempotency/
+  round-trip verification against the real project, plus a genuinely live
+  end-to-end run proving (not inferring) that a second identical call
+  never invokes Anthropic — `_call_memory_adjudication` was temporarily
+  replaced with a function that raises if called at all, and the call
+  still succeeded with a byte-identical result — and that adding one new
+  Organizational Memory item changes the fingerprint and forces a genuine
+  new adjudication call. Found and fixed one real defect: the freshness
+  check was calling `list_organizational_memory_items` (`select("*")`,
+  full content/embedding) even on a cache hit; fixed with the identity-only
+  projection above, used only for the check. No migration change needed.
+  See SYSTEM_STATE.md for the full commissioning record.
 - Explicitly still deferred: proposal-text generation, a UI, Ask CapOS
-  integration, Section Analyzer integration, auto-approval of any kind,
-  applying migration 017 live.
+  integration, Section Analyzer integration, auto-approval of any kind.
 
 **Tenancy / RLS / auth boundary**
 - `tenancy.py` — every `*_for_organization` (service-role, ownership-checked)
