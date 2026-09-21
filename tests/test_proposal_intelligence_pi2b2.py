@@ -53,7 +53,7 @@ class TestGuidelineLedgerExtraction:
     def test_only_real_guidelines_enter_the_ledger(self):
         ledger = _ledger_with_one_claim_and_guideline()
         assert ledger["response_guidelines"] == [{
-            "guideline_id": "G1", "weight": "10", "minimum_score": "3",
+            "guideline_id": "G1", "buyer_guideline_id": "RG1", "weight": "10", "minimum_score": "3",
             "evidence_prompts": ["Describe your onboarding process."],
             "source_doc": "RFP.pdf",
         }]
@@ -352,6 +352,217 @@ class TestGuidelineAssessmentAdapter:
 
 
 # ── ANALYSIS_VERSION bump / staleness ───────────────────────────────────────
+
+# ── Commissioning hardening: buyer guideline identity vs transport G# ──────
+
+class TestBuyerGuidelineIdentitySurvivesTransport:
+
+    def test_ledger_entry_carries_buyer_id_and_source_doc_separately_from_g_id(self):
+        ledger = _ledger_with_one_claim_and_guideline()
+        entry = ledger["response_guidelines"][0]
+        assert entry["guideline_id"] == "G1"
+        assert entry["buyer_guideline_id"] == "RG1"
+        assert entry["source_doc"] == "RFP.pdf"
+
+    def test_reconciled_assessment_carries_buyer_id_and_source_doc(self):
+        ledger = _ledger_with_one_claim_and_guideline()
+        raw = [{"guideline_id": "G1", "status": "ANSWERED", "rationale": "found it",
+               "supporting_claim_ids": ["C1"], "supporting_source_ids": ["P1"],
+               "supporting_observation_ids": []}]
+        accepted, rejected = analyst._reconcile_guideline_assessments(raw, ledger)
+        assert rejected == 0
+        assert accepted[0]["guideline_id"] == "G1"
+        assert accepted[0]["buyer_guideline_id"] == "RG1"
+        assert accepted[0]["source_doc"] == "RFP.pdf"
+
+    def test_check_persisted_title_uses_buyer_id_not_g_id(self):
+        package_result = {
+            "package_findings": [], "package_reasoning_status": "OK",
+            "package_ledger_digest": "d1", "rejected_count": 0,
+            "guideline_assessments": [{
+                "guideline_id": "G1", "buyer_guideline_id": "RG1", "source_doc": "RFP.pdf",
+                "status": "ANSWERED", "rationale": "ok", "evaluator_traceability": "CLEAR",
+                "supporting_claim_ids": ["C1"], "supporting_source_ids": [],
+                "supporting_observation_ids": [], "proposal_source_refs": [],
+            }],
+        }
+        rows = pi.adapt_guideline_assessments(package_result)
+        assert rows[0]["title"] == "Response Guideline RG1: ANSWERED"
+        assert rows[0]["payload"]["buyer_guideline_id"] == "RG1"
+        assert rows[0]["payload"]["source_doc"] == "RFP.pdf"
+
+    def test_historical_assessment_without_buyer_id_falls_back_to_g_id_in_title(self):
+        # A row persisted before this hardening pass has no
+        # buyer_guideline_id at all -- title must still render something,
+        # never crash or go blank.
+        package_result = {
+            "guideline_assessments": [{
+                "guideline_id": "G1", "status": "ANSWERED", "rationale": "ok",
+                "supporting_claim_ids": ["C1"], "supporting_source_ids": [],
+                "supporting_observation_ids": [], "proposal_source_refs": [],
+            }],
+        }
+        rows = pi.adapt_guideline_assessments(package_result)
+        assert rows[0]["title"] == "Response Guideline G1: ANSWERED"
+
+
+# ── Commissioning hardening: PARTIAL is a genuine gap too ──────────────────
+
+class TestPartialIsAGenuineGap:
+
+    def test_partial_becomes_response_guideline_gap_finding(self):
+        package_result = {
+            "guideline_assessments": [{
+                "guideline_id": "G1", "buyer_guideline_id": "RG1", "status": "PARTIAL",
+                "rationale": "only half addressed", "supporting_claim_ids": ["C1"],
+                "supporting_source_ids": [], "supporting_observation_ids": [],
+                "proposal_source_refs": [],
+            }],
+        }
+        rows = pi.adapt_guideline_assessments(package_result)
+        assert rows[0]["finding_type"] == pi.FINDING_TYPE_RESPONSE_GUIDELINE_GAP
+
+    def test_partial_status_preserved_distinct_from_not_answered_in_payload(self):
+        package_result = {
+            "guideline_assessments": [{
+                "guideline_id": "G1", "buyer_guideline_id": "RG1", "status": "PARTIAL",
+                "rationale": "only half addressed", "supporting_claim_ids": ["C1"],
+                "supporting_source_ids": [], "supporting_observation_ids": [],
+                "proposal_source_refs": [],
+            }],
+        }
+        rows = pi.adapt_guideline_assessments(package_result)
+        assert rows[0]["payload"]["status"] == "PARTIAL"
+        assert rows[0]["payload"]["status"] != "NOT_ANSWERED"
+
+    def test_partial_and_not_answered_both_gap_but_distinguishable(self):
+        package_result = {
+            "guideline_assessments": [
+                {"guideline_id": "G1", "buyer_guideline_id": "RG1", "status": "PARTIAL",
+                 "rationale": "x", "supporting_claim_ids": ["C1"], "supporting_source_ids": [],
+                 "supporting_observation_ids": [], "proposal_source_refs": []},
+                {"guideline_id": "G2", "buyer_guideline_id": "RG2", "status": "NOT_ANSWERED",
+                 "rationale": "nothing found", "supporting_claim_ids": [], "supporting_source_ids": [],
+                 "supporting_observation_ids": [], "proposal_source_refs": []},
+            ],
+        }
+        rows = pi.adapt_guideline_assessments(package_result)
+        assert all(r["finding_type"] == pi.FINDING_TYPE_RESPONSE_GUIDELINE_GAP for r in rows)
+        statuses = {r["payload"]["status"] for r in rows}
+        assert statuses == {"PARTIAL", "NOT_ANSWERED"}
+
+    def test_partial_severity_matches_existing_gap_rule_no_new_inflation(self):
+        # No new severity logic added -- PARTIAL gets exactly the same
+        # "Medium" the existing gap rule already assigned NOT_ANSWERED.
+        package_result = {
+            "guideline_assessments": [{
+                "guideline_id": "G1", "buyer_guideline_id": "RG1", "status": "PARTIAL",
+                "rationale": "x", "supporting_claim_ids": ["C1"], "supporting_source_ids": [],
+                "supporting_observation_ids": [], "proposal_source_refs": [],
+            }],
+        }
+        rows = pi.adapt_guideline_assessments(package_result)
+        assert rows[0]["severity"] == "Medium"
+
+    def test_answered_and_cannot_assess_still_other_not_gap(self):
+        package_result = {
+            "guideline_assessments": [
+                {"guideline_id": "G1", "buyer_guideline_id": "RG1", "status": "ANSWERED",
+                 "rationale": "x", "supporting_claim_ids": ["C1"], "supporting_source_ids": [],
+                 "supporting_observation_ids": [], "proposal_source_refs": []},
+                {"guideline_id": "G2", "buyer_guideline_id": "RG2", "status": "CANNOT_ASSESS",
+                 "rationale": "x", "supporting_claim_ids": [], "supporting_source_ids": [],
+                 "supporting_observation_ids": [], "proposal_source_refs": []},
+            ],
+        }
+        rows = pi.adapt_guideline_assessments(package_result)
+        assert all(r["finding_type"] == pi.FINDING_TYPE_OTHER for r in rows)
+
+
+# ── Commissioning hardening: a budget-pruned guideline never disappears ────
+
+class TestPrunedGuidelineNeverDisappears:
+
+    def test_pruned_guideline_persists_as_cannot_assess_with_reason_code(self):
+        big_prompt = "x" * 3000
+        many_guidelines = [_guideline(f"RG{i}", evidence_prompts=[big_prompt]) for i in range(60)]
+        claims = [dict(_claim(), proposal_source_refs=[{"file_id": "f1"}])]
+        result = _alignment_result(claims=claims)
+
+        def fake_call(system, user, max_tokens=2500, **kwargs):
+            return json.dumps({"package_findings": [], "guideline_assessments": []})
+
+        orig = analyst._call
+        analyst._call = fake_call
+        try:
+            out = analyst.analyze_proposal_package_intelligence(
+                result, [{"req_id": "R1"}], {"title": "Bid"}, response_guidelines=many_guidelines)
+        finally:
+            analyst._call = orig
+
+        pruned = [ga for ga in out["guideline_assessments"] if ga.get("reason_code") == "LEDGER_BUDGET_PRUNED"]
+        assert pruned, "at least one guideline must have been pruned for budget in this fixture"
+        for ga in pruned:
+            assert ga["status"] == "CANNOT_ASSESS"
+            assert ga["guideline_id"] is None
+            assert ga["buyer_guideline_id"] is not None
+            assert ga["supporting_claim_ids"] == []
+            assert ga["supporting_source_ids"] == []
+            assert ga["supporting_observation_ids"] == []
+            assert ga["proposal_source_refs"] == []
+
+    def test_pruned_guideline_count_plus_surviving_equals_total_guidelines(self):
+        big_prompt = "x" * 3000
+        many_guidelines = [_guideline(f"RG{i}", evidence_prompts=[big_prompt]) for i in range(60)]
+        claims = [dict(_claim(), proposal_source_refs=[{"file_id": "f1"}])]
+        result = _alignment_result(claims=claims)
+        ledger = analyst._build_package_intelligence_ledger(result, [{"req_id": "R1"}], many_guidelines)
+        model_ledger, bookkeeping = analyst._split_ledger_bookkeeping(ledger)
+        surviving = len(model_ledger.get("response_guidelines") or [])
+        pruned = len(bookkeeping.get("response_guidelines_pruned") or [])
+        assert surviving + pruned == len(many_guidelines)
+
+    def test_no_pruning_yields_no_placeholders(self):
+        ledger = _ledger_with_one_claim_and_guideline()
+        _, bookkeeping = analyst._split_ledger_bookkeeping(
+            {**ledger, "_budget_bookkeeping": {"response_guidelines_pruned": []}})
+        assert analyst._pruned_guideline_placeholders(bookkeeping) == []
+
+    def test_pruned_placeholder_persists_through_adapter_as_gap_free_other_row(self):
+        # CANNOT_ASSESS is not in the gap-status set -- a pruned guideline
+        # persists as FINDING_TYPE_OTHER (it documents an accounting fact,
+        # not a proposal deficiency), never fabricated as a gap.
+        package_result = {
+            "guideline_assessments": analyst._pruned_guideline_placeholders(
+                {"response_guidelines_pruned": [{"buyer_guideline_id": "RG9", "source_doc": "RFP.pdf"}]}),
+        }
+        rows = pi.adapt_guideline_assessments(package_result)
+        assert len(rows) == 1
+        assert rows[0]["finding_type"] == pi.FINDING_TYPE_OTHER
+        assert rows[0]["payload"]["reason_code"] == "LEDGER_BUDGET_PRUNED"
+        assert rows[0]["title"] == "Response Guideline RG9: CANNOT_ASSESS"
+
+    def test_pruned_guideline_survives_even_when_package_call_fails(self):
+        big_prompt = "x" * 3000
+        many_guidelines = [_guideline(f"RG{i}", evidence_prompts=[big_prompt]) for i in range(60)]
+        claims = [dict(_claim(), proposal_source_refs=[{"file_id": "f1"}])]
+        result = _alignment_result(claims=claims)
+
+        def fake_call(system, user, max_tokens=2500, **kwargs):
+            raise RuntimeError("simulated provider failure")
+
+        orig = analyst._call
+        analyst._call = fake_call
+        try:
+            out = analyst.analyze_proposal_package_intelligence(
+                result, [{"req_id": "R1"}], {"title": "Bid"}, response_guidelines=many_guidelines)
+        finally:
+            analyst._call = orig
+
+        assert out["package_reasoning_status"] == "FAILED"
+        pruned = [ga for ga in out["guideline_assessments"] if ga.get("reason_code") == "LEDGER_BUDGET_PRUNED"]
+        assert pruned
+
 
 class TestAnalysisVersionBump:
 

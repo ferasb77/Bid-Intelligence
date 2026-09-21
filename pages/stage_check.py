@@ -869,6 +869,14 @@ def page_check(bid_id: int):
                         color = _rg_status_color.get(status, "#6E6C66")
                         traceability = ga.get("evaluator_traceability")
                         refs = ga.get("proposal_source_refs") or []
+                        # Hardening fix #1: CHECK must display the BUYER's
+                        # own guideline id (e.g. "RG1"), never the
+                        # transport-only G# id -- fall back to the G# only
+                        # for a historical assessment persisted before this
+                        # field existed.
+                        display_id = ga.get("buyer_guideline_id") or ga.get("guideline_id") or ""
+                        source_doc = ga.get("source_doc")
+                        pruned = ga.get("reason_code") == "LEDGER_BUDGET_PRUNED"
                         sources_html = "".join(
                             f'<div style="font-size:.7rem;color:#6E6C66">📍 '
                             f'{r.get("filename") or r.get("package_path") or "—"}'
@@ -880,9 +888,12 @@ def page_check(bid_id: int):
                             f'<div style="background:#111118;border:1px solid #292832;border-left:3px solid {color};'
                             f'border-radius:0 4px 4px 0;padding:.5rem 1rem;margin:.25rem 0">'
                             f'<span style="color:{color};font-weight:700;font-size:.72rem">[{status}]</span> '
-                            f'<span style="color:#C9A96E;font-size:.72rem">{ga.get("guideline_id") or ""}</span> '
+                            f'<span style="color:#C9A96E;font-size:.72rem">{display_id}</span> '
+                            + (f'<span style="color:#6E6C66;font-size:.68rem">({source_doc})</span> ' if source_doc else "")
                             + (f'<span style="background:#2A2836;color:#A9A69D;font-size:.62rem;padding:1px 5px;'
                                f'border-radius:3px;margin-left:.35rem">{traceability}</span>' if traceability else "")
+                            + (f'<span style="background:#3A2A2A;color:#C0392B;font-size:.62rem;padding:1px 5px;'
+                               f'border-radius:3px;margin-left:.35rem">LEDGER BUDGET PRUNED</span>' if pruned else "")
                             + (f'<div style="font-size:.78rem;color:#EDEAE3;margin-top:.15rem">{ga.get("rationale")}</div>'
                                if ga.get("rationale") else "")
                             + sources_html

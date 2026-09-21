@@ -530,19 +530,33 @@ def adapt_package_findings(package_result: dict, requirements: list[dict] | None
 # the way `payload["scope"]` already distinguishes local vs. package
 # (requirement 9 -- CHECK reload renders the whole "Response Guideline /
 # Evaluator Usability" section, every status, purely from these rows).
-# A genuine gap (status == NOT_ANSWERED, meaning coverage_complete AND
+# A genuine gap -- status == NOT_ANSWERED (coverage_complete AND
 # ledger_complete both held AND no evidence was found -- see
-# analyst._reconcile_guideline_assessments' fail-closed downgrade) is ALSO
-# tagged with finding_type RESPONSE_GUIDELINE_GAP (requirement 7 -- the
-# existing, already-bounded taxonomy type, no new finding-type mechanism);
-# every other status (ANSWERED/PARTIAL/CANNOT_ASSESS) persists as
-# FINDING_TYPE_OTHER, since it documents coverage, not a deficiency.
+# analyst._reconcile_guideline_assessments' fail-closed downgrade) OR
+# status == PARTIAL (the proposal addresses SOME but not all of a
+# guideline's evidence prompts -- still a real gap an evaluator/reviewer
+# should see flagged, hardening fix #2) -- is tagged with finding_type
+# RESPONSE_GUIDELINE_GAP (requirement 7 -- the existing, already-bounded
+# taxonomy type, no new finding-type mechanism). The two are never
+# collapsed into meaning the same thing: `payload["status"]` (spread
+# verbatim from `ga` below) still reads exactly "PARTIAL" or
+# "NOT_ANSWERED", and severity is whatever the existing rule already
+# assigns to any gap ("Medium") -- no new severity-inflation logic added
+# to distinguish them. ANSWERED/CANNOT_ASSESS persist as FINDING_TYPE_OTHER,
+# since they document coverage (or the fail-closed inability to judge it),
+# not a deficiency.
 # ---------------------------------------------------------------------------
+
+_GUIDELINE_GAP_STATUSES = ("NOT_ANSWERED", "PARTIAL")
+
 
 def adapt_guideline_assessments(package_result: dict, requirements: list[dict] | None = None) -> list[dict]:
     """analyst.analyze_proposal_package_intelligence()'s already-reconciled
     `guideline_assessments` -> proposal_intelligence_findings rows. Only
-    ALREADY-VALIDATED assessments reach this adapter (analyst.py's
+    ALREADY-VALIDATED assessments (plus analyst._pruned_guideline_
+    placeholders' deterministic CANNOT_ASSESS/LEDGER_BUDGET_PRUNED rows for
+    guidelines the byte-budget pruner dropped before the model ever saw
+    them, hardening fix #3) reach this adapter (analyst.py's
     _reconcile_guideline_assessments rejected anything with an unknown
     guideline/claim/source/observation id, unknown status, or an
     unprovenanced positive conclusion, and structurally downgraded an
@@ -550,16 +564,24 @@ def adapt_guideline_assessments(package_result: dict, requirements: list[dict] |
     no further semantic validation, only persistence shaping. A FAILED/
     SKIPPED_* package_reasoning_status or a bid with no Response Guidelines
     at all naturally yields `guideline_assessments == []` here -- never a
-    fabricated placeholder row."""
+    fabricated placeholder row.
+
+    Hardening fix #1: the title displays the BUYER's own guideline id
+    (`buyer_guideline_id`, e.g. "RG1", verbatim from Fast Analysis's
+    deterministic parser) when present, never the transport-only G# id --
+    falling back to the G# only for a historical assessment persisted
+    before this field existed, so old rows still render something rather
+    than an empty title."""
     digest = package_result.get("package_ledger_digest")
     rows = []
     for ga in package_result.get("guideline_assessments") or []:
         status = ga.get("status")
-        is_gap = status == "NOT_ANSWERED"
+        is_gap = status in _GUIDELINE_GAP_STATUSES
+        display_id = ga.get("buyer_guideline_id") or ga.get("guideline_id") or ""
         rows.append({
             "finding_type": FINDING_TYPE_RESPONSE_GUIDELINE_GAP if is_gap else FINDING_TYPE_OTHER,
             "severity": "Medium" if is_gap else None,
-            "title": f"Response Guideline {ga.get('guideline_id') or ''}: {status or ''}".strip(),
+            "title": f"Response Guideline {display_id}: {status or ''}".strip(),
             "message": ga.get("rationale"),
             "explanation": None,
             "related_req_id": None,

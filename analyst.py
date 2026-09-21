@@ -1827,9 +1827,9 @@ def _claim_priority_key(claim: dict, mandatory_rated_req_ids: set) -> tuple:
 class _LedgerCandidate:
     """One prunable ledger entry, kept in its section's original
     first-seen order until/unless dropped for budget."""
-    __slots__ = ("kind", "orig_index", "req_id", "claim_type", "confidence", "source_refs", "build")
+    __slots__ = ("kind", "orig_index", "req_id", "claim_type", "confidence", "source_refs", "build", "meta")
 
-    def __init__(self, kind, orig_index, req_id, claim_type, confidence, source_refs, build):
+    def __init__(self, kind, orig_index, req_id, claim_type, confidence, source_refs, build, meta=None):
         self.kind = kind
         self.orig_index = orig_index
         self.req_id = req_id
@@ -1837,6 +1837,13 @@ class _LedgerCandidate:
         self.confidence = confidence
         self.source_refs = source_refs
         self.build = build  # callable(source_ids: list[str]) -> entry dict
+        # Hardening fix #3 (guideline pruning survives): optional extra
+        # identity bookkeeping a candidate wants preserved even if it is
+        # DROPPED for budget and therefore never reaches _assemble(). Only
+        # guideline candidates set this today (buyer id/source_doc), so a
+        # pruned Response Guideline can still be accounted for -- other
+        # kinds don't need it and leave it None.
+        self.meta = meta
 
 
 def _build_package_intelligence_ledger(alignment_result: dict, requirements: list[dict],
@@ -1966,10 +1973,19 @@ def _build_package_intelligence_ledger(alignment_result: dict, requirements: lis
         if not isinstance(rg, dict) or not rg.get("id"):
             continue
 
+        # Hardening fix #1 (buyer identity survives transport): "id" here
+        # is Fast Analysis's OWN deterministic guideline id (e.g. "RG1"
+        # from extract_response_guideline_sections) -- the buyer's actual
+        # identity for this guideline. It is carried through verbatim as
+        # "buyer_guideline_id", NEVER as "guideline_id" -- that key stays
+        # reserved exclusively for the compact G# transport id assigned
+        # below in _assemble(), exactly like claim_id/observation_id/
+        # source_id are transport ids distinct from any upstream identity.
         def _mk(rg=rg):
             def build(source_ids):
                 return {
-                    "guideline_id": None, "weight": rg.get("weight"),
+                    "guideline_id": None, "buyer_guideline_id": rg.get("id"),
+                    "weight": rg.get("weight"),
                     "minimum_score": rg.get("minimum_score"),
                     "evidence_prompts": list(rg.get("evidence_prompts") or []),
                     "source_doc": rg.get("source_doc"),
@@ -1977,6 +1993,7 @@ def _build_package_intelligence_ledger(alignment_result: dict, requirements: lis
             return build
         candidates.append(_LedgerCandidate(
             "guideline", i, None, None, None, [], _mk(),
+            meta={"buyer_guideline_id": rg.get("id"), "source_doc": rg.get("source_doc")},
         ))
 
     def _assemble(kept: list[_LedgerCandidate]) -> dict:
@@ -2082,6 +2099,13 @@ def _build_package_intelligence_ledger(alignment_result: dict, requirements: lis
     )
 
     dropped_by_kind: dict[str, int] = {}
+    # Hardening fix #3: every guideline candidate actually dropped for
+    # budget, identified by its OWN buyer identity (never a fabricated
+    # G# -- pruned candidates never reach _assemble() so they never get
+    # one). Reused later so a pruned guideline can still be surfaced as a
+    # CANNOT_ASSESS/LEDGER_BUDGET_PRUNED placeholder instead of silently
+    # vanishing.
+    dropped_guidelines_meta: list[dict] = []
     ptr = 0
     while size > _LEDGER_BYTE_BUDGET and ptr < len(drop_order):
         victim = drop_order[ptr]
@@ -2090,6 +2114,8 @@ def _build_package_intelligence_ledger(alignment_result: dict, requirements: lis
             continue
         kept_ids.discard(victim)
         dropped_by_kind[candidates[victim].kind] = dropped_by_kind.get(candidates[victim].kind, 0) + 1
+        if candidates[victim].kind == "guideline" and candidates[victim].meta:
+            dropped_guidelines_meta.append(dict(candidates[victim].meta))
         ledger = _assemble([candidates[i] for i in kept_ids])
         size = len(_canonical_json_bytes(ledger))  # always re-measure actual bytes, never estimate
 
@@ -2116,6 +2142,11 @@ def _build_package_intelligence_ledger(alignment_result: dict, requirements: lis
         "commercial_exposures_dropped_for_budget": dropped_by_kind.get("commercial", 0),
         "local_deficiencies_dropped_for_budget": dropped_by_kind.get("deficiency", 0),
         "response_guidelines_dropped_for_budget": dropped_by_kind.get("guideline", 0),
+        # Hardening fix #3: the actual pruned guidelines' buyer identity,
+        # never just a count -- so the caller can persist each one as an
+        # explicit CANNOT_ASSESS/LEDGER_BUDGET_PRUNED row rather than
+        # letting it disappear from the persisted PI run entirely.
+        "response_guidelines_pruned": dropped_guidelines_meta,
     }
     return ledger
 
@@ -2507,6 +2538,14 @@ def _reconcile_guideline_assessments(raw_assessments: list, ledger: dict) -> tup
 
     Returns (accepted_assessments_with_expanded_refs, rejected_count)."""
     guideline_ids = {g["guideline_id"] for g in ledger.get("response_guidelines") or [] if g.get("guideline_id")}
+    # Hardening fix #1: G# is transport-only. Look up each guideline's
+    # ORIGINAL buyer identity (id/source_doc, verbatim from Fast
+    # Analysis's deterministic parser) so it can ride on the accepted
+    # assessment alongside -- never instead of -- the G# id.
+    guideline_meta_by_id = {
+        g["guideline_id"]: {"buyer_guideline_id": g.get("buyer_guideline_id"), "source_doc": g.get("source_doc")}
+        for g in ledger.get("response_guidelines") or [] if g.get("guideline_id")
+    }
     claim_ids = {c["claim_id"] for c in ledger.get("claims") or []}
     claim_source_ids = {c["claim_id"]: set(c.get("source_ids") or []) for c in ledger.get("claims") or []}
     observations = list(ledger.get("delivery_commitments") or []) + list(ledger.get("commercial_exposures") or [])
@@ -2580,8 +2619,17 @@ def _reconcile_guideline_assessments(raw_assessments: list, ledger: dict) -> tup
             traceability = None
 
         proposal_source_refs = [source_lookup[sid] for sid in supporting_source_ids]
+        meta = guideline_meta_by_id.get(guideline_id) or {}
         accepted.append({
             "guideline_id": guideline_id,
+            # Hardening fix #1: the buyer's own guideline id and source
+            # document, carried through verbatim -- never fabricated when
+            # absent (a historical/hand-built ledger with no
+            # buyer_guideline_id on its response_guidelines entries simply
+            # yields None here, same fail-closed-on-absence convention as
+            # every other additive PI-2 field).
+            "buyer_guideline_id": meta.get("buyer_guideline_id"),
+            "source_doc": meta.get("source_doc"),
             "status": status,
             "rationale": item.get("rationale"),
             "evaluator_traceability": traceability,
@@ -2591,6 +2639,41 @@ def _reconcile_guideline_assessments(raw_assessments: list, ledger: dict) -> tup
             "proposal_source_refs": proposal_source_refs,
         })
     return accepted, rejected
+
+
+_GUIDELINE_PRUNED_REASON_CODE = "LEDGER_BUDGET_PRUNED"
+
+
+def _pruned_guideline_placeholders(bookkeeping: dict) -> list[dict]:
+    """Hardening fix #3: a Response Guideline dropped by
+    _build_package_intelligence_ledger's byte-budget pruning was NEVER
+    reasoned about -- it never even reached the model -- so it gets a
+    deterministic, fail-closed CANNOT_ASSESS placeholder here rather than
+    silently vanishing from the persisted PI run. No claim/source/
+    observation ids are ever attached (nothing was reasoned about), and
+    the distinct reason_code "LEDGER_BUDGET_PRUNED" distinguishes this
+    from a genuine model-reasoned CANNOT_ASSESS (which has no
+    reason_code). Buyer identity (buyer_guideline_id/source_doc) is
+    carried verbatim from the pruning bookkeeping; guideline_id is always
+    None here -- a pruned candidate never reaches _assemble() so it never
+    gets a G# transport id."""
+    placeholders = []
+    for meta in bookkeeping.get("response_guidelines_pruned") or []:
+        placeholders.append({
+            "guideline_id": None,
+            "buyer_guideline_id": meta.get("buyer_guideline_id"),
+            "source_doc": meta.get("source_doc"),
+            "status": "CANNOT_ASSESS",
+            "reason_code": _GUIDELINE_PRUNED_REASON_CODE,
+            "rationale": "Dropped from the reasoning ledger to fit the byte budget before the "
+                         "model call ran -- never assessed.",
+            "evaluator_traceability": None,
+            "supporting_claim_ids": [],
+            "supporting_source_ids": [],
+            "supporting_observation_ids": [],
+            "proposal_source_refs": [],
+        })
+    return placeholders
 
 
 def analyze_proposal_package_intelligence(
@@ -2644,13 +2727,19 @@ def analyze_proposal_package_intelligence(
     digest = package_ledger_digest(ledger)
     claims_dropped = bookkeeping.get("claims_dropped_for_budget", 0)
     ledger_complete = bool(ledger.get("ledger_complete", True))
+    # Hardening fix #3: computed once, attached to EVERY return path below
+    # (including SKIPPED_EMPTY_LEDGER/FAILED) -- a guideline pruned for
+    # budget was never sent to the model regardless of what happens to the
+    # rest of the run, so it must never depend on the call succeeding to
+    # be accounted for.
+    pruned_guideline_placeholders = _pruned_guideline_placeholders(bookkeeping)
 
     if not ledger["claims"] and not ledger["requirement_evidence"] and not ledger.get("response_guidelines"):
         return {
             "package_findings": [], "package_reasoning_status": "SKIPPED_EMPTY_LEDGER",
             "package_ledger_digest": digest, "rejected_count": 0,
             "claims_dropped_for_budget": claims_dropped, "ledger_complete": ledger_complete,
-            "guideline_assessments": [], "rejected_guideline_count": 0,
+            "guideline_assessments": pruned_guideline_placeholders, "rejected_guideline_count": 0,
         }
 
     bid_header = f"BID: {bid_info.get('title', '')} | CLIENT: {bid_info.get('client', '')}"
@@ -2667,7 +2756,7 @@ def analyze_proposal_package_intelligence(
             "package_ledger_digest": digest, "rejected_count": 0,
             "claims_dropped_for_budget": claims_dropped, "ledger_complete": ledger_complete,
             "failure_reason": failure_category,
-            "guideline_assessments": [], "rejected_guideline_count": 0,
+            "guideline_assessments": pruned_guideline_placeholders, "rejected_guideline_count": 0,
         }
 
     accepted, rejected = _reconcile_package_findings(parsed.get("package_findings"), ledger, requirements)
@@ -2677,7 +2766,8 @@ def analyze_proposal_package_intelligence(
         "package_findings": accepted, "package_reasoning_status": "OK",
         "package_ledger_digest": digest, "rejected_count": rejected,
         "claims_dropped_for_budget": claims_dropped, "ledger_complete": ledger_complete,
-        "guideline_assessments": guideline_accepted, "rejected_guideline_count": guideline_rejected,
+        "guideline_assessments": guideline_accepted + pruned_guideline_placeholders,
+        "rejected_guideline_count": guideline_rejected,
     }
 
 
