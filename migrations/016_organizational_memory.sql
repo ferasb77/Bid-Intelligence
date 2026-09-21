@@ -70,14 +70,19 @@
 -- application the same way (never guessed, never defaulted by the
 -- database).
 --
--- ── Immutable provenance ──────────────────────────────────────────────────
+-- ── Immutable provenance and trust/lineage history ─────────────────────────
 -- organizational_memory_items_guard_immutable_provenance() (trigger below)
 -- rejects any UPDATE that changes organization_id, memory_class, content,
 -- content_hash, source_file_id, source_content_hash, source_filename,
 -- source_package_path, source_locator, source_bid_id, or created_by_user_id
--- after creation. Only approval fields (approved_by_user_id/approved_at)
--- and non-evidentiary metadata (embedding/metadata/title) may change post-
--- insert — matching the instruction that a memory item's provenance can
+-- after creation. It ALSO rejects any UPDATE that changes
+-- approved_by_user_id, approved_at, or derived_from_item_id once set --
+-- these are trust-history fields, not ordinary mutable metadata: once an
+-- item is approved with a given approver/timestamp/lineage, that history
+-- must be exactly as immutable as the item's source identity, never
+-- silently re-approved, re-timestamped, or re-derived. Only non-evidentiary
+-- metadata (embedding/metadata/title) may change post-insert — matching
+-- the instruction that a memory item's provenance and trust history can
 -- never be silently altered after creation.
 --
 -- ── Write-boundary hardening (commissioning-review pass) ──────────────────
@@ -101,6 +106,17 @@
 --   4. trg_organizational_memory_items_guard_source_bid_org (trigger) —
 --      source_bid_id, when present, must belong to a bid in the SAME
 --      organization_id as the memory item.
+--
+-- Reconciliation pass (second commissioning review): the Python dataclass
+-- (organizational_memory.py's __post_init__) now enforces the same
+-- lineage-required-for-APPROVED_FIRM_KNOWLEDGE rule as invariant 2 above,
+-- so a bad item is rejected at construction time, not merely at the DB
+-- boundary; the immutable-provenance trigger now also covers
+-- approved_by_user_id/approved_at/derived_from_item_id (trust-history
+-- fields, immutable exactly like source identity); and source_bid_id /
+-- derived_from_item_id both changed from ON DELETE SET NULL to ON DELETE
+-- RESTRICT so a referenced bid or SOURCE_MEMORY item can never be deleted
+-- out from under a memory item that still depends on it for provenance.
 --
 -- ── Organization scoping / RLS ─────────────────────────────────────────────
 -- Reuses `is_organization_member(uuid)` (migration 008) directly, the same
@@ -142,7 +158,11 @@ create table if not exists organizational_memory_items (
     -- this is identity/provenance, NOT a scoping column: retrieval and
     -- RLS are governed entirely by organization_id, never by this field,
     -- so Organizational Memory items remain visible across every bid.
-    source_bid_id           bigint references public.bids(id) on delete set null,
+    -- ON DELETE RESTRICT (not SET NULL): this column is provenance, and
+    -- provenance must never be silently lost — deleting a bid that a
+    -- memory item still depends on for provenance is blocked, not allowed
+    -- to quietly null out that memory item's evidentiary trail.
+    source_bid_id           bigint references public.bids(id) on delete restrict,
 
     -- Approval / trust gate. Populated together or not at all (see CHECK
     -- constraint below) — this is the ONLY thing that makes a row
@@ -167,8 +187,12 @@ create table if not exists organizational_memory_items (
     -- composite FK, mirroring migration 015's composite cross-tenant
     -- protection pattern.
     unique (id, organization_id),
+    -- ON DELETE RESTRICT (not SET NULL): derived_from_item_id is lineage,
+    -- not ordinary metadata — deleting a SOURCE_MEMORY item that an
+    -- APPROVED_FIRM_KNOWLEDGE item still depends on for its lineage is
+    -- blocked, not allowed to silently sever that item's traceable origin.
     foreign key (derived_from_item_id, organization_id)
-        references organizational_memory_items (id, organization_id) on delete set null,
+        references organizational_memory_items (id, organization_id) on delete restrict,
 
     -- Approval-coupling: APPROVED_FIRM_KNOWLEDGE requires BOTH approval
     -- fields; every other class requires BOTH to be NULL. This is the
@@ -244,8 +268,11 @@ begin
         or new.source_bid_id    is distinct from old.source_bid_id
         or new.created_by_user_id is distinct from old.created_by_user_id
         or new.created_at       is distinct from old.created_at
+        or new.approved_by_user_id is distinct from old.approved_by_user_id
+        or new.approved_at      is distinct from old.approved_at
+        or new.derived_from_item_id is distinct from old.derived_from_item_id
     then
-        raise exception 'organizational_memory_items: provenance and identity fields are immutable after creation';
+        raise exception 'organizational_memory_items: provenance and trust/lineage history fields are immutable after creation';
     end if;
     return new;
 end;

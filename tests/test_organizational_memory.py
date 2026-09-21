@@ -42,6 +42,7 @@ def _source_item(item_id="s1", organization_id=ORG_A, content="We delivered lead
 
 def _approved_item(item_id="k1", organization_id=ORG_A, content="Our firm holds ICF ACTP accreditation renewed annually since 2015.", **kw):
     kw.setdefault("provenance", om.SourceProvenance(file_id="file-2", content_hash="b" * 64))
+    kw.setdefault("derived_from_item_id", "s1")
     return om.OrganizationalMemoryItem(
         id=item_id, organization_id=organization_id,
         memory_class=om.MemoryClass.APPROVED_FIRM_KNOWLEDGE,
@@ -137,6 +138,25 @@ class TestApprovalSemantics:
         item = _approved_item()
         assert item.approved_by == "user-1"
         assert item.approved_at is not None
+
+    def test_approved_firm_knowledge_requires_derived_from_item_id(self):
+        """Mirrors migration 016's organizational_memory_items_approved_
+        requires_lineage CHECK constraint at the Python layer -- it must be
+        impossible to even CONSTRUCT an in-memory APPROVED_FIRM_KNOWLEDGE
+        item with no identified SOURCE_MEMORY lineage."""
+        with pytest.raises(om.OrganizationalMemoryError):
+            om.OrganizationalMemoryItem(
+                id="bad6", organization_id=ORG_A,
+                memory_class=om.MemoryClass.APPROVED_FIRM_KNOWLEDGE,
+                title="t", content="c",
+                provenance=om.SourceProvenance(file_id="f"),
+                approved_by="user-1", approved_at=datetime.now(timezone.utc),
+                # no derived_from_item_id
+            )
+
+    def test_approved_firm_knowledge_with_derived_from_item_id_constructs_cleanly(self):
+        item = _approved_item(derived_from_item_id="s1")
+        assert item.derived_from_item_id == "s1"
 
 
 # ── Exact source linkage (never fabricated/vague provenance) ────────────
@@ -375,7 +395,7 @@ class TestTenancyRetrievalWiring:
             {"id": 1, "organization_id": ORG_A, "memory_class": "APPROVED_FIRM_KNOWLEDGE",
              "title": "ICF accreditation", "content": "Our firm holds ICF ACTP accreditation.",
              "approved_by_user_id": "user-1", "approved_at": "2026-01-01T00:00:00+00:00",
-             "source_file_id": "file-2"},
+             "source_file_id": "file-2", "derived_from_item_id": 99},
         ]
 
         def fake_list(organization_id, memory_class=None):
@@ -496,6 +516,42 @@ class TestMigrationDDLIntent:
             r"before insert or update on public\.organizational_memory_items\s*"
             r"for each row execute function public\.organizational_memory_items_guard_source_bid_org",
             _MIGRATION_016)
+
+    # ── Second commissioning-review pass: immutability + FK deletion ────
+
+    def test_immutability_trigger_covers_approval_and_lineage_columns(self):
+        """The immutable-provenance trigger must now ALSO block post-
+        creation mutation of approved_by_user_id, approved_at, and
+        derived_from_item_id -- trust-history fields, immutable exactly
+        like source identity."""
+        assert "organizational_memory_items_guard_immutable_provenance" in _MIGRATION_016
+        assert re.search(
+            r"new\.approved_by_user_id is distinct from old\.approved_by_user_id",
+            _MIGRATION_016)
+        assert re.search(
+            r"new\.approved_at\s*is distinct from old\.approved_at",
+            _MIGRATION_016)
+        assert re.search(
+            r"new\.derived_from_item_id is distinct from old\.derived_from_item_id",
+            _MIGRATION_016)
+
+    def test_source_bid_id_fk_uses_restrict_not_set_null(self):
+        assert re.search(
+            r"source_bid_id\s+bigint references public\.bids\(id\) on delete restrict",
+            _MIGRATION_016, re.IGNORECASE)
+        assert not re.search(
+            r"source_bid_id\s+bigint references public\.bids\(id\) on delete set null",
+            _MIGRATION_016, re.IGNORECASE)
+
+    def test_derived_from_item_id_fk_uses_restrict_not_set_null(self):
+        assert re.search(
+            r"foreign key\s*\(derived_from_item_id,\s*organization_id\)\s*"
+            r"references organizational_memory_items\s*\(id,\s*organization_id\)\s*on delete restrict",
+            _MIGRATION_016, re.IGNORECASE)
+        assert not re.search(
+            r"foreign key\s*\(derived_from_item_id,\s*organization_id\)\s*"
+            r"references organizational_memory_items\s*\(id,\s*organization_id\)\s*on delete set null",
+            _MIGRATION_016, re.IGNORECASE)
 
 
 class TestGenericCreatePathRejectsApprovedFirmKnowledge:

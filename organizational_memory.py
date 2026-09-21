@@ -169,6 +169,16 @@ class OrganizationalMemoryItem:
                 f"{self.memory_class.value} must never carry approval fields -- "
                 "only APPROVED_FIRM_KNOWLEDGE may be marked approved")
 
+        # Lineage-coupling, enforced identically to migration 016's DB CHECK
+        # constraint organizational_memory_items_approved_requires_lineage --
+        # structural, not a docstring promise. It must be impossible to even
+        # construct an in-memory APPROVED_FIRM_KNOWLEDGE item with no
+        # identified SOURCE_MEMORY lineage.
+        if is_approved_class and self.derived_from_item_id is None:
+            raise OrganizationalMemoryError(
+                "APPROVED_FIRM_KNOWLEDGE requires derived_from_item_id -- it must "
+                "trace back to the SOURCE_MEMORY item it was derived from")
+
         # Exact source linkage: SOURCE_MEMORY and PROPOSAL_MEMORY must
         # reference a real, specific source, never a vague/fabricated one
         # (reuses PI-2A's exact-identity discipline -- content_hash/file_id,
