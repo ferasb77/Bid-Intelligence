@@ -482,7 +482,20 @@ create table if not exists organizational_source_documents (
     -- Lets organizational_memory_items.source_document_id enforce
     -- "same organization" via a composite FK, mirroring the
     -- derived_from_item_id pattern above.
-    unique (id, organization_id)
+    unique (id, organization_id),
+
+    -- Final commissioning-review pass fix #2: durable source artifact
+    -- identity enforced at the DB boundary, not only via the Python
+    -- call-sequencing fix (Storage upload before RPC call) from the prior
+    -- hardening pass. A direct service-role RPC call that bypasses
+    -- tenancy.ingest_organizational_source_document_for_organization()
+    -- entirely (a bug elsewhere, or a future caller) must still be unable
+    -- to create a row with no durably-stored file. content_type remains
+    -- genuinely optional -- it is deliberately excluded from this
+    -- constraint.
+    constraint organizational_source_documents_storage_identity_required check (
+        storage_path is not null and file_size is not null
+    )
 );
 
 create index if not exists idx_organizational_source_documents_org
@@ -760,6 +773,18 @@ begin
 
     v_expected_chunks := coalesce(jsonb_array_length(p_chunks), 0);
 
+    -- Final commissioning-review pass fix #3: reject ingestion outright when
+    -- there are zero SOURCE_MEMORY chunks, BEFORE the parent document row is
+    -- ever inserted -- a document parent must never exist without its full
+    -- expected chunk set, even transiently within this same transaction.
+    -- This is a DB-boundary guard independent of whatever the Python
+    -- ingestion path does (it may also fail early when extraction yields no
+    -- usable text, but that alone is not sufficient -- see
+    -- tenancy.ingest_organizational_source_document_for_organization()).
+    if v_expected_chunks = 0 then
+        raise exception 'ingest_organizational_source_document: p_chunks must contain at least one chunk -- refusing to create a source document with zero chunks';
+    end if;
+
     select * into v_doc
     from public.organizational_source_documents
     where organization_id = p_organization_id and content_hash = p_content_hash;
@@ -901,7 +926,20 @@ begin
     end if;
 
     v_content := coalesce(nullif(p_fact_content, ''), v_parent.content);
-    v_content_hash := encode(digest(v_content, 'sha256'), 'hex');
+    -- Final commissioning-review pass fix #1: approved-knowledge content_hash
+    -- must use the EXACT same canonical normalization as organizational_
+    -- memory.content_hash() (replace \r\n -> \n, then any remaining \r -> \n,
+    -- THEN sha256) -- the same expression ingest_organizational_source_
+    -- document() already applies to chunk hashes above. Previously this RPC
+    -- hashed v_content raw, with no newline normalization, which could
+    -- diverge from the Python-side hash for the same logical text.
+    v_content_hash := encode(
+        digest(
+            regexp_replace(
+                regexp_replace(coalesce(v_content, ''), chr(13) || chr(10), chr(10), 'g'),
+                chr(13), chr(10), 'g'),
+            'sha256'),
+        'hex');
 
     insert into public.organizational_memory_items (
         organization_id, memory_class, title, content, content_hash,

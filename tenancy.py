@@ -1599,6 +1599,18 @@ def ingest_organizational_source_document_for_organization(
     chunk_size = target_chunk_chars or om.SOURCE_CHUNK_TARGET_CHARS
     chunks = om.split_source_into_chunks(text, target_chunk_chars=chunk_size)
 
+    # Final commissioning-review pass fix #3 (Python-layer courtesy check):
+    # fail early, before any Storage upload, when extraction yielded no
+    # usable text and therefore zero chunks. This is NOT the authoritative
+    # guard -- migration 016's ingest_organizational_source_document() RPC
+    # independently rejects a zero-chunk call at the DB boundary regardless
+    # of this check -- but failing here avoids an unnecessary Storage upload
+    # for a document that can never be ingested.
+    if not chunks:
+        raise ValueError(
+            "ingest_organizational_source_document_for_organization: extraction yielded no "
+            "usable text/chunks for this file -- refusing to ingest a zero-chunk document")
+
     # Original artifact -> Supabase Storage (never a Postgres bytea
     # column). Second commissioning-review hardening pass fix #2: this now
     # FAILS CLOSED -- db.upload_organizational_source_file() raises on any

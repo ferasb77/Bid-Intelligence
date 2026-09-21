@@ -903,11 +903,179 @@ class TestChunkContentHashServerSideValidation:
 
         assert "p_content_hash" not in body
         assert "p_fact_content_hash" not in body
-        assert re.search(
-            r"v_content_hash := encode\(digest\(v_content, 'sha256'\), 'hex'\);", body)
+        assert "digest(" in body
         # content_hash column is populated with v_content_hash, never a
         # client-supplied value.
         assert re.search(
             r"'APPROVED_FIRM_KNOWLEDGE',\s*"
             r"coalesce\(nullif\(p_fact_title, ''\), v_parent\.title\), v_content, v_content_hash,",
             body)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Final commissioning-review hardening pass (three fixes)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── Fix #1: approve_organizational_memory_item() content_hash normalization
+#            must match organizational_memory.content_hash() exactly ───────
+
+class TestApproveRpcContentHashNormalization:
+
+    def _approve_rpc_body(self):
+        start = _MIGRATION_016.index(
+            "create or replace function public.approve_organizational_memory_item(")
+        end = _MIGRATION_016.index(
+            "revoke all on function public.approve_organizational_memory_item")
+        return _MIGRATION_016[start:end]
+
+    def _ingest_rpc_body(self):
+        start = _MIGRATION_016.index(
+            "create or replace function public.ingest_organizational_source_document(")
+        end = _MIGRATION_016.index(
+            "revoke all on function public.ingest_organizational_source_document")
+        return _MIGRATION_016[start:end]
+
+    def test_approve_rpc_no_longer_hashes_raw_unnormalized_text(self):
+        """The prior claim that approve_organizational_memory_item() was
+        already 'consistent' with the ingest RPC's hashing was wrong: it
+        hashed v_content raw, with no CRLF/CR normalization. That exact
+        raw-digest expression must no longer be present."""
+        body = self._approve_rpc_body()
+        assert "v_content_hash := encode(digest(v_content, 'sha256'), 'hex');" not in body
+
+    def test_approve_rpc_applies_same_crlf_then_cr_normalization_as_ingest_rpc(self):
+        """approve_organizational_memory_item() must now perform the SAME
+        two-step regexp_replace normalization (CRLF -> LF, then remaining
+        CR -> LF) before digest(...,'sha256') that
+        ingest_organizational_source_document() already applies to chunk
+        hashes -- copied precisely, not approximated differently."""
+        approve_body = self._approve_rpc_body()
+        ingest_body = self._ingest_rpc_body()
+
+        normalization_pattern = re.compile(
+            r"regexp_replace\(\s*"
+            r"regexp_replace\(coalesce\(([^,]+), ''\), chr\(13\) \|\| chr\(10\), chr\(10\), 'g'\),\s*"
+            r"chr\(13\), chr\(10\), 'g'\)",
+            re.MULTILINE)
+
+        approve_match = normalization_pattern.search(approve_body)
+        ingest_match = normalization_pattern.search(ingest_body)
+
+        assert approve_match is not None, "approve RPC missing CRLF/CR normalization expression"
+        assert ingest_match is not None, "ingest RPC missing CRLF/CR normalization expression"
+
+        # Both RPCs must use the identical normalization construct (modulo
+        # the variable name being normalized and incidental whitespace/
+        # indentation) -- same regex pattern, same replacement order.
+        def _normalize_whitespace(text: str) -> str:
+            return re.sub(r"\s+", " ", text).strip()
+
+        approve_normalized = _normalize_whitespace(
+            approve_match.group(0).replace(approve_match.group(1), "X"))
+        ingest_normalized = _normalize_whitespace(
+            ingest_match.group(0).replace(ingest_match.group(1), "X"))
+        assert approve_normalized == ingest_normalized
+
+    def test_approve_rpc_wraps_normalization_in_digest_sha256_hex(self):
+        body = self._approve_rpc_body()
+        assert re.search(
+            r"v_content_hash := encode\(\s*digest\(\s*regexp_replace\(", body)
+        assert "'sha256'),\n        'hex');" in body or re.search(
+            r"'sha256'\),\s*'hex'\);", body)
+
+    def test_approve_rpc_normalization_matches_python_content_hash_for_mixed_newlines(self):
+        """Reimplements the SQL-side normalization in Python (same technique
+        TestChunkContentHashServerSideValidation uses for the ingest RPC)
+        and proves it matches om.content_hash() for text containing both
+        CRLF and bare-CR line endings -- exercising the exact fix, not just
+        asserting the SQL text is present."""
+        import hashlib
+
+        def sql_equivalent_hash(text: str) -> str:
+            normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+            return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+        for sample in (
+            "Approved fact line one\r\nApproved fact line two",
+            "Approved fact\ralternate ending",
+            "Plain\napproved\ntext",
+            "Mixed\r\nendings\rin an approved fact\nhere",
+        ):
+            assert om.content_hash(sample) == sql_equivalent_hash(sample)
+
+
+# ── Fix #2: durable source artifact identity enforced at the DB boundary ──
+
+class TestSourceDocumentStorageIdentityCheckConstraint:
+
+    def test_check_constraint_requires_storage_path_and_file_size(self):
+        assert re.search(
+            r"constraint organizational_source_documents_storage_identity_required check \(\s*"
+            r"storage_path is not null and file_size is not null\s*\)",
+            _MIGRATION_016)
+
+    def test_check_constraint_does_not_require_content_type(self):
+        """content_type must remain genuinely optional -- it must not
+        appear inside the storage-identity CHECK constraint's condition."""
+        match = re.search(
+            r"constraint organizational_source_documents_storage_identity_required check \(([^)]*)\)",
+            _MIGRATION_016)
+        assert match is not None
+        assert "content_type" not in match.group(1)
+
+    def test_check_constraint_is_on_source_documents_table(self):
+        table_start = _MIGRATION_016.index(
+            "create table if not exists organizational_source_documents")
+        table_end = _MIGRATION_016.index(
+            "create index if not exists idx_organizational_source_documents_org")
+        table_body = _MIGRATION_016[table_start:table_end]
+        assert "organizational_source_documents_storage_identity_required" in table_body
+
+
+# ── Fix #3: empty p_chunks ingestion rejection at the DB boundary ────────
+
+class TestIngestRpcRejectsEmptyChunks:
+
+    def _ingest_rpc_body(self):
+        start = _MIGRATION_016.index(
+            "create or replace function public.ingest_organizational_source_document(")
+        end = _MIGRATION_016.index(
+            "revoke all on function public.ingest_organizational_source_document")
+        return _MIGRATION_016[start:end]
+
+    def test_rpc_raises_when_expected_chunks_is_zero(self):
+        body = self._ingest_rpc_body()
+        assert re.search(
+            r"if v_expected_chunks = 0 then\s*"
+            r"raise exception 'ingest_organizational_source_document: p_chunks must contain at least one chunk",
+            body)
+
+    def test_empty_chunk_guard_runs_before_parent_document_insert(self):
+        body = self._ingest_rpc_body()
+        guard_pos = body.index("if v_expected_chunks = 0 then")
+        insert_pos = body.index("insert into public.organizational_source_documents (")
+        assert guard_pos < insert_pos
+
+    def test_empty_chunk_guard_computes_expected_chunks_before_checking(self):
+        body = self._ingest_rpc_body()
+        compute_pos = body.index("v_expected_chunks := coalesce(jsonb_array_length(p_chunks), 0);")
+        guard_pos = body.index("if v_expected_chunks = 0 then")
+        assert compute_pos < guard_pos
+
+    def test_python_layer_also_rejects_zero_chunk_extraction_early(self):
+        """Courtesy Python-side check in tenancy.py: extraction that yields
+        no usable text (and therefore zero chunks) must raise before any
+        Storage upload is attempted -- the DB-side guard above is the
+        REQUIRED enforcement; this is defense-in-depth only."""
+        file_bytes = b"some bytes"
+
+        with patch.object(tenancy.db, "list_organizational_source_documents", return_value=[]), \
+             patch.object(tenancy.db, "upload_organizational_source_file") as fake_upload, \
+             patch.object(tenancy.db, "ingest_organizational_source_document") as fake_ingest, \
+             patch("extractor.extract_text_from_file", return_value=""):
+            with pytest.raises(ValueError):
+                tenancy.ingest_organizational_source_document_for_organization(
+                    ORG_A, "empty.txt", file_bytes, created_by_user_id="user-1")
+
+        fake_upload.assert_not_called()
+        fake_ingest.assert_not_called()
