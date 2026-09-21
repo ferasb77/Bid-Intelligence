@@ -778,6 +778,89 @@ deferred, not started.
   messaging, a proposal template designer, visual draft diffs, applying
   migration 013.
 
+**Proposal Intelligence (PI-3D1: Intelligent Proposal Outline Architecture)**
+- `proposal_outline.py` — replaces PI-3D's bare Mandatory/Rated/
+  Supporting/Financial category grouping with a 3-tier hierarchy.
+  `derive_intelligent_outline` orchestrates Tiers 1+2 (pure); Tier 3 is a
+  separate, explicit, injectable-`call_fn` step the caller only reaches
+  when `needs_model_refinement` says Tiers 1+2 were insufficient.
+  - Tier 1 (`EXPLICIT_RFP_STRUCTURE`): `extract_explicit_sections_from_
+    structured_intelligence` reads `analysis_results.structured_
+    intelligence.evaluation.weights_by_category` (the RFP's OWN response-
+    category evaluation grouping, already built by `fast_analysis_app_
+    adapter.build_opportunity_intelligence` -- never re-derived here) and
+    maps requirements inline via `section_analyzer._match_evaluation_
+    criterion` (reused). `extract_pricing_section`/`extract_submission_
+    form_section`/`extract_mandatory_requirements_section` add standalone
+    Pricing / Required-Forms / mandatory-pass-fail-gate sections from
+    `pricing_and_commercial`/`response_requirements.checklist`/
+    `evaluation.stages`.
+  - Tier 2 (`DETERMINISTIC_DERIVATION`): `_derive_tier2_sections` clusters
+    by matched criterion/heading when any evaluation signal exists at
+    all; falls back to the OLD `derive_outline_sections` category
+    grouping (kept, not removed) only when there is none.
+  - Tier 3 (`MODEL_REFINEMENT`): `_call_outline_refinement` (the ONE new
+    bounded model call, same telemetry/injectable pattern as `section_
+    drafting._call_section_draft`) + `reconcile_model_refined_sections`
+    (fail-closed -- drops any `requirement_ids` entry outside this bid's
+    own active set) + `refine_outline_with_model` (public entry point).
+    `build_outline_refinement_prompt` sends ONLY candidate sections/
+    requirement summaries/evaluation summaries/constraints -- never the
+    raw RFP, OM, or a draft.
+  - `classify_unresolved_requirement` (closed vocabulary: `SUBMISSION_
+    FORM_REQUIREMENT`/`COMMERCIAL_RESPONSE_ITEM`/`APPENDIX_SUPPORTING_
+    ITEM`/`NON_RESPONSE_INFORMATIONAL`/`UNRESOLVED`) and `_coverage_
+    summary` (mapped/orphaned/unresolved counts, `is_ready`) guarantee no
+    requirement silently disappears.
+  - `evaluation_criteria_coverage`/`surface_high_weight_structural_
+    warnings` -- criterion-to-section coverage and a "diluted by
+    bundling" warning using ONLY weights already present in the RFP's own
+    data, never an invented score.
+- `tenancy.derive_proposal_outline_for_organization` (new, Category B) --
+  the orchestrator `pages/stage_build.py`'s "🪄 Generate Proposal
+  Structure" button now calls instead of the bare `proposal_outline.
+  derive_outline_sections`. Reads `database.get_latest_analysis_result`
+  (structured_intelligence) and `section_analyzer.procurement_basis`
+  (advisory raw snapshot, Tier-2 fallback matching signal) -- never
+  re-runs Fast Analysis, never calls `organizational_memory.retrieve()`,
+  never calls the section-drafting model. Tier 3 fires at most once per
+  call, gated by `needs_model_refinement`; a Tier-3 failure leaves the
+  deterministic result untouched.
+- `pages/stage_build.py`'s review UI: a coverage banner (mapped/
+  unresolved/ready, with an explicit orphaned-mandatory warning), a
+  structural-prominence-notes expander, per-section rationale -- still
+  fully rename/reorder/remove/add-able and never auto-persisted; removing
+  a section now warns how many requirements it covered become unmapped.
+  Approval persists through the SAME `tenancy.upsert_section_
+  authenticated`/`set_section_requirement_mapping_authenticated`
+  (migration-013-backed) functions PI-3D already used -- no new mapping
+  path.
+- **Bank of Canada validation** (bid_id=8, 98 real requirements): 6
+  genuinely bid-specific sections (HR Advisory (Form D2), Learning &
+  Development (Form D1), Facilitation & Team Effectiveness (Form D3),
+  Pricing, Required Forms & Submission Documents, Mandatory Submission
+  Requirements & Qualifications) -- none titled "Mandatory"/"Rated"/
+  "Supporting"/"Financial". 59/98 mapped, the other 39 all explicitly
+  classified, zero orphaned Mandatory requirements, `is_ready=True`,
+  `needs_model_refinement=False` -- zero Anthropic calls needed, proven
+  via a poisoned `config.execute_messages_create`, and a full `page_
+  build(8)` render of the pending review (preview only, never approved).
+- **Defect found and fixed**: `_PRICING_KEYWORDS`'s substring `in` check
+  false-positived "rate" inside "corpoRATE" (and similarly risky
+  patterns elsewhere) -- fixed with a shared `_contains_keyword` word-
+  boundary regex helper used everywhere a keyword list is checked.
+- Tests: `tests/test_proposal_outline_intelligent.py` (39, pure), `tests/
+  test_build_workflow_tenancy.py` (+4 -- bid-access gating, zero-
+  Anthropic-when-sufficient, exactly-one-bounded-call-when-insufficient,
+  section-drafting-model-never-called), `tests/test_build_workflow_ui.py`
+  (+3 -- generation stores the outline, approval persists via existing
+  functions, manual Add Section remains available with a proposal
+  pending).
+- Explicitly NOT built (instruction 14): whole-proposal generation,
+  section prose generation changes, new evidence architecture, new OM
+  work, Word export, collaborative editing, Ask CapOS, Red Team, Arabic
+  support, a proposal template designer, visual version diffing.
+
 **Tenancy / RLS / auth boundary**
 - `tenancy.py` — every `*_for_organization` (service-role, ownership-checked)
   and `*_authenticated` (user's own RLS-scoped client) function.

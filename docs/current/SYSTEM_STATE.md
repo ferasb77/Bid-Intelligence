@@ -1001,6 +1001,133 @@ at the time this task ran; it is now **applied and live-commissioned
 2026-09-21** (see "Migration 013 Compatibility Audit" below) — a later,
 separate task.
 
+**PI-3D1 (Intelligent Proposal Outline Architecture) is now implemented**
+— replaces PI-3D's original "group requirements by their own
+Mandatory/Rated/Supporting/Financial classification" outline generator
+(a requirement CLASSIFICATION scheme, not a proposal architecture) with a
+three-tier derivation hierarchy in `proposal_outline.py`, reusing
+already-persisted intelligence throughout — no new RFP-interpretation
+model, no new migration.
+
+**Derivation hierarchy** (in order of authority, never overridden by a
+lower tier):
+- **Tier 1 — `EXPLICIT_RFP_STRUCTURE`**: reads ONLY already-persisted
+  `analysis_results.structured_intelligence` (built by
+  `fast_analysis_app_adapter.build_opportunity_intelligence`, never re-
+  derived here). `extract_explicit_sections_from_structured_intelligence`
+  turns `evaluation.weights_by_category` — the RFP's OWN evaluation table
+  already grouped under its own buyer-stated response-category headings,
+  with real per-criterion weights — directly into proposal sections, one
+  per category, requirements mapped inline via `section_analyzer.
+  _match_evaluation_criterion` (reused, not reimplemented).
+  `extract_pricing_section`/`extract_submission_form_section` add
+  standalone Pricing / Required-Forms sections from `pricing_and_
+  commercial`/`response_requirements.checklist` when present.
+  `extract_mandatory_requirements_section` groups pass/fail mandatory
+  gate requirements (signatures, bilingualism confirmations, security-
+  clearance confirmations, qualification thresholds) that never appear in
+  a scored criteria table, justified by the RFP's own `evaluation.
+  stages` process split (Stage 1/2 pass/fail vs. scored) — this single
+  addition was the difference between 12/98 and 59/98 requirements mapped
+  on the real validation bid, since these ARE genuinely different from
+  "orphaned," not a matching failure.
+- **Tier 2 — `DETERMINISTIC_DERIVATION`**: when Tier 1 yields nothing,
+  clusters requirements by whichever evaluation criterion/heading they
+  deterministically match (same matcher, reused) — never the bare
+  category label as the primary axis. Only when there is no evaluation
+  signal at all does this fall back to the OLD PI-3D category-grouping
+  (`derive_outline_sections`, kept, not removed — still correct for a bid
+  with no Fast Analysis evaluation intelligence yet).
+- **Tier 3 — `MODEL_REFINEMENT`**: ONE bounded model call
+  (`proposal_outline._call_outline_refinement`/`refine_outline_with_
+  model`, same injectable-`call_fn`/telemetry pattern as `section_
+  drafting._call_section_draft`), gated by `needs_model_refinement`
+  (fewer than 2 sections, or fewer than half of active requirements
+  mapped) — never unconditional. Prompt (`build_outline_refinement_
+  prompt`) contains ONLY candidate sections, bounded requirement
+  summaries, evaluation-criteria summaries, and submission constraints —
+  never the raw RFP, Organizational Memory, or a proposal draft. A Tier-3
+  failure leaves the deterministic Tier 1/2 result completely untouched.
+
+**Requirement coverage** (instruction 4) is deterministic and exhaustive:
+every active requirement is either mapped to a section or explicitly
+classified via `classify_unresolved_requirement` into one closed
+vocabulary (`SUBMISSION_FORM_REQUIREMENT`/`COMMERCIAL_RESPONSE_ITEM`/
+`APPENDIX_SUPPORTING_ITEM`/`NON_RESPONSE_INFORMATIONAL`/`UNRESOLVED`) —
+never silently dropped. `_coverage_summary` exposes mapped/orphaned/
+unresolved counts and `is_ready` (False while ANY orphaned Mandatory-
+category requirement remains classified `UNRESOLVED`).
+
+**Evaluation coverage** (instruction 5): `evaluation_criteria_coverage`
+reports which section(s) each criterion maps to and any uncovered
+criterion; `surface_high_weight_structural_warnings` flags a criterion
+meeting a points threshold (default 20) that shares a section with 3+
+other criteria — using ONLY weight numbers already present in the RFP's
+own `weights_by_category` data (`criteria_weights`), never an invented
+score. Real result on the Bank of Canada bid: 5 such notes (e.g.
+"Methodology and Advisory Approach" at 35 points bundled with 6 other
+criteria under one Category-D2 section) — genuinely useful, source-
+grounded prompts for the writer, not fabricated analysis.
+
+**UI** (`pages/stage_build.py`): "🪄 Generate Proposal Structure" now
+calls `tenancy.derive_proposal_outline_for_organization` (new, Category
+B) instead of the old bare category grouping. The review UI shows a
+coverage banner (mapped/unresolved/ready-or-not, with an explicit warning
+naming the orphaned-mandatory count), a structural-prominence-notes
+expander, and each section's own rationale — still fully rename/reorder/
+remove/add-able, still never auto-persisted (approve/cancel unchanged).
+Removing a section now warns how many requirements it was covering
+become unmapped. Approval persists exactly as before — `tenancy.
+upsert_section_authenticated`/`set_section_requirement_mapping_
+authenticated`, the same migration-013-backed Category A functions PI-3D
+already used; no new mapping path.
+
+**Bank of Canada validation result** (real bid_id=8, 98 requirements, 0
+Anthropic calls needed): 6 sections — "HR Advisory (Form D2)" (9 reqs, 7
+criteria, 75 pts), "Learning & Development (Form D1)" (8 reqs, 7 criteria,
+75 pts), "Facilitation & Team Effectiveness (Form D3)" (5 reqs, 6
+criteria, 100 pts), "Pricing" (1 req), "Required Forms & Submission
+Documents" (0 reqs, 9 checklist items), "Mandatory Submission
+Requirements & Qualifications" (47 reqs) — all genuinely bid-specific
+titles, NONE of them "Mandatory"/"Rated"/"Supporting"/"Financial". 59/98
+requirements mapped; the remaining 39 are ALL explicitly classified
+(22 `UNRESOLVED`, 10 `APPENDIX_SUPPORTING_ITEM`, 5 `COMMERCIAL_RESPONSE_
+ITEM`, 2 `SUBMISSION_FORM_REQUIREMENT`) — zero silently dropped, zero
+orphaned Mandatory requirements, `is_ready=True`, `derivation_method=
+EXPLICIT_RFP_STRUCTURE`, `needs_model_refinement=False`. Live-verified
+via a poisoned `config.execute_messages_create` (never raised) that
+deterministic derivation alone was sufficient for this bid, and via a
+full `page_build(8)` render with the resulting outline pending review
+(preview mode only — Approve never clicked, nothing persisted).
+
+**Defect found and fixed during this task**: `_PRICING_KEYWORDS`'
+substring matching false-positived "rate" inside "corpoRATE" (and
+similarly risky for "form" inside e.g. "inFORMation") — a Corporate-
+Profile-matched requirement was being miscounted into the Pricing
+section. Fixed with a shared `_contains_keyword` word-boundary regex
+helper, applied everywhere a keyword list is checked against free text;
+caught by a dedicated test and confirmed corrected against the live Bank
+of Canada data (Pricing section now correctly shows exactly the 1
+genuine Financial-category requirement, not 2).
+
+Tests: `tests/test_proposal_outline_intelligent.py` (39, pure — explicit-
+structure precedence, deterministic clustering, coverage/orphan
+detection, classification, evaluation-coverage/structural-warning logic,
+Tier-3 gating and prompt-boundedness with an injected `call_fn`, fail-
+closed reconciliation); `tests/test_build_workflow_tenancy.py` gained 4
+(bid-access gating, zero-Anthropic proof when sufficient, exactly-one-
+bounded-call proof when insufficient, section-drafting-model-never-
+called proof); `tests/test_build_workflow_ui.py` gained 3 (generation
+stores the derived outline, approval persists via the existing functions,
+manual Add Section remains available with a proposal pending). Full
+PI-3/PI-3D/PI-3D1/Section-Analyzer suite (250 tests) and whole-app smoke
+pass unchanged.
+
+Explicitly NOT built (instruction 14): whole-proposal generation, section
+prose generation changes, new evidence architecture, new OM work, Word
+export, collaborative editing, Ask CapOS, Red Team, Arabic support, a
+proposal template designer, visual version diffing.
+
 ## Architectural fact-type separation
 
 Every subsystem above keeps these categories distinct, never merges them:

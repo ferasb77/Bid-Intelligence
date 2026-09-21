@@ -67,10 +67,13 @@ class TestDeriveOutlineSections:
         assert po.derive_outline_sections([]) == []
 
     def test_no_anthropic_or_model_call_surface(self):
-        """PI-3D instruction 3/9: outline derivation must be purely
-        deterministic in this increment -- this module imports no
-        Anthropic/config/organizational_memory dependency to accidentally
-        reach for one."""
+        """PI-3D1 instruction 12: derive_intelligent_outline (Tiers 1+2,
+        the deterministic path) must have no module-level Anthropic/
+        organizational_memory import to accidentally reach for --
+        PI-3D1's ONE bounded Tier-3 model call (_call_outline_refinement)
+        lazily imports `config` only inside its own function body, never
+        at module scope, so a deterministic-only caller never even
+        imports the Anthropic client."""
         assert not hasattr(po, "config")
         assert not hasattr(po, "organizational_memory")
         assert not hasattr(po, "anthropic")

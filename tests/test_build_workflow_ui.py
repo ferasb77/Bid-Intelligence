@@ -36,12 +36,20 @@ def _empty_build_ctx():
     }
 
 
+_column_widget_side_effects = {}
+
+
 def _mock_cols(spec, *args, **kwargs):
     count = spec if isinstance(spec, int) else (len(spec) if isinstance(spec, list) else 2)
     cols = []
     for _ in range(count):
         col = MagicMock()
-        col.button.return_value = False
+        if "button" in _column_widget_side_effects:
+            col.button.side_effect = _column_widget_side_effects["button"]
+        else:
+            col.button.return_value = False
+        if "text_input" in _column_widget_side_effects:
+            col.text_input.side_effect = _column_widget_side_effects["text_input"]
         col.form_submit_button.return_value = False
         col.checkbox.return_value = False
         cols.append(col)
@@ -194,3 +202,91 @@ class TestNoWholeProposalModelCall(unittest.TestCase):
         assert source.count("render_requirement_drafting_workspace(") == 1
         # No batch/bulk drafting entry point exists in this file.
         assert "get_or_generate_section_draft" not in source
+
+
+class TestIntelligentOutlineGenerationAndApproval(unittest.TestCase):
+    """PI-3D1 instruction 7/11: the proposed structure is reviewable
+    before persistence, and approval persists sections + requirement
+    mappings through the existing migration-013-backed Category A
+    functions -- never a new/parallel mapping path."""
+
+    def _canned_outline(self):
+        return {
+            "sections": [
+                {"title": "Technical Approach", "section_num": "1.0",
+                 "source_basis": "EXPLICIT_RFP_STRUCTURE", "derivation_method": "EXPLICIT_RFP_STRUCTURE",
+                 "mapped_requirement_ids": [1], "rationale": "test", "word_limit": 500},
+            ],
+            "unresolved": [], "coverage": {
+                "total_requirement_count": 1, "mapped_requirement_count": 1,
+                "orphaned_requirement_count": 0, "unresolved_mapping_count": 0,
+                "orphaned_mandatory_count": 0, "orphaned_mandatory_requirement_ids": [], "is_ready": True,
+            },
+            "derivation_method": "EXPLICIT_RFP_STRUCTURE",
+            "needs_model_refinement": False, "model_refinement_attempted": False, "model_refinement_failure": None,
+        }
+
+    @patch("streamlit.expander")
+    @patch("streamlit.spinner")
+    def test_clicking_generate_calls_the_intelligent_derivation_and_stores_it(self, mock_spinner, mock_expander):
+        mock_spinner.return_value.__enter__ = lambda self: None
+        mock_spinner.return_value.__exit__ = lambda self, *a: False
+        reqs = [_req(1, "Technical Approach")]
+
+        def _button_side_effect(label, *a, **kw):
+            return "Generate Proposal Structure" in label
+
+        _column_widget_side_effects["text_input"] = lambda label, *a, **kw: kw.get("value", "")
+        try:
+            with _BuildPageHarness(requirements=reqs, sections=[]) as h, \
+                 patch.object(tenancy, "derive_proposal_outline_for_organization",
+                              return_value=self._canned_outline()) as mock_derive, \
+                 patch("streamlit.button", side_effect=_button_side_effect), \
+                 patch("streamlit.text_input", side_effect=lambda label, *a, **kw: kw.get("value", "")), \
+                 patch("streamlit.rerun"):
+                build.page_build(42)
+        finally:
+            _column_widget_side_effects.pop("text_input", None)
+
+        assert mock_derive.called
+        stored = st.session_state.get("proposed_outline")
+        assert stored is not None
+        assert stored["sections"][0]["title"] == "Technical Approach"
+
+    @patch("streamlit.expander")
+    def test_approval_persists_sections_and_mappings_via_existing_functions(self, mock_expander):
+        reqs = [_req(1, "Technical Approach")]
+
+        def _button_side_effect(label, *a, **kw):
+            return "Approve & Create Sections" in label
+
+        _column_widget_side_effects["button"] = _button_side_effect
+        _column_widget_side_effects["text_input"] = lambda label, *a, **kw: kw.get("value", "")
+        try:
+            with _BuildPageHarness(requirements=reqs, sections=[]) as h, \
+                 patch.object(tenancy, "upsert_section_authenticated", return_value=99) as mock_upsert, \
+                 patch.object(tenancy, "set_section_requirement_mapping_authenticated") as mock_map, \
+                 patch("streamlit.button", side_effect=_button_side_effect), \
+                 patch("streamlit.text_input", side_effect=lambda label, *a, **kw: kw.get("value", "")), \
+                 patch("streamlit.rerun"):
+                st.session_state["proposed_outline"] = self._canned_outline()
+                build.page_build(42)
+        finally:
+            _column_widget_side_effects.pop("button", None)
+            _column_widget_side_effects.pop("text_input", None)
+
+        assert mock_upsert.called
+        assert mock_map.called
+        mapped_call = mock_map.call_args
+        assert mapped_call.args[2] == 99  # the new section id
+        assert mapped_call.args[3] == [1]  # mapped_requirement_ids from the canned outline
+
+    @patch("streamlit.button", return_value=False)
+    @patch("streamlit.expander")
+    def test_manual_add_section_available_while_a_proposal_is_pending(self, mock_expander, mock_button):
+        reqs = [_req(1, "Technical Approach")]
+        with _BuildPageHarness(requirements=reqs, sections=[]):
+            st.session_state["proposed_outline"] = self._canned_outline()
+            build.page_build(42)
+        expander_labels = [c.args[0] for c in mock_expander.call_args_list if c.args]
+        assert any("Add Section Manually" in lbl for lbl in expander_labels)

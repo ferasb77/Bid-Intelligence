@@ -2148,6 +2148,77 @@ def get_draft_existence_map_for_organization(
     return result
 
 
+def derive_proposal_outline_for_organization(bid_id: int, organization_id: str) -> dict:
+    """PI-3D1: the intelligent outline-derivation orchestrator. Verifies
+    bid ownership FIRST.
+
+    Deterministic Tiers 1+2 (proposal_outline.derive_intelligent_outline)
+    run first, reading ONLY already-persisted intelligence -- database.
+    get_latest_analysis_result's `structured_intelligence` (Tier 1's
+    primary source: the RFP's own response-category evaluation grouping,
+    submission-requirements checklist, pricing structure, and staged
+    mandatory/rated process) and section_analyzer.procurement_basis's
+    advisory raw snapshot `evaluation_criteria` (Tier 2's matching
+    fallback when structured_intelligence has no evaluation data at all)
+    -- never re-runs Fast Analysis, never calls organizational_memory.
+    retrieve(), never calls the section-drafting model, never re-analyzes
+    a requirement.
+
+    Tier 3 (proposal_outline.refine_outline_with_model, ONE bounded model
+    call) fires ONLY when proposal_outline.needs_model_refinement says
+    the deterministic result is insufficient -- never unconditionally,
+    and never as a second call if it already ran once for this request.
+    A Tier-3 failure (API error, parse error, malformed response) leaves
+    the deterministic Tier 1/2 result completely untouched -- this
+    function never returns a broken or partial structure.
+
+    Returns proposal_outline.derive_intelligent_outline's own shape, plus
+    `model_refinement_attempted`/`model_refinement_failure` so the UI can
+    show whether/why Tier 3 ran without exposing raw enum plumbing."""
+    require_bid_access(bid_id, organization_id)
+
+    import proposal_outline as po
+    import section_analyzer as sa
+
+    requirements = db.get_requirements(bid_id)
+    analysis_result = db.get_latest_analysis_result(bid_id, "FAST")
+    structured_intelligence = (analysis_result or {}).get("structured_intelligence")
+
+    try:
+        basis = sa.procurement_basis(bid_id)
+        raw = basis.get("raw_snapshot")
+    except Exception:
+        raw = None
+    raw_evaluation_criteria = (raw.evaluation_criteria if raw else []) or []
+
+    outline = po.derive_intelligent_outline(
+        requirements, structured_intelligence=structured_intelligence,
+        raw_evaluation_criteria=raw_evaluation_criteria)
+
+    if outline["needs_model_refinement"]:
+        submission_constraints = {"page_limits": raw.page_limits} if raw and raw.page_limits else {}
+        evaluation_summary = (
+            ((structured_intelligence or {}).get("evaluation") or {}).get("raw_occurrences")
+            or raw_evaluation_criteria
+        )
+        refinement = po.refine_outline_with_model(
+            outline["sections"], requirements, evaluation_summary, submission_constraints, bid_id=bid_id)
+        outline["model_refinement_attempted"] = True
+        outline["model_refinement_failure"] = refinement["failure_reason"]
+        if refinement["failure_reason"] is None:
+            outline = {
+                "sections": refinement["sections"], "unresolved": refinement["unresolved"],
+                "coverage": refinement["coverage"], "derivation_method": po.DERIVATION_MODEL_REFINEMENT,
+                "needs_model_refinement": False,
+                "model_refinement_attempted": True, "model_refinement_failure": None,
+            }
+    else:
+        outline["model_refinement_attempted"] = False
+        outline["model_refinement_failure"] = None
+
+    return outline
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Proposal Intelligence (PI-3A: evidence-aware section drafting)
 # ═══════════════════════════════════════════════════════════════════════════

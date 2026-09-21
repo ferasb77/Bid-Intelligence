@@ -224,17 +224,24 @@ def page_build(bid_id: int):
             if not sections:
                 if reqs and build_mode == "ai":
                     # ── AI-assisted empty state (instruction 8) ──────────
-                    n_cat = len({(r.get("category") or "General") for r in reqs})
                     n_crit = len(build_ctx["criterion_by_req_id"]) if build_ctx else 0
-                    crit_note = f" and matches {n_crit} evaluation criteria" if n_crit else ""
+                    crit_note = f" and {n_crit} matched evaluation criteria" if n_crit else ""
                     st.markdown(
                         f'<div class="info-box">🧠 <strong>BI has analyzed this RFP</strong> — '
-                        f'{len(reqs)} requirements across {n_cat} categories{crit_note}. BI can propose '
-                        f'a response structure from this intelligence.</div>',
+                        f'{len(reqs)} requirements{crit_note}. BI can propose a submission-ready response '
+                        f'structure from the RFP\'s own response architecture and evaluation intelligence.</div>',
                         unsafe_allow_html=True)
                     if st.button("🪄 Generate Proposal Structure", type="primary",
                                 use_container_width=True, key="gen_outline_btn"):
-                        st.session_state["proposed_outline"] = proposal_outline.derive_outline_sections(reqs)
+                        with st.spinner("Deriving a proposal-ready structure from BI's analysis…"):
+                            try:
+                                st.session_state["proposed_outline"] = \
+                                    tenancy.derive_proposal_outline_for_organization(bid_id, _org_id)
+                            except tenancy.AccessDeniedError as e:
+                                st.error(f"Not authorized: {e}")
+                            except Exception as e:
+                                st.error(f"Could not derive a proposal structure: {e}")
+                        st.session_state.pop("proposed_outline_removed_ids", None)
                         st.rerun()
                 elif not reqs:
                     st.markdown(
@@ -273,34 +280,88 @@ def page_build(bid_id: int):
                             f'<div style="font-size:.7rem;color:#A9A69D;margin:-.3rem 0 .5rem .1rem">{len(mapped_ids)} reqs</div>',
                             unsafe_allow_html=True)
 
-            # ── Proposed-outline review/edit/approve (instruction 4) ──────
+            # ── Proposed-outline review/edit/approve (instruction 4/7) ────
             # Nothing above is persisted automatically -- the user must
             # explicitly approve, and may rename/reorder/remove/add sections
             # first. Approval reuses the EXISTING outline_sections/
             # outline_section_requirements CRUD verbatim (no new table).
             if st.session_state.get("proposed_outline"):
+                outline = st.session_state["proposed_outline"]
+                proposed = outline["sections"]
+                removed_ids = st.session_state.setdefault("proposed_outline_removed_ids", [])
+
                 st.markdown("---")
                 st.markdown("#### 🪄 Proposed Structure — review before creating")
-                st.caption("Nothing is created yet. Rename, reorder, or remove sections, then approve.")
-                proposed = st.session_state["proposed_outline"]
+                method_label = proposal_outline.DERIVATION_METHOD_LABELS.get(
+                    outline.get("derivation_method"), outline.get("derivation_method"))
+                st.caption(f"{method_label}. Nothing is created yet — rename, reorder, remove, or add sections, then approve.")
+                if outline.get("model_refinement_attempted") and not outline.get("model_refinement_failure"):
+                    st.caption("🧠 AI refinement was used to improve this structure (deterministic derivation alone was insufficient).")
+                elif outline.get("model_refinement_failure"):
+                    st.caption(f"⚠ AI refinement was attempted but did not complete ({outline['model_refinement_failure']}); showing the deterministic structure instead.")
+
+                cov = outline.get("coverage") or {}
+                ready = cov.get("is_ready", True)
+                cov_color = "#27AE60" if ready else "#C0392B"
+                st.markdown(
+                    f'<div style="background:#111118;border:1px solid #292832;border-radius:6px;'
+                    f'padding:.6rem .9rem;margin:.4rem 0;font-size:.8rem;color:#A9A69D">'
+                    f'<strong style="color:#EDEAE3">{cov.get("mapped_requirement_count",0)}</strong>/'
+                    f'<strong style="color:#EDEAE3">{cov.get("total_requirement_count",0)}</strong> requirements mapped · '
+                    f'<strong style="color:#EDEAE3">{cov.get("orphaned_requirement_count",0)}</strong> unresolved · '
+                    f'Status: <strong style="color:{cov_color}">{"Ready" if ready else "Not ready — mandatory requirements unresolved"}</strong>'
+                    f'</div>', unsafe_allow_html=True)
+                if not ready:
+                    st.warning(
+                        f"{cov.get('orphaned_mandatory_count',0)} mandatory requirement(s) are not yet mapped to any "
+                        f"section — resolve them (map manually after creation, or adjust the structure below) before "
+                        f"treating this outline as submission-ready.")
+
+                struct_warnings = proposal_outline.surface_high_weight_structural_warnings(proposed)
+                if struct_warnings:
+                    with st.expander(f"⚠ {len(struct_warnings)} structural prominence note(s)", expanded=False):
+                        for w in struct_warnings:
+                            st.caption(w["message"])
+
                 for i, psec in enumerate(proposed):
-                    c_p1, c_p2, c_p3, c_p4 = st.columns([3, 1, 0.5, 0.5])
+                    c_p1, c_p2, c_p3, c_p4 = st.columns([3, 1.3, 0.5, 0.5])
                     psec["title"] = c_p1.text_input(
                         "Title", value=psec["title"], key=f"prop_title_{i}", label_visibility="collapsed")
-                    c_p2.caption(f"{len(psec['requirement_ids'])} reqs")
+                    n_reqs = len(psec.get("mapped_requirement_ids") or [])
+                    n_checklist = len(psec.get("checklist_items") or [])
+                    extent = f"{n_reqs} reqs" if n_reqs else (f"{n_checklist} items" if n_checklist else "0 reqs")
+                    c_p2.caption(extent)
                     if c_p3.button("↑", key=f"prop_up_{i}", disabled=(i == 0), help="Move up"):
                         proposed[i - 1], proposed[i] = proposed[i], proposed[i - 1]
                         st.rerun()
                     if c_p4.button("🗑", key=f"prop_del_{i}", help="Remove"):
-                        proposed.pop(i)
+                        removed = proposed.pop(i)
+                        newly_orphaned = removed.get("mapped_requirement_ids") or []
+                        if newly_orphaned:
+                            removed_ids.extend(newly_orphaned)
+                            st.warning(
+                                f'Removed "{removed["title"]}" — {len(newly_orphaned)} requirement(s) it covered '
+                                f'are now unmapped. Map them to another section below, or resolve them manually '
+                                f'after creating the outline.')
                         st.rerun()
+                    if psec.get("rationale"):
+                        st.caption(psec["rationale"])
+
+                if removed_ids:
+                    st.caption(
+                        f"⚠ {len(removed_ids)} requirement(s) from removed sections are currently unmapped in this proposal.")
+
                 c_a1, c_a2, c_a3 = st.columns([1.3, 1, 1.7])
                 if c_a1.button("➕ Add Blank Section", key="prop_add_blank", use_container_width=True):
-                    proposed.append({"title": "New Section", "section_num": f"{len(proposed) + 1}.0",
-                                     "requirement_ids": [], "word_limit": proposal_outline.DEFAULT_WORD_LIMIT})
+                    proposed.append({
+                        "title": "New Section", "section_num": f"{len(proposed) + 1}.0",
+                        "source_basis": None, "derivation_method": None,
+                        "mapped_requirement_ids": [], "rationale": "", "word_limit": proposal_outline.DEFAULT_WORD_LIMIT,
+                    })
                     st.rerun()
                 if c_a2.button("❌ Cancel", key="prop_cancel", use_container_width=True):
                     st.session_state.pop("proposed_outline", None)
+                    st.session_state.pop("proposed_outline_removed_ids", None)
                     st.rerun()
                 if c_a3.button("✅ Approve & Create Sections", type="primary",
                                use_container_width=True, key="prop_approve"):
@@ -314,11 +375,16 @@ def page_build(bid_id: int):
                             "owner": "", "word_limit": psec.get("word_limit") or proposal_outline.DEFAULT_WORD_LIMIT,
                             "sort_order": i, "status": "Not Started", "notes": "",
                         })
-                        if new_id and psec.get("requirement_ids"):
-                            tenancy.set_section_requirement_mapping_authenticated(
-                                _token, bid_id, new_id, psec["requirement_ids"])
+                        mapped_ids = psec.get("mapped_requirement_ids") or []
+                        if new_id and mapped_ids:
+                            try:
+                                tenancy.set_section_requirement_mapping_authenticated(
+                                    _token, bid_id, new_id, mapped_ids)
+                            except tenancy.SectionMappingUnavailableError as e:
+                                st.caption(f"⚠ {e}")
                         created += 1
                     st.session_state.pop("proposed_outline", None)
+                    st.session_state.pop("proposed_outline_removed_ids", None)
                     st.success(f"Created {created} proposal section(s) from BI's analysis.")
                     st.rerun()
 

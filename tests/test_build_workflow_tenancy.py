@@ -206,3 +206,116 @@ class TestSectionRequirementMappingGracefulDegradation:
         with patch.object(tenancy.auth_client, "get_authenticated_client", return_value=fake_client):
             with pytest.raises(RuntimeError):
                 tenancy.get_section_requirement_ids_authenticated("tok", 1)
+
+
+class TestDeriveProposalOutlineForOrganization:
+    """PI-3D1: tenancy.derive_proposal_outline_for_organization. No live
+    database, no live provider call -- Tier 3's model call is always
+    reached via config.execute_messages_create (poisoned here to prove
+    absence, or allowed through a stub to prove presence when genuinely
+    needed), never via section_drafting's own call site, and organizational_
+    memory.retrieve() is never reached either way."""
+
+    ORG = "33333333-3333-3333-3333-333333333333"
+
+    def _reqs_two_matched_categories(self):
+        return [
+            {"id": 1, "req_id": "R1", "category": "Rated",
+             "description": "Describe your delivery methodology approach for the engagement."},
+            {"id": 2, "req_id": "R2", "category": "Rated",
+             "description": "Describe your corporate profile and organizational capacity."},
+        ]
+
+    def _si_two_categories(self):
+        return {
+            "evaluation": {
+                "weights_by_category": {
+                    "Category 1 — Technical": [{"weight": "40 points", "criterion": "Delivery Methodology"}],
+                    "Category 2 — Corporate": [{"weight": "20 points", "criterion": "Corporate Profile"}],
+                },
+                "raw_occurrences": [
+                    {"criterion_label": "Delivery Methodology", "weight": "40 points",
+                     "category_scope": "Category 1 — Technical", "parent_heading": "Category 1 — Technical"},
+                    {"criterion_label": "Corporate Profile", "weight": "20 points",
+                     "category_scope": "Category 2 — Corporate", "parent_heading": "Category 2 — Corporate"},
+                ],
+                "stages": [],
+            },
+        }
+
+    def _patches(self, requirements, analysis_result, anthropic_side_effect, om_side_effect):
+        return [
+            patch.object(tenancy, "authorize_bid_access", return_value=True),
+            patch.object(db, "get_requirements", side_effect=lambda bid_id: requirements),
+            patch.object(db, "get_latest_analysis_result", side_effect=lambda bid_id, analysis_mode="FAST": analysis_result),
+            patch.object(sa, "procurement_basis", return_value={"raw_snapshot": None, "procurement_truth_status": None}),
+            patch.object(config, "execute_messages_create", side_effect=anthropic_side_effect),
+            patch.object(om, "retrieve", side_effect=om_side_effect),
+        ]
+
+    def test_requires_bid_access(self):
+        with patch.object(tenancy, "authorize_bid_access", return_value=False):
+            with pytest.raises(tenancy.AccessDeniedError):
+                tenancy.derive_proposal_outline_for_organization(1, ORG_B)
+
+    def test_deterministically_sufficient_case_never_calls_anthropic(self):
+        def _blow_up_anthropic(*a, **kw):
+            raise AssertionError("Anthropic must not be called when Tier 1/2 already cover the outline")
+
+        def _blow_up_om(*a, **kw):
+            raise AssertionError("organizational_memory.retrieve() must never be called deriving an outline")
+
+        patches = self._patches(
+            self._reqs_two_matched_categories(),
+            {"structured_intelligence": self._si_two_categories()},
+            _blow_up_anthropic, _blow_up_om)
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
+            outline = tenancy.derive_proposal_outline_for_organization(1, self.ORG)
+        assert outline["needs_model_refinement"] is False
+        assert outline["model_refinement_attempted"] is False
+        assert outline["derivation_method"] == "EXPLICIT_RFP_STRUCTURE"
+
+    def test_insufficient_case_makes_exactly_one_bounded_model_call(self):
+        calls = []
+
+        def _fake_anthropic(client, **kwargs):
+            calls.append(kwargs)
+            import types
+            block = types.SimpleNamespace(text='{"sections": [{"title": "Refined", "rationale": "x", "requirement_ids": [1]}]}')
+            return types.SimpleNamespace(content=[block])
+
+        def _blow_up_om(*a, **kw):
+            raise AssertionError("organizational_memory.retrieve() must never be called deriving an outline")
+
+        # No structured_intelligence, no raw snapshot -- deterministic
+        # tiers fall back to a single bare category-grouping section,
+        # which needs_model_refinement flags as insufficient (< 2 sections).
+        reqs = [{"id": 1, "req_id": "R1", "category": "Rated", "description": "x"}]
+        patches = self._patches(reqs, {"structured_intelligence": {}}, _fake_anthropic, _blow_up_om)
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], \
+             patch.object(config, "get_anthropic_client", return_value=None):
+            outline = tenancy.derive_proposal_outline_for_organization(1, self.ORG)
+        assert len(calls) == 1, f"expected exactly one bounded model call, got {len(calls)}"
+        assert outline["model_refinement_attempted"] is True
+        assert outline["derivation_method"] == "MODEL_REFINEMENT"
+        assert outline["sections"][0]["title"] == "Refined"
+
+    def test_never_calls_section_drafting_model(self):
+        """The Tier-3 outline call must be proposal_outline's OWN bounded
+        call, never a reuse of section_drafting's call site."""
+        import section_drafting as sd
+
+        def _blow_up_drafting(*a, **kw):
+            raise AssertionError("section_drafting._call_section_draft must never be called deriving an outline")
+
+        def _blow_up_om(*a, **kw):
+            raise AssertionError("organizational_memory.retrieve() must never be called deriving an outline")
+
+        patches = self._patches(
+            self._reqs_two_matched_categories(),
+            {"structured_intelligence": self._si_two_categories()},
+            lambda *a, **kw: (_ for _ in ()).throw(AssertionError("Anthropic should not be reached here")),
+            _blow_up_om)
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], \
+             patch.object(sd, "_call_section_draft", side_effect=_blow_up_drafting):
+            tenancy.derive_proposal_outline_for_organization(1, self.ORG)
