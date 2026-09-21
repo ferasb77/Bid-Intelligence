@@ -94,6 +94,8 @@ infrastructure.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable, Optional
@@ -194,6 +196,18 @@ class SectionDraftingBrief:
     organizational_evidence: tuple = ()
     remaining_gaps: tuple = ()
     requires_human_confirmation_from_enrichment: bool = False
+    # PI-3B: the SOURCE requirement_evidence_enrichments row's own
+    # input_fingerprint (migration 017), when a persisted OM-3B enrichment
+    # was actually available -- folded into the draft's own fingerprint
+    # (compute_draft_input_fingerprint) as a compact, robust representation
+    # of "exactly which OM-3B enrichment state this draft was built from"
+    # -- belt-and-suspenders alongside the full organizational_evidence
+    # content already in this brief (which the draft fingerprint also
+    # hashes): if OM-3B's own contract version bumps (invalidating ITS
+    # fingerprint) with the enrichment content coincidentally unchanged,
+    # this field still changes, so the draft is still correctly
+    # invalidated.
+    source_enrichment_fingerprint: Optional[str] = None
     proposal_intelligence_findings: tuple = ()
     response_constraints: ResponseConstraints = field(default_factory=ResponseConstraints)
     contract_version: str = SECTION_DRAFTING_CONTRACT_VERSION
@@ -215,6 +229,7 @@ class SectionDraftingBrief:
             "organizational_evidence": list(self.organizational_evidence),
             "remaining_gaps": list(self.remaining_gaps),
             "requires_human_confirmation_from_enrichment": self.requires_human_confirmation_from_enrichment,
+            "source_enrichment_fingerprint": self.source_enrichment_fingerprint,
             "proposal_intelligence_findings": list(self.proposal_intelligence_findings),
             "response_constraints": self.response_constraints.to_dict(),
             "contract_version": self.contract_version,
@@ -288,6 +303,7 @@ def build_brief(
     remaining_gaps = tuple((persisted_enrichment or {}).get("remaining_gaps") or [])
     requires_confirmation_from_enrichment = bool(
         (persisted_enrichment or {}).get("requires_human_confirmation"))
+    source_enrichment_fingerprint = (persisted_enrichment or {}).get("input_fingerprint")
 
     findings = tuple(
         {"finding_type": f.get("finding_type"), "severity": f.get("severity"),
@@ -305,9 +321,43 @@ def build_brief(
         current_rfp_source_refs=current_rfp_refs, bid_specific_evidence=bid_specific,
         organizational_evidence=organizational_evidence, remaining_gaps=remaining_gaps,
         requires_human_confirmation_from_enrichment=requires_confirmation_from_enrichment,
+        source_enrichment_fingerprint=source_enrichment_fingerprint,
         proposal_intelligence_findings=findings,
         response_constraints=response_constraints or ResponseConstraints(),
     )
+
+
+# ---------------------------------------------------------------------------
+# PI-3B: draft input fingerprint -- reuses the SAME canonicalization
+# convention as proposal_intelligence.compute_package_digest and
+# evidence_strengthening.compute_input_fingerprint (sorted-key JSON, sha256
+# hex over UTF-8 bytes).
+# ---------------------------------------------------------------------------
+
+def compute_draft_input_fingerprint(brief: SectionDraftingBrief) -> str:
+    """A deterministic sha256 fingerprint over exactly what
+    `draft_section()`'s output depends on. The brief itself is already
+    PI-3A's own bounded, exhaustive statement of everything the draft can
+    see -- requirement identity/text, mandatory flag, related-requirement
+    context, evaluation criterion/response guideline, response
+    constraints, current-bid evidence state, the requirement's own
+    current-RFP source refs, the FULL persisted OM-3B enrichment content
+    actually included in the brief (plus that enrichment's own
+    fingerprint, belt-and-suspenders), and bounded related Proposal
+    Intelligence findings -- so hashing the brief whole (minus pure
+    routing/identity keys that determine the cache KEY, not the drafting
+    CONTENT: organization_id/bid_id/requirement_id) is both correct and
+    the simplest sufficient mechanism. `contract_version` is already a
+    field on the brief and is therefore already included -- bumping
+    SECTION_DRAFTING_CONTRACT_VERSION (a prompt/logic change) invalidates
+    every previously computed fingerprint even when every other input is
+    identical, exactly like EVIDENCE_STRENGTHENING_CONTRACT_VERSION
+    already does for OM-3B."""
+    payload = brief.to_dict()
+    for routing_key in ("organization_id", "bid_id", "requirement_id"):
+        payload.pop(routing_key, None)
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -681,7 +731,7 @@ __all__ = [
     "CLAIM_TYPE_PROPOSED_APPROACH", "CLAIM_TYPE_UNSUPPORTED_GAP", "CLAIM_TYPES",
     "SOURCE_KIND_PROCUREMENT", "SOURCE_KIND_PROPOSAL", "SOURCE_KIND_ORGANIZATIONAL_MEMORY",
     "RelatedRequirement", "EvaluationContext", "ResponseConstraints",
-    "SectionDraftingBrief", "build_brief",
+    "SectionDraftingBrief", "build_brief", "compute_draft_input_fingerprint",
     "EvidenceItemUsed", "SectionDraftResult", "draft_section",
     "DraftAssuranceResult", "assure_section_draft",
 ]

@@ -568,9 +568,94 @@ stayed within the word limit (119/120), and set
 `assure_section_draft()` passed with zero issues. No defect found this
 commissioning pass. Tests: `tests/test_section_drafting.py` (30, pure
 domain layer), `tests/test_section_drafting_tenancy.py` (9, wiring/
-architecture-discipline). Explicitly still deferred: whole-proposal
-generation, draft persistence, a UI, Word export, Ask CapOS integration,
-Red Team, Section Analyzer UI wiring.
+architecture-discipline).
+
+**PI-3B (durable section drafts) is now implemented, written but NOT
+applied to any live database** — "analyze once, draft once, persist,
+reuse" on top of PI-3A's pure logic, which is completely unchanged. New
+`migrations/018_section_drafts.sql`: one new bid-scoped table,
+`section_drafts`, mirroring migration 017's OM-3B persistence pattern
+exactly (bid_id-direct RLS via `can_access_bid`, authenticated SELECT
+only, service_role-only write via one RPC, advisory-lock get-or-insert,
+write-once rows — no UPDATE path, so a changed fingerprint always creates
+a new row rather than overwriting history). A new table was justified only
+after the SAME three-table rejection analysis migration 017 already did
+was re-applied to this new result shape (documented in the migration
+file's own header): `requirement_evidence_enrichments` cannot hold it
+because a section draft has an entirely different shape (drafted prose,
+PI-3A's own evidence-id-registry citations, assurance results) and its
+own independent freshness lifecycle; `proposal_requirement_assessments`/
+`proposal_intelligence_findings` are immutable single-run outputs with no
+column for drafted prose or assurance; `organizational_memory_items`
+would violate migration 016's immutable-provenance trigger's purpose.
+
+Freshness: `section_drafting.compute_draft_input_fingerprint()` — a
+single deterministic sha256 (same canonicalization convention as
+`compute_input_fingerprint`/`compute_package_digest`) over the ENTIRE
+PI-3A `SectionDraftingBrief` (minus pure routing/identity keys —
+organization_id/bid_id/requirement_id). This is a direct consequence of
+PI-3A's own design: the brief is already PI-3A's bounded, exhaustive
+statement of everything the draft depends on, so hashing it whole is
+correct and requires no separately-reasoned dependency graph. A new
+`source_enrichment_fingerprint` field was added to `SectionDraftingBrief`
+(backward-compatible, defaults to `None`) carrying the source OM-3B
+enrichment row's own `input_fingerprint` — belt-and-suspenders alongside
+the full `organizational_evidence` content already in the brief.
+`contract_version` (`SECTION_DRAFTING_CONTRACT_VERSION`) is already a
+brief field and therefore already covered — bumping it invalidates every
+prior fingerprint regardless of any other input.
+
+Reuse orchestration lives in `tenancy.get_or_generate_section_draft`,
+sharing brief assembly with PI-3A's own `draft_section_for_organization`
+via a new `tenancy._assemble_section_drafting_brief` helper (both now call
+it — PI-3A's ephemeral semantics are completely unchanged): computes the
+fingerprint, searches `database.get_section_drafts` (bid-scoped) for an
+exact match — a hit returns the persisted row with **zero** drafting
+model call, Organizational Memory retrieval, RFP read, or requirement
+reanalysis; a miss runs PI-3A's drafting + assurance for real, then
+persists via `database.get_or_create_section_draft`. Failure safety: a
+FAILED drafting attempt (`result.failure_reason` set, no usable
+`draft_text`) is never persisted — the RPC itself also rejects an empty
+`draft_text` outright as defense-in-depth. An assurance FAILURE
+(`assurance.passed` is `False`) is NOT the same as a failed draft — the
+draft is still a valid, non-fabricated result, so it IS persisted, with
+`assurance_passed`/`assurance_issues` recorded transparently. A genuine
+persistence-layer exception propagates to the caller (never swallowed),
+exactly matching OM-3B's own contract — and since this function only ever
+INSERTs via get-or-create, a persistence failure can never corrupt or
+silently replace a prior valid row.
+
+Claim-level traceability assessment (instruction 7, explicitly not
+redesigned this task): the current structure can answer "which evidence
+items did this draft use, across the whole draft" (`evidence_items_used`,
+each item fully traceable to its provenance/trust class/approval
+lineage) but **cannot** answer "which evidence item supports THIS
+SPECIFIC sentence/claim in `draft_text`" — there is no sentence-level or
+claim-level link between prose and citation, only a draft-wide list. This
+is a genuine, documented gap for a future PI-3C/assurance enhancement
+(sentence-level or claim-span citation) before any whole-proposal
+generation work that would need to audit individual claims — no schema or
+structural change was made for it here, since PI-3A's existing shape was
+judged safe to persist as-is and the task explicitly scoped this as
+report-only.
+
+No migration was applied to any live database this task; live
+commissioning of migration 018 is an explicitly separate, later task. No
+live Anthropic call was needed (PI-3A's drafting call is already
+live-commissioned; nothing about the drafting call itself changed).
+Tests: `tests/test_section_drafts_persistence.py` (22 — compute-once/
+reuse-without-a-model-call, invalidation on changed requirement text/
+evaluation criterion/evidence state/OM enrichment/related PI finding,
+no-invalidation on unrelated data, lossless round-trip, evidence-id/
+provenance/assurance survival, failed-generation creates no row, a
+simulated persistence failure leaves a prior valid row byte-for-byte
+untouched and still raises, idempotent concurrent get-or-create, bid-scoped
+isolation, no Organizational Memory item mutated/written, cache hit never
+calls `organizational_memory.retrieve`/`evidence_strengthening.
+strengthen_requirement_evidence`/the drafting model). Explicitly still
+deferred: Section Analyzer/UI integration, user editing, draft comparison
+UI, whole-proposal generation, proposal-outline orchestration, Word
+export, Ask CapOS, Red Team, applying migration 018 live.
 
 ## Architectural fact-type separation
 
@@ -641,25 +726,33 @@ drafting ONE requirement's response from EXISTING persisted intelligence
 (Proposal Intelligence's assessment, Fast Analysis's evaluation criteria,
 and OM-3B's already-persisted enrichment) with no independent
 retrieval/re-analysis and structural claim/evidence-traceability
-guardrails; no new migration, compute-and-return only this phase. See the
-Organizational Memory entry above for full detail. Deferred: whole-
-proposal generation, draft persistence, a UI, Word export, Ask CapOS
-integration, Red Team, Section Analyzer UI wiring.
+guardrails; no new migration, compute-and-return only this phase.
+**PI-3B (durable section drafts, `migrations/018_section_drafts.sql`,
+written but NOT applied) is now also implemented** — persists PI-3A's
+result keyed by a deterministic input fingerprint over PI-3A's own
+`SectionDraftingBrief`, and reuses it (no drafting call, no OM retrieval,
+no RFP read, no reanalysis) whenever the fingerprint is unchanged;
+identified but did not close a claim-level traceability gap (draft-wide
+evidence usage is tracked, sentence/claim-level citation is not — see the
+Organizational Memory entry above for the full assessment). See that
+entry for full detail on both PI-3A and PI-3B. Deferred: whole-proposal
+generation, a UI, Word export, Ask CapOS integration, Red Team, Section
+Analyzer UI wiring, applying migration 018 live.
 
 Absent an explicit task instruction otherwise, still do not: apply
-migration 013, alter/reapply migration 015, 016, or 017, activate the
-compact-wire prototype, change chunk sizes/max_tokens/model
+migration 013, 017, or 018, alter/reapply migration 015 or 016, activate
+the compact-wire prototype, change chunk sizes/max_tokens/model
 routing/caching, or merge `main`/deploy.
 
 ## Migrations known in this repository (files, not live-database state)
 
-Highest migration file present: **017**
-(`017_requirement_evidence_enrichment.sql`, **applied and
-live-commissioned 2026-09-21**). Files 001–017 exist in `migrations/`.
-This describes what's **written in the repo**, not what's applied to any
-Supabase project — see the note below (which is the current source of
-truth for live status; always verify explicitly rather than trusting this
-sentence in isolation).
+Highest migration file present: **018** (`018_section_drafts.sql`, written,
+**NOT applied**). Migration 017 (`017_requirement_evidence_enrichment.sql`)
+remains **applied and live-commissioned 2026-09-21**. Files 001–018 exist
+in `migrations/`. This describes what's **written in the repo**, not
+what's applied to any Supabase project — see the note below (which is the
+current source of truth for live status; always verify explicitly rather
+than trusting this sentence in isolation).
 
 > **LAST VERIFIED EXTERNAL STATE** (as of the audit that wrote this file):
 > migration 012 was applied to the project's Supabase database by the repo
@@ -752,10 +845,14 @@ sentence in isolation).
 > only for the freshness check, with the full-content read reserved for a
 > genuine cache miss. No migration change was needed for this fix. All
 > disposable rows (4 enrichment rows, 3 Organizational Memory items)
-> cleaned up, verified zero residue. Treat any future "is migration N
-> live" question as requiring a fresh check — `git log` and this file are
-> not a substitute for checking the live database when a task depends on
-> it.
+> cleaned up, verified zero residue. Migration 018 (Section Drafts, PI-3B)
+> was written on 2026-09-21 and is **NOT applied to any live database** —
+> this task's own instruction explicitly excluded applying it; live
+> commissioning of migration 018 (its `section_drafts` table and
+> `get_or_create_section_draft()` RPC) is an explicitly separate, later
+> task. Treat any future "is migration N live" question as requiring a
+> fresh check — `git log` and this file are not a substitute for checking
+> the live database when a task depends on it.
 
 ## Where NOT to look first
 

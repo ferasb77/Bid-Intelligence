@@ -1369,6 +1369,59 @@ def get_requirement_evidence_enrichments(bid_id: int, req_id: str) -> list[dict]
                 .order("created_at", desc=True).order("id", desc=True).execute())
 
 
+# ── Section Drafts (PI-3B) ────────────────────────────────────────────────────
+# Bid-scoped durable persistence of section_drafting.draft_section()'s output
+# (migrations/018_section_drafts.sql). get_or_create_section_draft is the
+# ONLY write path (the migration 018 RPC) -- concurrency-safe, idempotent on
+# (bid_id, req_id, input_fingerprint), mirroring get_or_create_requirement_
+# evidence_enrichment exactly. Rows are write-once -- there is no UPDATE
+# helper here on purpose (a changed fingerprint always creates a NEW row,
+# never overwrites an existing one).
+
+def get_or_create_section_draft(
+    bid_id: int, req_id: str, input_fingerprint: str, contract_version: str,
+    draft_text: str, assurance_passed: bool,
+    requirement_id: int | None = None, requirements_addressed: list | None = None,
+    requirements_missing: list | None = None, evaluation_criteria_addressed: list | None = None,
+    evidence_items_used: list | None = None, unsupported_or_unresolved_points: list | None = None,
+    contradictions_or_caveats: list | None = None, human_confirmation_required: bool = True,
+    drafting_notes: str | None = None, word_count: int | None = None,
+    assurance_issues: list | None = None, created_by_user_id: str | None = None,
+) -> dict | None:
+    """Concurrency-safe get-or-create via the SQL function of the same name
+    (migration 018) -- two simultaneous callers computing the SAME
+    fingerprint for the SAME (bid_id, req_id) can never create duplicate
+    rows; the loser of the race gets the winner's already-persisted row
+    back. Do NOT replace this with a separate SELECT-then-INSERT from
+    Python -- that is exactly the race this function exists to close. The
+    RPC itself rejects an empty draft_text outright -- a failed/empty
+    draft can never be persisted through this path."""
+    return _rpc_one(get_client().rpc("get_or_create_section_draft", {
+        "p_bid_id": bid_id, "p_req_id": req_id, "p_input_fingerprint": input_fingerprint,
+        "p_contract_version": contract_version, "p_draft_text": draft_text,
+        "p_assurance_passed": assurance_passed,
+        "p_requirement_id": requirement_id,
+        "p_requirements_addressed": requirements_addressed or [],
+        "p_requirements_missing": requirements_missing or [],
+        "p_evaluation_criteria_addressed": evaluation_criteria_addressed or [],
+        "p_evidence_items_used": evidence_items_used or [],
+        "p_unsupported_or_unresolved_points": unsupported_or_unresolved_points or [],
+        "p_contradictions_or_caveats": contradictions_or_caveats or [],
+        "p_human_confirmation_required": bool(human_confirmation_required),
+        "p_drafting_notes": drafting_notes, "p_word_count": word_count,
+        "p_assurance_issues": assurance_issues or [],
+        "p_created_by_user_id": created_by_user_id,
+    }).execute())
+
+
+def get_section_drafts(bid_id: int, req_id: str) -> list[dict]:
+    """Full history for one requirement, most recent first -- callers that
+    only need the latest version take index 0."""
+    return _rows(get_client().table("section_drafts").select("*")
+                .eq("bid_id", bid_id).eq("req_id", req_id)
+                .order("created_at", desc=True).order("id", desc=True).execute())
+
+
 # ── Organizational Memory (OM-1) ─────────────────────────────────────────────
 # organization-scoped (never bid-scoped -- see migrations/016_organizational_
 # memory.sql for why content_library's bid-scoped model was not reused).

@@ -2041,10 +2041,35 @@ def draft_section_for_organization(
 
     import section_drafting as sd
 
+    brief = _assemble_section_drafting_brief(
+        bid_id, organization_id, requirement_id, outline_section,
+        max_related_requirements, max_findings,
+        not_found_caller="draft_section_for_organization",
+    )
+    result = sd.draft_section(brief=brief)
+    assurance = sd.assure_section_draft(brief, result)
+
+    return {"brief": brief.to_dict(), "result": result.to_dict(), "assurance": assurance.to_dict()}
+
+
+def _assemble_section_drafting_brief(
+    bid_id: int, organization_id: str, requirement_id: int,
+    outline_section: dict | None, max_related_requirements: int, max_findings: int,
+    *, not_found_caller: str,
+):
+    """Shared by draft_section_for_organization (PI-3A, ephemeral) and
+    get_or_generate_section_draft (PI-3B, persisted) -- assembles the SAME
+    section_drafting.SectionDraftingBrief the same way in both cases, so
+    persistence never changes PI-3A's own drafting semantics. See
+    draft_section_for_organization's docstring for exactly which
+    already-computed intelligence sources this reads (never re-runs
+    anything)."""
+    import section_drafting as sd
+
     reqs = db.get_requirements_by_ids(bid_id, [requirement_id])
     if not reqs:
         raise ValueError(
-            f"draft_section_for_organization: requirement {requirement_id} not found for bid {bid_id}")
+            f"{not_found_caller}: requirement {requirement_id} not found for bid {bid_id}")
     requirement = reqs[0]
     req_id = requirement.get("req_id")
 
@@ -2087,7 +2112,7 @@ def draft_section_for_organization(
         section_guidance=(outline_section or {}).get("notes"),
     )
 
-    brief = sd.build_brief(
+    return sd.build_brief(
         organization_id=organization_id, bid_id=bid_id, requirement=requirement,
         related_requirements=related, evaluation_criterion=evaluation_criterion,
         response_guideline=response_guideline, evidence_state=evidence_state.to_dict(),
@@ -2097,7 +2122,136 @@ def draft_section_for_organization(
         max_related_requirements=max_related_requirements, max_findings=max_findings,
     )
 
+
+def _section_draft_row_to_dict(row: dict) -> dict:
+    """Adapts a persisted `section_drafts` row (migration 018, PI-3B) into
+    the SAME dict shape section_drafting.SectionDraftResult.to_dict()
+    produces -- a cache hit and a fresh computation are indistinguishable
+    to a caller."""
+    return {
+        "requirement_id": row.get("requirement_id"),
+        "req_id": row.get("req_id"),
+        "draft_text": row.get("draft_text") or "",
+        "requirements_addressed": row.get("requirements_addressed") or [],
+        "requirements_missing": row.get("requirements_missing") or [],
+        "evaluation_criteria_addressed": row.get("evaluation_criteria_addressed") or [],
+        "evidence_items_used": row.get("evidence_items_used") or [],
+        "unsupported_or_unresolved_points": row.get("unsupported_or_unresolved_points") or [],
+        "contradictions_or_caveats": row.get("contradictions_or_caveats") or [],
+        "human_confirmation_required": bool(row.get("human_confirmation_required")),
+        "drafting_notes": row.get("drafting_notes"),
+        "word_count": row.get("word_count"),
+        "failure_reason": None,
+    }
+
+
+def get_or_generate_section_draft(
+    bid_id: int, organization_id: str, requirement_id: int,
+    outline_section: dict | None = None,
+    max_related_requirements: int = 5, max_findings: int = 5,
+    created_by_user_id: str | None = None,
+) -> dict:
+    """PI-3B: "analyze once, draft once, persist, reuse" -- the durable
+    counterpart to draft_section_for_organization (PI-3A), wired to real
+    persistence (migrations/018_section_drafts.sql). Verifies bid
+    ownership FIRST.
+
+    Assembles the SAME SectionDraftingBrief draft_section_for_organization
+    would (via the shared `_assemble_section_drafting_brief` helper --
+    PI-3A's own drafting semantics are never altered to implement
+    persistence), computes section_drafting.compute_draft_input_
+    fingerprint() over it, and searches this requirement's persisted
+    history (database.get_section_drafts, bid-scoped) for a row matching
+    that EXACT fingerprint.
+
+    A match is returned directly -- no drafting model call, no
+    Organizational Memory retrieval, no RFP reread, no requirement
+    reanalysis (the brief-assembly step above already never does any of
+    those either; a cache hit doesn't even need the freshly-assembled
+    brief's evidence content, only its fingerprint, though this function
+    does still assemble it to compute that fingerprint the same way OM-3B
+    does).
+
+    No match means the requirement text, its evaluation context, its
+    current-bid evidence state, its persisted Organizational Memory
+    enrichment, or a related Proposal Intelligence finding has materially
+    changed (or this requirement has never been drafted) -- PI-3A's
+    drafting call and assurance check run for real, and the CANONICAL
+    result is then persisted via database.get_or_create_section_draft
+    (concurrency-safe; a race against another caller computing the SAME
+    fingerprint returns the winner's row, never a duplicate).
+
+    Failure safety: a FAILED drafting attempt (result.failure_reason set
+    -- no usable draft_text) is NEVER persisted; the ephemeral failed
+    result is returned as-is so the caller sees the failure and nothing
+    durable is written. An assurance FAILURE (assurance.passed is False --
+    e.g. a word-limit overage or an unreflected evaluation criterion) is
+    NOT the same as a failed draft -- the draft itself is still a valid,
+    non-fabricated structured result, so it IS persisted, with
+    assurance_passed/assurance_issues recorded transparently for the next
+    reader to see without recomputing. If the persistence RPC completes but
+    returns nothing (`persisted is None`), the freshly computed result is
+    still returned (the caller gets a correct answer; only the cache for
+    next time is missing). A genuine persistence-layer EXCEPTION (a
+    network/DB error) is NOT swallowed here -- it propagates to the
+    caller, exactly like OM-3B's own equivalent function -- so the failure
+    is surfaced rather than hidden. Either way, a persistence failure can
+    never corrupt or silently replace a PRIOR persisted row, since this
+    function only ever INSERTs a new row via get-or-create, never UPDATEs
+    an existing one.
+
+    Returns {"brief", "result", "assurance", "reused"} -- `reused` is True
+    only for an exact-fingerprint cache hit."""
+    require_bid_access(bid_id, organization_id)
+    if not organization_id:
+        raise ValueError("get_or_generate_section_draft requires an explicit organization_id")
+
+    import section_drafting as sd
+
+    brief = _assemble_section_drafting_brief(
+        bid_id, organization_id, requirement_id, outline_section,
+        max_related_requirements, max_findings,
+        not_found_caller="get_or_generate_section_draft",
+    )
+    fingerprint = sd.compute_draft_input_fingerprint(brief)
+
+    for existing_row in db.get_section_drafts(bid_id, brief.req_id):
+        if existing_row.get("input_fingerprint") == fingerprint:
+            return {
+                "brief": brief.to_dict(), "result": _section_draft_row_to_dict(existing_row),
+                "assurance": {"passed": bool(existing_row.get("assurance_passed")),
+                              "issues": existing_row.get("assurance_issues") or []},
+                "reused": True,
+            }
+
     result = sd.draft_section(brief=brief)
     assurance = sd.assure_section_draft(brief, result)
 
-    return {"brief": brief.to_dict(), "result": result.to_dict(), "assurance": assurance.to_dict()}
+    if result.failure_reason:
+        return {"brief": brief.to_dict(), "result": result.to_dict(),
+                "assurance": assurance.to_dict(), "reused": False}
+
+    persisted = db.get_or_create_section_draft(
+        bid_id=bid_id, req_id=brief.req_id, input_fingerprint=fingerprint,
+        contract_version=sd.SECTION_DRAFTING_CONTRACT_VERSION,
+        draft_text=result.draft_text, assurance_passed=assurance.passed,
+        requirement_id=result.requirement_id,
+        requirements_addressed=list(result.requirements_addressed),
+        requirements_missing=list(result.requirements_missing),
+        evaluation_criteria_addressed=list(result.evaluation_criteria_addressed),
+        evidence_items_used=[e.to_dict() for e in result.evidence_items_used],
+        unsupported_or_unresolved_points=list(result.unsupported_or_unresolved_points),
+        contradictions_or_caveats=list(result.contradictions_or_caveats),
+        human_confirmation_required=result.human_confirmation_required,
+        drafting_notes=result.drafting_notes, word_count=result.word_count,
+        assurance_issues=list(assurance.issues), created_by_user_id=created_by_user_id,
+    )
+    if persisted is None:
+        return {"brief": brief.to_dict(), "result": result.to_dict(),
+                "assurance": assurance.to_dict(), "reused": False}
+    return {
+        "brief": brief.to_dict(), "result": _section_draft_row_to_dict(persisted),
+        "assurance": {"passed": bool(persisted.get("assurance_passed")),
+                      "issues": persisted.get("assurance_issues") or []},
+        "reused": False,
+    }

@@ -513,9 +513,88 @@ deferred, not started.
   evidence, reflected the evaluation criterion, stayed within the word
   limit (119/120), set `human_confirmation_required=True` correctly;
   `assure_section_draft()` passed with zero issues. No defect found.
-- Explicitly still deferred: whole-proposal generation, draft persistence,
-  a UI, Word export, Ask CapOS integration, Red Team, Section Analyzer UI
-  wiring.
+- Explicitly still deferred: whole-proposal generation, a UI, Word export,
+  Ask CapOS integration, Red Team, Section Analyzer UI wiring.
+
+**Proposal Intelligence (PI-3B: durable section drafts)**
+- `migrations/018_section_drafts.sql` (written, **not applied**) — new
+  bid-scoped `section_drafts` table, mirroring migration 017's OM-3B
+  persistence pattern exactly (bid_id-direct RLS via `can_access_bid`,
+  authenticated SELECT only, service_role-only write, advisory-lock
+  get-or-insert, write-once rows — no UPDATE path). Stores PI-3A's
+  `SectionDraftResult` fields (draft_text/requirements_addressed/
+  requirements_missing/evaluation_criteria_addressed/evidence_items_used/
+  unsupported_or_unresolved_points/contradictions_or_caveats/
+  human_confirmation_required/drafting_notes/word_count as jsonb/columns)
+  plus `assurance_passed`/`assurance_issues` (persisted alongside the
+  draft so a caller sees known quality flags without recomputing),
+  `contract_version`, `input_fingerprint`, unique on `(bid_id, req_id,
+  input_fingerprint)`. `get_or_create_section_draft()` RPC mirrors
+  `get_or_create_requirement_evidence_enrichment()` exactly: advisory lock
+  keyed on `(bid_id, req_id)`, idempotent get-or-insert, never an UPDATE;
+  also rejects an empty `draft_text` outright (a failed/empty draft can
+  never be persisted through this path). The migration file's own header
+  documents why the same three tables migration 017 rejected are also
+  unsuitable for this new result shape.
+- `section_drafting.compute_draft_input_fingerprint()` — deterministic
+  sha256 (same canonicalization convention as `evidence_strengthening.
+  compute_input_fingerprint`/`proposal_intelligence.compute_package_
+  digest`) over the ENTIRE `SectionDraftingBrief` (minus organization_id/
+  bid_id/requirement_id, pure routing keys) — the brief is already PI-3A's
+  bounded, exhaustive input domain, so hashing it whole needs no
+  separately-reasoned dependency graph. `SectionDraftingBrief` gained a
+  backward-compatible `source_enrichment_fingerprint` field (defaults to
+  `None`) carrying the source OM-3B enrichment row's own
+  `input_fingerprint`.
+- `tenancy._assemble_section_drafting_brief` — factored out of
+  `draft_section_for_organization` this task (pure refactor, no behavior
+  change, verified by PI-3A's own existing test suite), now shared by
+  both `draft_section_for_organization` (PI-3A, ephemeral) and
+  `get_or_generate_section_draft` (PI-3B, persisted) so persistence never
+  changes PI-3A's own drafting semantics.
+- `tenancy.get_or_generate_section_draft` — computes the fingerprint,
+  searches `database.get_section_drafts` (bid-scoped) for an exact match:
+  a hit returns the persisted row with ZERO drafting model call,
+  Organizational Memory retrieval, RFP read, or requirement reanalysis; a
+  miss runs PI-3A's `draft_section`/`assure_section_draft` for real, then
+  persists via `database.get_or_create_section_draft`. A FAILED drafting
+  attempt (`result.failure_reason` set) is never persisted. An assurance
+  FAILURE (`assurance.passed` is `False`) IS still persisted — a quality
+  flag, not an invalid draft — with the issues recorded transparently. A
+  genuine persistence-layer exception propagates to the caller (never
+  swallowed, matching OM-3B's own contract); since this function only
+  ever INSERTs via get-or-create, a persistence failure can never corrupt
+  or replace a prior valid row. `tenancy._section_draft_row_to_dict`
+  adapts a persisted row back into the SAME dict shape
+  `SectionDraftResult.to_dict()` produces. Returns `{"brief", "result",
+  "assurance", "reused"}`.
+- Claim-level traceability assessment (explicitly not redesigned this
+  task): the current structure answers "which evidence items did this
+  draft use, across the whole draft" but NOT "which evidence item
+  supports THIS SPECIFIC sentence/claim" — no sentence/claim-level
+  citation exists yet. Documented as a required future PI-3C/assurance
+  enhancement before any whole-proposal-generation work that would need
+  to audit individual claims; no schema/structural change was made for it
+  here (PI-3A's existing shape was judged safe to persist as-is).
+- Tests: `tests/test_section_drafts_persistence.py` (22 — compute-once/
+  reuse-without-a-model-call, invalidation on changed requirement text/
+  evaluation criterion/evidence state/OM enrichment/related PI finding,
+  no-invalidation on unrelated data, lossless round-trip, evidence-id/
+  provenance/assurance survival, failed-generation creates no row, a
+  simulated persistence failure leaves a prior valid row byte-for-byte
+  untouched and still raises, idempotent concurrent get-or-create,
+  bid-scoped isolation, no Organizational Memory item mutated/written,
+  cache hit never calls `organizational_memory.retrieve`/
+  `evidence_strengthening.strengthen_requirement_evidence`/the drafting
+  model) — against an in-memory fake standing in for migration 018's
+  table/RPC, no live database, no live provider call.
+- No live commissioning this task (migration 018 not applied); PI-3A's
+  drafting call remains the only live-commissioned model call in this
+  area.
+- Explicitly still deferred: Section Analyzer/UI integration, user
+  editing, draft comparison UI, whole-proposal generation, proposal-
+  outline orchestration, Word export, Ask CapOS, Red Team, applying
+  migration 018 live.
 
 **Tenancy / RLS / auth boundary**
 - `tenancy.py` — every `*_for_organization` (service-role, ownership-checked)
