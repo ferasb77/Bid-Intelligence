@@ -1325,3 +1325,51 @@ def get_proposal_intelligence_findings(run_id: int) -> list[dict]:
     return _rows(get_client().table("proposal_intelligence_findings").select("*")
                 .eq("run_id", run_id).execute())
 
+
+# ── Organizational Memory (OM-1) ─────────────────────────────────────────────
+# organization-scoped (never bid-scoped -- see migrations/016_organizational_
+# memory.sql for why content_library's bid-scoped model was not reused).
+# create_organizational_memory_item is the ONLY write path (the migration 016
+# RPC function); there are no per-column UPDATE helpers here because the
+# schema's own immutable-provenance trigger rejects any provenance/identity
+# change after creation, and this phase builds no promotion/edit UI.
+_ORGANIZATIONAL_MEMORY_ITEM_KEYS = (
+    "organization_id", "memory_class", "title", "content", "content_hash",
+    "source_file_id", "source_content_hash", "source_filename",
+    "source_package_path", "source_locator", "source_bid_id",
+    "approved_by_user_id", "approved_at", "derived_from_item_id",
+    "embedding", "metadata", "created_by_user_id",
+)
+
+
+def create_organizational_memory_item(item: dict) -> dict | None:
+    """The ONLY supported way to persist an Organizational Memory item --
+    calls create_organizational_memory_item() (migration 016), which
+    enforces the approval-coupling CHECK constraint server-side (an
+    APPROVED_FIRM_KNOWLEDGE row without approved_by/approved_at, or any
+    other class WITH them, is rejected by the database itself, not just
+    application code)."""
+    clean = {k: item.get(k) for k in _ORGANIZATIONAL_MEMORY_ITEM_KEYS if k in item}
+    return _rpc_one(get_client().rpc("create_organizational_memory_item", {
+        "p_item": clean,
+    }).execute())
+
+
+def list_organizational_memory_items(
+    organization_id: str, memory_class: str | None = None
+) -> list[dict]:
+    """Service-role, ownership-checked read -- callers must go through
+    tenancy.py's list_organizational_memory_for_organization(), which
+    verifies organization_id belongs to the caller before ever reaching
+    here, exactly like every other *_for_organization function."""
+    query = (get_client().table("organizational_memory_items").select("*")
+            .eq("organization_id", organization_id))
+    if memory_class:
+        query = query.eq("memory_class", memory_class)
+    return _rows(query.order("created_at", desc=True).execute())
+
+
+def get_organizational_memory_item(item_id: int) -> dict | None:
+    return _one(get_client().table("organizational_memory_items").select("*")
+               .eq("id", item_id).execute())
+

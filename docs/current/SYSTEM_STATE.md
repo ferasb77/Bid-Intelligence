@@ -131,10 +131,60 @@ needs that history).
   "guideline_assessment"` in the SAME `proposal_intelligence_findings`
   table (no migration). CHECK's "Proposal Intelligence" section renders a
   "Response Guideline / Evaluator Usability" area, hidden when empty,
-  from persisted rows only (no rerun, no score shown). Organizational
-  Memory, a proposal quality score, win probability, and proposal
-  rewriting remain explicitly deferred (not implemented). See
-  [NAVIGATION.md](NAVIGATION.md) for the full file map.
+  from persisted rows only (no rerun, no score shown). A proposal quality
+  score, win probability, and proposal rewriting remain explicitly
+  deferred (not implemented). See [NAVIGATION.md](NAVIGATION.md) for the
+  full file map.
+- **Organizational Memory** (`organizational_memory.py` +
+  `migrations/016_organizational_memory.sql`, **OM-1, implemented, NOT
+  applied to any live database** — see Migrations section below) — a new,
+  organization-scoped (never bid-scoped) durable memory foundation,
+  unrelated to and never mixed with Proposal Intelligence's bid-scoped
+  persistence. Three structurally distinct memory classes, enforced by
+  both a DB CHECK constraint (migration 016) and `OrganizationalMemoryItem.
+  __post_init__` (`organizational_memory.py`): **SOURCE_MEMORY** (raw
+  attributable organizational source material — may SUPPORT a claim, never
+  itself canonical truth), **APPROVED_FIRM_KNOWLEDGE** (human-approved
+  reusable firm fact — requires `approved_by`/`approved_at` both set by an
+  explicit human action; no automated process in this codebase ever sets
+  them), and **PROPOSAL_MEMORY** (reusable prior-proposal language — never
+  usable to PROVE a fact, structurally forbidden from ever carrying
+  approval fields). `content_library` (migration 001) was audited and NOT
+  reused: it is bid-scoped (nullable `bid_id` FK, RLS requires
+  `bid_id is not null`), so it cannot represent organization-wide truth
+  without fabricating a bid_id or bypassing RLS — Organizational Memory
+  uses a fresh table instead. Provenance (`SourceProvenance`) reuses the
+  same file_id/content_hash/filename/package_path/locator discipline
+  `analyst._build_proposal_source_ref` established for Proposal
+  Intelligence, and the same exact-identity requirement `evidence.py`
+  enforces via `content_sha256` — SOURCE_MEMORY/PROPOSAL_MEMORY items must
+  carry a real file_id or content_hash, never a vague/fabricated one.
+  `organizational_memory.retrieve()` is the deterministic retrieval
+  contract: organization-scoped, always bounded by `top_k`, filters by
+  memory class/trust state before ranking, and exposes memory class,
+  trust/approval state, provenance, and a relevance score/signal on every
+  result — never bare text. It optionally accepts an `embed_fn` matching
+  `embeddings.embed_query`'s signature to rank via cosine similarity
+  (`relevance_signal="SEMANTIC"`); when no `embed_fn` is supplied, it
+  fails, returns None, or no candidate item has a usable embedding, it
+  deterministically degrades to keyword/Jaccard filtering
+  (`relevance_signal="KEYWORD"`) — this fallback is a required, tested
+  scenario. Zero live Voyage/Anthropic calls anywhere in this phase; the
+  existing Voyage-backed `embeddings.py` interface is wired through
+  `embed_fn` but exercised only via mocks in tests. `tenancy.py`'s
+  `create_organizational_memory_item_for_organization` /
+  `list_organizational_memory_for_organization` /
+  `retrieve_organizational_memory_for_organization` provide the
+  organization-boundary-checked persistence/retrieval wiring, following
+  the same `*_for_organization` pattern every other subsystem uses;
+  `content_hash` is always recomputed server-side from the actual content,
+  never trusted from caller input. Explicitly deferred to a later OM
+  phase: proposal-text generation from memory, auto-insertion of evidence,
+  Section Analyzer integration, a full ingestion UI, any win-
+  probability/scoring, and any PROPOSAL_MEMORY → APPROVED_FIRM_KNOWLEDGE
+  promotion path (none exists in this phase — promoting requires a brand
+  new, separately human-approved item, never a mutation of an existing
+  row).
 
 ## Architectural fact-type separation
 
@@ -166,20 +216,30 @@ PI-2B1 (cross-document/whole-package claim, contradiction, and consistency
 reasoning) is now **implemented** but **NOT live-provider commissioned** —
 see above. PI-2B2 (Response Guideline coverage / evaluator usability) is
 now also **implemented** (analysis_version `proposal-intelligence-v4`) but
-likewise **NOT live-provider commissioned**. Organizational Memory (a
-later, unrelated phase) is explicitly NOT started. Future work should
+likewise **NOT live-provider commissioned**. Future work should
 build on PI-2A/PI-2A.1/PI-2B1/PI-2B2, not re-litigate their schema/
 adapter/ledger design without cause.
 
+**Organizational Memory (OM-1) is now implemented** — a new, unrelated
+product area (`organizational_memory.py`,
+`migrations/016_organizational_memory.sql`), organization-scoped (never
+bid-scoped) durable memory with three structurally distinct classes
+(SOURCE_MEMORY / APPROVED_FIRM_KNOWLEDGE / PROPOSAL_MEMORY) and a
+deterministic, retrieval-first contract (`organizational_memory.retrieve()`).
+Zero live model/embedding calls this phase. Deferred to a later OM phase:
+proposal-text generation from memory, auto-insertion of evidence, Section
+Analyzer integration, a full ingestion UI, win-probability/scoring, and
+any PROPOSAL_MEMORY → APPROVED_FIRM_KNOWLEDGE promotion mechanism.
+
 Absent an explicit task instruction otherwise, still do not: apply
-migration 013, alter/reapply migration 015, activate the compact-wire
-prototype, change chunk sizes/max_tokens/model routing/caching, or merge
-`main`/deploy.
+migration 013, apply migration 016, alter/reapply migration 015, activate
+the compact-wire prototype, change chunk sizes/max_tokens/model
+routing/caching, or merge `main`/deploy.
 
 ## Migrations known in this repository (files, not live-database state)
 
-Highest migration file present: **015** (`015_proposal_intelligence.sql`).
-Files 001–015 exist in `migrations/`. This describes what's **written in
+Highest migration file present: **016** (`016_organizational_memory.sql`).
+Files 001–016 exist in `migrations/`. This describes what's **written in
 the repo**, not what's applied to any Supabase project — see the note
 below.
 
@@ -204,7 +264,11 @@ below.
 > migration 015 `proposal_intelligence_findings` table/enum again — its
 > CONTRADICTION/INTERNAL_INCONSISTENCY/UNSUPPORTED_CLAIM finding_type
 > values already existed there from PI-1's forward-looking taxonomy — so
-> no new migration was needed for PI-2B1 either. Treat any future "is migration N live"
+> no new migration was needed for PI-2B1 either. Migration 016
+> (Organizational Memory, OM-1) was written on 2026-09-21 and is NOT
+> applied — a fresh table was required (see the Organizational Memory
+> entry above for why `content_library`'s existing bid-scoped schema could
+> not be reused). Treat any future "is migration N live"
 > question as requiring a fresh check — `git log` and this file are not a
 > substitute for checking the live database when a task depends on it.
 

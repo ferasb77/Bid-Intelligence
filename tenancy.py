@@ -1419,3 +1419,121 @@ def get_proposal_package_snapshot_authenticated(access_token: str, bid_id: int, 
     rows = (client.table("proposal_package_snapshots").select("*")
            .eq("bid_id", bid_id).eq("id", snapshot_id).execute().data or [])
     return rows[0] if rows else None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Organizational Memory (OM-1)
+# ═══════════════════════════════════════════════════════════════════════════
+# Organization-scoped (never bid-scoped) -- every function below takes an
+# explicit organization_id and either (a) forces it into the write payload
+# server-side (create_organizational_memory_item_for_organization), so a
+# caller can never write into a different organization's memory even by
+# accident, or (b) filters strictly by it before ever returning a row
+# (list_/retrieve_..._for_organization). This mirrors the SAME
+# *_for_organization (service-role, ownership-checked) vs *_authenticated
+# (RLS-scoped) split every other subsystem in this file already uses.
+def create_organizational_memory_item_for_organization(
+    organization_id: str, item: dict, created_by_user_id: str | None = None,
+) -> dict | None:
+    """Writes exactly one Organizational Memory item, forced into
+    organization_id regardless of anything the caller's `item` dict might
+    have included for that key -- the same "never trust a caller-supplied
+    tenant column" discipline create_bid_for_organization already applies.
+    content_hash is ALWAYS recomputed server-side from `item['content']`
+    via organizational_memory.content_hash() -- never accepted verbatim
+    from the caller -- so a caller cannot claim a content_hash that does
+    not match the content actually being stored."""
+    if not organization_id:
+        raise ValueError(
+            "create_organizational_memory_item_for_organization requires an explicit organization_id")
+    import organizational_memory as om
+
+    content = item.get("content") or ""
+    clean = dict(item)
+    clean["organization_id"] = organization_id
+    clean["content_hash"] = om.content_hash(content)
+    clean["created_by_user_id"] = created_by_user_id
+    return db.create_organizational_memory_item(clean)
+
+
+def list_organizational_memory_for_organization(
+    organization_id: str, memory_class: str | None = None,
+) -> list[dict]:
+    if not organization_id:
+        raise ValueError(
+            "list_organizational_memory_for_organization requires an explicit organization_id")
+    return db.list_organizational_memory_items(organization_id, memory_class=memory_class)
+
+
+def _row_to_memory_item(row: dict):
+    """Adapts a raw organizational_memory_items DB row into the retrieval
+    contract's OrganizationalMemoryItem shape. Never fabricates a field --
+    every provenance value is passed through as-is (None stays None)."""
+    import organizational_memory as om
+
+    approved_at = row.get("approved_at")
+    if isinstance(approved_at, str):
+        try:
+            approved_at = datetime.fromisoformat(approved_at.replace("Z", "+00:00"))
+        except ValueError:
+            approved_at = None
+
+    return om.OrganizationalMemoryItem(
+        id=str(row["id"]),
+        organization_id=row["organization_id"],
+        memory_class=om.MemoryClass(row["memory_class"]),
+        title=row.get("title") or "",
+        content=row.get("content") or "",
+        provenance=om.SourceProvenance(
+            file_id=row.get("source_file_id"),
+            content_hash=row.get("source_content_hash"),
+            filename=row.get("source_filename"),
+            package_path=row.get("source_package_path"),
+            locator=row.get("source_locator"),
+            source_bid_id=row.get("source_bid_id"),
+        ),
+        approved_by=row.get("approved_by_user_id"),
+        approved_at=approved_at,
+        derived_from_item_id=(
+            str(row["derived_from_item_id"]) if row.get("derived_from_item_id") else None
+        ),
+        embedding=None,   # never decoded here; retrieval degrades to keyword filtering
+                           # unless a caller supplies item_embed_fn explicitly (zero live
+                           # embedding calls in this phase -- see organizational_memory.py).
+        metadata=row.get("metadata") or {},
+        item_content_hash=row.get("content_hash"),
+    )
+
+
+def retrieve_organizational_memory_for_organization(
+    organization_id: str, query: str, *,
+    memory_classes: list[str] | None = None,
+    trusted_only: bool = False,
+    top_k: int = 10,
+    min_score: float = 0.0,
+    embed_fn=None,
+) -> list[dict]:
+    """The OM-1 retrieval contract, wired to real persistence: fetches this
+    organization's own memory items ONLY (list_organizational_memory_for_
+    organization already filters by organization_id server-side) and hands
+    them to organizational_memory.retrieve() for deterministic ranking/
+    filtering. embed_fn defaults to None (zero live calls) -- a caller MAY
+    pass embeddings.embed_query to opt into semantic ranking; any failure
+    there still degrades to the deterministic keyword fallback inside
+    retrieve() itself."""
+    import organizational_memory as om
+
+    if not organization_id:
+        raise ValueError(
+            "retrieve_organizational_memory_for_organization requires an explicit organization_id")
+    rows = db.list_organizational_memory_items(organization_id)
+    items = [_row_to_memory_item(row) for row in rows]
+    classes = (
+        [om.MemoryClass(c) for c in memory_classes] if memory_classes is not None else None
+    )
+    results = om.retrieve(
+        organization_id=organization_id, query=query, items=items,
+        memory_classes=classes, trusted_only=trusted_only,
+        top_k=top_k, min_score=min_score, embed_fn=embed_fn,
+    )
+    return [r.to_dict() for r in results]

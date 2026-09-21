@@ -216,6 +216,49 @@ deferred, not started.
   atomic persistence), `tests/test_proposal_intelligence_database.py`
   (RPC-boundary persistence + migration DDL-intent checks).
 
+**Organizational Memory (OM-1)**
+- `organizational_memory.py` — the retrieval contract module: `MemoryClass`
+  (SOURCE_MEMORY/APPROVED_FIRM_KNOWLEDGE/PROPOSAL_MEMORY),
+  `OrganizationalMemoryItem` (structural approval-coupling + exact-source-
+  identity validation in `__post_init__`), `SourceProvenance` (mirrors
+  `analyst._build_proposal_source_ref`'s file_id/content_hash/filename/
+  package_path/locator fields), and `retrieve()` (deterministic,
+  organization-scoped, class/trust-filtered, `top_k`-bounded ranking; an
+  optional `embed_fn` — matching `embeddings.embed_query` — enables
+  cosine-similarity ranking, degrading to keyword/Jaccard filtering on any
+  failure or when no candidate has a usable embedding).
+- `migrations/016_organizational_memory.sql` — `organizational_memory_items`
+  (written, **not applied** — see SYSTEM_STATE.md), organization-scoped via
+  `organization_id` (reuses `is_organization_member(uuid)` from migration
+  008, the same function firm_profiles' policies use), RLS-enabled with
+  authenticated SELECT only (no write policy — service_role only, via
+  `create_organizational_memory_item()`), an approval-coupling CHECK
+  constraint, and a `BEFORE UPDATE` trigger rejecting any change to
+  provenance/identity columns after insert.
+- `database.py`'s `create_organizational_memory_item` (the only write
+  path), `list_organizational_memory_items`, `get_organizational_memory_item`.
+- `tenancy.py`'s `create_organizational_memory_item_for_organization`
+  (forces `organization_id` server-side, recomputes `content_hash` from
+  the actual content — never trusts a caller-supplied hash),
+  `list_organizational_memory_for_organization`,
+  `retrieve_organizational_memory_for_organization` (fetches only the
+  caller's own organization's rows, then calls `organizational_memory.
+  retrieve()`).
+- `content_library` (migration 001) was audited for reuse and rejected:
+  bid-scoped (`bid_id` FK, RLS requires `bid_id is not null`), so it
+  cannot represent organization-wide truth — see SYSTEM_STATE.md.
+- Tests: `tests/test_organizational_memory.py` (memory-class structural
+  distinctness, approval semantics, exact source linkage, immutable
+  write-path behavior, organization isolation via direct access AND via
+  the retrieval contract, deterministic filtering/ranking, graceful
+  embedding-unavailable fallback, proposal-memory-never-truth behavior,
+  tenancy wiring, provenance-shape compatibility with the existing PI/
+  evidence discipline).
+- Explicitly deferred to a later OM phase: proposal-text generation from
+  memory, auto-insertion of evidence, Section Analyzer integration, a full
+  ingestion UI, win-probability/scoring, and any PROPOSAL_MEMORY →
+  APPROVED_FIRM_KNOWLEDGE promotion mechanism.
+
 **Tenancy / RLS / auth boundary**
 - `tenancy.py` — every `*_for_organization` (service-role, ownership-checked)
   and `*_authenticated` (user's own RLS-scoped client) function.
