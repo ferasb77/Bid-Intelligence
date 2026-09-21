@@ -107,6 +107,14 @@ class SourceProvenance:
     package_path: Optional[str] = None
     locator: Optional[str] = None
     source_bid_id: Optional[int] = None
+    # Commissioning-review fix #4: an internal Storage reference for the
+    # ORIGINAL uploaded artifact (organizational_source_documents.
+    # storage_path), never a public/signed URL -- matches this same
+    # trust-boundary exposure pattern as content_hash/filename above (a
+    # trusted-app-layer identifier, not an unauthenticated-caller-usable
+    # credential). None when the item did not originate from a stored
+    # upload at all.
+    storage_path: Optional[str] = None
 
     def has_exact_identity(self) -> bool:
         """True iff this provenance references a real, specific source --
@@ -122,6 +130,7 @@ class SourceProvenance:
             "package_path": self.package_path,
             "locator": self.locator,
             "source_bid_id": self.source_bid_id,
+            "storage_path": self.storage_path,
         }
 
 
@@ -140,6 +149,12 @@ class OrganizationalMemoryItem:
     approved_by: Optional[str] = None
     approved_at: Optional[datetime] = None
     derived_from_item_id: Optional[str] = None
+    # Commissioning-review fix #4: durable link to the
+    # organizational_source_documents parent row this item was chunked
+    # from (None when the item did not originate from a chunked upload).
+    # Carried through to RetrievalResult so a retrieved result can be
+    # traced all the way to its physical source document.
+    source_document_id: Optional[str] = None
     embedding: Optional[list[float]] = None
     metadata: dict = field(default_factory=dict)
     item_content_hash: Optional[str] = None
@@ -224,6 +239,15 @@ class RetrievalResult:
     provenance: SourceProvenance
     relevance_score: float
     relevance_signal: str   # "SEMANTIC" | "KEYWORD" -- how the score was computed
+    # Commissioning-review fix #4: durable lineage --
+    # APPROVED_FIRM_KNOWLEDGE -> derived_from_item_id (its SOURCE_MEMORY
+    # parent) -> source_document_id (that parent's organizational_source_
+    # documents row) -> the physical source (content_hash/filename/
+    # storage_path, already exposed via `provenance`). Both fields are None
+    # when not applicable/known -- never fabricated. No signed-URL or
+    # storage-credential field is ever exposed here or on `provenance`.
+    source_document_id: Optional[str] = None
+    derived_from_item_id: Optional[str] = None
 
     def to_dict(self) -> dict:
         return {
@@ -237,6 +261,8 @@ class RetrievalResult:
             "provenance": self.provenance.to_dict(),
             "relevance_score": self.relevance_score,
             "relevance_signal": self.relevance_signal,
+            "source_document_id": self.source_document_id,
+            "derived_from_item_id": self.derived_from_item_id,
         }
 
 
@@ -392,6 +418,8 @@ def retrieve(
             provenance=item.provenance,
             relevance_score=score,
             relevance_signal=signal,
+            source_document_id=item.source_document_id,
+            derived_from_item_id=item.derived_from_item_id,
         ))
 
     scored = [r for r in scored if r.relevance_score >= min_score]

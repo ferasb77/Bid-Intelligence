@@ -1511,6 +1511,9 @@ def _row_to_memory_item(row: dict):
         derived_from_item_id=(
             str(row["derived_from_item_id"]) if row.get("derived_from_item_id") else None
         ),
+        source_document_id=(
+            str(row["source_document_id"]) if row.get("source_document_id") else None
+        ),
         embedding=None,   # never decoded here; retrieval degrades to keyword filtering
                            # unless a caller supplies item_embed_fn explicitly (zero live
                            # embedding calls in this phase -- see organizational_memory.py).
@@ -1534,23 +1537,33 @@ def ingest_organizational_source_document_for_organization(
     organization_id: str, filename: str, file_bytes: bytes,
     created_by_user_id: str | None = None,
     target_chunk_chars: int | None = None,
+    content_type: str | None = None,
 ) -> dict:
     """Single-file, human-initiated source ingestion: extracts text from
     the uploaded file, splits it into deterministic bounded chunks
-    (organizational_memory.split_source_into_chunks), creates ONE durable
-    organizational_source_documents parent record, and creates one
-    SOURCE_MEMORY item per chunk -- each carrying its own exact char_start/
-    char_end locator plus the parent file's content_hash/filename, never a
-    single giant blob treated as one retrieval unit.
+    (organizational_memory.split_source_into_chunks), uploads the ORIGINAL
+    bytes to Supabase Storage, and persists the parent
+    organizational_source_documents record + every SOURCE_MEMORY chunk row
+    in ONE atomic database call (db.ingest_organizational_source_document
+    -> migration 016's ingest_organizational_source_document() RPC) --
+    never a parent-create-then-per-chunk-insert loop across separate round
+    trips (commissioning-review fix #1). If any chunk insert fails inside
+    that RPC, the entire transaction (parent row included) rolls back --
+    a partially-ingested document can never be visible.
 
-    Deterministic: the same bytes + filename always produce the same
-    content_hash, the same chunk boundaries, and (given the same DB state)
-    the same set of SOURCE_MEMORY rows. Re-uploading a byte-identical file
-    into the same organization is detected via the (organization_id,
-    content_hash) unique constraint on organizational_source_documents --
-    this function returns the EXISTING document (and its already-ingested
-    chunks) instead of re-ingesting, rather than silently duplicating
-    SOURCE_MEMORY items for the same source file.
+    Deterministic and idempotent: the same bytes + filename always produce
+    the same content_hash and the same chunk boundaries; the RPC itself
+    resolves a repeat/concurrent upload of byte-identical content to the
+    same organization via a (organization_id, content_hash) advisory lock
+    plus get-or-create semantics -- this function does not need its own
+    locking, only a fast pre-check to avoid re-extracting text/re-uploading
+    bytes for a file this organization has already fully ingested (an
+    OPTIMIZATION only; the RPC's own lock+get-or-create is the actual
+    correctness guarantee even if this pre-check is skipped or races).
+
+    content_hash used for identity/dedup is the sha256 of the RAW UPLOADED
+    BYTES, computed before any extraction -- never re-derived from
+    extracted text, which can differ across extraction runs.
 
     Uses extractor.extract_text_from_file -- the same extraction entry
     point already used elsewhere in this codebase -- so file-type handling
@@ -1568,53 +1581,58 @@ def ingest_organizational_source_document_for_organization(
 
     raw_content_hash = hashlib.sha256(file_bytes or b"").hexdigest()
 
+    # Fast, NON-authoritative pre-check: avoids re-extracting text/re-
+    # uploading bytes for a file we already know is fully ingested.
+    # Authoritative atomicity/idempotency is enforced by the RPC's advisory
+    # lock + one-transaction insert below, not by this check.
     existing_docs = db.list_organizational_source_documents(organization_id)
     existing = next((d for d in existing_docs if d.get("content_hash") == raw_content_hash), None)
-    if existing is not None:
+    if existing is not None and (existing.get("chunk_count") or 0) > 0:
         existing_items = [
             row for row in db.list_organizational_memory_items(organization_id, memory_class="SOURCE_MEMORY")
             if row.get("source_document_id") == existing.get("id")
         ]
-        return {"document": existing, "items": existing_items, "reused_existing": True}
+        if len(existing_items) >= (existing.get("chunk_count") or 0):
+            return {"document": existing, "items": existing_items, "reused_existing": True}
 
     text = extract_text_from_file(file_bytes, filename) or ""
     chunk_size = target_chunk_chars or om.SOURCE_CHUNK_TARGET_CHARS
     chunks = om.split_source_into_chunks(text, target_chunk_chars=chunk_size)
 
-    document = db.create_organizational_source_document({
-        "organization_id": organization_id,
-        "filename": filename,
-        "content_hash": raw_content_hash,
-        "extracted_char_count": len(text),
-        "chunk_count": len(chunks),
-        "uploaded_by_user_id": created_by_user_id,
-    })
-    if document is None:
+    # Original artifact -> Supabase Storage (never a Postgres bytea
+    # column). A Storage failure degrades to storage_path=None (mirrors
+    # database.save_upload()'s own graceful-degradation contract) rather
+    # than blocking ingestion outright -- the SOURCE_MEMORY text/provenance
+    # is still fully persisted and retrievable either way.
+    storage_path = db.upload_organizational_source_file(
+        organization_id, raw_content_hash, file_bytes, content_type=content_type)
+
+    chunk_payloads = [
+        {
+            "title": f"{filename} — chunk {chunk['chunk_index'] + 1}/{len(chunks)}",
+            "content": chunk["text"],
+            "content_hash": om.content_hash(chunk["text"]),
+            "source_locator": f"chars:{chunk['char_start']}-{chunk['char_end']}",
+        }
+        for chunk in chunks
+    ]
+
+    result = db.ingest_organizational_source_document(
+        organization_id, filename, raw_content_hash, chunk_payloads,
+        storage_path=storage_path, file_size=len(file_bytes or b""),
+        content_type=content_type, extracted_char_count=len(text),
+        uploaded_by_user_id=created_by_user_id,
+    )
+    if result is None or result.get("document") is None:
         raise ValueError(
-            "ingest_organizational_source_document_for_organization: failed to create source document record")
+            "ingest_organizational_source_document_for_organization: atomic ingestion RPC "
+            "failed to return a document")
 
-    file_id = f"omsrc:{raw_content_hash}"
-    created_items: list[dict] = []
-    for chunk in chunks:
-        title = f"{filename} — chunk {chunk['chunk_index'] + 1}/{len(chunks)}"
-        item = create_organizational_memory_item_for_organization(
-            organization_id,
-            {
-                "memory_class": om.MemoryClass.SOURCE_MEMORY.value,
-                "title": title,
-                "content": chunk["text"],
-                "source_file_id": file_id,
-                "source_content_hash": raw_content_hash,
-                "source_filename": filename,
-                "source_locator": f"chars:{chunk['char_start']}-{chunk['char_end']}",
-                "source_document_id": document["id"],
-            },
-            created_by_user_id=created_by_user_id,
-        )
-        if item is not None:
-            created_items.append(item)
-
-    return {"document": document, "items": created_items, "reused_existing": False}
+    return {
+        "document": result["document"],
+        "items": result.get("items") or [],
+        "reused_existing": bool(result.get("reused_existing")),
+    }
 
 
 def approve_organizational_memory_item_for_organization(

@@ -21,6 +21,22 @@
 -- OM-2 section near the end of this file for full reasoning. Migration 016
 -- remains entirely unapplied to any live database as of this edit.
 --
+-- OM-2 commissioning-review hardening pass (edited in place, still no
+-- migration 017): (1) `ingest_organizational_source_document()` -- atomic,
+-- idempotent, concurrency-safe replacement for the previous create-parent-
+-- then-loop-insert-chunks pattern, mirroring migration 015's
+-- get_or_create_proposal_package_snapshot() advisory-lock pattern; (2)
+-- `organizational_source_documents` gained storage_path/file_size/
+-- content_type so the original uploaded artifact is persisted via
+-- Supabase Storage, not a bytea column; (3) `is_user_organization_member()`
+-- -- a new direct-membership-check helper -- plus its use inside both
+-- ingest_organizational_source_document() and
+-- approve_organizational_memory_item() to verify a caller-supplied
+-- uploaded_by_user_id/approved_by_user_id genuinely belongs to the target
+-- organization before any write; (4) RetrievalResult (organizational_
+-- memory.py) now exposes source_document_id/derived_from_item_id for
+-- lineage tracing. Still entirely unapplied to any live database.
+--
 -- ── Why this table exists ─────────────────────────────────────────────────
 -- `content_library` (migration 001) is bid-scoped: it carries a single
 -- nullable `bid_id` FK, its own RLS policy (migration 008) requires
@@ -392,9 +408,26 @@ create table if not exists organizational_source_documents (
     organization_id         uuid not null references public.organizations(id) on delete cascade,
 
     filename                text not null,
-    content_hash            text not null,   -- sha256 of the raw uploaded bytes
+    content_hash            text not null,   -- sha256 of the RAW UPLOADED BYTES, computed
+                                              -- before extraction -- never re-derived from
+                                              -- extracted text, which can differ across
+                                              -- extraction runs (commissioning-review fix #2).
     extracted_char_count    integer not null default 0,
     chunk_count             integer not null default 0,
+
+    -- Commissioning-review fix #2: the original uploaded artifact is
+    -- persisted via Supabase Storage (the same bucket/convention
+    -- database.py's save_upload()/upload_analysis_report() already use),
+    -- never as a Postgres bytea column. storage_path is an internal
+    -- reference only (organization/content-hash-scoped, never a public or
+    -- signed URL) -- see database.py's upload_organizational_source_file()
+    -- for the exact path scheme (org/{organization_id}/sources/
+    -- {content_hash}) and tenancy.py for how it is used. content_type is
+    -- populated only from the upload's own declared type when reliably
+    -- known -- never guessed.
+    storage_path            text,
+    file_size               bigint,
+    content_type            text,
 
     metadata                jsonb,
 
@@ -538,7 +571,11 @@ $$;
 
 -- create_organizational_source_document — the ONLY supported write path
 -- for the new table, mirroring create_organizational_memory_item's own
--- service_role-only RPC pattern exactly.
+-- service_role-only RPC pattern exactly. Retained for callers that only
+-- need a standalone document record; real ingestion (document + its full
+-- chunk set) goes through ingest_organizational_source_document() below,
+-- which is atomic and idempotent -- this function alone does NOT insert
+-- chunks and must never be used by tenancy.py's ingestion path.
 create or replace function public.create_organizational_source_document(
     p_doc jsonb
 ) returns public.organizational_source_documents
@@ -560,10 +597,11 @@ begin
     end if;
 
     insert into public.organizational_source_documents (
-        organization_id, filename, content_hash, extracted_char_count,
-        chunk_count, metadata, uploaded_by_user_id
+        organization_id, filename, content_hash, storage_path, file_size, content_type,
+        extracted_char_count, chunk_count, metadata, uploaded_by_user_id
     ) values (
         (p_doc->>'organization_id')::uuid, p_doc->>'filename', p_doc->>'content_hash',
+        p_doc->>'storage_path', (p_doc->>'file_size')::bigint, p_doc->>'content_type',
         coalesce((p_doc->>'extracted_char_count')::integer, 0),
         coalesce((p_doc->>'chunk_count')::integer, 0),
         p_doc->'metadata', (p_doc->>'uploaded_by_user_id')::uuid
@@ -576,6 +614,187 @@ $$;
 revoke all on function public.create_organizational_source_document(jsonb) from public;
 revoke all on function public.create_organizational_source_document(jsonb) from anon, authenticated;
 grant execute on function public.create_organizational_source_document(jsonb) to service_role;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- is_user_organization_member — direct membership check for an EXPLICIT,
+-- caller-supplied user id (commissioning-review fix #3)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- migration 008's is_organization_member(uuid) checks auth.uid() -- the
+-- CALLING session's own identity -- which is exactly right for an RLS
+-- policy, but useless for verifying a bare uuid a service-role RPC
+-- received as a PARAMETER (auth.uid() is null/irrelevant in a service-role
+-- context). This function instead checks a given p_user_id directly
+-- against organization_members, the same table is_organization_member
+-- itself reads. It is intentionally service_role-only (never granted to
+-- anon/authenticated) since it lets a caller test ANY user id's membership
+-- in ANY organization, which would itself be an enumeration risk if
+-- exposed to ordinary authenticated sessions -- it exists solely for use
+-- INSIDE other security-definer RPCs that already run as service_role.
+create or replace function public.is_user_organization_member(
+    p_user_id uuid, p_organization_id uuid
+) returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+    select exists (
+        select 1
+        from public.organization_members m
+        where m.organization_id = p_organization_id
+          and m.user_id = p_user_id
+    );
+$$;
+
+revoke all on function public.is_user_organization_member(uuid, uuid) from public;
+revoke all on function public.is_user_organization_member(uuid, uuid) from anon, authenticated;
+grant execute on function public.is_user_organization_member(uuid, uuid) to service_role;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- ingest_organizational_source_document — atomic, idempotent, concurrency-
+-- safe source ingestion (commissioning-review fix #1)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Replaces the create-parent-then-loop-insert-chunks pattern
+-- tenancy.ingest_organizational_source_document_for_organization()
+-- previously used across multiple round trips. This function performs the
+-- ENTIRE parent-document-insert + all-chunks-insert as ONE PL/pgSQL
+-- function body -- one implicit transaction. If any chunk insert fails
+-- (e.g. a CHECK/trigger violation), the exception propagates, the whole
+-- transaction rolls back, and the parent document row is rolled back with
+-- it -- a document can never exist without its full expected chunk set
+-- going forward.
+--
+-- Concurrency safety mirrors migration 015's get_or_create_proposal_
+-- package_snapshot() exactly: a transaction-scoped advisory lock keyed on
+-- (organization_id, content_hash) serializes two callers racing to ingest
+-- byte-identical content for the same organization. The (organization_id,
+-- content_hash) UNIQUE constraint on organizational_source_documents
+-- remains the final authority even if this function were bypassed.
+--
+-- Idempotent get-or-create: if a document with this (organization_id,
+-- content_hash) already exists AND its actual chunk row count already
+-- meets its own recorded chunk_count, the EXISTING document + its chunks
+-- are returned verbatim (no re-ingestion, no duplicate SOURCE_MEMORY
+-- rows). If a document exists but its chunk set is INCOMPLETE (only
+-- possible from a pre-this-migration partial-ingestion edge case, since
+-- this function's own atomicity makes a new incomplete row impossible),
+-- it is NEVER silently treated as complete or returned as-is -- this
+-- function raises instead, forcing explicit manual remediation rather
+-- than masking a genuinely inconsistent row.
+--
+-- p_uploaded_by_user_id, when supplied, is verified as a genuine member of
+-- p_organization_id via is_user_organization_member() before any write --
+-- defense-in-depth, exactly matching approve_organizational_memory_item()'s
+-- own actor-identity verification below (fix #3 applies to BOTH RPCs).
+--
+-- p_chunks is a jsonb array of {"title","content","content_hash",
+-- "source_locator"} objects, computed by the caller from
+-- organizational_memory.split_source_into_chunks() -- this function does
+-- not chunk text itself (chunking stays a pure, testable Python function).
+create or replace function public.ingest_organizational_source_document(
+    p_organization_id uuid,
+    p_filename text,
+    p_content_hash text,
+    p_chunks jsonb,
+    p_storage_path text default null,
+    p_file_size bigint default null,
+    p_content_type text default null,
+    p_extracted_char_count integer default 0,
+    p_uploaded_by_user_id uuid default null
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_doc public.organizational_source_documents;
+    v_expected_chunks integer;
+    v_actual_chunks integer;
+    v_items jsonb := '[]'::jsonb;
+    v_chunk jsonb;
+    v_item public.organizational_memory_items;
+begin
+    if p_organization_id is null then
+        raise exception 'ingest_organizational_source_document: organization_id is required';
+    end if;
+    if p_filename is null then
+        raise exception 'ingest_organizational_source_document: filename is required';
+    end if;
+    if p_content_hash is null then
+        raise exception 'ingest_organizational_source_document: content_hash is required';
+    end if;
+
+    if p_uploaded_by_user_id is not null
+        and not public.is_user_organization_member(p_uploaded_by_user_id, p_organization_id)
+    then
+        raise exception 'ingest_organizational_source_document: uploaded_by_user_id % is not a member of organization %',
+            p_uploaded_by_user_id, p_organization_id;
+    end if;
+
+    -- Concurrency-safe get-or-create, mirroring get_or_create_proposal_
+    -- package_snapshot()'s exact advisory-lock pattern (migration 015).
+    perform pg_advisory_xact_lock(hashtext('organizational_source_document:' || p_organization_id::text || ':' || p_content_hash));
+
+    v_expected_chunks := coalesce(jsonb_array_length(p_chunks), 0);
+
+    select * into v_doc
+    from public.organizational_source_documents
+    where organization_id = p_organization_id and content_hash = p_content_hash;
+
+    if found then
+        select count(*) into v_actual_chunks
+        from public.organizational_memory_items
+        where source_document_id = v_doc.id;
+
+        if v_doc.chunk_count > 0 and v_actual_chunks >= v_doc.chunk_count then
+            select coalesce(jsonb_agg(to_jsonb(i)), '[]'::jsonb) into v_items
+            from public.organizational_memory_items i
+            where i.source_document_id = v_doc.id;
+
+            return jsonb_build_object(
+                'document', to_jsonb(v_doc), 'items', v_items, 'reused_existing', true);
+        end if;
+
+        -- Defensive-only path: with this function as the sole ingestion
+        -- write path going forward, an incomplete row can no longer be
+        -- created -- but a pre-existing one (from before this migration
+        -- edit) must never be silently treated as complete. Fail closed.
+        raise exception 'ingest_organizational_source_document: existing document % for organization % has an incomplete chunk set (% of % expected) -- refusing to silently treat it as complete; manual remediation required',
+            v_doc.id, p_organization_id, v_actual_chunks, v_doc.chunk_count;
+    end if;
+
+    insert into public.organizational_source_documents (
+        organization_id, filename, content_hash, storage_path, file_size, content_type,
+        extracted_char_count, chunk_count, uploaded_by_user_id
+    ) values (
+        p_organization_id, p_filename, p_content_hash, p_storage_path, p_file_size, p_content_type,
+        coalesce(p_extracted_char_count, 0), v_expected_chunks, p_uploaded_by_user_id
+    ) returning * into v_doc;
+
+    for v_chunk in select * from jsonb_array_elements(coalesce(p_chunks, '[]'::jsonb))
+    loop
+        insert into public.organizational_memory_items (
+            organization_id, memory_class, title, content, content_hash,
+            source_file_id, source_content_hash, source_filename, source_locator,
+            source_document_id, created_by_user_id
+        ) values (
+            p_organization_id, 'SOURCE_MEMORY',
+            v_chunk->>'title', v_chunk->>'content', v_chunk->>'content_hash',
+            'omsrc:' || p_content_hash, p_content_hash, p_filename, v_chunk->>'source_locator',
+            v_doc.id, p_uploaded_by_user_id
+        ) returning * into v_item;
+
+        v_items := v_items || jsonb_build_array(to_jsonb(v_item));
+    end loop;
+
+    return jsonb_build_object(
+        'document', to_jsonb(v_doc), 'items', v_items, 'reused_existing', false);
+end;
+$$;
+
+revoke all on function public.ingest_organizational_source_document(uuid, text, text, jsonb, text, bigint, text, integer, uuid) from public;
+revoke all on function public.ingest_organizational_source_document(uuid, text, text, jsonb, text, bigint, text, integer, uuid) from anon, authenticated;
+grant execute on function public.ingest_organizational_source_document(uuid, text, text, jsonb, text, bigint, text, integer, uuid) to service_role;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- OM-2: approve_organizational_memory_item — the ONLY write path allowed to
@@ -609,6 +828,15 @@ declare
 begin
     if p_source_item_id is null or p_organization_id is null or p_approved_by_user_id is null then
         raise exception 'approve_organizational_memory_item: source_item_id, organization_id, and approved_by_user_id are all required';
+    end if;
+
+    -- Commissioning-review fix #3: never trust a bare approved_by_user_id
+    -- uuid merely because the service layer passed it -- verify it
+    -- genuinely belongs to p_organization_id, at the DB level, defense-in-
+    -- depth alongside any application-layer check.
+    if not public.is_user_organization_member(p_approved_by_user_id, p_organization_id) then
+        raise exception 'approve_organizational_memory_item: approved_by_user_id % is not a member of organization %',
+            p_approved_by_user_id, p_organization_id;
     end if;
 
     select * into v_parent

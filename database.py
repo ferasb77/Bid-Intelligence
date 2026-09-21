@@ -1391,6 +1391,74 @@ def create_organizational_source_document(doc: dict) -> dict | None:
     }).execute())
 
 
+def upload_organizational_source_file(
+    organization_id: str, content_hash: str, file_bytes: bytes,
+    content_type: str | None = None,
+) -> str | None:
+    """Persists the ORIGINAL uploaded source-document bytes to Supabase
+    Storage -- the same bucket/API this codebase already uses for
+    save_upload()/upload_analysis_report() (see database.py's own
+    conventions above) -- never a Postgres bytea column (commissioning-
+    review fix #2). Path is organization-scoped and content-addressed
+    (org/{organization_id}/sources/{content_hash}), collision-resistant by
+    construction (content_hash is a sha256 of the exact raw bytes) and
+    never guessable per-org without already knowing both the organization
+    id and the file's own content hash. This is an INTERNAL reference only
+    -- no public or signed URL is generated or returned here; see
+    database.get_signed_url() for the existing, separate, explicit
+    signed-URL path this function deliberately does not call.
+
+    Returns the storage_path on success, or None on any Storage failure
+    (mirrors save_upload()'s own graceful-degradation contract -- ingestion
+    still proceeds with storage_path left unset rather than failing the
+    whole ingestion over a Storage outage)."""
+    sb = get_client()
+    storage_path = f"org/{organization_id}/sources/{content_hash}"
+    try:
+        sb.storage.from_(BUCKET).upload(
+            storage_path, file_bytes,
+            file_options={"content-type": content_type or "application/octet-stream",
+                          "upsert": "true"})
+        return storage_path
+    except Exception:
+        return None
+
+
+_ORGANIZATIONAL_SOURCE_INGEST_CHUNK_KEYS = ("title", "content", "content_hash", "source_locator")
+
+
+def ingest_organizational_source_document(
+    organization_id: str, filename: str, content_hash: str, chunks: list[dict],
+    storage_path: str | None = None, file_size: int | None = None,
+    content_type: str | None = None, extracted_char_count: int = 0,
+    uploaded_by_user_id: str | None = None,
+) -> dict | None:
+    """The ONLY supported way to atomically ingest a source document + its
+    full chunk set -- calls ingest_organizational_source_document()
+    (migration 016, OM-2 commissioning-review hardening), a single
+    PL/pgSQL function invocation (one implicit transaction) that inserts
+    the parent organizational_source_documents row and every SOURCE_MEMORY
+    chunk row together, serialized by a (organization_id, content_hash)
+    advisory lock. Returns {"document": {...}, "items": [...],
+    "reused_existing": bool} -- see tenancy.py's ingestion wrapper for the
+    full contract."""
+    clean_chunks = [
+        {k: c.get(k) for k in _ORGANIZATIONAL_SOURCE_INGEST_CHUNK_KEYS if k in c}
+        for c in (chunks or [])
+    ]
+    return _rpc_one(get_client().rpc("ingest_organizational_source_document", {
+        "p_organization_id": organization_id,
+        "p_filename": filename,
+        "p_content_hash": content_hash,
+        "p_chunks": clean_chunks,
+        "p_storage_path": storage_path,
+        "p_file_size": file_size,
+        "p_content_type": content_type,
+        "p_extracted_char_count": extracted_char_count,
+        "p_uploaded_by_user_id": uploaded_by_user_id,
+    }).execute())
+
+
 def list_organizational_source_documents(organization_id: str) -> list[dict]:
     """Service-role, ownership-checked read -- callers must go through
     tenancy.py's list_organizational_source_documents_for_organization()."""
