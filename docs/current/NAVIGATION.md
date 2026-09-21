@@ -68,8 +68,17 @@ Where to look, not what everything means. Read
 - `section_analyzer.py` — context assembly, the bounded model call,
   staleness/idempotency.
 - `migrations/013_section_analyzer.sql` — `outline_section_requirements`,
-  `section_reviews` (written, **not applied** — see SYSTEM_STATE.md).
-- Tests: `tests/test_section_analyzer.py`.
+  `section_reviews` (written, **still not applied** — 2026-09-21
+  compatibility audit classified it **SAFE WITH SOURCE FIXES**; one fix
+  applied directly to this still-unapplied file: removed `section_
+  reviews`' unused `authenticated` INSERT policy, since application code
+  has always written that table via the service-role client only — see
+  SYSTEM_STATE.md's "Migration 013 Compatibility Audit" entry for the
+  full writeup and recommended commissioning procedure. Still not applied
+  by this audit).
+- Tests: `tests/test_section_analyzer.py`, `tests/
+  test_migration_013_audit.py` (static source-level checks: the fix is
+  present, no schema drift vs. `database.py`/`section_analyzer.py`).
 - `tenancy.py`'s `analyze_section_for_organization` and the
   `*_authenticated` mapping/history CRUD functions.
 

@@ -78,6 +78,35 @@
 --     established post-Phase-8 convention (migration 010's
 --     reviewed_by_user_id / applied_by_user_id / decided_by_user_id), not
 --     the older pre-auth analysis_runs.created_by text column.
+--
+-- ── Migration 013 Compatibility Audit (2026-09-21) ──────────────────────
+-- Re-verified, still unapplied, against the current live schema (after
+-- migrations 014-019): no table/policy/index name collisions, no FK-target
+-- column-type drift (bids/outline_sections/requirements/analysis_runs/
+-- analysis_results.id are all still bigint), public.can_access_bid is
+-- still SECURITY DEFINER with SET search_path = 'public' unchanged since
+-- migration 008, and no later migration alters outline_sections,
+-- requirements, analysis_runs, analysis_results, bids, or can_access_bid.
+-- database.py/section_analyzer.py/tenancy.py's column usage remains a
+-- perfect 1:1 match with the schema below. Classification: SAFE WITH
+-- SOURCE FIXES -- see docs/current/SYSTEM_STATE.md's Migration 013
+-- Compatibility Audit entry for the full writeup. ONE fix applied here:
+-- the `section_reviews` table's `authenticated` INSERT policy has been
+-- REMOVED (see below) -- application code (database.create_section_review)
+-- has always written this table exclusively through the service-role
+-- client (analyze_section_for_organization's own require_bid_access +
+-- model-call gate happens BEFORE that write), so an authenticated-role
+-- INSERT policy was dead code from the app's own perspective, yet still
+-- let any bid-authorized user forge an arbitrary section_reviews row
+-- directly via the REST API (fake direction/review_result/based_on_*
+-- provenance, bypassing the model call and idempotency check entirely) --
+-- exactly the gap migrations 015-019's now-established "service-role-only
+-- write, no authenticated write policy at all" pattern exists to close.
+-- outline_section_requirements' authenticated select/insert/delete
+-- policies are UNCHANGED -- that table genuinely IS written via the
+-- authenticated RLS-scoped client (Category A, no model call involved,
+-- mirroring outline_sections' own full-CRUD policy from migration 008),
+-- so its existing policy set already matches its real access pattern.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 create table if not exists outline_section_requirements (
@@ -136,11 +165,25 @@ alter table section_reviews enable row level security;
 -- already governs (using public.can_access_bid(bid_id), defined there).
 -- Full CRUD for outline_section_requirements (Category A: mirrors
 -- outline_sections' own migration-008 policy set exactly, since the
--- mapping is edited by the same in-session writer as the section itself).
--- section_reviews is INSERT+SELECT only -- no UPDATE/DELETE policy, since
--- application code never updates or deletes a review directly (immutability
--- is enforced at the RLS layer, not just by convention: an authenticated
--- user literally cannot issue an UPDATE/DELETE that Postgres will accept).
+-- mapping is edited by the same in-session writer as the section itself)
+-- -- there is no UPDATE policy because the app never updates a mapping
+-- row in place, only deletes-then-reinserts (replace-all semantics, see
+-- the table's own header note above); insert/delete together already
+-- cover that pattern.
+--
+-- section_reviews is SELECT-only for `authenticated` -- no INSERT/UPDATE/
+-- DELETE policy at all (2026-09-21 compatibility-audit fix: an INSERT
+-- policy was here originally, but application code has always written
+-- this table exclusively through the service-role client, AFTER
+-- analyze_section_for_organization's own require_bid_access + model-call
+-- gate -- see the audit note above). This is now the SAME "RLS enabled,
+-- authenticated read-only, service-role-only write" pattern migrations
+-- 015-019 established for every other model-call-produced structured
+-- output (proposal_intelligence_findings, organizational_memory_items,
+-- section_drafts, etc.) -- immutability AND write-provenance are both
+-- enforced at the RLS layer, not just by convention: an authenticated
+-- user literally cannot issue an INSERT/UPDATE/DELETE that Postgres will
+-- accept.
 
 create policy outline_section_requirements_select_bid_access
     on public.outline_section_requirements for select to authenticated
@@ -155,6 +198,3 @@ create policy outline_section_requirements_delete_bid_access
 create policy section_reviews_select_bid_access
     on public.section_reviews for select to authenticated
     using (public.can_access_bid(bid_id));
-create policy section_reviews_insert_bid_access
-    on public.section_reviews for insert to authenticated
-    with check (public.can_access_bid(bid_id));

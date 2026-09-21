@@ -1102,6 +1102,106 @@ what's applied to any Supabase project — see the note below (which is the
 current source of truth for live status; always verify explicitly rather
 than trusting this sentence in isolation).
 
+### Migration 013 Compatibility Audit (2026-09-21)
+
+**Migration 013 (`013_section_analyzer.sql`) remains UNAPPLIED to any live
+database — this audit did NOT apply it.** It creates two tables
+(`outline_section_requirements`, `section_reviews`), both RLS-enabled,
+both scoped via `public.can_access_bid(bid_id)` (the same helper every
+bid-owned child table has used since migration 008) — no new function,
+trigger, or RPC.
+
+**Why it was likely skipped (inferred from git history, not documented
+anywhere explicitly)**: authored 2026-09-20 in the same commit as the
+Section Analyzer feature itself, immediately before this session's long
+OM-1→OM-2→OM-3B→PI-1→…→PI-3D chain began. Every migration since (015
+through 019) got its own dedicated live-commissioning task later in this
+series; migration 013 (and, as this audit discovered, migration 012)
+simply never did. Nothing in the code or history suggests it was found
+broken or deliberately shelved — it reads as a backlog/sequencing gap,
+not a technical block.
+
+**Live dependency check (read-only, no live mutation)**: `bids`,
+`outline_sections`, `requirements`, `analysis_runs`, `analysis_results`
+all still have `bigint` primary keys (unchanged); `public.can_access_bid`/
+`is_organization_member` still exist, still `SECURITY DEFINER`, still
+`SET search_path = 'public'` (unchanged since migration 008 — no drift
+that would reintroduce the search_path-hijacking class of defect this
+repo already hardened once, in migration 011). No migration 014-019
+alters `outline_sections`/`requirements`/`analysis_runs`/
+`analysis_results`/`bids`/`can_access_bid`. No table/policy/index name
+in migration 013 collides with anything currently live (`pg_policies`/
+`pg_indexes`/`information_schema.tables` all confirm zero matches).
+**Methodological note**: migration 012's own column
+(`analysis_results.fast_analysis_result_snapshot`) was found to exist
+live even though "012"/"fast_analysis_result_snapshot" never appears in
+`list_migrations`' ledger — proof the ledger is NOT authoritative for
+"is this applied," only `information_schema`/direct schema inspection is
+(reinforces this repo's own standing rule, doesn't contradict it).
+
+**Application-code alignment**: `database.create_section_review`'s write
+keys and `section_analyzer.DIRECTIONS`' CHECK-constraint values are a
+byte-for-byte match with migration 013's columns/constraint (verified via
+`tests/test_migration_013_audit.py`, added this task) — the code was
+written in lockstep with this migration and has never drifted since.
+`outline_section_requirements` is still the correct, still-current
+canonical model for durable section↔requirement mapping (PI-3A/PI-3B/
+PI-3C's own drafting brief deliberately has NO dependency on it, by
+design — see `tenancy._assemble_section_drafting_brief`'s docstring — so
+nothing in that later architecture makes this table obsolete). PI-3D's
+new BUILD outline workflow is a consumer, not a replacement: its own
+`get_section_requirement_map_authenticated`/`get_draft_existence_map_for_
+organization` read through the exact same table/columns migration 013
+defines.
+
+**Security finding (one, now fixed in the source file)**: `section_
+reviews_insert_bid_access` granted `authenticated` INSERT rights that
+application code never actually used (`database.create_section_review`
+always writes via the service-role client, after `analyze_section_for_
+organization`'s own `require_bid_access` + model-call gate) — an unused
+policy that still let any bid-authorized user forge an arbitrary
+`section_reviews` row directly via the REST API (fabricated `direction`/
+`review_result`/`based_on_*` provenance, bypassing the model call and
+idempotency check entirely). This is exactly the gap migrations 015-019
+already closed for every other model-call-produced structured output
+("RLS enabled, authenticated read-only, service-role-only write, no
+authenticated write policy at all"). **Fixed directly in the still-
+unapplied migration file** (editing an unapplied migration in place is
+this repo's own established convention — a LIVE migration is instead
+superseded by a new numbered file, e.g. migration 019 modifying 018's
+RPC): `section_reviews_insert_bid_access` removed; `section_reviews` is
+now SELECT-only for `authenticated`, matching the modern pattern exactly.
+`outline_section_requirements`'s select/insert/delete policies are
+UNCHANGED — that table genuinely IS written via the authenticated
+RLS-scoped client (Category A, no model call), matching `outline_
+sections`' own full-CRUD policy from migration 008, so its existing
+policy set already matched its real access pattern and needed no change.
+
+**Final classification: SAFE WITH SOURCE FIXES.** The one identified fix
+(removing the unused `section_reviews` INSERT policy) is applied to
+`migrations/013_section_analyzer.sql` in place; no other change is
+needed. **Recommended commissioning procedure** (mirroring this series'
+own established pattern, e.g. migrations 016-019): a SEPARATE, later,
+explicitly-authorized task should (1) apply the now-fixed migration 013
+live via the Supabase dashboard/SQL editor, (2) verify RLS/policies live
+exactly as written (a committed `authenticated` INSERT-into-`section_
+reviews` probe should be REJECTED, proving the fix took effect — this is
+a NEW verification this audit could not itself perform without applying
+the migration), (3) run one synthetic round-trip on `outline_section_
+requirements` (map a section to a requirement via the real UI/tenancy
+path, confirm PI-3D's BUILD section list rollup now shows a real
+requirement count instead of the graceful-degradation empty map, confirm
+`tenancy.SectionMappingUnavailableError` no longer raises), (4) run one
+synthetic Section Analyzer review end-to-end (confirms `section_reviews`
+insert-via-service-role and the idempotency index both work against the
+live table), (5) clean up all disposable rows, (6) update SYSTEM_STATE.md/
+NAVIGATION.md to mark migration 013 live. Until that task runs, `tenancy.
+get_section_requirement_ids_authenticated`/`get_section_requirement_map_
+authenticated` continue to degrade to an empty mapping and `set_section_
+requirement_mapping_authenticated` continues to raise `tenancy.
+SectionMappingUnavailableError` (PI-3D's own graceful-degradation
+behavior, unaffected by this audit).
+
 > **LAST VERIFIED EXTERNAL STATE** (as of the audit that wrote this file):
 > migration 012 was applied to the project's Supabase database by the repo
 > owner. Migration 013 (Section Analyzer) was written but explicitly NOT
