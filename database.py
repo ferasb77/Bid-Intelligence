@@ -1386,27 +1386,20 @@ def get_or_create_section_draft(
     evidence_items_used: list | None = None, unsupported_or_unresolved_points: list | None = None,
     contradictions_or_caveats: list | None = None, human_confirmation_required: bool = True,
     drafting_notes: str | None = None, word_count: int | None = None,
-    assurance_issues: list | None = None, created_by_user_id: str | None = None,
+    assurance_issues: list | None = None, material_claims: list | None = None,
+    created_by_user_id: str | None = None,
 ) -> dict | None:
     """Concurrency-safe get-or-create via the SQL function of the same name
-    (migration 018) -- two simultaneous callers computing the SAME
-    fingerprint for the SAME (bid_id, req_id) can never create duplicate
-    rows; the loser of the race gets the winner's already-persisted row
-    back. Do NOT replace this with a separate SELECT-then-INSERT from
-    Python -- that is exactly the race this function exists to close. The
-    RPC itself rejects an empty draft_text outright -- a failed/empty
-    draft can never be persisted through this path.
-
-    Deliberately does NOT pass `material_claims` (PI-3C, migration 019 --
-    section_drafting.SectionDraftResult.material_claims/migrations/019_
-    section_draft_claim_mappings.sql) even though that field now exists on
-    the in-memory result: migration 018's LIVE, already-commissioned RPC
-    signature has no `p_material_claims` parameter, and unconditionally
-    including one in this call's payload would break this currently-
-    working live path with a "no matching function" error until migration
-    019 is separately applied and commissioned. That wiring (adding the
-    parameter here) ships together with migration 019's own commissioning
-    task, never ahead of it."""
+    (migration 018, extended by migration 019 -- both live-commissioned as
+    of 2026-09-21 -- with `material_claims`, PI-3C's claim-level support
+    mapping; see migrations/019_section_draft_claim_mappings.sql) -- two
+    simultaneous callers computing the SAME fingerprint for the SAME
+    (bid_id, req_id) can never create duplicate rows; the loser of the
+    race gets the winner's already-persisted row back. Do NOT replace this
+    with a separate SELECT-then-INSERT from Python -- that is exactly the
+    race this function exists to close. The RPC itself rejects an empty
+    draft_text outright -- a failed/empty draft can never be persisted
+    through this path."""
     return _rpc_one(get_client().rpc("get_or_create_section_draft", {
         "p_bid_id": bid_id, "p_req_id": req_id, "p_input_fingerprint": input_fingerprint,
         "p_contract_version": contract_version, "p_draft_text": draft_text,
@@ -1421,6 +1414,7 @@ def get_or_create_section_draft(
         "p_human_confirmation_required": bool(human_confirmation_required),
         "p_drafting_notes": drafting_notes, "p_word_count": word_count,
         "p_assurance_issues": assurance_issues or [],
+        "p_material_claims": material_claims or [],
         "p_created_by_user_id": created_by_user_id,
     }).execute())
 

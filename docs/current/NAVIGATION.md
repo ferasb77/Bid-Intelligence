@@ -661,34 +661,34 @@ deferred, not started.
   readable) but is likewise downgraded if left with zero evidence. New
   `SUPPORT_STATUS_*` closed vocabulary (`SUPPORTED`/`PARTIALLY_SUPPORTED`/
   `UNSUPPORTED`/`COMMITMENT`).
-- `migrations/019_section_draft_claim_mappings.sql` (written, **not
-  applied**) — a single backward-compatible `alter table section_drafts
-  add column material_claims jsonb not null default '[]'::jsonb` plus a
+- `migrations/019_section_draft_claim_mappings.sql` — **live-commissioned
+  2026-09-21** (ledger entry `20260921163500 section_draft_claim_mappings`)
+  — a single backward-compatible `alter table section_drafts add column
+  material_claims jsonb not null default '[]'::jsonb` plus a
   dropped-and-recreated `get_or_create_section_draft()` RPC accepting the
-  new field. **Deliberate two-step rollout**: migration 018's RPC is
-  already LIVE and already used by production code, so `database.
-  get_or_create_section_draft`/`tenancy.get_or_generate_section_draft`
-  were NOT wired to pass the new parameter in this same change (doing so
-  would break the currently-working live path with a "no matching
-  function" error) — that one-line wiring ships together with migration
-  019's own future commissioning task. A freshly generated (ephemeral,
-  non-persisted) draft's `material_claims` are still fully computed and
-  shown by the UI for that one response; only the PERSISTED round-trip
-  omits them until then (`tenancy._section_draft_row_to_dict` already
-  reads `row.get("material_claims")` forward-compatibly).
-- Tests: `tests/test_section_drafting.py`'s new `TestMaterialClaimMapping`
+  new field. Applied via the deliberate two-step rollout the migration's
+  own header anticipated: migration 018's RPC was already live and
+  already used by production code, so the Python wiring
+  (`database.get_or_create_section_draft`/`tenancy.
+  get_or_generate_section_draft` passing `material_claims`/
+  `p_material_claims`) was deferred until this commissioning task applied
+  the schema/RPC change — now complete, live-proven via a real Anthropic
+  drafting call plus a poisoned-`_call_section_draft` cache-hit proof
+  (see `docs/current/SYSTEM_STATE.md`'s PI-3C commissioning entry for
+  full detail). `tenancy._section_draft_row_to_dict` still reads
+  `row.get("material_claims")` defensively (a pre-019-shaped row remains
+  theoretically possible, though none occur post-migration).
+- Tests: `tests/test_section_drafting.py`'s `TestMaterialClaimMapping`
   (12), `tests/test_section_drafting_workspace.py` (12 — status/staleness/
-  no-model-call/no-OM-retrieval/isolation), `tests/smoke/
+  no-model-call/no-OM-retrieval/isolation), `tests/
+  test_section_drafts_persistence.py` (24 total, incl. 2 material-claims
+  round-trip tests), `tests/smoke/
   test_all_pages_runtime.py::test_requirement_drafting_workspace_executes`
-  (new — calls the render function directly against real bid 8/
-  requirement R1 data, read-only). No live Anthropic call this task —
-  validated the empty-state render path live; draft-exists/assurance/
-  claim-mapping paths validated via the deterministic suite (deliberately
-  did not generate a live persisted draft against a real bid to avoid
-  leaving permanent residue).
+  (calls the render function directly against real bid 8/requirement R1
+  data, read-only).
 - Explicitly still deferred: whole-proposal generation, a collaborative
   editor, visual version diffing, Word export, automated SME messaging,
-  Ask CapOS, Red Team, applying migration 019 live.
+  Ask CapOS, Red Team.
 
 **Tenancy / RLS / auth boundary**
 - `tenancy.py` — every `*_for_organization` (service-role, ownership-checked)

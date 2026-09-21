@@ -96,11 +96,17 @@ def _mock_adjudication_style_draft(prompt, *, bid_id, max_tokens=2000):
     evidence_items = [
         {"evidence_id": i, "claim_type": "ORGANIZATIONAL_KNOWLEDGE", "note": "cited"} for i in ids
     ]
+    material_claims = [
+        {"claim_id": f"C{i+1}", "claim_text": f"Claim backed by {eid}.",
+         "claim_type": "ORGANIZATIONAL_KNOWLEDGE", "evidence_ids": [eid], "support_status": "SUPPORTED"}
+        for i, eid in enumerate(ids)
+    ]
     return ({
         "draft_text": "We deliver this requirement through our documented methodology.",
         "requirements_addressed": ["R-1"],
         "evaluation_criteria_addressed": [],
         "evidence_items_used": evidence_items,
+        "material_claims": material_claims,
         "unsupported_or_unresolved_points": [],
         "contradictions_or_caveats": [],
         "human_confirmation_required": False,
@@ -290,6 +296,46 @@ class TestRoundTripFidelity:
             second = _call(h)
         assert second["assurance"]["passed"] == first["assurance"]["passed"]
         assert second["assurance"]["issues"] == first["assurance"]["issues"]
+
+    def test_material_claims_survive_persistence_round_trip(self):
+        """PI-3C live commissioning: migration 019 is now live and wired --
+        material_claims must round-trip through the real persistence path,
+        not just the ephemeral in-memory result."""
+        with _Harness() as h:
+            h.enrichment_history = [{
+                "organizational_evidence": [_om_row("k1")], "remaining_gaps": [],
+                "requires_human_confirmation": False, "input_fingerprint": "omfp-1",
+            }]
+            first = _call(h)
+            second = _call(h)
+        assert first["result"]["material_claims"]
+        assert first["result"]["material_claims"] == second["result"]["material_claims"]
+        claim = second["result"]["material_claims"][0]
+        assert claim["claim_id"] == "C1"
+        assert claim["claim_type"] == "ORGANIZATIONAL_KNOWLEDGE"
+        assert claim["evidence_ids"][0].startswith("OM")
+        assert claim["support_status"] == "SUPPORTED"
+
+    def test_material_claims_persist_even_when_evidence_absent(self):
+        """A PROPOSED_APPROACH/UNSUPPORTED_GAP claim (no evidence_ids) must
+        still persist and round-trip -- an empty evidence_ids list is not
+        the same as the field being dropped."""
+        with _Harness() as h:
+            def _draft_fn(prompt, *, bid_id, max_tokens=2000):
+                return ({
+                    "draft_text": "text", "requirements_addressed": ["R-1"],
+                    "material_claims": [
+                        {"claim_id": "C1", "claim_text": "We will assign a lead.",
+                         "claim_type": "PROPOSED_APPROACH", "evidence_ids": [],
+                         "support_status": "COMMITMENT"},
+                    ],
+                }, None)
+            with patch.object(sd, "_call_section_draft", side_effect=_draft_fn):
+                payload = _call(h)
+        claim = payload["result"]["material_claims"][0]
+        assert claim["claim_type"] == "PROPOSED_APPROACH"
+        assert claim["evidence_ids"] == []
+        assert claim["support_status"] == "COMMITMENT"
 
 
 # ── Failure safety ───────────────────────────────────────────────────────

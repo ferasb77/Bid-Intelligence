@@ -2125,12 +2125,14 @@ def _assemble_section_drafting_brief(
 
 def _section_draft_row_to_dict(row: dict) -> dict:
     """Adapts a persisted `section_drafts` row (migration 018, PI-3B; the
-    `material_claims` field is migration 019, PI-3C -- NOT applied live as
-    of this writing, so `row.get("material_claims")` is always absent/None
-    against the current live schema and this correctly degrades to `[]`)
-    into the SAME dict shape section_drafting.SectionDraftResult.to_dict()
-    produces -- a cache hit and a fresh computation are indistinguishable
-    to a caller."""
+    `material_claims` field is migration 019, PI-3C -- both live-
+    commissioned as of 2026-09-21) into the SAME dict shape
+    section_drafting.SectionDraftResult.to_dict() produces -- a cache hit
+    and a fresh computation are indistinguishable to a caller.
+    `row.get("material_claims")` also degrades safely to `[]` for a
+    genuinely pre-019 row (the column's own NOT NULL DEFAULT '[]'::jsonb
+    means this case does not actually occur post-migration, but the read
+    stays defensive regardless)."""
     return {
         "requirement_id": row.get("requirement_id"),
         "req_id": row.get("req_id"),
@@ -2249,15 +2251,7 @@ def get_or_generate_section_draft(
         human_confirmation_required=result.human_confirmation_required,
         drafting_notes=result.drafting_notes, word_count=result.word_count,
         assurance_issues=list(assurance.issues),
-        # material_claims (PI-3C) deliberately NOT passed here -- see
-        # database.get_or_create_section_draft's own docstring: migration
-        # 019 is not yet live, and this call must not break the currently-
-        # working, live-commissioned migration-018 RPC. A freshly generated
-        # draft's material_claims still exist in `result` and are shown by
-        # the UI for that one response; only the PERSISTED round-trip omits
-        # them until migration 019 ships (see tenancy._section_draft_row_
-        # to_dict, which already reads `row.get("material_claims")`
-        # forward-compatibly for the moment this lands).
+        material_claims=[c.to_dict() for c in result.material_claims],
         created_by_user_id=created_by_user_id,
     )
     if persisted is None:

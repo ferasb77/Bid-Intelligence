@@ -775,54 +775,62 @@ replace`, so the identity is genuinely extended rather than left as an
 ambiguous duplicate overload) accepting the new field — reusing PI-3B's
 own `section_drafts` table rather than a new one, exactly mirroring why
 migration 017/018 didn't reuse an earlier table either (documented in the
-migration file's own header). **Written, NOT applied to any live
-database.**
+migration file's own header). **Live-commissioned 2026-09-21** (ledger
+entry `20260921163500 section_draft_claim_mappings`).
 
-**Important, deliberate two-step rollout** (see migration 019's own
-header note): migration 018's `get_or_create_section_draft()` RPC is
-ALREADY live and ALREADY used by production code
-(`tenancy.get_or_generate_section_draft`) — unlike every prior migration
-in this series, migration 019 modifies an already-working live RPC's
-signature rather than introducing a new one. `database.
-get_or_create_section_draft()`/`tenancy.get_or_generate_section_draft()`
-were therefore DELIBERATELY NOT wired to pass `material_claims`/
-`p_material_claims` in this same change — doing so would break every live
-call to the CURRENT (migration-018-only) RPC with a "no matching function"
-error immediately on deploy, regardless of whether migration 019 is ever
-applied. `section_drafting.MaterialClaim`/`SectionDraftResult.
-material_claims` are fully implemented and tested, and a FRESH (ephemeral,
-non-persisted) PI-3A response already carries them — but the PERSISTED
-round-trip (`tenancy._section_draft_row_to_dict`, already forward-
-compatible via `row.get("material_claims")`) will show none until the ONE
-remaining wiring step (adding the parameter back into both functions)
-ships together with migration 019's own commissioning task, never ahead
-of it.
+**Live commissioning (2026-09-21)**: applied via the deliberate two-step
+rollout migration 019's own header anticipated — migration 018's
+`get_or_create_section_draft()` RPC was already live and already used by
+production code, so the Python wiring (`material_claims` parameter in
+`database.get_or_create_section_draft()`/`tenancy.
+get_or_generate_section_draft()`) was deferred until this commissioning
+task applied the schema/RPC change, avoiding any window where production
+code called a signature that didn't exist yet. Both are now wired; no
+code defects found during commissioning. Verified live: RLS/grants
+unchanged (still service_role-write-only, `authenticated` INSERT
+confirmed blocked via a committed transaction probe), old 18-arg RPC
+overload genuinely dropped (not left ambiguous alongside the new one),
+full material-claims round-trip fidelity (claim_id/claim_text/claim_type/
+evidence_ids/support_status), idempotent reuse on identical fingerprint,
+new immutable version on changed fingerprint with the prior row's claims
+untouched, and a genuinely pre-019-shaped row (`material_claims` absent
+from the insert) still returns the column default `[]` safely. A real,
+disposable Anthropic drafting call (bid 1 / requirement M3, synthetic
+Organizational Memory enrichment, deleted after) produced a correctly
+distinguished mix in one draft — `ORGANIZATIONAL_KNOWLEDGE`/`SUPPORTED`
+citing real evidence, `PROPOSED_APPROACH`/`COMMITMENT` claims with no
+evidence required, and an `UNSUPPORTED_GAP` claim never marked supported
+— proving the fail-closed reconciliation rules hold with real model
+output, not just synthetic test fixtures. A poisoned-`_call_section_draft`
+stub proved a second identical request is served entirely from the
+persisted row (no drafting call) with material_claims byte-identical to
+the first. UI smoke: `pages/section_drafting_workspace.py`'s real
+`_render_draft_result`/`_render_claim` functions were executed directly
+against the live persisted rows — the migration-019 draft (8 claims) and
+a migration-018-shaped legacy row (no `material_claims` key populated) —
+both rendered without exception; the legacy path exercises the existing
+"No claim-level evidence mapping recorded" fallback caption. All
+disposable rows deleted post-commissioning; zero residue confirmed.
+Security advisors: 3 pre-existing findings (unrelated `model_usage_events`
+RLS-no-policy, `can_access_bid`/`is_organization_member` SECURITY DEFINER
+helpers, auth leaked-password-protection) — none attributable to
+migration 019.
 
-No new Anthropic call this task — validated via `tests/smoke/
-test_all_pages_runtime.py::test_requirement_drafting_workspace_executes`
-(a new smoke test calling `render_requirement_drafting_workspace`
-directly against REAL bid 8 / requirement R1 data, read-only, no
-generation triggered) and the full existing PI-3A/PI-3B test suites.
-Deliberately did NOT generate a live persisted draft against a real bid
-for validation purposes (would leave permanent residue in a real bid's
-live data for a UI-only check) — the empty-state ("no draft yet") render
-path was validated live; the draft-exists/assurance/claim-mapping render
-paths were validated via the deterministic test suite (synthetic data),
-consistent with this phase's own "safe synthetic data" allowance.
-
-Tests: `tests/test_section_drafting.py` gained `TestMaterialClaimMapping`
-(12 new tests — claim-to-valid-evidence-id mapping, unsupported claims
-never verified, proposed-approach vs. historical-fact distinction,
-SOURCE_MEMORY-only downgrade, APPROVED_FIRM_KNOWLEDGE/proposal-evidence
-acceptance, unknown claim_type dropped, duplicate claim_id dedup,
-bounded count, backward-compatible absence); `tests/
+Tests: `tests/test_section_drafting.py` has `TestMaterialClaimMapping`
+(12 tests — claim-to-valid-evidence-id mapping, unsupported claims never
+verified, proposed-approach vs. historical-fact distinction, SOURCE_
+MEMORY-only downgrade, APPROVED_FIRM_KNOWLEDGE/proposal-evidence
+acceptance, unknown claim_type dropped, duplicate claim_id dedup, bounded
+count, backward-compatible absence); `tests/
 test_section_drafting_workspace.py` (12 — status-check behavior: no
 draft/current/stale detection, no model call, no OM retrieval, no
 auto-regeneration on staleness, prior immutable version still shown while
-stale, bid-scoped isolation). Explicitly still deferred: whole-proposal
-generation, a collaborative editor, visual version diffing, Word export,
-automated SME messaging, Ask CapOS, Red Team, applying migration 019
-live.
+stale, bid-scoped isolation); `tests/test_section_drafts_persistence.py`
+gained 2 more (material_claims round-trip fidelity across two identical
+calls; claims persist correctly even when `evidence_ids` is empty) for 24
+total. Explicitly still deferred: whole-proposal generation, a
+collaborative editor, visual version diffing, Word export, automated SME
+messaging, Ask CapOS, Red Team.
 
 ## Architectural fact-type separation
 
@@ -905,27 +913,28 @@ usage is tracked, sentence/claim-level citation is not — see the
 Organizational Memory entry above for the full assessment). See that
 entry for full detail on both PI-3A and PI-3B. **PI-3C (Section Drafting
 Workspace, `pages/section_drafting_workspace.py` wired into
-`pages/stage_build.py`) is now implemented** — the first user-facing,
+`pages/stage_build.py`) is now implemented AND live-commissioned**
+(migration 019 applied 2026-09-21) — the first user-facing,
 Phoenix-facing proposal-writing experience, and closes PI-3B's identified
 claim-level traceability gap (`section_drafting.MaterialClaim`,
-`migrations/019_section_draft_claim_mappings.sql`, written but NOT
-applied — see the Organizational Memory entry above for the full
-deliberate-two-step-rollout note: this migration modifies an
-already-live RPC, so the persistence wiring ships together with its own
-commissioning task, never ahead of it). Deferred: whole-proposal
-generation, a collaborative editor, visual version diffing, Word export,
-Ask CapOS integration, Red Team, Section Analyzer UI *redesign* (this
-phase integrates into it, not replaces it), applying migration 019 live.
+`migrations/019_section_draft_claim_mappings.sql`, live). See the
+Organizational Memory entry above for the full commissioning detail
+(round-trip fidelity, idempotency, backward compatibility, cache-hit
+proof, live UI smoke, security advisors, cleanup). Deferred:
+whole-proposal generation, a collaborative editor, visual version
+diffing, Word export, Ask CapOS integration, Red Team, Section Analyzer
+UI *redesign* (this phase integrates into it, not replaces it).
 
 Absent an explicit task instruction otherwise, still do not: apply
-migration 013, 019, alter/reapply migration 015, 016, 017, or 018,
+migration 013, alter/reapply migration 015, 016, 017, 018, or 019,
 activate the compact-wire prototype, change chunk sizes/max_tokens/model
 routing/caching, or merge `main`/deploy.
 
 ## Migrations known in this repository (files, not live-database state)
 
 Highest migration file present: **019**
-(`019_section_draft_claim_mappings.sql`, written, **NOT applied**).
+(`019_section_draft_claim_mappings.sql`, **applied and live-commissioned
+2026-09-21**, ledger entry `20260921163500 section_draft_claim_mappings`).
 Migrations 017/018 (`017_requirement_evidence_enrichment.sql`/
 `018_section_drafts.sql`) remain **applied and live-commissioned
 2026-09-21**. Files 001–019 exist in `migrations/`. This describes what's
@@ -1061,6 +1070,45 @@ than trusting this sentence in isolation).
 > migration N live" question as requiring a fresh check — `git log` and
 > this file are not a substitute for checking the live database when a
 > task depends on it.
+>
+> **Update, 2026-09-21 (later the same day):** Migration 019 (Section
+> Draft Claim Mappings, PI-3C) was **applied live**, formally recorded in
+> Supabase's migration ledger as `20260921163500
+> section_draft_claim_mappings`. The deferred wiring step described just
+> above is now complete: `database.get_or_create_section_draft`/`tenancy.
+> get_or_generate_section_draft` pass `material_claims`/`p_material_claims`
+> for real. Schema/RPC verification: the `material_claims jsonb not null
+> default '[]'::jsonb` column exists with the correct type/default, all
+> migration-018 columns/PK/unique/FK/index/RLS policy unchanged, the old
+> 18-arg RPC overload was genuinely dropped (not left ambiguous alongside
+> the new 19-arg one), grants remain service_role/postgres-only (a
+> committed `authenticated` INSERT probe confirmed still blocked). RPC-
+> level commissioning: full material-claims round-trip fidelity, identical-
+> fingerprint idempotent reuse, changed-fingerprint immutable new version
+> with the prior row's claims untouched, a pre-019-shaped insert (no
+> `material_claims` supplied) reading back the column default `[]` safely.
+> Python-level end-to-end commissioning via the real `tenancy.
+> get_or_generate_section_draft` (bid 1 / requirement M3, a disposable
+> synthetic Organizational Memory enrichment): one real, live Anthropic
+> drafting call produced 8 material claims with correctly distinguished
+> types/statuses (an `ORGANIZATIONAL_KNOWLEDGE`/`SUPPORTED` claim citing
+> real evidence, five `PROPOSED_APPROACH`/`COMMITMENT` claims, one
+> `PARTIALLY_SUPPORTED` claim, one `UNSUPPORTED_GAP` claim never marked
+> supported) — live proof the fail-closed reconciliation rules hold
+> against real model output. A second identical call, with `section_
+> drafting._call_section_draft` temporarily replaced by a function that
+> raises if invoked, returned `reused: True` with byte-identical
+> material_claims (proving the cache hit never calls Anthropic). UI smoke:
+> the real `_render_draft_result`/`_render_claim` functions in `pages/
+> section_drafting_workspace.py` executed against the live persisted M3
+> draft (8 claims) and a migration-018-shaped legacy row (no
+> material_claims) without exception. Security advisors: 3 findings, all
+> pre-existing and unrelated to migration 019 (`model_usage_events`
+> RLS-no-policy, `can_access_bid`/`is_organization_member` SECURITY
+> DEFINER, auth leaked-password-protection) — no fix required. No code
+> defects found this commissioning pass. All disposable rows (3
+> section_drafts, 1 requirement_evidence_enrichments) cleaned up, verified
+> zero residue.
 
 ## Where NOT to look first
 
