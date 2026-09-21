@@ -1832,12 +1832,22 @@ def _build_package_intelligence_ledger(alignment_result: dict, requirements: lis
     surviving claims/requirement evidence/observations/deficiencies gets
     a P1, P2, ... id, each full ref appearing in the registry exactly
     once. Sections B-E reference claims/sources only by these short IDs.
-    Deterministic: identical input (alignment_result, requirements)
-    always produces an identical ledger.
+    Hardening fix (observation provenance): delivery_commitments/
+    commercial_exposures entries also get their own O1, O2, ... id
+    (first-seen order, delivery section before commercial section),
+    distinct from the C#/P# namespaces, so a package finding can cite a
+    specific observation. Deterministic: identical input
+    (alignment_result, requirements) always produces an identical
+    ledger.
 
-    Returns a PURE model-input payload -- no bookkeeping/diagnostic keys
-    (fix #3: package_ledger_digest must hash only what the model actually
-    sees). Bookkeeping is attached separately via
+    Returns a PURE model-input payload plus one model-visible flag,
+    "ledger_complete" (hardening fix #1) -- True iff no prunable entry
+    from ANY section was dropped for budget, distinct from
+    "coverage_complete" (which answers whether the underlying proposal
+    was fully covered upstream, not whether THIS ledger retains
+    everything that coverage produced). No OTHER bookkeeping/diagnostic
+    keys are included (fix #3: package_ledger_digest must hash only what
+    the model actually sees). Bookkeeping is attached separately via
     ledger_budget_bookkeeping(), which the caller reads before/alongside
     computing the digest, never inside the hashed payload. If a valid
     ledger cannot be produced within _LEDGER_BYTE_BUDGET even after
@@ -1949,14 +1959,28 @@ def _build_package_intelligence_ledger(alignment_result: dict, requirements: lis
             cand.build([sid for sid in (_register_source(r) for r in cand.source_refs) if sid])
             for cand in by_kind.get("requirement_evidence", [])
         ]
-        delivery_commitments = [
-            cand.build([sid for sid in (_register_source(r) for r in cand.source_refs) if sid])
-            for cand in by_kind.get("delivery", [])
-        ]
-        commercial_exposures = [
-            cand.build([sid for sid in (_register_source(r) for r in cand.source_refs) if sid])
-            for cand in by_kind.get("commercial", [])
-        ]
+
+        # Observation IDs (hardening fix #2 for observation provenance):
+        # delivery_commitments/commercial_exposures entries get their own
+        # deterministic, first-seen-order O1..On namespace -- distinct from
+        # claim (C#) and source (P#) IDs -- so a package finding can cite a
+        # specific observation the same way it cites a claim. Numbered
+        # sequentially across BOTH sections, delivery first then
+        # commercial, matching this function's existing section order.
+        obs_counter = 0
+        delivery_commitments = []
+        for cand in by_kind.get("delivery", []):
+            entry = cand.build([sid for sid in (_register_source(r) for r in cand.source_refs) if sid])
+            obs_counter += 1
+            entry["observation_id"] = f"O{obs_counter}"
+            delivery_commitments.append(entry)
+        commercial_exposures = []
+        for cand in by_kind.get("commercial", []):
+            entry = cand.build([sid for sid in (_register_source(r) for r in cand.source_refs) if sid])
+            obs_counter += 1
+            entry["observation_id"] = f"O{obs_counter}"
+            commercial_exposures.append(entry)
+
         local_deficiencies = [
             cand.build([sid for sid in (_register_source(r) for r in cand.source_refs) if sid])
             for cand in by_kind.get("deficiency", [])
@@ -2009,6 +2033,16 @@ def _build_package_intelligence_ledger(alignment_result: dict, requirements: lis
         # ledger. The caller skips package reasoning for this run.
         return None
 
+    # Hardening fix #1: distinguish PROPOSAL coverage completeness
+    # (coverage_complete, above -- did we see the whole proposal?) from
+    # REASONING-LEDGER completeness (ledger_complete -- did budget pruning
+    # drop anything the fully-covered proposal chunks produced?). True iff
+    # nothing was dropped from ANY prunable section. Model-visible (like
+    # coverage_complete) because it gates UNSUPPORTED_CLAIM exactly the
+    # same way -- see _package_reasoning_prompt and
+    # _reconcile_package_findings.
+    ledger["ledger_complete"] = not any(dropped_by_kind.values())
+
     ledger["_budget_bookkeeping"] = {
         "claims_dropped_for_budget": dropped_by_kind.get("claim", 0),
         "requirement_evidence_dropped_for_budget": dropped_by_kind.get("requirement_evidence", 0),
@@ -2053,7 +2087,7 @@ def _package_reasoning_prompt(bid_header: str, ledger: dict) -> str:
     ledger_json = json.dumps(ledger, sort_keys=True, separators=(",", ":"))
     return f"""{bid_header}
 
-=== PROPOSAL INTELLIGENCE LEDGER (compact, IDs only -- C#=claim, P#=source) ===
+=== PROPOSAL INTELLIGENCE LEDGER (compact, IDs only -- C#=claim, P#=source, O#=delivery/commercial observation) ===
 {ledger_json}
 
 TASK: find WHOLE-PACKAGE problems that no single passage above can show alone:
@@ -2067,18 +2101,24 @@ TASK: find WHOLE-PACKAGE problems that no single passage above can show alone:
     across the package (e.g. a staffing claim that cannot support a
     delivery commitment also present in the ledger). Must cite specific
     claim_ids -- never a vague "ensure consistency" finding with no
-    citation.
-  UNSUPPORTED_CLAIM -- only when coverage_complete is true above: a
-    material claim (cite its claim_id) with no credible support anywhere
-    else in this ledger. Ordinary marketing language is never material.
-    If coverage_complete is false, do NOT emit ANY UNSUPPORTED_CLAIM --
-    package coverage is incomplete, so absence of support elsewhere
-    cannot be trusted; this rule is enforced again on our side regardless
+    citation. If a delivery_commitments/commercial_exposures observation
+    is part of your reasoning, cite its observation_id in
+    supporting_observation_ids -- referencing it only in prose does not
+    count.
+  UNSUPPORTED_CLAIM -- only when BOTH coverage_complete AND
+    ledger_complete are true above: a material claim (cite its claim_id)
+    with no credible support anywhere else in this ledger. Ordinary
+    marketing language is never material. If coverage_complete is false,
+    package coverage is incomplete; if ledger_complete is false, budget
+    pruning dropped part of what we DID see -- either way, absence of
+    support elsewhere cannot be trusted, so do NOT emit ANY
+    UNSUPPORTED_CLAIM; this rule is enforced again on our side regardless
     of what you return.
 
-Cite ONLY claim_id/source_id values that literally appear in the ledger
-above -- never invent one. Cite ONLY a req_id that appears verbatim in
-the ledger's requirement_evidence/claims -- never approximate or infer one.
+Cite ONLY claim_id/source_id/observation_id values that literally appear
+in the ledger above -- never invent one. Cite ONLY a req_id that appears
+verbatim in the ledger's requirement_evidence/claims -- never approximate
+or infer one.
 
 Return ONLY valid JSON:
 {{
@@ -2091,7 +2131,8 @@ Return ONLY valid JSON:
       "explanation": "<why these specific claims conflict/are unsupported>",
       "recommended_action": "<actionable fix>",
       "supporting_claim_ids": ["C1", "C7"],
-      "supporting_source_ids": ["P2", "P9"]
+      "supporting_source_ids": ["P2", "P9"],
+      "supporting_observation_ids": ["O1"]
     }}
   ]
 }}
@@ -2160,15 +2201,43 @@ def _reconcile_package_findings(raw_findings: list, ledger: dict, requirements: 
     alone cannot contradict itself, and duplicate ids in the model's list
     do not count twice. INTERNAL_INCONSISTENCY's existing (already
     broader) >=1-claim, evidence-grounded requirement is left exactly as
-    it was."""
+    it was.
+
+    Hardening fix #1 (ledger completeness): UNSUPPORTED_CLAIM is
+    structurally rejected when EITHER ledger["coverage_complete"] is
+    False (proposal coverage incomplete, as before) OR
+    ledger["ledger_complete"] is False (budget pruning dropped ledger
+    entries) -- both dimensions must hold for absence-of-support
+    reasoning to be trusted. A ledger with no `ledger_complete` key
+    (e.g. a hand-built test ledger) defaults to complete, preserving
+    prior behavior.
+
+    Hardening fix #2 (observation provenance): delivery_commitments/
+    commercial_exposures entries in the ledger carry their own
+    observation_id (O1..On). A finding may cite them via
+    supporting_observation_ids, validated exactly like
+    supporting_claim_ids (existence check; unknown ids reject the
+    finding). The Fix #4 source-to-claim association check is extended
+    the same way: a cited source_id must be traceable to at least one of
+    the finding's cited claim_ids OR cited observation_ids -- an
+    observation referenced only in free-text `explanation` and never
+    added to supporting_observation_ids gets no credit toward this
+    association (validation only ever reads the declared ID lists)."""
     claim_ids = {c["claim_id"] for c in ledger.get("claims") or []}
     claim_source_ids = {c["claim_id"]: set(c.get("source_ids") or []) for c in ledger.get("claims") or []}
+    observations = list(ledger.get("delivery_commitments") or []) + list(ledger.get("commercial_exposures") or [])
+    observation_ids = {o["observation_id"] for o in observations if o.get("observation_id")}
+    observation_source_ids = {
+        o["observation_id"]: set(o.get("source_ids") or [])
+        for o in observations if o.get("observation_id")
+    }
     source_lookup = {s["source_id"]: {k: v for k, v in s.items() if k != "source_id"}
                       for s in ledger.get("source_registry") or []}
     known_req_ids = {c.get("req_id") for c in ledger.get("claims") or [] if c.get("req_id")}
     known_req_ids |= {r.get("req_id") for r in ledger.get("requirement_evidence") or [] if r.get("req_id")}
     valid_req_ids = {r.get("req_id") for r in requirements if r.get("req_id")}
     coverage_complete = bool(ledger.get("coverage_complete"))
+    ledger_complete = bool(ledger.get("ledger_complete", True))
 
     accepted, rejected = [], 0
     for item in raw_findings or []:
@@ -2181,6 +2250,7 @@ def _reconcile_package_findings(raw_findings: list, ledger: dict, requirements: 
         title = (item.get("title") or "").strip()
         supporting_claim_ids = item.get("supporting_claim_ids")
         supporting_source_ids = item.get("supporting_source_ids") or []
+        supporting_observation_ids = item.get("supporting_observation_ids") or []
 
         if finding_type not in _PACKAGE_FINDING_TYPES:
             rejected += 1
@@ -2208,20 +2278,29 @@ def _reconcile_package_findings(raw_findings: list, ledger: dict, requirements: 
         if not all(sid in source_lookup for sid in supporting_source_ids):
             rejected += 1
             continue
-        # Fix #4: every cited source must be traceable to at least one of
-        # THIS finding's own cited claims -- existing-in-the-registry is
-        # not enough; it must actually be associated with what it's
-        # paired with here.
+        if not isinstance(supporting_observation_ids, list):
+            rejected += 1
+            continue
+        if not all(oid in observation_ids for oid in supporting_observation_ids):
+            rejected += 1
+            continue
+        # Fix #4 (extended by hardening fix #2): every cited source must be
+        # traceable to at least one of THIS finding's own cited claims OR
+        # cited observations -- existing-in-the-registry is not enough; it
+        # must actually be associated with what it's paired with here.
         allowed_source_ids: set = set()
         for cid in supporting_claim_ids:
             allowed_source_ids |= claim_source_ids.get(cid, set())
+        for oid in supporting_observation_ids:
+            allowed_source_ids |= observation_source_ids.get(oid, set())
         if not all(sid in allowed_source_ids for sid in supporting_source_ids):
             rejected += 1
             continue
-        if finding_type == "UNSUPPORTED_CLAIM" and not coverage_complete:
-            # step 20: structural enforcement AFTER model output -- an
-            # UNSUPPORTED_CLAIM is never persisted from an incomplete
-            # package, no matter what the (mocked) model returned.
+        if finding_type == "UNSUPPORTED_CLAIM" and not (coverage_complete and ledger_complete):
+            # step 20, hardened: structural enforcement AFTER model
+            # output -- an UNSUPPORTED_CLAIM is never persisted unless
+            # BOTH proposal coverage AND the reasoning ledger itself are
+            # complete, no matter what the (mocked) model returned.
             rejected += 1
             continue
         distinct_valid_claim_ids = {cid for cid in supporting_claim_ids if cid in claim_ids}
@@ -2245,6 +2324,7 @@ def _reconcile_package_findings(raw_findings: list, ledger: dict, requirements: 
             "recommended_action": item.get("recommended_action"),
             "supporting_claim_ids": list(supporting_claim_ids),
             "supporting_source_ids": list(supporting_source_ids),
+            "supporting_observation_ids": list(supporting_observation_ids),
             "proposal_source_refs": proposal_source_refs,
         })
     return accepted, rejected
@@ -2262,22 +2342,27 @@ def analyze_proposal_package_intelligence(
     Returns {"package_findings": [...], "package_reasoning_status":
     "OK"|"FAILED"|"SKIPPED_EMPTY_LEDGER"|"SKIPPED_LEDGER_OVER_BUDGET",
     "package_ledger_digest": str, "rejected_count": int,
-    "claims_dropped_for_budget": int}. Never raises -- a provider/parse
-    failure becomes package_reasoning_status "FAILED" with zero
-    fabricated findings (step 19).
+    "claims_dropped_for_budget": int, "ledger_complete": bool}. Never
+    raises -- a provider/parse failure becomes package_reasoning_status
+    "FAILED" with zero fabricated findings (step 19).
 
     Fix #2 (ledger-wide byte budget): _build_package_intelligence_ledger
     returns None when even a maximally-pruned ledger still exceeds
     _LEDGER_BYTE_BUDGET -- that run gets package_reasoning_status
     "SKIPPED_LEDGER_OVER_BUDGET" with zero calls and zero fabricated
     findings, the same fail-closed shape as the pre-existing empty-ledger
-    skip path, and never sends an over-budget ledger to the model."""
+    skip path, and never sends an over-budget ledger to the model.
+
+    Hardening fix #1: "ledger_complete" is surfaced on the result
+    metadata (not just inside the model-visible ledger) so callers/
+    telemetry can see whether budget pruning dropped anything, mirroring
+    how "claims_dropped_for_budget" is already surfaced."""
     raw_ledger = _build_package_intelligence_ledger(alignment_result, requirements)
     if raw_ledger is None:
         return {
             "package_findings": [], "package_reasoning_status": "SKIPPED_LEDGER_OVER_BUDGET",
             "package_ledger_digest": None, "rejected_count": 0,
-            "claims_dropped_for_budget": 0,
+            "claims_dropped_for_budget": 0, "ledger_complete": False,
         }
 
     # Fix #3: strip bookkeeping BEFORE hashing/prompting -- the digest and
@@ -2285,12 +2370,13 @@ def analyze_proposal_package_intelligence(
     ledger, bookkeeping = _split_ledger_bookkeeping(raw_ledger)
     digest = package_ledger_digest(ledger)
     claims_dropped = bookkeeping.get("claims_dropped_for_budget", 0)
+    ledger_complete = bool(ledger.get("ledger_complete", True))
 
     if not ledger["claims"] and not ledger["requirement_evidence"]:
         return {
             "package_findings": [], "package_reasoning_status": "SKIPPED_EMPTY_LEDGER",
             "package_ledger_digest": digest, "rejected_count": 0,
-            "claims_dropped_for_budget": claims_dropped,
+            "claims_dropped_for_budget": claims_dropped, "ledger_complete": ledger_complete,
         }
 
     bid_header = f"BID: {bid_info.get('title', '')} | CLIENT: {bid_info.get('client', '')}"
@@ -2305,7 +2391,7 @@ def analyze_proposal_package_intelligence(
         return {
             "package_findings": [], "package_reasoning_status": "FAILED",
             "package_ledger_digest": digest, "rejected_count": 0,
-            "claims_dropped_for_budget": claims_dropped,
+            "claims_dropped_for_budget": claims_dropped, "ledger_complete": ledger_complete,
             "failure_reason": failure_category,
         }
 
@@ -2313,7 +2399,7 @@ def analyze_proposal_package_intelligence(
     return {
         "package_findings": accepted, "package_reasoning_status": "OK",
         "package_ledger_digest": digest, "rejected_count": rejected,
-        "claims_dropped_for_budget": claims_dropped,
+        "claims_dropped_for_budget": claims_dropped, "ledger_complete": ledger_complete,
     }
 
 

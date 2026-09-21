@@ -697,3 +697,271 @@ class TestTelemetryWorkflowParameter:
             analyst._call = orig
         assert captured[-1]["workflow"] == "proposal_intelligence"
         assert captured[-1]["operation"] == "package_reasoning"
+
+
+# ── COMMISSIONING-REVIEW HARDENING (2 items): ledger completeness and ─────
+# ── observation provenance ─────────────────────────────────────────────────
+# ZERO live provider calls -- analyst._call is always mocked here.
+
+class TestLedgerCompleteFlag:
+    """Item 1: ledger_complete distinguishes "did budget pruning drop
+    anything from the reasoning ledger" from coverage_complete's "did we
+    see the whole proposal". Nothing dropped -> True; anything dropped
+    from any prunable section -> False."""
+
+    def test_under_budget_ledger_is_complete(self):
+        claims = [dict(_claim(subject=f"S{i}"), proposal_source_refs=[]) for i in range(5)]
+        result = _alignment_result(claims=claims)
+        ledger = analyst._build_package_intelligence_ledger(result, [])
+        assert ledger["ledger_complete"] is True
+
+    def test_claims_dropped_for_budget_marks_ledger_incomplete(self):
+        big_statement = "x" * 2000
+        many_claims = [dict(
+            _claim(claim_type="OTHER", req_id=None, subject=f"low{i}",
+                   statement=big_statement, confidence="Low"),
+            proposal_source_refs=[],
+        ) for i in range(60)]
+        many_claims.append(dict(
+            _claim(claim_type="STAFFING", req_id="R1", subject="priority-claim",
+                   statement="8 coaches", confidence="High"),
+            proposal_source_refs=[],
+        ))
+        result = _alignment_result(claims=many_claims)
+        requirements = [{"req_id": "R1", "is_mandatory": True}]
+        ledger = analyst._build_package_intelligence_ledger(result, requirements)
+        assert ledger["ledger_complete"] is False
+
+    def test_requirement_evidence_dropped_for_budget_marks_ledger_incomplete(self):
+        big_notes = "x" * 3000
+        req_coverage = [
+            {"req_id": f"R{i}", "coverage": "Fully Addressed", "evidence_strength": "Strong",
+             "notes": big_notes, "proposal_source_refs": [{"file_id": f"f{i}"}]}
+            for i in range(600)
+        ]
+        result = _alignment_result(claims=[], req_coverage=req_coverage)
+        ledger = analyst._build_package_intelligence_ledger(result, [])
+        assert ledger is not None
+        assert ledger["ledger_complete"] is False
+
+    def test_ledger_complete_survives_bookkeeping_split(self):
+        big_statement = "x" * 2000
+        many_claims = [dict(
+            _claim(claim_type="OTHER", req_id=None, subject=f"low{i}",
+                   statement=big_statement, confidence="Low"),
+            proposal_source_refs=[],
+        ) for i in range(60)]
+        result = _alignment_result(claims=many_claims)
+        raw_ledger = analyst._build_package_intelligence_ledger(result, [])
+        model_ledger, _ = analyst._split_ledger_bookkeeping(raw_ledger)
+        # ledger_complete is model-visible, unlike _budget_bookkeeping.
+        assert "ledger_complete" in model_ledger
+        assert model_ledger["ledger_complete"] is False
+
+
+class TestUnsupportedClaimRequiresLedgerCompleteToo:
+    """Item 1 (reconciliation gate): UNSUPPORTED_CLAIM must be
+    structurally accepted ONLY when BOTH coverage_complete AND
+    ledger_complete are true -- either one being false rejects it, same
+    fail-closed mechanism as the pre-existing coverage_complete gate.
+    CONTRADICTION/INTERNAL_INCONSISTENCY are unaffected by ledger_complete."""
+
+    def _ledger_with_flags(self, coverage_complete, ledger_complete):
+        claims = [dict(_claim(), proposal_source_refs=[{"file_id": "f1"}])]
+        result = _alignment_result(claims=claims, coverage_complete=coverage_complete)
+        ledger = analyst._build_package_intelligence_ledger(result, [{"req_id": "R1"}])
+        ledger["ledger_complete"] = ledger_complete
+        return ledger
+
+    def test_complete_coverage_and_complete_ledger_permits_unsupported_claim(self):
+        ledger = self._ledger_with_flags(coverage_complete=True, ledger_complete=True)
+        raw = [{"finding_type": "UNSUPPORTED_CLAIM", "severity": "Medium", "req_id": "R1",
+               "title": "t", "explanation": "e", "recommended_action": "a",
+               "supporting_claim_ids": ["C1"], "supporting_source_ids": ["P1"]}]
+        accepted, rejected = analyst._reconcile_package_findings(raw, ledger, [{"req_id": "R1"}])
+        assert rejected == 0 and len(accepted) == 1
+
+    def test_complete_coverage_but_incomplete_ledger_rejects_unsupported_claim(self):
+        ledger = self._ledger_with_flags(coverage_complete=True, ledger_complete=False)
+        raw = [{"finding_type": "UNSUPPORTED_CLAIM", "severity": "Medium", "req_id": "R1",
+               "title": "t", "explanation": "e", "recommended_action": "a",
+               "supporting_claim_ids": ["C1"], "supporting_source_ids": ["P1"]}]
+        accepted, rejected = analyst._reconcile_package_findings(raw, ledger, [{"req_id": "R1"}])
+        assert accepted == [] and rejected == 1
+
+    def test_incomplete_coverage_but_complete_ledger_still_rejects_unsupported_claim(self):
+        ledger = self._ledger_with_flags(coverage_complete=False, ledger_complete=True)
+        raw = [{"finding_type": "UNSUPPORTED_CLAIM", "severity": "Medium", "req_id": "R1",
+               "title": "t", "explanation": "e", "recommended_action": "a",
+               "supporting_claim_ids": ["C1"], "supporting_source_ids": ["P1"]}]
+        accepted, rejected = analyst._reconcile_package_findings(raw, ledger, [{"req_id": "R1"}])
+        assert accepted == [] and rejected == 1
+
+    def test_both_incomplete_rejects_unsupported_claim(self):
+        ledger = self._ledger_with_flags(coverage_complete=False, ledger_complete=False)
+        raw = [{"finding_type": "UNSUPPORTED_CLAIM", "severity": "Medium", "req_id": "R1",
+               "title": "t", "explanation": "e", "recommended_action": "a",
+               "supporting_claim_ids": ["C1"], "supporting_source_ids": ["P1"]}]
+        accepted, rejected = analyst._reconcile_package_findings(raw, ledger, [{"req_id": "R1"}])
+        assert accepted == [] and rejected == 1
+
+    def test_incomplete_ledger_still_allows_grounded_contradiction(self):
+        claims = [dict(_claim(value="8"), proposal_source_refs=[{"file_id": "f1"}]),
+                  dict(_claim(value="10"), proposal_source_refs=[{"file_id": "f2"}])]
+        result = _alignment_result(claims=claims, coverage_complete=True)
+        ledger = analyst._build_package_intelligence_ledger(result, [{"req_id": "R1"}])
+        ledger["ledger_complete"] = False
+        raw = [{"finding_type": "CONTRADICTION", "severity": "High", "req_id": "R1",
+               "title": "t", "explanation": "e", "recommended_action": "a",
+               "supporting_claim_ids": ["C1", "C2"], "supporting_source_ids": []}]
+        accepted, rejected = analyst._reconcile_package_findings(raw, ledger, [{"req_id": "R1"}])
+        assert rejected == 0 and len(accepted) == 1
+
+    def test_missing_ledger_complete_key_defaults_to_complete(self):
+        # Backward compatibility: a hand-built ledger with no
+        # ledger_complete key (as older/other tests still construct)
+        # behaves as if the ledger were complete.
+        ledger = {"coverage_complete": True, "claims": [{"claim_id": "C1", "source_ids": ["P1"]}],
+                  "requirement_evidence": [], "delivery_commitments": [], "commercial_exposures": [],
+                  "local_deficiencies": [], "source_registry": [{"source_id": "P1", "file_id": "f1"}]}
+        raw = [{"finding_type": "UNSUPPORTED_CLAIM", "severity": "Medium", "req_id": None,
+               "title": "t", "explanation": "e", "recommended_action": "a",
+               "supporting_claim_ids": ["C1"], "supporting_source_ids": ["P1"]}]
+        accepted, rejected = analyst._reconcile_package_findings(raw, ledger, [])
+        assert rejected == 0 and len(accepted) == 1
+
+
+class TestAnalyzePackageIntelligenceSurfacesLedgerComplete:
+    """Item 1: the top-level entry point surfaces ledger_complete on its
+    result metadata (not just buried inside the model-visible ledger)."""
+
+    def test_ok_result_reports_ledger_complete_true_when_nothing_dropped(self):
+        def fake_call(system, user, max_tokens=2500, **kwargs):
+            return json.dumps({"package_findings": []})
+
+        claims = [dict(_claim(), proposal_source_refs=[{"file_id": "f1"}])]
+        result = _alignment_result(claims=claims)
+        orig = analyst._call
+        analyst._call = fake_call
+        try:
+            out = analyst.analyze_proposal_package_intelligence(result, [{"req_id": "R1"}], {"title": "Bid"})
+        finally:
+            analyst._call = orig
+        assert out["ledger_complete"] is True
+
+    def test_ok_result_reports_ledger_complete_false_when_pruned(self):
+        def fake_call(system, user, max_tokens=2500, **kwargs):
+            return json.dumps({"package_findings": []})
+
+        big_statement = "x" * 2000
+        many_claims = [dict(
+            _claim(claim_type="OTHER", req_id=None, subject=f"low{i}",
+                   statement=big_statement, confidence="Low"),
+            proposal_source_refs=[],
+        ) for i in range(60)]
+        result = _alignment_result(claims=many_claims)
+        orig = analyst._call
+        analyst._call = fake_call
+        try:
+            out = analyst.analyze_proposal_package_intelligence(result, [], {"title": "Bid"})
+        finally:
+            analyst._call = orig
+        assert out["ledger_complete"] is False
+
+
+class TestObservationIds:
+    """Item 2: delivery_commitments/commercial_exposures entries get their
+    own deterministic O1..On ids, distinct from C#/P#."""
+
+    def test_delivery_and_commercial_observations_get_sequential_o_ids(self):
+        observations = [
+            {"observation_type": "DELIVERY_COMMITMENT", "req_id": "R1", "title": "D1",
+             "statement": "delivered in 30 days", "proposal_source_refs": [{"file_id": "f1"}]},
+            {"observation_type": "COMMERCIAL_EXPOSURE", "req_id": "R1", "title": "C1",
+             "statement": "uncapped liability", "proposal_source_refs": [{"file_id": "f2"}]},
+        ]
+        result = _alignment_result(observations=observations)
+        ledger = analyst._build_package_intelligence_ledger(result, [])
+        assert ledger["delivery_commitments"][0]["observation_id"] == "O1"
+        assert ledger["commercial_exposures"][0]["observation_id"] == "O2"
+
+    def test_observation_ids_are_distinct_from_claim_and_source_namespaces(self):
+        claims = [dict(_claim(), proposal_source_refs=[{"file_id": "f1"}])]
+        observations = [
+            {"observation_type": "DELIVERY_COMMITMENT", "req_id": "R1", "title": "D1",
+             "statement": "delivered in 30 days", "proposal_source_refs": [{"file_id": "f2"}]},
+        ]
+        result = _alignment_result(claims=claims, observations=observations)
+        ledger = analyst._build_package_intelligence_ledger(result, [])
+        assert ledger["claims"][0]["claim_id"] == "C1"
+        assert ledger["delivery_commitments"][0]["observation_id"] == "O1"
+        assert ledger["source_registry"][0]["source_id"] == "P1"
+
+
+class TestObservationCitationReconciliation:
+    """Item 2: supporting_observation_ids is validated like
+    supporting_claim_ids (existence check), and the source-to-claim
+    association check (Fix #4) is extended to observations."""
+
+    def _ledger_with_claim_and_observation(self):
+        claims = [dict(_claim(), proposal_source_refs=[{"file_id": "f1"}])]
+        observations = [
+            {"observation_type": "DELIVERY_COMMITMENT", "req_id": "R1", "title": "D1",
+             "statement": "delivered in 30 days", "proposal_source_refs": [{"file_id": "f2"}]},
+        ]
+        result = _alignment_result(claims=claims, observations=observations)
+        return analyst._build_package_intelligence_ledger(result, [{"req_id": "R1"}])
+
+    def test_valid_observation_citation_is_accepted(self):
+        ledger = self._ledger_with_claim_and_observation()
+        raw = [{"finding_type": "INTERNAL_INCONSISTENCY", "severity": "Medium", "req_id": "R1",
+               "title": "staffing cannot support delivery", "explanation": "e",
+               "recommended_action": "a", "supporting_claim_ids": ["C1"],
+               "supporting_source_ids": ["P2"], "supporting_observation_ids": ["O1"]}]
+        accepted, rejected = analyst._reconcile_package_findings(raw, ledger, [{"req_id": "R1"}])
+        assert rejected == 0 and len(accepted) == 1
+        assert accepted[0]["supporting_observation_ids"] == ["O1"]
+
+    def test_unknown_observation_id_rejected(self):
+        ledger = self._ledger_with_claim_and_observation()
+        raw = [{"finding_type": "INTERNAL_INCONSISTENCY", "severity": "Medium", "req_id": "R1",
+               "title": "t", "explanation": "e", "recommended_action": "a",
+               "supporting_claim_ids": ["C1"], "supporting_source_ids": [],
+               "supporting_observation_ids": ["O99"]}]
+        accepted, rejected = analyst._reconcile_package_findings(raw, ledger, [{"req_id": "R1"}])
+        assert accepted == [] and rejected == 1
+
+    def test_source_associated_only_via_observation_is_accepted(self):
+        # P2 belongs to O1, not to C1 -- must be accepted because it's
+        # traceable through the cited OBSERVATION, not the cited claim.
+        ledger = self._ledger_with_claim_and_observation()
+        raw = [{"finding_type": "INTERNAL_INCONSISTENCY", "severity": "Medium", "req_id": "R1",
+               "title": "t", "explanation": "e", "recommended_action": "a",
+               "supporting_claim_ids": ["C1"], "supporting_source_ids": ["P2"],
+               "supporting_observation_ids": ["O1"]}]
+        accepted, rejected = analyst._reconcile_package_findings(raw, ledger, [{"req_id": "R1"}])
+        assert rejected == 0 and len(accepted) == 1
+
+    def test_source_from_observation_without_citing_observation_id_is_rejected(self):
+        # P2 is only associated with O1. Citing P2 without also citing O1
+        # in supporting_observation_ids means it's traceable to nothing
+        # cited -- the finding gets no credit for an uncited observation.
+        ledger = self._ledger_with_claim_and_observation()
+        raw = [{"finding_type": "INTERNAL_INCONSISTENCY", "severity": "Medium", "req_id": "R1",
+               "title": "t", "explanation": "e", "recommended_action": "a",
+               "supporting_claim_ids": ["C1"], "supporting_source_ids": ["P2"],
+               "supporting_observation_ids": []}]
+        accepted, rejected = analyst._reconcile_package_findings(raw, ledger, [{"req_id": "R1"}])
+        assert accepted == [] and rejected == 1
+
+    def test_supporting_observation_ids_defaults_to_empty_when_omitted(self):
+        # Backward compatibility: a finding that never mentions
+        # supporting_observation_ids at all (old model-shaped response)
+        # is still processed normally.
+        ledger = self._ledger_with_claim_and_observation()
+        raw = [{"finding_type": "INTERNAL_INCONSISTENCY", "severity": "Medium", "req_id": "R1",
+               "title": "t", "explanation": "e", "recommended_action": "a",
+               "supporting_claim_ids": ["C1"], "supporting_source_ids": []}]
+        accepted, rejected = analyst._reconcile_package_findings(raw, ledger, [{"req_id": "R1"}])
+        assert rejected == 0 and len(accepted) == 1
+        assert accepted[0]["supporting_observation_ids"] == []
