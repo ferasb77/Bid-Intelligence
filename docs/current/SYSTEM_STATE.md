@@ -249,11 +249,94 @@ memory classes so none is ever mistaken for another.
 
 Zero live Voyage/Anthropic calls in OM-2, same as OM-1 — ingestion does
 not call `embeddings.py` directly (embedding remains opt-in via
-`retrieve()`'s existing `embed_fn` parameter). Explicitly still deferred:
-proposal-text generation from memory, auto-insertion of evidence into a
-proposal, Section Analyzer/Proposal Intelligence integration, archive-
-wide/bulk ingestion (this phase is single-file human-initiated upload
-only), auto-approval of any kind, and any scoring/win-probability signal.
+`retrieve()`'s existing `embed_fn` parameter). Explicitly still deferred
+after OM-2: proposal-text generation from memory, auto-insertion of
+evidence into a proposal, Section Analyzer integration, archive-wide/bulk
+ingestion (this phase is single-file human-initiated upload only),
+auto-approval of any kind, and any scoring/win-probability signal.
+
+**OM-3 (requirement evidence strengthening) is now implemented** — the
+first product-value integration between Organizational Memory and Bid
+Intelligence's existing requirement/evidence model. New module
+`evidence_strengthening.py`: a pure, deterministic domain layer (no I/O of
+its own, exactly like `proposal_intelligence.py`) that lets ONE
+requirement whose CURRENT-BID evidence is weak/partial/missing/conflicted
+retrieve a small, ranked set of Organizational Memory candidates and
+return a structured `EvidenceEnrichmentResult` — never a second
+requirement/evidence model. "Current evidence state"
+(`RequirementEvidenceState`) is built entirely from EXISTING, already-
+persisted vocabulary: `proposal_intelligence.ASSESSMENT_STATUSES`/
+`EVIDENCE_STRENGTH_VALUES` (the requirement's latest
+`proposal_requirement_assessments` row) plus whether an existing
+`CONTRADICTION`/`INTERNAL_INCONSISTENCY` finding is already tied to that
+`req_id` — never a second invented status vocabulary, and Organizational
+Memory is never consulted to build it. `EvidenceGapKind` (MISSING/PARTIAL/
+WEAK/CONFLICTED/SUFFICIENT) is a pure function of that state;
+`RequirementEvidenceState.needs_strengthening` is `False` only for
+SUFFICIENT (Fully Addressed + STRONG/MODERATE evidence + no known
+contradiction) — a strong requirement never triggers Organizational
+Memory retrieval at all, not even a candidate-pool read (enforced both
+inside `evidence_strengthening.strengthen_requirement_evidence` and, one
+layer up, in `tenancy.strengthen_requirement_evidence_for_organization`,
+which skips the `organizational_memory_items` read entirely for a
+sufficient requirement).
+
+Retrieval reuses OM-1's EXISTING `organizational_memory.retrieve()`
+contract verbatim (no re-ranking/re-filtering logic duplicated here),
+restricted to `APPROVED_FIRM_KNOWLEDGE` and eligible `SOURCE_MEMORY`
+(never `PROPOSAL_MEMORY` — marketing language can never be cited as
+requirement evidence), bounded by `top_k` (default 5). The retrieval
+query is derived DETERMINISTICALLY from the requirement's own
+`description`/`category` fields — there is no free-form query parameter
+anywhere on this boundary, and this phase deliberately does NOT add a
+generic agent-facing `searchOrganizationalMemory(query)` capability (the
+existing OM-1 `retrieve_organizational_memory_for_organization` free-form
+path is untouched and unexposed to this new boundary).
+
+Each retrieved candidate is classified by a bounded, closed
+`MemoryRelationship` vocabulary — `DIRECT_SUPPORT`/`PARTIAL_SUPPORT`/
+`CONTEXT`/`CONTRADICTION` — via exactly ONE new bounded model call
+(`evidence_strengthening._call_memory_adjudication`, reusing
+`config.get_anthropic_client`/`execute_messages_create` with
+`workflow="organizational_memory"`, `operation="evidence_adjudication"` —
+the same structured-call pattern as `analyst._call_package_reasoning`,
+its own separate telemetry bucket). Reconciliation is fail-closed exactly
+like `analyst._reconcile_package_findings`: an unknown/duplicate
+`item_id`, an item outside the candidate set, an unrecognized
+relationship, or a missing rationale drops THAT candidate only; a
+candidate the model omits entirely (no genuine relationship) is simply
+absent from the result — never force-classified merely because it was
+retrieved. `CONTRADICTION` is structurally excluded from
+`evidence_state_after`'s support count — a conflicting memory item is
+surfaced for human review, never silently treated as support, and NEVER
+overrides `evidence_state_before`'s `assessment_status`/
+`evidence_strength` (hierarchy: current RFP/bid evidence always outranks
+Organizational Memory). `MemoryEvidenceCandidate` preserves memory item
+id, trust class (`is_trusted_fact`), relationship, rationale, full
+provenance, and approval lineage (`approved_by`/`approved_at`/
+`derived_from_item_id`/`source_document_id`) — never bare text.
+`requires_human_confirmation` is `True` whenever any Organizational Memory
+evidence was surfaced at all (support or contradiction) — this module
+never auto-approves, never converts `SOURCE_MEMORY` into
+`APPROVED_FIRM_KNOWLEDGE`, never mutates an Organizational Memory item,
+and never drafts proposal language.
+
+`tenancy.strengthen_requirement_evidence_for_organization(bid_id,
+organization_id, requirement_id)` is the auth-boundary wrapper —
+`require_bid_access` first, then `database.get_requirements_by_ids`
+(bid-scoped), `database.get_latest_usable_proposal_intelligence_run` +
+`get_proposal_requirement_assessments`/`get_proposal_intelligence_findings`
+for the current-bid evidence state, and (only when strengthening is
+actually needed) `database.list_organizational_memory_items` for the
+organization-scoped candidate pool, reusing `tenancy._row_to_memory_item`
+verbatim. Read-only end to end — writes nothing, and this task added no
+migration: the existing `requirements` / `proposal_requirement_
+assessments` / `proposal_intelligence_findings` / `organizational_memory_
+items` schema (migrations 015/016, both live) was already sufficient.
+`EvidenceEnrichmentResult`/its contents are computed and returned, not
+persisted, by this phase — persistence, a UI, Ask CapOS integration, and
+proposal-generation integration are all explicitly deferred to a later OM
+phase. Tests: `tests/test_evidence_strengthening.py`.
 
 ## Architectural fact-type separation
 
@@ -298,10 +381,18 @@ deterministic, retrieval-first contract (`organizational_memory.retrieve()`).
 Zero live model/embedding calls this phase. **OM-2 (source ingestion +
 human approval lifecycle) is now also implemented and live-commissioned**
 (migration 016 applied 2026-09-21) — see the Organizational Memory entry
-above for full detail. Deferred to a later OM phase: proposal-text
-generation from memory, auto-insertion of evidence, Section Analyzer
-integration, win-probability/scoring, and any PROPOSAL_MEMORY →
-APPROVED_FIRM_KNOWLEDGE promotion mechanism.
+above for full detail. **OM-3 (requirement evidence strengthening,
+`evidence_strengthening.py` + `tenancy.strengthen_requirement_evidence_
+for_organization`) is now implemented** — the first product-value
+integration reading Organizational Memory INTO existing Bid Intelligence
+requirement analysis (Proposal Intelligence's per-requirement
+assessment_status/evidence_strength/finding vocabulary), read-only, no
+new migration; see the Organizational Memory entry above for full detail.
+Deferred to a later OM phase: proposal-text generation from memory,
+auto-insertion of evidence, Section Analyzer integration, persisting an
+`EvidenceEnrichmentResult`, a UI for it, Ask CapOS integration,
+win-probability/scoring, and any PROPOSAL_MEMORY → APPROVED_FIRM_KNOWLEDGE
+promotion mechanism.
 
 Absent an explicit task instruction otherwise, still do not: apply
 migration 013, alter/reapply migration 015 or 016, activate the

@@ -978,8 +978,14 @@ class TestApproveRpcContentHashNormalization:
 
     def test_approve_rpc_wraps_normalization_in_digest_sha256_hex(self):
         body = self._approve_rpc_body()
+        # digest() is schema-qualified to extensions.digest(...) (live-
+        # commissioning fix, 2026-09-21: this project's pgcrypto extension
+        # lives in the `extensions` schema, not `public` -- see migration
+        # 016's live-commissioning header note) -- the qualifier is
+        # optional here so this assertion holds regardless of which schema
+        # a given project's pgcrypto happens to live in.
         assert re.search(
-            r"v_content_hash := encode\(\s*digest\(\s*regexp_replace\(", body)
+            r"v_content_hash := encode\(\s*(?:extensions\.)?digest\(\s*regexp_replace\(", body)
         assert "'sha256'),\n        'hex');" in body or re.search(
             r"'sha256'\),\s*'hex'\);", body)
 

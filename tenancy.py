@@ -1762,3 +1762,86 @@ def retrieve_organizational_memory_for_organization(
         top_k=top_k, min_score=min_score, embed_fn=embed_fn,
     )
     return [r.to_dict() for r in results]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Organizational Memory (OM-3: requirement evidence strengthening)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def strengthen_requirement_evidence_for_organization(
+    bid_id: int, organization_id: str, requirement_id: int,
+    top_k: int = 5, embed_fn=None,
+) -> dict:
+    """The requirement-aware Organizational Memory strengthening boundary
+    (evidence_strengthening.strengthen_requirement_evidence), wired to real
+    persistence. Verifies bid ownership FIRST, before any read.
+
+    Derives the requirement's CURRENT-BID evidence state (hierarchy tier 2)
+    entirely from its own canonical row (database.get_requirements_by_ids,
+    defensively bid_id-scoped) and its latest usable Proposal Intelligence
+    assessment/findings -- never from Organizational Memory, and never from
+    a caller-supplied query. Organizational Memory candidates (tiers 3-4)
+    are fetched ONLY when the requirement's own evidence state actually
+    needs strengthening (an additional, cheap short-circuit on top of
+    evidence_strengthening's own -- avoids even the candidate-pool DB read
+    for an already-strong requirement), restricted to
+    APPROVED_FIRM_KNOWLEDGE and eligible SOURCE_MEMORY, organization-scoped
+    by list_organizational_memory_items exactly like every other OM read
+    path in this module.
+
+    Read-only end to end: writes nothing, mutates no Organizational Memory
+    item, creates no APPROVED_FIRM_KNOWLEDGE row, drafts no proposal text."""
+    require_bid_access(bid_id, organization_id)
+    if not organization_id:
+        raise ValueError(
+            "strengthen_requirement_evidence_for_organization requires an explicit organization_id")
+
+    import evidence_strengthening as es
+    import organizational_memory as om
+    import proposal_intelligence as pi
+
+    reqs = db.get_requirements_by_ids(bid_id, [requirement_id])
+    if not reqs:
+        raise ValueError(
+            f"strengthen_requirement_evidence_for_organization: requirement {requirement_id} "
+            f"not found for bid {bid_id}")
+    requirement = reqs[0]
+    req_id = requirement.get("req_id")
+
+    assessment_status = None
+    evidence_strength = None
+    has_contradiction = False
+    run = db.get_latest_usable_proposal_intelligence_run(bid_id)
+    if run is not None:
+        assessments = db.get_proposal_requirement_assessments(run["id"])
+        match = next((a for a in assessments if a.get("req_id") == req_id), None)
+        if match is not None:
+            assessment_status = match.get("assessment_status")
+            evidence_strength = match.get("evidence_strength")
+
+        findings = db.get_proposal_intelligence_findings(run["id"])
+        has_contradiction = any(
+            f.get("related_req_id") == req_id
+            and f.get("finding_type") in (pi.FINDING_TYPE_CONTRADICTION, pi.FINDING_TYPE_INTERNAL_INCONSISTENCY)
+            for f in findings
+        )
+
+    evidence_state = es.RequirementEvidenceState(
+        assessment_status=assessment_status,
+        evidence_strength=evidence_strength,
+        has_contradiction_finding=has_contradiction,
+    )
+
+    candidate_items = []
+    if evidence_state.needs_strengthening:
+        rows = []
+        for memory_class in (om.MemoryClass.APPROVED_FIRM_KNOWLEDGE.value, om.MemoryClass.SOURCE_MEMORY.value):
+            rows.extend(db.list_organizational_memory_items(organization_id, memory_class=memory_class))
+        candidate_items = [_row_to_memory_item(row) for row in rows]
+
+    result = es.strengthen_requirement_evidence(
+        organization_id=organization_id, bid_id=bid_id, requirement=requirement,
+        evidence_state=evidence_state, candidate_items=candidate_items,
+        top_k=top_k, embed_fn=embed_fn,
+    )
+    return result.to_dict()

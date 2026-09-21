@@ -301,9 +301,63 @@ deferred, not started.
   assertions for the OM-2 schema/RPC additions).
 - Explicitly still deferred (unchanged from OM-1): proposal-text generation
   from memory, auto-insertion of evidence into a proposal, Section
-  Analyzer/Proposal Intelligence integration, archive-wide/bulk ingestion
-  (single-file human-initiated upload only), auto-approval, scoring/win
-  probability.
+  Analyzer integration, archive-wide/bulk ingestion (single-file
+  human-initiated upload only), auto-approval, scoring/win probability.
+
+**Organizational Memory (OM-3: requirement evidence strengthening)**
+- `evidence_strengthening.py` — the first product-value integration
+  reading Organizational Memory INTO existing requirement analysis. Pure,
+  deterministic, no I/O of its own (same posture as `proposal_
+  intelligence.py`). `RequirementEvidenceState` (current-bid evidence,
+  built from `proposal_intelligence.ASSESSMENT_STATUSES`/
+  `EVIDENCE_STRENGTH_VALUES` plus an existing CONTRADICTION/
+  INTERNAL_INCONSISTENCY finding tied to the req_id — never from
+  Organizational Memory) and its `gap_kind`/`needs_strengthening`
+  properties (MISSING/PARTIAL/WEAK/CONFLICTED/SUFFICIENT — SUFFICIENT is
+  the only state that skips retrieval entirely). `strengthen_requirement_
+  evidence()` derives its `organizational_memory.retrieve()` query
+  deterministically from the requirement's own description/category (no
+  free-form query parameter — this is NOT a generic `searchOrganizational
+  Memory(query)` capability), restricted to APPROVED_FIRM_KNOWLEDGE +
+  SOURCE_MEMORY, `top_k`-bounded (default 5). `_call_memory_adjudication`
+  is the one new bounded model call (reuses `config.get_anthropic_client`/
+  `execute_messages_create`, `workflow="organizational_memory"`,
+  `operation="evidence_adjudication"` — same structured-call pattern as
+  `analyst._call_package_reasoning`); `_adjudicate_candidates` reconciles
+  its response fail-closed (unknown/duplicate item_id, out-of-set item,
+  bad relationship, or missing rationale drops that candidate only) into
+  the closed `MemoryRelationship` vocabulary (DIRECT_SUPPORT/
+  PARTIAL_SUPPORT/CONTEXT/CONTRADICTION). CONTRADICTION is structurally
+  excluded from `evidence_state_after`'s support count and NEVER
+  overrides `evidence_state_before`'s assessment_status/evidence_strength
+  — current RFP/bid evidence always outranks Organizational Memory.
+  `MemoryEvidenceCandidate` preserves item id, trust class, relationship,
+  rationale, full provenance, and approval lineage.
+  `EvidenceEnrichmentResult` is computed and returned, never persisted;
+  this module never mutates an Organizational Memory item, never converts
+  SOURCE_MEMORY into APPROVED_FIRM_KNOWLEDGE, and never drafts proposal
+  text.
+- `tenancy.strengthen_requirement_evidence_for_organization` — the auth
+  boundary (`require_bid_access` first), wiring `database.
+  get_requirements_by_ids`/`get_latest_usable_proposal_intelligence_run`/
+  `get_proposal_requirement_assessments`/`get_proposal_intelligence_
+  findings` for current-bid evidence state and (only when strengthening
+  is actually needed) `database.list_organizational_memory_items` +
+  `tenancy._row_to_memory_item` for the organization-scoped candidate
+  pool. Read-only; no new migration (the existing `requirements`/
+  `proposal_requirement_assessments`/`proposal_intelligence_findings`/
+  `organizational_memory_items` schema was already sufficient).
+- Tests: `tests/test_evidence_strengthening.py` (gap-state classification,
+  strong-requirement retrieval skip, approved-knowledge/source-memory
+  surfacing, irrelevant-candidate exclusion, contradiction handling and
+  hierarchy precedence, organization isolation, provenance/lineage
+  survival, bounded result count, no-mutation/no-proposal-text guards,
+  default-adjudicator fail-closed reconciliation, tenancy wiring). No
+  live provider call — the one model call is always injected via
+  `adjudicate_fn` or monkeypatched at `_call_memory_adjudication`.
+- Explicitly still deferred: proposal-text generation, persisting an
+  `EvidenceEnrichmentResult`, a UI, Ask CapOS integration, Section
+  Analyzer integration, auto-approval of any kind.
 
 **Tenancy / RLS / auth boundary**
 - `tenancy.py` — every `*_for_organization` (service-role, ownership-checked)
