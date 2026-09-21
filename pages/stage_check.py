@@ -762,7 +762,12 @@ def page_check(bid_id: int):
             # historical run with none renders nothing (never an empty
             # section, step 22).
             package_findings = align_data.get("package_findings") or []
-            if weak_or_moderate_evidence or observations or typed_findings or package_findings:
+            # PI-2B2: guideline_assessments -- persisted rows only, rendered
+            # purely from reload (no rerun, no new model call), exactly like
+            # package_findings above. Never shows a numeric score/win
+            # probability -- only status + evaluator-traceability read.
+            guideline_assessments = align_data.get("guideline_assessments") or []
+            if weak_or_moderate_evidence or observations or typed_findings or package_findings or guideline_assessments:
                 st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
                 st.markdown("### 🔎 Proposal Intelligence")
 
@@ -847,6 +852,39 @@ def page_check(bid_id: int):
                             f'<div style="font-size:.78rem;color:#EDEAE3;margin-top:.15rem">{pf.get("explanation") or ""}</div>'
                             + (f'<div style="font-size:.74rem;color:#A9A69D;margin-top:.1rem">→ {pf.get("recommended_action")}</div>'
                                if pf.get("recommended_action") else "")
+                            + sources_html
+                            + '</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                if guideline_assessments:
+                    _rg_status_color = {
+                        "ANSWERED": "#27AE60", "PARTIAL": "#E67E22",
+                        "NOT_ANSWERED": "#C0392B", "CANNOT_ASSESS": "#6E6C66",
+                    }
+                    st.markdown(f"#### Response Guideline / Evaluator Usability ({len(guideline_assessments)})")
+                    st.caption("Buyer response-guideline coverage, reasoned from the same whole-package ledger -- no score, no win probability.")
+                    for ga in guideline_assessments:
+                        status = ga.get("status") or "CANNOT_ASSESS"
+                        color = _rg_status_color.get(status, "#6E6C66")
+                        traceability = ga.get("evaluator_traceability")
+                        refs = ga.get("proposal_source_refs") or []
+                        sources_html = "".join(
+                            f'<div style="font-size:.7rem;color:#6E6C66">📍 '
+                            f'{r.get("filename") or r.get("package_path") or "—"}'
+                            + (f' — {r.get("section")}' if r.get("section") else "")
+                            + '</div>'
+                            for r in refs
+                        )
+                        st.markdown(
+                            f'<div style="background:#111118;border:1px solid #292832;border-left:3px solid {color};'
+                            f'border-radius:0 4px 4px 0;padding:.5rem 1rem;margin:.25rem 0">'
+                            f'<span style="color:{color};font-weight:700;font-size:.72rem">[{status}]</span> '
+                            f'<span style="color:#C9A96E;font-size:.72rem">{ga.get("guideline_id") or ""}</span> '
+                            + (f'<span style="background:#2A2836;color:#A9A69D;font-size:.62rem;padding:1px 5px;'
+                               f'border-radius:3px;margin-left:.35rem">{traceability}</span>' if traceability else "")
+                            + (f'<div style="font-size:.78rem;color:#EDEAE3;margin-top:.15rem">{ga.get("rationale")}</div>'
+                               if ga.get("rationale") else "")
                             + sources_html
                             + '</div>',
                             unsafe_allow_html=True,

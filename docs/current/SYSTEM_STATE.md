@@ -99,9 +99,41 @@ needs that history).
   finding is now tagged `payload.scope = "local"` for the same reason);
   CHECK's "Proposal Intelligence" section renders them in their own
   "Whole-Package Consistency" cards, labeled "Package-level", from
-  persisted rows only (no rerun). PI-2B2 (Response Guideline coverage /
-  evaluator usability), a proposal quality score, win probability, and
-  proposal rewriting remain explicitly deferred (not implemented). See
+  persisted rows only (no rerun).
+  `PROPOSAL_INTELLIGENCE_ANALYSIS_VERSION` is now `proposal-intelligence-v4`
+  (PI-2B2, implemented, **NOT live-provider commissioned** — same mocked-
+  only status as PI-2B1 above): Response Guideline coverage + evaluator-
+  usability, added to the SAME single `package_reasoning` call PI-2B1
+  established — no second model call. Response Guidelines are used ONLY
+  when Fast Analysis's own deterministic (no-LLM) table parser
+  (`fast_analysis.extract_response_guideline_sections`) already extracted
+  them for that bid into `FastAnalysisResult.deterministic_response_
+  guidelines` — there is no governed/canonical version of a guideline
+  anywhere in this schema, so PI-2B2 reaches the raw Fast Analysis
+  snapshot the same way BUILD's `section_analyzer.procurement_basis()`
+  already does, and a bid with none gets no fabricated guideline section.
+  `analyst._build_package_intelligence_ledger` now also carries a
+  `response_guidelines` section (`G#` ids), prunable under the SAME
+  60KB ledger-wide byte budget as every other section. The model assesses
+  each guideline into a closed, fail-closed status vocabulary — ANSWERED/
+  PARTIAL/NOT_ANSWERED/CANNOT_ASSESS — plus an evaluator-usability read
+  (CLEAR/FRAGMENTED traceability, **never a numeric score, never win
+  probability, never automatic rewriting**). `analyst._reconcile_
+  guideline_assessments` validates fail-closed: ANSWERED/PARTIAL is
+  REJECTED outright without validated claim/source/observation provenance
+  (same contract as UNSUPPORTED_CLAIM/CONTRADICTION); NOT_ANSWERED is
+  structurally DOWNGRADED to CANNOT_ASSESS whenever coverage_complete or
+  ledger_complete is false, unless genuine positive evidence already
+  justifies ANSWERED/PARTIAL instead. A genuine NOT_ANSWERED gap persists
+  through the EXISTING `RESPONSE_GUIDELINE_GAP` finding type (already
+  part of migration 015's taxonomy from PI-1); every other status
+  persists as `FINDING_TYPE_OTHER`, both tagged `payload.kind =
+  "guideline_assessment"` in the SAME `proposal_intelligence_findings`
+  table (no migration). CHECK's "Proposal Intelligence" section renders a
+  "Response Guideline / Evaluator Usability" area, hidden when empty,
+  from persisted rows only (no rerun, no score shown). Organizational
+  Memory, a proposal quality score, win probability, and proposal
+  rewriting remain explicitly deferred (not implemented). See
   [NAVIGATION.md](NAVIGATION.md) for the full file map.
 
 ## Architectural fact-type separation
@@ -131,11 +163,13 @@ or observations with matching statements but different implications, and
 always unions (never drops) distinct structured `proposal_source_refs`
 across a merged cluster (exact-match-per-field; stable first-seen order).
 PI-2B1 (cross-document/whole-package claim, contradiction, and consistency
-reasoning) is now **implemented** (analysis_version
-`proposal-intelligence-v3`) but **NOT live-provider commissioned** — see
-above. PI-2B2 (Response Guideline coverage / evaluator usability) is
-explicitly NOT started. Future work should build on PI-2A/PI-2A.1/PI-2B1,
-not re-litigate their schema/adapter/ledger design without cause.
+reasoning) is now **implemented** but **NOT live-provider commissioned** —
+see above. PI-2B2 (Response Guideline coverage / evaluator usability) is
+now also **implemented** (analysis_version `proposal-intelligence-v4`) but
+likewise **NOT live-provider commissioned**. Organizational Memory (a
+later, unrelated phase) is explicitly NOT started. Future work should
+build on PI-2A/PI-2A.1/PI-2B1/PI-2B2, not re-litigate their schema/
+adapter/ledger design without cause.
 
 Absent an explicit task instruction otherwise, still do not: apply
 migration 013, alter/reapply migration 015, activate the compact-wire

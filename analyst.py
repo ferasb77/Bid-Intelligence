@@ -1744,6 +1744,22 @@ def _aggregate_proposal_claims(chunk_results: list[dict]) -> list[dict]:
 _PACKAGE_FINDING_TYPES = {"CONTRADICTION", "INTERNAL_INCONSISTENCY", "UNSUPPORTED_CLAIM"}
 _PACKAGE_SEVERITIES = {"Critical", "High", "Medium", "Low"}
 
+# PI-2B2: closed, fail-closed Response Guideline coverage vocabulary. Every
+# guideline the ONE package-reasoning call assesses gets exactly one of
+# these -- never a free-text status. CANNOT_ASSESS is the fail-closed
+# fallback whenever coverage/ledger completeness cannot support a stronger
+# conclusion (see _reconcile_guideline_assessments).
+_GUIDELINE_STATUSES = {"ANSWERED", "PARTIAL", "NOT_ANSWERED", "CANNOT_ASSESS"}
+_POSITIVE_GUIDELINE_STATUSES = {"ANSWERED", "PARTIAL"}
+
+# PI-2B2: evaluator-usability signal -- NEVER a numeric score, NEVER a win
+# probability, NEVER automatic rewriting of proposal text (all explicitly
+# out of scope for the whole PI-2 program). Purely a traceability read on
+# evidence ALREADY present in the ledger: is the answer directly findable
+# (CLEAR) or scattered/ambiguous (FRAGMENTED)? Absent (None) when the
+# model/ledger cannot support even that judgment.
+_GUIDELINE_TRACEABILITY_VALUES = {"CLEAR", "FRAGMENTED"}
+
 # Hard ledger byte budget (step 23, hardened): the compact, canonical-
 # JSON-serialized ledger ACTUALLY SENT TO THE MODEL (see
 # _build_package_intelligence_ledger) must not exceed this many UTF-8
@@ -1768,6 +1784,7 @@ _LEDGER_BYTE_BUDGET = 60_000
 # stable -- only used to keep pruning order reproducible.
 _ENTRY_KIND_ORDER = {
     "claim": 0, "requirement_evidence": 1, "delivery": 2, "commercial": 3, "deficiency": 4,
+    "guideline": 5,
 }
 _ENTRY_KIND_TIER3 = frozenset({"delivery", "commercial"})
 
@@ -1822,7 +1839,8 @@ class _LedgerCandidate:
         self.build = build  # callable(source_ids: list[str]) -> entry dict
 
 
-def _build_package_intelligence_ledger(alignment_result: dict, requirements: list[dict]) -> dict:
+def _build_package_intelligence_ledger(alignment_result: dict, requirements: list[dict],
+                                       response_guidelines: list[dict] | None = None) -> dict:
     """PI-2B1 step 7 (hardened, fix #2/#3): the compact ledger the ONE
     whole-package model call consumes -- built entirely from
     already-aggregated, deterministic package-level structures (never raw
@@ -1927,6 +1945,40 @@ def _build_package_intelligence_ledger(alignment_result: dict, requirements: lis
         ))
         i += 1
 
+    # PI-2B2: Response Guidelines -- ONLY the buyer-derived structure Fast
+    # Analysis's own deterministic, no-LLM parser already extracted
+    # (fast_analysis.extract_response_guideline_sections /
+    # FastAnalysisResult.deterministic_response_guidelines). Never inferred
+    # or fabricated here; when the bid has none, this loop simply adds
+    # nothing and the ledger's "response_guidelines" section is absent
+    # (requirement 2). Each guideline is its own PRUNABLE ledger candidate
+    # (requirement 12) -- it carries no req_id/claim_type/confidence, so it
+    # falls to the generic lowest-priority tier of _entry_priority_key,
+    # matching every other non-mandatory, non-quantitative entry kind.
+    # Guideline identity/context (weight, minimum_score, evidence_prompts,
+    # source_doc) is preserved verbatim; source_doc is the guideline's own
+    # PROCUREMENT-side identity (which buyer document/table row it came
+    # from) -- distinct from the P# proposal source registry, which only
+    # ever holds PROPOSAL evidence -- so it is carried directly on the
+    # guideline entry, never synthesized into a fabricated proposal
+    # source_ref.
+    for i, rg in enumerate(response_guidelines or []):
+        if not isinstance(rg, dict) or not rg.get("id"):
+            continue
+
+        def _mk(rg=rg):
+            def build(source_ids):
+                return {
+                    "guideline_id": None, "weight": rg.get("weight"),
+                    "minimum_score": rg.get("minimum_score"),
+                    "evidence_prompts": list(rg.get("evidence_prompts") or []),
+                    "source_doc": rg.get("source_doc"),
+                }
+            return build
+        candidates.append(_LedgerCandidate(
+            "guideline", i, None, None, None, [], _mk(),
+        ))
+
     def _assemble(kept: list[_LedgerCandidate]) -> dict:
         source_registry: list[dict] = []
         source_ids: dict[tuple, str] = {}
@@ -1986,7 +2038,16 @@ def _build_package_intelligence_ledger(alignment_result: dict, requirements: lis
             for cand in by_kind.get("deficiency", [])
         ]
 
-        return {
+        # PI-2B2: guideline IDs get their own G1..Gn namespace (first-seen,
+        # surviving order), distinct from C#/P#/O# -- documented choice,
+        # matching the existing per-section ID-namespace pattern.
+        guideline_entries = []
+        for idx, cand in enumerate(by_kind.get("guideline", [])):
+            entry = cand.build([])
+            entry["guideline_id"] = f"G{idx + 1}"
+            guideline_entries.append(entry)
+
+        result = {
             "coverage_complete": coverage_complete,
             "claims": claim_entries,
             "requirement_evidence": requirement_evidence,
@@ -1995,6 +2056,11 @@ def _build_package_intelligence_ledger(alignment_result: dict, requirements: lis
             "local_deficiencies": local_deficiencies,
             "source_registry": source_registry,
         }
+        # Requirement 2: only present, never an empty/fabricated section,
+        # when the bid genuinely has guidelines.
+        if guideline_entries:
+            result["response_guidelines"] = guideline_entries
+        return result
 
     kept_ids = set(range(len(candidates)))
     ledger = _assemble([candidates[i] for i in kept_ids])
@@ -2049,6 +2115,7 @@ def _build_package_intelligence_ledger(alignment_result: dict, requirements: lis
         "delivery_commitments_dropped_for_budget": dropped_by_kind.get("delivery", 0),
         "commercial_exposures_dropped_for_budget": dropped_by_kind.get("commercial", 0),
         "local_deficiencies_dropped_for_budget": dropped_by_kind.get("deficiency", 0),
+        "response_guidelines_dropped_for_budget": dropped_by_kind.get("guideline", 0),
     }
     return ledger
 
@@ -2080,14 +2147,93 @@ def package_ledger_digest(ledger: dict) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+_PACKAGE_REASONING_JSON_CONTRACT = """{
+  "package_findings": [
+    {
+      "finding_type": "CONTRADICTION|INTERNAL_INCONSISTENCY|UNSUPPORTED_CLAIM",
+      "severity": "Critical|High|Medium|Low",
+      "req_id": "<exact req_id from the ledger, or null>",
+      "title": "<short title>",
+      "explanation": "<why these specific claims conflict/are unsupported>",
+      "recommended_action": "<actionable fix>",
+      "supporting_claim_ids": ["C1", "C7"],
+      "supporting_source_ids": ["P2", "P9"],
+      "supporting_observation_ids": ["O1"]
+    }
+  ]
+}"""
+
+_PACKAGE_REASONING_JSON_CONTRACT_WITH_GUIDELINES = """{
+  "package_findings": [
+    {
+      "finding_type": "CONTRADICTION|INTERNAL_INCONSISTENCY|UNSUPPORTED_CLAIM",
+      "severity": "Critical|High|Medium|Low",
+      "req_id": "<exact req_id from the ledger, or null>",
+      "title": "<short title>",
+      "explanation": "<why these specific claims conflict/are unsupported>",
+      "recommended_action": "<actionable fix>",
+      "supporting_claim_ids": ["C1", "C7"],
+      "supporting_source_ids": ["P2", "P9"],
+      "supporting_observation_ids": ["O1"]
+    }
+  ],
+  "guideline_assessments": [
+    {
+      "guideline_id": "G1",
+      "status": "ANSWERED|PARTIAL|NOT_ANSWERED|CANNOT_ASSESS",
+      "rationale": "<why>",
+      "evaluator_traceability": "CLEAR|FRAGMENTED|null",
+      "supporting_claim_ids": ["C1"],
+      "supporting_source_ids": ["P2"],
+      "supporting_observation_ids": []
+    }
+  ]
+}"""
+
+
 def _package_reasoning_prompt(bid_header: str, ledger: dict) -> str:
     """PI-2B1 step 9/2: the ONE whole-package call's input -- the compact
     ledger (short IDs only) plus bid context. Raw proposal text/full
     chunks/full procurement documents are NEVER included here."""
     ledger_json = json.dumps(ledger, sort_keys=True, separators=(",", ":"))
+    has_guidelines = bool(ledger.get("response_guidelines"))
+    guideline_task = ""
+    if has_guidelines:
+        guideline_task = """
+
+ALSO assess EVERY Response Guideline in "response_guidelines" above (IDs
+G#). For each guideline_id, decide exactly one status:
+  ANSWERED -- the proposal clearly and completely addresses every evidence
+    prompt for this guideline. REQUIRES citing the specific claim_id(s)/
+    observation_id(s) (and, where applicable, source_id(s)) that prove it --
+    never conclude ANSWERED from silence or general impression.
+  PARTIAL -- the proposal addresses SOME but not all of the guideline's
+    evidence prompts, or addresses it with weaker/incomplete evidence.
+    Also REQUIRES citing the specific claim_id(s)/observation_id(s) that
+    support the partial coverage you found.
+  NOT_ANSWERED -- ONLY when coverage_complete AND ledger_complete are both
+    true above AND you find genuinely no supporting claim/observation
+    anywhere in the ledger for this guideline. If EITHER flag is false,
+    never conclude NOT_ANSWERED from absence alone -- use CANNOT_ASSESS
+    instead, UNLESS you can already point to sufficient validated positive
+    evidence in the ledger to justify ANSWERED/PARTIAL instead.
+  CANNOT_ASSESS -- coverage/ledger is incomplete and no positive evidence
+    is available, or the ledger genuinely does not contain enough to judge.
+
+Also give an evaluator_traceability read for each guideline, grounded ONLY
+in ledger evidence -- never a score, never a win probability:
+  CLEAR -- the cited evidence is concentrated and easy for an evaluator to
+    quickly find and verify.
+  FRAGMENTED -- the cited evidence (if any) is scattered across many
+    disconnected claims/observations, or is ambiguous/hard to locate.
+  Omit (null) evaluator_traceability when status is CANNOT_ASSESS or
+    NOT_ANSWERED with no evidence cited.
+
+Cite ONLY claim_id/source_id/observation_id values that literally appear in
+the ledger -- never invent one."""
     return f"""{bid_header}
 
-=== PROPOSAL INTELLIGENCE LEDGER (compact, IDs only -- C#=claim, P#=source, O#=delivery/commercial observation) ===
+=== PROPOSAL INTELLIGENCE LEDGER (compact, IDs only -- C#=claim, P#=source, O#=delivery/commercial observation, G#=response guideline) ===
 {ledger_json}
 
 TASK: find WHOLE-PACKAGE problems that no single passage above can show alone:
@@ -2119,24 +2265,12 @@ Cite ONLY claim_id/source_id/observation_id values that literally appear
 in the ledger above -- never invent one. Cite ONLY a req_id that appears
 verbatim in the ledger's requirement_evidence/claims -- never approximate
 or infer one.
+{guideline_task}
 
 Return ONLY valid JSON:
-{{
-  "package_findings": [
-    {{
-      "finding_type": "CONTRADICTION|INTERNAL_INCONSISTENCY|UNSUPPORTED_CLAIM",
-      "severity": "Critical|High|Medium|Low",
-      "req_id": "<exact req_id from the ledger, or null>",
-      "title": "<short title>",
-      "explanation": "<why these specific claims conflict/are unsupported>",
-      "recommended_action": "<actionable fix>",
-      "supporting_claim_ids": ["C1", "C7"],
-      "supporting_source_ids": ["P2", "P9"],
-      "supporting_observation_ids": ["O1"]
-    }}
-  ]
-}}
-If there are no genuine whole-package findings, return {{"package_findings": []}}."""
+{_PACKAGE_REASONING_JSON_CONTRACT_WITH_GUIDELINES if has_guidelines else _PACKAGE_REASONING_JSON_CONTRACT}
+If there are no genuine whole-package findings, return an empty
+"package_findings" list{" -- likewise an empty \"guideline_assessments\" list if nothing can be assessed" if has_guidelines else ""}."""
 
 
 _PACKAGE_FAILURE_API_ERROR = "api_error"
@@ -2169,6 +2303,13 @@ def _call_package_reasoning(prompt: str, max_tokens: int = 2500, bid_id: int | N
     except Exception:
         return None, _PACKAGE_FAILURE_PARSE_ERROR
     if not isinstance(parsed, dict) or not isinstance(parsed.get("package_findings"), list):
+        return None, _PACKAGE_FAILURE_MALFORMED_RESPONSE
+    # PI-2B2: guideline_assessments is optional in the raw response (a
+    # ledger with no response_guidelines section never asks for it), but
+    # if the model includes the key at all it must be a list -- never
+    # trust a malformed shape (same fail-closed contract as
+    # package_findings above).
+    if "guideline_assessments" in parsed and not isinstance(parsed.get("guideline_assessments"), list):
         return None, _PACKAGE_FAILURE_MALFORMED_RESPONSE
     return parsed, None
 
@@ -2330,8 +2471,131 @@ def _reconcile_package_findings(raw_findings: list, ledger: dict, requirements: 
     return accepted, rejected
 
 
+def _reconcile_guideline_assessments(raw_assessments: list, ledger: dict) -> tuple[list[dict], int]:
+    """PI-2B2: validates every model-returned Response Guideline assessment
+    INDIVIDUALLY and fail-closed, mirroring _reconcile_package_findings'
+    exact validation shape (requirement 5/6/12):
+
+      - an unknown guideline_id, unknown status, or unknown claim/source/
+        observation id REJECTS that assessment only (never the whole run).
+      - a cited supporting_source_id must be traceable to at least one of
+        the assessment's own cited claim_ids/observation_ids (same Fix #4
+        association rule _reconcile_package_findings already enforces --
+        existence in the registry alone is not enough).
+      - requirement 5 (positive coverage requires provenance): ANSWERED/
+        PARTIAL is REJECTED OUTRIGHT (not merely downgraded) when it has no
+        valid supporting_claim_ids/supporting_observation_ids -- exactly
+        like UNSUPPORTED_CLAIM/CONTRADICTION already require validated
+        citations to be accepted at all.
+      - requirement 6 (incomplete coverage/ledger fail-closed): a
+        NOT_ANSWERED conclusion is structurally DOWNGRADED to CANNOT_ASSESS
+        (never rejected outright -- the guideline was still genuinely
+        assessed, just not conclusively) whenever EITHER
+        ledger["coverage_complete"] or ledger["ledger_complete"] is False,
+        UNLESS the model already cited valid positive-evidence ids on this
+        same assessment (impossible in practice for a NOT_ANSWERED
+        conclusion, which by definition cites nothing -- this mirrors how
+        UNSUPPORTED_CLAIM is blocked by incompleteness while CONTRADICTION/
+        INTERNAL_INCONSISTENCY grounded in retained positive evidence are
+        not). A ledger with no ledger_complete key defaults to complete
+        (same convention as _reconcile_package_findings).
+      - evaluator_traceability is validated against the closed
+        _GUIDELINE_TRACEABILITY_VALUES vocabulary; any other value
+        (including a model hallucinating free text) is dropped to None
+        rather than rejecting the whole assessment -- it is advisory
+        color, not a citation-bearing claim.
+
+    Returns (accepted_assessments_with_expanded_refs, rejected_count)."""
+    guideline_ids = {g["guideline_id"] for g in ledger.get("response_guidelines") or [] if g.get("guideline_id")}
+    claim_ids = {c["claim_id"] for c in ledger.get("claims") or []}
+    claim_source_ids = {c["claim_id"]: set(c.get("source_ids") or []) for c in ledger.get("claims") or []}
+    observations = list(ledger.get("delivery_commitments") or []) + list(ledger.get("commercial_exposures") or [])
+    observation_ids = {o["observation_id"] for o in observations if o.get("observation_id")}
+    observation_source_ids = {
+        o["observation_id"]: set(o.get("source_ids") or [])
+        for o in observations if o.get("observation_id")
+    }
+    source_lookup = {s["source_id"]: {k: v for k, v in s.items() if k != "source_id"}
+                      for s in ledger.get("source_registry") or []}
+    coverage_complete = bool(ledger.get("coverage_complete"))
+    ledger_complete = bool(ledger.get("ledger_complete", True))
+
+    accepted, rejected = [], 0
+    for item in raw_assessments or []:
+        if not isinstance(item, dict):
+            rejected += 1
+            continue
+        guideline_id = item.get("guideline_id")
+        status = item.get("status")
+        supporting_claim_ids = item.get("supporting_claim_ids") or []
+        supporting_source_ids = item.get("supporting_source_ids") or []
+        supporting_observation_ids = item.get("supporting_observation_ids") or []
+
+        if guideline_id not in guideline_ids:
+            rejected += 1
+            continue
+        if status not in _GUIDELINE_STATUSES:
+            rejected += 1
+            continue
+        if not isinstance(supporting_claim_ids, list) or not all(cid in claim_ids for cid in supporting_claim_ids):
+            rejected += 1
+            continue
+        if not isinstance(supporting_source_ids, list) or not all(sid in source_lookup for sid in supporting_source_ids):
+            rejected += 1
+            continue
+        if not isinstance(supporting_observation_ids, list) or not all(
+                oid in observation_ids for oid in supporting_observation_ids):
+            rejected += 1
+            continue
+        allowed_source_ids: set = set()
+        for cid in supporting_claim_ids:
+            allowed_source_ids |= claim_source_ids.get(cid, set())
+        for oid in supporting_observation_ids:
+            allowed_source_ids |= observation_source_ids.get(oid, set())
+        if not all(sid in allowed_source_ids for sid in supporting_source_ids):
+            rejected += 1
+            continue
+
+        has_positive_evidence = bool(supporting_claim_ids) or bool(supporting_observation_ids)
+
+        # Requirement 5: a positive conclusion with no validated provenance
+        # is REJECTED, not persisted as a weaker status -- same fail-closed
+        # contract as UNSUPPORTED_CLAIM/CONTRADICTION.
+        if status in _POSITIVE_GUIDELINE_STATUSES and not has_positive_evidence:
+            rejected += 1
+            continue
+
+        # Requirement 6: absence can never become NOT_ANSWERED unless BOTH
+        # completeness flags hold -- structurally enforced here regardless
+        # of prompt wording, mirroring UNSUPPORTED_CLAIM's enforcement.
+        # Genuine positive evidence already cited on THIS assessment would
+        # have already routed it into the ANSWERED/PARTIAL branch above, so
+        # any assessment that still reads NOT_ANSWERED here has no positive
+        # evidence to fall back on -- downgrade, never reject.
+        if status == "NOT_ANSWERED" and not (coverage_complete and ledger_complete):
+            status = "CANNOT_ASSESS"
+
+        traceability = item.get("evaluator_traceability")
+        if traceability not in _GUIDELINE_TRACEABILITY_VALUES:
+            traceability = None
+
+        proposal_source_refs = [source_lookup[sid] for sid in supporting_source_ids]
+        accepted.append({
+            "guideline_id": guideline_id,
+            "status": status,
+            "rationale": item.get("rationale"),
+            "evaluator_traceability": traceability,
+            "supporting_claim_ids": list(supporting_claim_ids),
+            "supporting_source_ids": list(supporting_source_ids),
+            "supporting_observation_ids": list(supporting_observation_ids),
+            "proposal_source_refs": proposal_source_refs,
+        })
+    return accepted, rejected
+
+
 def analyze_proposal_package_intelligence(
     alignment_result: dict, requirements: list[dict], bid_info: dict, bid_id: int | None = None,
+    response_guidelines: list[dict] | None = None,
 ) -> dict:
     """PI-2B1 step 9: the single whole-package Proposal Intelligence
     reasoning entry point. Enrichment ONLY on top of an already-valid
@@ -2356,13 +2620,22 @@ def analyze_proposal_package_intelligence(
     Hardening fix #1: "ledger_complete" is surfaced on the result
     metadata (not just inside the model-visible ledger) so callers/
     telemetry can see whether budget pruning dropped anything, mirroring
-    how "claims_dropped_for_budget" is already surfaced."""
-    raw_ledger = _build_package_intelligence_ledger(alignment_result, requirements)
+    how "claims_dropped_for_budget" is already surfaced.
+
+    PI-2B2: `response_guidelines` -- Fast Analysis's OWN deterministic,
+    buyer-derived Response Guideline structures for this bid (already
+    audited to exist ONLY in FastAnalysisResult.deterministic_response_
+    guidelines -- never fabricated here), threaded through into the SAME
+    ledger and the SAME single call (no second model call). Returns
+    additionally: "guideline_assessments": [...],
+    "rejected_guideline_count": int."""
+    raw_ledger = _build_package_intelligence_ledger(alignment_result, requirements, response_guidelines)
     if raw_ledger is None:
         return {
             "package_findings": [], "package_reasoning_status": "SKIPPED_LEDGER_OVER_BUDGET",
             "package_ledger_digest": None, "rejected_count": 0,
             "claims_dropped_for_budget": 0, "ledger_complete": False,
+            "guideline_assessments": [], "rejected_guideline_count": 0,
         }
 
     # Fix #3: strip bookkeeping BEFORE hashing/prompting -- the digest and
@@ -2372,11 +2645,12 @@ def analyze_proposal_package_intelligence(
     claims_dropped = bookkeeping.get("claims_dropped_for_budget", 0)
     ledger_complete = bool(ledger.get("ledger_complete", True))
 
-    if not ledger["claims"] and not ledger["requirement_evidence"]:
+    if not ledger["claims"] and not ledger["requirement_evidence"] and not ledger.get("response_guidelines"):
         return {
             "package_findings": [], "package_reasoning_status": "SKIPPED_EMPTY_LEDGER",
             "package_ledger_digest": digest, "rejected_count": 0,
             "claims_dropped_for_budget": claims_dropped, "ledger_complete": ledger_complete,
+            "guideline_assessments": [], "rejected_guideline_count": 0,
         }
 
     bid_header = f"BID: {bid_info.get('title', '')} | CLIENT: {bid_info.get('client', '')}"
@@ -2393,13 +2667,17 @@ def analyze_proposal_package_intelligence(
             "package_ledger_digest": digest, "rejected_count": 0,
             "claims_dropped_for_budget": claims_dropped, "ledger_complete": ledger_complete,
             "failure_reason": failure_category,
+            "guideline_assessments": [], "rejected_guideline_count": 0,
         }
 
     accepted, rejected = _reconcile_package_findings(parsed.get("package_findings"), ledger, requirements)
+    guideline_accepted, guideline_rejected = _reconcile_guideline_assessments(
+        parsed.get("guideline_assessments"), ledger)
     return {
         "package_findings": accepted, "package_reasoning_status": "OK",
         "package_ledger_digest": digest, "rejected_count": rejected,
         "claims_dropped_for_budget": claims_dropped, "ledger_complete": ledger_complete,
+        "guideline_assessments": guideline_accepted, "rejected_guideline_count": guideline_rejected,
     }
 
 

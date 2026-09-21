@@ -94,6 +94,18 @@ Where to look, not what everything means. Read
   source id, bad finding_type/severity, or a non-ledger-verbatim req_id
   rejects that finding only; UNSUPPORTED_CLAIM is structurally rejected
   whenever local coverage is incomplete, regardless of model output).
+  PI-2B2 adds Response Guideline coverage + evaluator usability into the
+  SAME ledger/call (no second call): `_build_package_intelligence_ledger`
+  now also accepts `response_guidelines` (threaded in by `tenancy.py` from
+  `section_analyzer.procurement_basis(bid_id)`'s raw Fast Analysis
+  snapshot — `FastAnalysisResult.deterministic_response_guidelines`, the
+  ONLY existing source; never fabricated), producing a `G#`-id
+  `response_guidelines` ledger section (also prunable under the same 60KB
+  budget) → `_reconcile_guideline_assessments` (fail-closed: ANSWERED/
+  PARTIAL rejected without validated claim/source/observation provenance;
+  NOT_ANSWERED downgraded, not rejected, to CANNOT_ASSESS whenever
+  coverage_complete/ledger_complete is false and no positive evidence is
+  cited).
 
 **Proposal Intelligence (PI-1, hardened in PI-1.1/PI-1.2, deepened in
 PI-2A/PI-2A.1, extended in PI-2B1)** — durable persistence for CHECK's
@@ -112,10 +124,25 @@ model call producing CONTRADICTION/INTERNAL_INCONSISTENCY/UNSUPPORTED_CLAIM
 findings — persisted into the SAME `proposal_intelligence_findings` table
 (those finding_types already existed in migration 015's enum; no new
 migration) tagged `payload.scope = "package"` (a PI-2A/local finding is
-now tagged `payload.scope = "local"`, for the same reason). `analysis_version`
-is `proposal-intelligence-v3`.
-PI-2B2 (Response Guideline coverage / evaluator usability), a proposal
-quality score, win probability, and proposal rewriting are explicitly
+now tagged `payload.scope = "local"`, for the same reason).
+PI-2B2 (**implemented, NOT live-provider commissioned**, same mocked-only
+status as PI-2B1) adds Response Guideline coverage / evaluator usability
+to that SAME package-reasoning call (no second model call):
+`proposal_intelligence.adapt_guideline_assessments` maps `analyze_
+proposal_package_intelligence`'s already-reconciled `guideline_
+assessments` into finding rows in the SAME `proposal_intelligence_findings`
+table — a genuine NOT_ANSWERED gap uses the EXISTING `RESPONSE_GUIDELINE_
+GAP` finding type (already in migration 015's taxonomy from PI-1), every
+other status (ANSWERED/PARTIAL/CANNOT_ASSESS) uses `FINDING_TYPE_OTHER`,
+both tagged `payload.kind = "guideline_assessment"` (distinguishing them
+from local/package findings the same way `payload.scope` already does).
+`reconstruct_legacy_align_result` splits these out into their own
+`guideline_assessments` list, rendered by `pages/stage_check.py`'s
+"Response Guideline / Evaluator Usability" area — hidden when empty, no
+score shown, purely from persisted rows on reload. `analysis_version` is
+now `proposal-intelligence-v4`. A proposal quality score, win probability,
+and proposal rewriting remain explicitly out of scope for the whole PI-2
+program. Organizational Memory (a later, unrelated phase) is explicitly
 deferred, not started.
 - `proposal_intelligence.py` — the pure, deterministic adapter: package
   digest over the FULL submitted package, included and excluded alike
@@ -180,6 +207,11 @@ deferred, not started.
   inconsistency/unsupported-claim standards including the incomplete-
   coverage structural rejection, package-call failure behavior, persistence
   mapping, scope separation on reload, call-count, version bump),
+  `tests/test_proposal_intelligence_pi2b2.py` (PI-2B2: guideline ledger
+  extraction/basis, positive-coverage provenance requirement, incomplete-
+  coverage fail-closed downgrade, evidence provenance validation,
+  evaluator-traceability, persistence/reload, historical compatibility,
+  unchanged one-call topology, version bump/staleness),
   `tests/test_proposal_intelligence_tenancy.py` (authorization boundary +
   atomic persistence), `tests/test_proposal_intelligence_database.py`
   (RPC-boundary persistence + migration DDL-intent checks).

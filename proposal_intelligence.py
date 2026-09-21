@@ -38,7 +38,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-PROPOSAL_INTELLIGENCE_ANALYSIS_VERSION = "proposal-intelligence-v3"
+PROPOSAL_INTELLIGENCE_ANALYSIS_VERSION = "proposal-intelligence-v4"
 
 # ---------------------------------------------------------------------------
 # Section 3: finding taxonomy -- bounded, sufficient to normalize CURRENT
@@ -517,6 +517,66 @@ def adapt_package_findings(package_result: dict, requirements: list[dict] | None
     return rows
 
 
+# ---------------------------------------------------------------------------
+# PI-2B2: Response Guideline coverage / evaluator-usability adapter
+# (analyst.analyze_proposal_package_intelligence()'s already-reconciled,
+# fail-closed `guideline_assessments` -> proposal_intelligence_findings
+# rows). No new table/migration (see this module's docstring's "no new LLM
+# call" discipline extended here to "no new persistence mechanism" --
+# migration 015's generic finding_type/payload columns, already sufficient
+# for PI-2A/PI-2B1, are reused verbatim): every guideline assessment is
+# persisted as its own finding row, `payload["kind"] = "guideline_
+# assessment"` distinguishing it from a local/package finding row exactly
+# the way `payload["scope"]` already distinguishes local vs. package
+# (requirement 9 -- CHECK reload renders the whole "Response Guideline /
+# Evaluator Usability" section, every status, purely from these rows).
+# A genuine gap (status == NOT_ANSWERED, meaning coverage_complete AND
+# ledger_complete both held AND no evidence was found -- see
+# analyst._reconcile_guideline_assessments' fail-closed downgrade) is ALSO
+# tagged with finding_type RESPONSE_GUIDELINE_GAP (requirement 7 -- the
+# existing, already-bounded taxonomy type, no new finding-type mechanism);
+# every other status (ANSWERED/PARTIAL/CANNOT_ASSESS) persists as
+# FINDING_TYPE_OTHER, since it documents coverage, not a deficiency.
+# ---------------------------------------------------------------------------
+
+def adapt_guideline_assessments(package_result: dict, requirements: list[dict] | None = None) -> list[dict]:
+    """analyst.analyze_proposal_package_intelligence()'s already-reconciled
+    `guideline_assessments` -> proposal_intelligence_findings rows. Only
+    ALREADY-VALIDATED assessments reach this adapter (analyst.py's
+    _reconcile_guideline_assessments rejected anything with an unknown
+    guideline/claim/source/observation id, unknown status, or an
+    unprovenanced positive conclusion, and structurally downgraded an
+    incomplete-coverage NOT_ANSWERED to CANNOT_ASSESS) -- this function does
+    no further semantic validation, only persistence shaping. A FAILED/
+    SKIPPED_* package_reasoning_status or a bid with no Response Guidelines
+    at all naturally yields `guideline_assessments == []` here -- never a
+    fabricated placeholder row."""
+    digest = package_result.get("package_ledger_digest")
+    rows = []
+    for ga in package_result.get("guideline_assessments") or []:
+        status = ga.get("status")
+        is_gap = status == "NOT_ANSWERED"
+        rows.append({
+            "finding_type": FINDING_TYPE_RESPONSE_GUIDELINE_GAP if is_gap else FINDING_TYPE_OTHER,
+            "severity": "Medium" if is_gap else None,
+            "title": f"Response Guideline {ga.get('guideline_id') or ''}: {status or ''}".strip(),
+            "message": ga.get("rationale"),
+            "explanation": None,
+            "related_req_id": None,
+            "related_requirement_id": None,
+            "proposal_source_refs": ga.get("proposal_source_refs") or [],
+            "procurement_source_refs": [],
+            "payload": dict(
+                ga,
+                kind="guideline_assessment",
+                scope="package",
+                package_ledger_digest=digest,
+                proposal_source_refs=ga.get("proposal_source_refs") or [],
+            ),
+        })
+    return rows
+
+
 def build_run_payload(alignment_result: dict, *, procurement_state: dict,
                       started_at: str | None = None, completed_at: str | None = None,
                       package_intelligence: dict | None = None) -> dict:
@@ -562,6 +622,9 @@ def build_run_payload(alignment_result: dict, *, procurement_state: dict,
             "rejected_count": package_intelligence.get("rejected_count"),
             "claims_dropped_for_budget": package_intelligence.get("claims_dropped_for_budget"),
             "failure_reason": package_intelligence.get("failure_reason"),
+            # PI-2B2: never a run-level column -- the same additive-jsonb
+            # discipline PI-2B1 already established for this block.
+            "rejected_guideline_count": package_intelligence.get("rejected_guideline_count"),
         }
     return {
         "based_on_procurement_revision": procurement_state.get("procurement_revision"),
@@ -636,14 +699,30 @@ def reconstruct_legacy_align_result(run: dict, assessments: list[dict], findings
     # cannot distinguish scope -- see adapt_findings' scope tagging
     # comment). A historical run with no package findings at all yields
     # [] here and renders safely (step 22).
+    # PI-2B2: a guideline-assessment row (payload["kind"] ==
+    # "guideline_assessment", stamped by adapt_guideline_assessments) is
+    # carved out of BOTH general_findings and package_findings, exactly
+    # like proposal_observations already is above -- finding_type alone
+    # cannot distinguish it (a genuine gap shares FINDING_TYPE_
+    # RESPONSE_GUIDELINE_GAP with nothing else, but ANSWERED/PARTIAL/
+    # CANNOT_ASSESS rows share FINDING_TYPE_OTHER with ordinary local
+    # findings). A historical pre-PI-2B2 run has none and renders an empty
+    # list safely (same "never crashes on absence" contract as every other
+    # additive PI-2 field).
+    guideline_assessments = [
+        f["payload"] for f in findings
+        if f.get("payload") and (f["payload"] or {}).get("kind") == "guideline_assessment"
+    ]
     general_findings = [
         f["payload"] for f in findings
         if f.get("finding_type") not in _non_general_types and f.get("payload")
         and (f["payload"] or {}).get("scope") != "package"
+        and (f["payload"] or {}).get("kind") != "guideline_assessment"
     ]
     package_findings = [
         f["payload"] for f in findings
         if f.get("payload") and (f["payload"] or {}).get("scope") == "package"
+        and (f["payload"] or {}).get("kind") != "guideline_assessment"
     ]
     proposal_observations = [
         f["payload"] for f in findings
@@ -664,6 +743,7 @@ def reconstruct_legacy_align_result(run: dict, assessments: list[dict], findings
         "mandatory_failures": mandatory_failures,
         "findings": general_findings,
         "package_findings": package_findings,
+        "guideline_assessments": guideline_assessments,
         "proposal_observations": proposal_observations,
         "coverage_metadata": run.get("coverage_metadata") or {},
         "based_on_procurement_revision": run.get("based_on_procurement_revision"),

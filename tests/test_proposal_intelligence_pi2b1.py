@@ -437,8 +437,12 @@ class TestScopeSeparationOnReload:
 
 class TestAnalysisVersionBump:
 
-    def test_current_version_is_v3(self):
-        assert pi.PROPOSAL_INTELLIGENCE_ANALYSIS_VERSION == "proposal-intelligence-v3"
+    def test_current_version_is_v4(self):
+        # PI-2B2 bumped this from v3 -> v4 (Response Guideline coverage +
+        # evaluator usability added to the package-reasoning contract) --
+        # see tests/test_proposal_intelligence_pi2b2.py::TestAnalysisVersionBump
+        # for the staleness-flagging proof this bump requires.
+        assert pi.PROPOSAL_INTELLIGENCE_ANALYSIS_VERSION == "proposal-intelligence-v4"
 
     def test_v2_run_reports_analysis_version_changed(self):
         run = {"based_on_procurement_revision": 1, "proposal_package_snapshot_id": 5,

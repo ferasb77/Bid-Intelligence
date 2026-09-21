@@ -1305,9 +1305,31 @@ def run_proposal_intelligence_for_organization(
     # bounding try/except is kept anyway so a genuinely unexpected defect
     # in this brand-new PI-2B1 code path can never take down an otherwise-
     # successful PI-2A run.
+    # PI-2B2: Response Guidelines are used ONLY when they already exist,
+    # exactly as Fast Analysis's own deterministic (no-LLM) table parser
+    # extracted them (fast_analysis.extract_response_guideline_sections) --
+    # never inferred or reconstructed here. The audited-existing source is
+    # a raw Fast Analysis snapshot (there is no governed/canonical version
+    # of a Response Guideline anywhere in this schema -- see section_
+    # analyzer.procurement_basis's own docstring for the same finding),
+    # reached the same way BUILD's section_analyzer.py already reaches it,
+    # reused rather than reimplemented. A bid with no complete Fast
+    # Analysis run, or one whose snapshot carries no guidelines, yields []
+    # here -- never a fabricated guideline.
+    import section_analyzer
+    response_guidelines = []
+    try:
+        basis = section_analyzer.procurement_basis(bid_id)
+        raw_snapshot = basis.get("raw_snapshot")
+        if raw_snapshot is not None:
+            response_guidelines = list(getattr(raw_snapshot, "deterministic_response_guidelines", None) or [])
+    except Exception:
+        response_guidelines = []
+
     try:
         package_intelligence = analyst.analyze_proposal_package_intelligence(
             alignment_result, requirements, bid_info, bid_id=bid_id,
+            response_guidelines=response_guidelines,
         )
     except Exception as exc:
         package_intelligence = {
@@ -1315,6 +1337,7 @@ def run_proposal_intelligence_for_organization(
             "package_ledger_digest": None, "rejected_count": 0,
             "claims_dropped_for_budget": 0,
             "failure_reason": f"{type(exc).__name__}: {exc}",
+            "guideline_assessments": [], "rejected_guideline_count": 0,
         }
 
     run_payload = pi.build_run_payload(alignment_result, procurement_state=procurement_state,
@@ -1327,6 +1350,7 @@ def run_proposal_intelligence_for_organization(
     assessments = pi.adapt_requirement_assessments(alignment_result, requirements)
     findings = pi.adapt_findings(alignment_result, requirements)
     findings += pi.adapt_package_findings(package_intelligence, requirements)
+    findings += pi.adapt_guideline_assessments(package_intelligence, requirements)
     run = db.create_proposal_intelligence_bundle(run_payload, assessments, findings)
 
     return {"run": run, "alignment_result": alignment_result, "package_intelligence": package_intelligence}
