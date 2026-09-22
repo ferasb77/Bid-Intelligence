@@ -302,6 +302,41 @@ def get_full_analysis_result_for_organization(
         raise AccessDeniedError(str(exc))
 
 
+def export_full_analysis_report_for_organization(
+    bid_id: int, organization_id: str, run_id: int,
+) -> dict:
+    """MA-2C: render the persisted Full Analysis of `run_id` as a PDF.
+    Same two checks as the result view (bid ownership, then run belongs to
+    this bid as a FULL run), then READ-ONLY: persisted status/result, the
+    bid row and the source Fast Analysis run's persisted report snapshot.
+    Never starts, reruns or mutates a run; never calls a model. Returns
+    {"pdf": bytes, "filename": str}. Raises AccessDeniedError, or
+    full_analysis_report.ReportNotExportableError for a non-COMPLETE/PARTIAL
+    run."""
+    require_bid_access(bid_id, organization_id)
+    import full_analysis_service
+    import full_analysis_report
+    try:
+        status = full_analysis_service.get_full_analysis_status(bid_id, run_id)
+        bundle = full_analysis_service.get_full_analysis_result(bid_id, run_id)
+    except full_analysis_service.RunNotFoundError as exc:
+        raise AccessDeniedError(str(exc))
+    if not bundle:
+        raise full_analysis_report.ReportNotExportableError("no persisted Full Analysis result")
+    snapshot = {}
+    source_run_id = (status or {}).get("source_analysis_run_id") or \
+        ((bundle.get("result") or {}).get("source_analysis_run_id"))
+    if source_run_id:
+        src_run = db.get_analysis_run(int(source_run_id))
+        if src_run and int(src_run.get("bid_id")) == int(bid_id):  # never another bid's snapshot
+            snapshot = (db.get_analysis_result(int(source_run_id)) or {}).get("report_content_snapshot") or {}
+    out = full_analysis_report.render_report(
+        status, bundle, bid=db.get_bid(bid_id),
+        identity_facts=snapshot.get("SNAPSHOT_FACTS"),
+        canonical_tables={k: snapshot.get(k) for k in ("EVAL_WEIGHTS", "EVAL_MINIMUM_SCORES", "KEY_DATES")})
+    return {"pdf": out["pdf"], "filename": out["filename"]}
+
+
 def mark_full_analysis_run_stuck_for_organization(
     bid_id: int, organization_id: str, run_id: int,
 ) -> dict:

@@ -212,6 +212,18 @@ Where to look, not what everything means. Read
   `derive_execution_state` surfaces it.
 - Tests: `tests/test_full_analysis_ma2a2.py` (17, zero provider calls).
 
+**MA-2C: Full Bid Intelligence PDF Report Export (2026-09-23)**
+- `full_analysis_report.py` -- pure presentation (no DB, no model, no
+  full_analysis imports): `build_report_model` / `render_pdf` /
+  `render_report` / `report_filename`. Reuses the shared reportlab stack,
+  fonts and brand tokens of `scripts/build_boc_bid_intelligence_preview_pdf.py`
+  and MA-2B's `components/full_analysis_view.py` status/grouping logic.
+- `tenancy.export_full_analysis_report_for_organization(bid_id, org, run_id)`
+  -- same bid/run checks as the result view; read-only.
+- `pages/stage_full_analysis.py` -- `prepare_export` (COMPLETE/PARTIAL only,
+  per-run session cache) + `_render_export` download button.
+- Tests: `tests/test_full_analysis_ma2c.py`.
+
 **MA-2B: Animated Multi-Agent Full Analysis Experience (2026-09-23)**
 - `pages/stage_full_analysis.py` -- `page_full_analysis(bid_id)` (sidebar
   "🧬 Full Bid Intelligence", `page == "stage_full_analysis"` in `app.py`;

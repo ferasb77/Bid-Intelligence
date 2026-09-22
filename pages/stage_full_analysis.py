@@ -38,6 +38,8 @@ _START_INFLIGHT = "fa_start_inflight_{bid}"
 _OUTCOME_NOTE = "fa_outcome_{bid}"
 _PREV_BOTS = "fa_prev_bots_{run}"
 _ROWS_CACHE = "fa_rows_{run}"
+_EXPORT_CACHE = "fa_export_{run}"
+EXPORTABLE = (fav.COMPLETE, fav.PARTIAL)
 
 
 def _ctx():
@@ -127,6 +129,28 @@ def live_frame(bid_id: int, organization_id: str, session, run_id: int | None = 
     packets = fav.packet_transitions(session.get(prev_key), view["bots"])
     session[prev_key] = dict(view["bots"])
     return {"view": view, "status": status, "rows": rows, "packets": packets, "error": None}
+
+
+def prepare_export(bid_id: int, organization_id: str, run_id: int, run_status: str | None, session) -> dict:
+    """MA-2C: the persisted run as a PDF. {"pdf", "filename"} or {"error"}.
+    Only for a terminal COMPLETE/PARTIAL run; goes through tenancy's
+    authorized, read-only export wrapper (never a model, never a rerun).
+    The rendered bytes are cached per run in this browser session, so
+    repeated downloads do not even re-render."""
+    if run_status not in EXPORTABLE:
+        return {"error": "The report can be exported once the analysis is complete or partial."}
+    key = _EXPORT_CACHE.format(run=run_id)
+    cached = session.get(key)
+    if cached:
+        return cached
+    try:
+        out = tenancy.export_full_analysis_report_for_organization(bid_id, organization_id, run_id)
+    except tenancy.AccessDeniedError:
+        return {"error": "You do not have access to that analysis."}
+    except Exception as exc:
+        return {"error": f"Could not build the report: {exc}"}
+    session[key] = out
+    return out
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -233,6 +257,27 @@ def _render_section(title: str, blurb: str, findings: list, primary: str | None,
                             unsafe_allow_html=True)
 
 
+def _render_export(bid_id: int, status: dict) -> None:
+    """Download the persisted result as the Full Intelligence PDF report."""
+    run_id, run_status = status.get("run_id"), status.get("status")
+    if run_status not in EXPORTABLE:
+        return
+    _, org, _ = _ctx()
+    key = _EXPORT_CACHE.format(run=run_id)
+    if not st.session_state.get(key):
+        if st.button("Export Full Intelligence Report (PDF)", key=f"fa_export_{bid_id}_{run_id}"):
+            out = prepare_export(bid_id, org, run_id, run_status, st.session_state)
+            if out.get("error"):
+                st.error(out["error"])
+                return
+        else:
+            st.caption("Builds a PDF from this saved result. It does not re-run the analysis.")
+            return
+    out = st.session_state[key]
+    st.download_button("Download Full Intelligence Report (PDF)", data=out["pdf"], file_name=out["filename"],
+                       mime="application/pdf", key=f"fa_dl_{bid_id}_{run_id}", type="primary")
+
+
 def _render_result(bid_id: int, status: dict) -> None:
     _, org, _ = _ctx()
     try:
@@ -247,6 +292,7 @@ def _render_result(bid_id: int, status: dict) -> None:
 
     st.markdown(fav.render_strip(view["bots"], view["reconciliation"]), unsafe_allow_html=True)
     st.markdown(fav.render_banner(*fav.overall_banner(view, status)), unsafe_allow_html=True)
+    _render_export(bid_id, status)
 
     for sid, title, blurb in fav.RESULT_SECTIONS:
         _render_section(title, blurb, grouped["domains"][sid], sid, f"{bid_id}_{sid}")
