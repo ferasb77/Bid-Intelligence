@@ -1668,8 +1668,8 @@ untouched (`fast_analysis.py`, `canonical_procurement.py`,
 **Persistence reuses `analysis_runs`/`analysis_results`** with
 `analysis_mode='FULL'` (so `model_usage_events.analysis_run_id` links Full
 Analysis telemetry with no new telemetry schema). New
-`migrations/020_full_analysis_runs.sql` — **written, NOT applied live**
-(live commissioning is a separate task): widens the mode CHECK to
+`migrations/020_full_analysis_runs.sql` — **applied and live-commissioned
+2026-09-22 by MA-2A.1 (below)**: widens the mode CHECK to
 FAST/DEEP_VERIFY/FULL and the status CHECK with RUNNING + PARTIAL (PARTIAL
 is terminal and was added to the one-active-run partial index's terminal
 set); adds `input_fingerprint`, `source_analysis_run_id`,
@@ -1744,8 +1744,134 @@ Also: `database.get_active_analysis_run` and
 skip FULL rows so FAST consumers are unaffected. Tests:
 `tests/test_full_analysis_ma2a.py` (62, zero provider calls, in-memory
 stand-in for migration 020's RPC contract + static SQL assertions). Full
-suite: **3201 passed, 2 skipped**. Highest migration in repo: **020 (not
-applied)**.
+suite: **3201 passed, 2 skipped**. Highest migration in repo: **020
+(applied live 2026-09-22, MA-2A.1)**.
+
+### MA-2A.1: Live Commissioning of Durable Full Analysis (2026-09-22)
+
+Commissioning only — no code change was required; no MA-2B UI; canonical
+layer untouched. Project `whonalbdpbubaqhpzrnw`.
+
+**Preflight** (actual schema, not only the ledger): 019 present in the
+ledger, 020 absent; `analysis_runs` still had migration 004's
+FAST/DEEP_VERIFY mode CHECK, the 6-value status CHECK, the
+`idx_analysis_runs_one_active` index terminal on COMPLETE/FAILED only, no
+triggers, no `full_analysis_*` objects; 17 FAST/COMPLETE rows, all valid
+under the widened constraints — no drift. **Applied** via
+`apply_migration` (ledger `20260922202352 full_analysis_runs`; statements
+verbatim from the file, comments omitted).
+
+**Verified live**: FULL mode + RUNNING/PARTIAL statuses, the three new
+columns, `analysis_results.full_analysis_result`, both new tables, all
+indexes/triggers. Transactional (rolled-back) RPC probes as postgres:
+CREATED → ACTIVE_RUN_EXISTS for any fingerprint while active → gap-free
+server sequencing → COMPLETE refused for a non-COMPLETE result → second
+active FULL run and second COMPLETE-per-fingerprint both rejected by the
+unique indexes → finalize writes result + RUN_COMPLETED + status
+atomically → late event / re-finalize / direct UPDATE of a terminal FULL
+run / FAST→FULL conversion / event UPDATE-DELETE / specialist-result
+UPDATE all rejected → REUSED_COMPLETE on the same fingerprint →
+EXISTING_FAILED without retry, CREATED with `p_retry`. RLS: org member
+reads run/events/specialist rows; non-member and anon read 0; member
+INSERT into both tables and forged FULL `analysis_runs` INSERT rejected
+by RLS, member UPDATE affects 0 rows, member/anon EXECUTE on all three
+RPCs denied; service_role RPC writes succeed; the append-only trigger
+rejects even service_role. Security advisors: only the 3 pre-existing
+findings. **Live PostgREST shapes** (supabase-py): `start_full_analysis_run`
+→ a dict `{"outcome","run"}` (not a list); `record_full_analysis_event`
+and `finalize_full_analysis_run` → a single dict row; `database._rpc_one`
+handles all three correctly.
+
+**Service against live RPCs** (disposable test bid 1286 / FAST run 18,
+mocked model client — zero provider calls, telemetry sink disabled):
+start/status/incremental `after_sequence`/result/specialist-result reads,
+REUSED_COMPLETE with 0 prompts, a PARTIAL run (reconciliation failed)
+visible with EXISTING_PARTIAL on restart, and stuck semantics (not stuck
+at +30s, NO_PROGRESS at +11min, `mark_full_analysis_run_stuck` refused
+when not stuck, marks FAILED when stuck, no new run created, a late
+`_EventRecorder` write rejected and the recorder aborts, restart →
+EXISTING_FAILED, every specialist SKIPPED). All probe rows (runs 28–31)
+deleted afterwards; zero residue verified.
+
+**One live Full Analysis** — bid 8 (Bank of Canada RFP 2026-026, source
+FAST run 19), FULL **run 32**, fingerprint `e1ace9ef96e267f3…`
+(CREATED — no prior FULL run existed), via
+`tenancy.start_full_analysis_for_organization(execution="background")`.
+All six specialists COMPLETE, reconciliation COMPLETE, run COMPLETE;
+101.3s from RUN_CREATED to RUN_COMPLETED (engine `wall_seconds` 97.8).
+7 provider calls (`claude-haiku-4-5-20251001`), 89,593 input / 18,870
+output tokens; all 7 `model_usage_events` rows carry
+`analysis_run_id=32`, `workflow=full_analysis`, per-specialist
+`operation`. 23 gap-free events; each STARTED precedes its COMPLETED;
+RECONCILIATION_STARTED (seq 21) follows the last SPECIALIST_COMPLETED
+(seq 20); RUN_COMPLETED is last (seq 23). Observed concurrency from event
+times: at most 3 specialists between STARTED and COMPLETED at any moment
+(first wave 3 overlapping, then each completion admits the next).
+Specialist rows were durable 33–67s before the run completed. A second
+start **during** the run returned ACTIVE_RUN_EXISTS (same run); a start
+**after** completion returned REUSED_COMPLETE (same run, same
+fingerprint) with `model_usage_events` for the workflow unchanged at 7 —
+**0 extra provider calls**. Fresh-process read-back via
+`tenancy.get_full_analysis_result_for_organization` returned the
+persisted result (6 specialist rows, 77 reconciled findings, 20 gaps, 4
+ambiguities, 9 cross-domain risks, 25 human-confirmation items,
+source/canonical ids and timing).
+
+**MA-1.1 rejection-rate (vs MA-1 smoke: 3 discarded, 9 paraphrased-label
+flags)**: 83 accepted, **1 discarded** (an uncited FACT), **0
+unrecognized category labels**, 13 safe normalizations (all CAT-id →
+canonical label; no paraphrase needed normalizing), 5 exact labels, 0
+canonical-id normalizations, 0 unknown-id citations. Reconciliation
+`category_scope_inconsistencies` 0 (MA-1 reported 9 non-canonical
+labels). No validation was loosened; single-run sample.
+
+**Semantic regression** (bid 8): multi-vendor call-off with 5/3/7 caps;
+D1/D2/D3 criteria cited and scoped per category; Category 1 week-of-Oct-26
+and Category 3 week-of-Nov-2 presentations stated as category-specific
+FACTs, no conflict finding, 0 contradictions, 0 canonical-authority
+overrides; Assignment findings bind to OBL-0/OBL-15 (canonical topic
+INTELLECTUAL_PROPERTY), Indemnity to OBL-2/OBL-14 (INDEMNITY) — no
+misbinding. Bilingualism/accessibility exist canonically (REQ-14; OBL-104/
+105 bilingual, OBL-106/107 digital accessibility, category-scoped
+headings) but no specialist surfaced them this run — not misrepresented,
+simply not selected.
+
+**Known issues found, NOT fixed (outside commissioning scope):**
+1. **Silent output truncation.** 3 of 7 calls stopped on `max_tokens`
+   (EVALUATION_INTELLIGENCE, COMMERCIAL_CONTRACTUAL, reconciliation, each
+   exactly 3000 output tokens — `SPECIALIST_/RECONCILIATION_MAX_OUTPUT_
+   TOKENS`). The tolerant JSON parse recovered usable output and the
+   domains are reported COMPLETE / confidence HIGH; `stop_reason` is only
+   visible in `model_usage_events`, not in the persisted specialist
+   result. A future task should either raise the cap or surface
+   truncation in the result (changes the fingerprint contract).
+2. **No scoped evaluation prompts in the package.** Run 19's snapshot
+   predates CI-1.1's prompt fields and `build_canonical_package` re-derives
+   only `category_scope_items` from documents, so all 23 criteria carry
+   empty `response_prompt`/`requested_evidence` (identical canonical digest
+   `e98b77538ce796a5` to MA-1's smoke — pre-existing, not an MA-2A
+   regression). Two unscoped criteria (`CRIT-relationship-management`,
+   `CRIT-relevant-experience-and-references`) also remain. A fresh Fast
+   Analysis run would carry snapshot 1.2 prompts.
+3. **Event-write latency.** Each event RPC took ~1.2–1.6s from this
+   client and `_EventRecorder` serializes writes; STARTED is written in
+   the worker before its call, so writes delay specialist starts slightly
+   (run 32: 97.8s engine wall vs MA-1's 89.3s). Not a correctness issue.
+4. Two service-category labels contain U+FFFD (source-extraction
+   artifact in canonical data); normalization maps to them exactly.
+
+**Execution limitation (production-hardening item):** execution is an
+in-process daemon thread. The run row, every event and every finished
+specialist result are durable, but **execution does not survive a process
+restart**. A killed process leaves a non-terminal run that
+`is_full_run_stuck` reports after 10 min without progress (or 30 min
+age); while it is non-terminal every start returns ACTIVE_RUN_EXISTS (no
+duplicate run); nothing auto-fails or relaunches; a user must call
+`mark_full_analysis_run_stuck` (→ FAILED, finished specialists kept),
+after which start returns EXISTING_FAILED until an explicit
+`retry=True`. Any zombie thread's later writes are refused. This is
+durable state, not durable execution; a real job runner is required
+before production.
 
 ## Architectural fact-type separation
 
@@ -1847,7 +1973,10 @@ routing/caching, or merge `main`/deploy.
 
 ## Migrations known in this repository (files, not live-database state)
 
-Highest migration file present: **019**
+Highest migration file present: **020**
+(`020_full_analysis_runs.sql`, **applied and live-commissioned
+2026-09-22**, ledger entry `20260922202352 full_analysis_runs` — see
+"MA-2A.1" below). Migration 019
 (`019_section_draft_claim_mappings.sql`, **applied and live-commissioned
 2026-09-21**, ledger entry `20260921163500 section_draft_claim_mappings`).
 Migrations 017/018 (`017_requirement_evidence_enrichment.sql`/

@@ -223,7 +223,11 @@ Where to look, not what everything means. Read
   / `finalize_full_analysis_run` (the ONLY FULL write paths, RPCs) and
   `get_full_analysis_runs` / `get_full_analysis_events` /
   `get_full_analysis_specialist_results`.
-- `migrations/020_full_analysis_runs.sql` -- **written, NOT applied live.**
+- `migrations/020_full_analysis_runs.sql` -- **applied and
+  live-commissioned 2026-09-22 (MA-2A.1)**, ledger `20260922202352
+  full_analysis_runs`. First live FULL run: bid 8, run 32 (COMPLETE).
+  Execution is still an in-process daemon thread (durable state, not
+  durable execution) -- see SYSTEM_STATE.md "MA-2A.1".
 - Tests: `tests/test_full_analysis_ma2a.py` (62).
 
 **Buyer Intelligence**
