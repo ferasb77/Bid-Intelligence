@@ -60,10 +60,23 @@ STATE_LABEL = {
     FAILED: "Failed",
     SKIPPED: "Not run",
 }
+#: Presentation-only state for a non-terminal run that stopped reporting
+#: progress (service `stuck`), and for a run later marked stopped. Never a
+#: specialist/row state; used only for the overall run banner and marks.
+STUCK = "STUCK"
+
 # Text/icon mark per state so status never depends on colour or motion.
+# MA-2B.1: PARTIAL is a caution triangle (amber) and must never share the
+# stop/interrupted metaphor (STUCK: square stop) or the error metaphor
+# (FAILED: cross, red).
 STATE_MARK = {
     WAITING: "○", QUEUED: "○", RUNNING: "◐", COMPLETE: "✓",
-    PARTIAL: "!", FAILED: "✕", SKIPPED: "–",
+    PARTIAL: "▲", FAILED: "✕", SKIPPED: "–", STUCK: "■",
+}
+#: Visual tone per state. Each finished outcome gets its own metaphor.
+STATE_TONE = {
+    WAITING: "neutral", QUEUED: "neutral", RUNNING: "active", COMPLETE: "success",
+    PARTIAL: "caution", FAILED: "error", SKIPPED: "skipped", STUCK: "stopped",
 }
 
 #: Poll interval for a non-terminal run (seconds). A run is ~90s; 3s gives
@@ -85,7 +98,7 @@ START_OUTCOME_NOTES = {
     "ACTIVE_RUN_EXISTS": ("info", "A Full Analysis is already running for this bid. Reconnected to it."),
     "REUSED_COMPLETE": ("success", "Using current Full Analysis. Nothing has changed since it ran, so no new analysis was needed."),
     "EXISTING_FAILED": ("warn", "The last Full Analysis for these exact inputs failed. It was not re-run automatically."),
-    "EXISTING_PARTIAL": ("warn", "The last Full Analysis for these exact inputs is partial. It was not re-run automatically."),
+    "EXISTING_PARTIAL": ("caution", "The last Full Analysis for these exact inputs is partial. Its result is shown below; it was not re-run automatically."),
 }
 
 
@@ -287,8 +300,16 @@ CSS = """
 .w-FAILED{background:#3A1E1B}
 .s-RUNNING .fa-eye{animation:fa-scan 2.2s ease-in-out infinite}
 .s-RUNNING .fa-ant{animation:fa-blink 1.6s ease-in-out infinite}
-.fa-stuck .fa-bot,.fa-stuck .fa-wire,.fa-stuck .fa-eye,.fa-stuck .fa-ant{animation:none!important}
-.fa-stuck .w-RUNNING{background:var(--fa-line)}
+.fa-still .fa-bot,.fa-still .fa-wire,.fa-still .fa-eye,.fa-still .fa-ant{animation:none!important}
+.fa-still .w-RUNNING{background:var(--fa-line)}
+/* overall-run banners: one distinct metaphor per outcome (MA-2B.1) */
+.fa-banner{border-left:3px solid;padding:.6rem 1rem;margin:.5rem 0;border-radius:0 4px 4px 0;font-size:.85rem;line-height:1.5}
+.fa-banner b.fa-bm{display:inline-block;min-width:1.2em;font-weight:700}
+.fa-banner.tone-success{background:#0A1A0A;border-color:#27AE60;color:#81C784}
+.fa-banner.tone-caution{background:#1A1508;border-color:#E0A84A;color:#E8C27A}
+.fa-banner.tone-error{background:#1A0A0A;border-color:#C0392B;color:#E57373}
+.fa-banner.tone-stopped{background:#121218;border-color:#8C8A83;color:#C9C6BE}
+.fa-banner.tone-neutral{background:#111118;border-color:#C9A96E;color:#A9A69D}
 @keyframes fa-wire{from{background-position:100% 0}to{background-position:-100% 0}}
 @keyframes fa-scan{0%,100%{transform:translateX(-1.5px)}50%{transform:translateX(1.5px)}}
 @keyframes fa-blink{0%,100%{opacity:.35}50%{opacity:1}}
@@ -392,8 +413,15 @@ def render_constellation(view: dict, packets=()) -> str:
                   f'aria-label="Reconciliation and Assurance: {esc(recon_label)}">'
                   f'{bot_svg(recon, "RA")}<div><div class="fa-name">Reconciliation &amp; Assurance</div>'
                   f'<div class="fa-st"><b>{STATE_MARK.get(recon, "")}</b> {esc(recon_label)}</div></div></div></div>')
-    wrap_cls = "fa-wrap fa-stuck" if view.get("stuck") or not view.get("live") else "fa-wrap"
-    stage = "Analysis interrupted" if view.get("stuck") else view["stage"]
+    # A terminal (non-live) run is merely still ("fa-still"); only a genuinely
+    # stuck run gets the stop/interrupted treatment ("fa-stuck").
+    if view.get("stuck"):
+        wrap_cls = "fa-wrap fa-still fa-stuck"
+    elif not view.get("live"):
+        wrap_cls = "fa-wrap fa-still"
+    else:
+        wrap_cls = "fa-wrap"
+    stage = f"{STATE_MARK[STUCK]} Analysis interrupted" if view.get("stuck") else view["stage"]
     return (CSS + f'<div class="{wrap_cls}" data-stage="{esc(view["stage"])}">'
             f'<div class="fa-head"><div class="fa-stage">{esc(stage)}</div>'
             f'<div class="fa-progress" aria-live="polite">{esc(view["progress"])}</div></div>'
@@ -484,6 +512,62 @@ def incomplete_domain_messages(bots: dict, recon: str) -> list:
     elif recon == SKIPPED:
         msgs.append("Reconciliation & Assurance did not run.")
     return msgs
+
+
+RECON_ONLY_PARTIAL_BODY = ("All six specialist analyses completed. Reconciliation & Assurance returned "
+                           "partial output, so some cross-domain checks may be incomplete.")
+
+
+def overall_banner(view: dict, status: dict | None = None) -> tuple:
+    """(tone, mark, title, body_lines) for the overall run. Pure.
+
+    MA-2B.1: PARTIAL is always the amber caution treatment and never the
+    stop/interrupted (STUCK) or error (FAILED) treatment."""
+    bots, recon = view["bots"], view["reconciliation"]
+    if view.get("stuck"):
+        return (STATE_TONE[STUCK], STATE_MARK[STUCK], "Analysis interrupted",
+                ["This run stopped reporting progress before it finished, most likely because the app "
+                 "process restarted. Finished specialist results are saved. Nothing will re-run automatically."])
+    run_status = view.get("run_status")
+    if run_status == COMPLETE:
+        return (STATE_TONE[COMPLETE], STATE_MARK[COMPLETE], "Full Bid Intelligence complete",
+                [f"All six specialists and reconciliation finished. {view['progress']}."])
+    if run_status == PARTIAL:
+        if all(s == COMPLETE for s in bots.values()) and recon == PARTIAL:
+            body = [RECON_ONLY_PARTIAL_BODY]
+        else:
+            body = ["Valid findings are shown below, but this analysis is incomplete:"] + \
+                incomplete_domain_messages(bots, recon)
+        return (STATE_TONE[PARTIAL], STATE_MARK[PARTIAL], "Partial Analysis", body)
+    if run_status == FAILED:
+        reason = (status or {}).get("failure_reason") or view.get("failure_reason") or ""
+        return (STATE_TONE[FAILED], STATE_MARK[FAILED], "Full Analysis failed",
+                ([reason] if reason else []) + incomplete_domain_messages(bots, recon))
+    return (STATE_TONE[RUNNING], STATE_MARK[RUNNING], view.get("stage") or "", [])
+
+
+def render_banner(tone: str, mark: str, title: str, body_lines) -> str:
+    body = "<br>".join(esc(line) for line in body_lines or [])
+    return (f'<div class="fa-banner tone-{esc(tone)}" data-tone="{esc(tone)}">'
+            f'<b class="fa-bm">{esc(mark)}</b><strong>{esc(title)}.</strong>'
+            f'{"<br>" + body if body else ""}</div>')
+
+
+RERUN_WARNING = ("Running again starts a new Full Analysis: six specialist calls plus reconciliation "
+                 "(seven model calls). Nothing re-runs unless you click.")
+
+
+def terminal_cta(run_status: str | None) -> dict:
+    """Call to action under a terminal run's result. COMPLETE keeps the
+    no-spend 'Check for updates' (idempotent reuse); PARTIAL/FAILED require
+    an explicit, labelled rerun that states its cost. Never auto-runs."""
+    if run_status == COMPLETE:
+        return {"label": "Check for updates", "retry": False, "primary": False,
+                "caption": "Checking for updates reuses this analysis unless the canonical inputs have changed."}
+    viewing = ("You are viewing the current partial result above. " if run_status == PARTIAL
+               else "You are viewing the last result above. ")
+    return {"label": "Run Full Analysis Again", "retry": True, "primary": True,
+            "caption": viewing + RERUN_WARNING}
 
 
 def finding_html(f: dict, *, primary: str | None = None) -> str:

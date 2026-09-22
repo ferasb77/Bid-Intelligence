@@ -156,8 +156,12 @@ def _outcome_note(bid_id: int) -> None:
     outcome = st.session_state.pop(_OUTCOME_NOTE.format(bid=bid_id), None)
     kind, text = fav.START_OUTCOME_NOTES.get(outcome, (None, None))
     if text:
-        box = {"info": "info-box", "success": "success-box", "warn": "warn-box"}[kind]
-        st.markdown(f'<div class="{box}">{fav.esc(text)}</div>', unsafe_allow_html=True)
+        box = {"info": "info-box", "success": "success-box", "warn": "warn-box"}.get(kind)
+        if box:
+            st.markdown(f'<div class="{box}">{fav.esc(text)}</div>', unsafe_allow_html=True)
+        else:  # "caution": amber, never the red failure box (MA-2B.1)
+            st.markdown(fav.CSS + fav.render_banner("caution", fav.STATE_MARK[fav.PARTIAL], "Partial result",
+                                                    [text]), unsafe_allow_html=True)
 
 
 def _render_live(bid_id: int) -> None:
@@ -196,9 +200,7 @@ def _render_previews(view: dict, rows: list) -> None:
 
 def _render_stuck(bid_id: int, view: dict) -> None:
     st.markdown(fav.render_constellation(view), unsafe_allow_html=True)
-    st.markdown('<div class="warn-box"><strong>Analysis interrupted.</strong> This run stopped reporting progress '
-                'before it finished, most likely because the app process restarted. Finished specialist '
-                'results are saved. Nothing will re-run automatically.</div>', unsafe_allow_html=True)
+    st.markdown(fav.render_banner(*fav.overall_banner(view)), unsafe_allow_html=True)
     if st.button("Mark this run as stopped", key=f"fa_mark_stuck_{bid_id}"):
         _, org, _ = _ctx()
         try:
@@ -244,20 +246,7 @@ def _render_result(bid_id: int, status: dict) -> None:
     grouped = fav.group_result(result, rows)
 
     st.markdown(fav.render_strip(view["bots"], view["reconciliation"]), unsafe_allow_html=True)
-    run_status = status.get("status")
-    msgs = fav.incomplete_domain_messages(view["bots"], view["reconciliation"])
-    if run_status == fav.COMPLETE:
-        st.markdown(f'<div class="success-box">Full Bid Intelligence complete. All six specialists and '
-                    f'reconciliation finished. {view["progress"]}.</div>', unsafe_allow_html=True)
-    elif run_status == fav.PARTIAL:
-        st.markdown('<div class="warn-box"><strong>Partial analysis.</strong> Valid findings are shown below, '
-                    'but this analysis is incomplete:<br>' + "<br>".join(fav.esc(m) for m in msgs) + '</div>',
-                    unsafe_allow_html=True)
-    else:
-        st.markdown('<div class="warn-box"><strong>Full Analysis failed.</strong> '
-                    f'{fav.esc(status.get("failure_reason") or "")}' +
-                    ("<br>" + "<br>".join(fav.esc(m) for m in msgs) if msgs else "") + '</div>',
-                    unsafe_allow_html=True)
+    st.markdown(fav.render_banner(*fav.overall_banner(view, status)), unsafe_allow_html=True)
 
     for sid, title, blurb in fav.RESULT_SECTIONS:
         _render_section(title, blurb, grouped["domains"][sid], sid, f"{bid_id}_{sid}")
@@ -321,11 +310,8 @@ def page_full_analysis(bid_id: int) -> None:
 
     _render_result(bid_id, status)
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-    if status.get("status") == fav.COMPLETE:
-        st.caption("Checking for updates reuses this analysis unless the canonical inputs have changed.")
-        if st.button("Check for updates", key=f"fa_refresh_{bid_id}", disabled=inflight):
-            _click_start(bid_id)
-    else:
-        st.caption("Running again spends a new set of seven model calls.")
-        if st.button("Run Full Analysis again", key=f"fa_retry_{bid_id}", type="primary", disabled=inflight):
-            _click_start(bid_id, retry=True)
+    cta = fav.terminal_cta(status.get("status"))
+    st.caption(cta["caption"])
+    if st.button(cta["label"], key=f"fa_{'retry' if cta['retry'] else 'refresh'}_{bid_id}",
+                 type="primary" if cta["primary"] else "secondary", disabled=inflight):
+        _click_start(bid_id, retry=cta["retry"])

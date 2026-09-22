@@ -251,7 +251,7 @@ class TestTerminalAndStuck:
         view = fav.build_view(status)
         assert fav.should_poll(status) is False and view["live"] is False and view["stuck"]
         html = fav.render_constellation(view)
-        assert 'class="fa-wrap fa-stuck"' in html
+        assert 'class="fa-wrap fa-still fa-stuck"' in html
         assert "Analysis interrupted" in html
         assert "animation:none!important" in html  # stuck selector disables motion
 
@@ -501,6 +501,92 @@ class TestController:
         session = {}
         resp = page.request_start(8, "org", "k", session)
         assert "Fast Analysis" in resp["error"] and session["fa_start_inflight_8"] is False
+
+
+# ─── MA-2B.1: PARTIAL vs STOPPED semantics (run 33 / bid 1295 shape) ───
+
+def _run33_view():
+    """Six specialists COMPLETE, reconciliation PARTIAL (max_tokens), run PARTIAL."""
+    ev = all_complete_events(recon="PARTIAL")
+    status = replay(ev, "PARTIAL", run_id=33)
+    rows = with_effective([row(s) for s in IDS])
+    return fav.build_view(status, rows), status
+
+
+class TestPartialVsStoppedSemantics:
+    def test_partial_mark_and_tone_distinct_from_stop_failed(self):
+        p = fav.STATE_MARK[fav.PARTIAL]
+        assert p not in (fav.STATE_MARK[fav.STUCK], fav.STATE_MARK[fav.FAILED])
+        assert fav.STATE_TONE[fav.PARTIAL] == "caution"
+        assert fav.STATE_TONE[fav.FAILED] == "error"
+        assert fav.STATE_TONE[fav.STUCK] == "stopped"
+        assert fav.STATE_TONE[fav.COMPLETE] == "success"
+        assert fav.STATE_TONE[fav.RUNNING] == "active"
+        assert fav.STATE_TONE[fav.QUEUED] == "neutral" and fav.STATE_TONE[fav.SKIPPED] == "skipped"
+        assert len({fav.STATE_MARK[s] for s in (fav.COMPLETE, fav.PARTIAL, fav.FAILED, fav.STUCK)}) == 4
+
+    def test_partial_run_never_renders_stop_or_stuck(self):
+        view, status = _run33_view()
+        assert view["stuck"] is False and view["stage"] == "Partial"
+        tone, mark, title, body = fav.overall_banner(view, status)
+        assert (tone, mark, title) == ("caution", fav.STATE_MARK[fav.PARTIAL], "Partial Analysis")
+        html_out = (fav.render_banner(tone, mark, title, body)
+                    + fav.render_strip(view["bots"], view["reconciliation"]).replace(fav.CSS, ""))
+        assert fav.STATE_MARK[fav.STUCK] not in html_out
+        assert "tone-stopped" not in html_out and "tone-error" not in html_out
+        assert "interrupted" not in html_out.lower() and "stopped" not in html_out.lower()
+        const = fav.render_constellation(view).replace(fav.CSS, "")
+        assert "fa-stuck" not in const and "interrupted" not in const.lower()
+
+    def test_recon_only_partial_explanation(self):
+        view, status = _run33_view()
+        _, _, _, body = fav.overall_banner(view, status)
+        assert body == [fav.RECON_ONLY_PARTIAL_BODY]
+        assert "All six specialist analyses completed" in body[0]
+        assert "lost" not in body[0].lower() and "not analyzed" not in body[0].lower()
+
+    def test_failed_is_distinct_from_partial(self):
+        status = replay(all_complete_events(recon="FAILED"), "FAILED")
+        status["failure_reason"] = "boom"
+        view = fav.build_view(status, with_effective([row(s) for s in IDS]))
+        tone, mark, title, _ = fav.overall_banner(view, status)
+        assert (tone, mark) == ("error", fav.STATE_MARK[fav.FAILED]) and "failed" in title.lower()
+
+    def test_stuck_is_distinct_from_partial(self):
+        ev = base_events()
+        add(ev, "SPECIALIST_STARTED", IDS[0], "RUNNING")
+        view = fav.build_view(replay(ev, stuck=True))
+        tone, mark, title, _ = fav.overall_banner(view)
+        assert (tone, mark, title) == ("stopped", fav.STATE_MARK[fav.STUCK], "Analysis interrupted")
+        assert "fa-stuck" in fav.render_constellation(view)
+
+    def test_partial_with_partial_specialist_lists_domains(self):
+        status = replay(all_complete_events(partial=(IDS[2],)), "PARTIAL")
+        view = fav.build_view(status)
+        tone, _, _, body = fav.overall_banner(view, status)
+        assert tone == "caution" and any(fav.SPECIALIST_NAME[IDS[2]] in b for b in body)
+
+    def test_partial_result_visible_and_rerun_explicit(self):
+        cta = fav.terminal_cta(fav.PARTIAL)
+        assert cta["label"] == "Run Full Analysis Again" and cta["retry"] is True
+        assert "current partial result" in cta["caption"] and "seven model calls" in cta["caption"]
+        view, status = _run33_view()
+        assert view["live"] is False  # result view, no polling, no auto-rerun
+        assert fav.group_result({"reconciled_findings": RUN32_RESULT["reconciled_findings"]})["domains"]
+
+    def test_complete_cta_unchanged(self):
+        cta = fav.terminal_cta(fav.COMPLETE)
+        assert cta["label"] == "Check for updates" and cta["retry"] is False
+
+    def test_viewing_partial_makes_no_start_call(self, svc):
+        view, status = _run33_view()
+        svc.status = status
+        svc.result = {"specialist_results": with_effective([row(s) for s in IDS]), "result": RUN32_RESULT}
+        frame = page.live_frame(8, "org", {})
+        assert frame["view"]["live"] is False and svc.start_calls == []
+
+    def test_existing_partial_note_is_caution_not_warn(self):
+        assert fav.START_OUTCOME_NOTES["EXISTING_PARTIAL"][0] == "caution"
 
 
 # ─── architecture guards: no provider / specialist call from the UI ───
