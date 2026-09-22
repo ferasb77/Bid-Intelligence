@@ -212,6 +212,22 @@ Where to look, not what everything means. Read
   `derive_execution_state` surfaces it.
 - Tests: `tests/test_full_analysis_ma2a2.py` (17, zero provider calls).
 
+**MA-2B: Animated Multi-Agent Full Analysis Experience (2026-09-23)**
+- `pages/stage_full_analysis.py` -- `page_full_analysis(bid_id)` (sidebar
+  "🧬 Full Bid Intelligence", `page == "stage_full_analysis"` in `app.py`;
+  also linked from UNDERSTAND's Fast Analysis panel). Controller functions
+  `request_start` (the only start path, debounced), `load_status`,
+  `load_rows`, `live_frame` are plain and unit-tested; `_poll_live` is the
+  `@st.fragment(run_every=3)` poller (non-terminal, non-stuck runs only).
+- `components/full_analysis_view.py` -- pure view model + HTML/CSS/SVG:
+  `bot_state` (row `effective_status` > event state > WAITING; never the
+  raw row `status`), `build_view`, `progress_text` (counts, no %),
+  `packet_transitions`, `render_constellation`, `render_strip`,
+  `group_result`, `incomplete_domain_messages`, `trace_rows`.
+- Only tenancy's `*_full_analysis_*_for_organization` wrappers are called;
+  never `full_analysis.py`, never a model.
+- Tests: `tests/test_full_analysis_ma2b.py` (54).
+
 **MA-2A: Durable Full Analysis Runs & Progress Events (2026-09-22)**
 - `full_analysis_service.py` -- THE orchestration boundary (a UI never
   calls `full_analysis.py`): `start_full_analysis` (fingerprint ->

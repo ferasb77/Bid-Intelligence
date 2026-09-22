@@ -21,6 +21,7 @@ from pages.stage_submit import page_submit
 from pages.stage_debrief import page_debrief
 from pages.settings_firm import page_settings_firm
 from pages.stage_memory import page_memory
+from pages.stage_full_analysis import page_full_analysis
 from pdf_export import generate_compliance_pdf
 from brand import dashboard_brand_html, sidebar_brand_html
 from components.ui import (inject_css, stage_badge, status_badge, priority_badge,
@@ -247,6 +248,7 @@ with st.sidebar:
 
             stages_nav = {
                 "💡  1. UNDERSTAND": "stage_understand",
+                "🧬  Full Bid Intelligence": "stage_full_analysis",
                 "⚖️  2. DECIDE":     "stage_decide",
                 "🛠️  3. BUILD":      "stage_build",
                 "🔍  4. CHECK":      "stage_check",
@@ -2230,6 +2232,8 @@ elif bid_id is None:
     go("dashboard")
 elif page in ("stage_understand", "bid_overview"):
     page_understand(bid_id)
+elif page == "stage_full_analysis":
+    page_full_analysis(bid_id)
 elif page in ("stage_decide", "clarifications", "ai_analyst"):
     page_decide(bid_id)
 elif page in ("stage_build", "outline", "section_drafter", "tasks", "documents", "deliverables"):

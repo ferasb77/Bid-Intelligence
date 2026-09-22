@@ -295,6 +295,14 @@ def _render_fast_analysis_panel(bid_id: int, rfp_docs: list, procurement_state: 
                                    use_container_width=True)
         if c2.button("🔁 Re-run Fast Analysis", key=f"rerun_analysis_{bid_id}", use_container_width=True):
             _start_fast_analysis(bid_id)
+        # MA-2B: the deeper, separate Full Bid Intelligence (six specialists +
+        # reconciliation). Navigation only -- nothing starts from here.
+        st.markdown('<div style="font-size:.8rem;color:#A9A69D;margin-top:.4rem">Need deeper intelligence? '
+                    '<strong>Full Bid Intelligence</strong> runs six specialist analyses over this '
+                    'Fast Analysis and reconciles them.</div>', unsafe_allow_html=True)
+        if st.button("🧬 Open Full Bid Intelligence", key=f"open_full_analysis_{bid_id}"):
+            st.session_state.page = "stage_full_analysis"
+            st.rerun()
         return
 
     # No run yet.

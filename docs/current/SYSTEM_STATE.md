@@ -1924,6 +1924,71 @@ after which start returns EXISTING_FAILED until an explicit
 durable state, not durable execution; a real job runner is required
 before production.
 
+### MA-2B: Animated Multi-Agent Full Analysis Experience (2026-09-23)
+
+The user-facing presentation layer for MA-1/MA-2A/MA-2A.2. Presentation
+and interaction only: no migration, no specialist-logic change, no new
+model call anywhere in the UI.
+
+- **Entry point.** Active-bid sidebar "🧬 Full Bid Intelligence"
+  (`page == "stage_full_analysis"`, routed in `app.py` to
+  `pages/stage_full_analysis.page_full_analysis`), plus an "Open Full Bid
+  Intelligence" navigation button in UNDERSTAND's completed Fast Analysis
+  panel (navigation only; nothing starts from UNDERSTAND). Fast Analysis is
+  unchanged and still the default quick orientation.
+- **Service calls.** Only tenancy's MA-2A wrappers:
+  `start_full_analysis_for_organization` (the single start path,
+  `request_start`, debounced by a per-bid in-flight flag and a disabled
+  button), `get_full_analysis_status_for_organization`,
+  `get_full_analysis_result_for_organization`,
+  `mark_full_analysis_run_stuck_for_organization`. All five start outcomes
+  get a note; EXISTING_FAILED/EXISTING_PARTIAL are shown, never re-run —
+  only an explicit "Run Full Analysis again" button passes `retry=True`.
+  REUSED_COMPLETE opens the stored result directly (no animation replay).
+- **State model** (`components/full_analysis_view.py`, pure). Bot state =
+  persisted specialist row's `effective_status` when a row exists, else the
+  event-derived state from `get_full_analysis_status`, else WAITING (no
+  event yet — never fabricated). The raw migration-020 `status` column is
+  never read, so a truncated (raw COMPLETE) specialist renders PARTIAL.
+  Reconciliation is RUNNING only after a `RECONCILIATION_STARTED` event.
+  Progress is counts only ("4 of 6 specialists finished · 3 working now ·
+  Reconciliation pending") — no percentage exists anywhere. Hub counts come
+  from the persisted `CANONICAL_PACKAGE_READY` event's `object_counts`.
+- **Animation.** CSS/inline-SVG only: RUNNING bots scan/blink and their
+  wire to the Shared Truth hub flows; one packet per real transition into
+  COMPLETE/PARTIAL (diffed against the previous poll's bot states kept in
+  session — a refresh/reconnect draws none); FAILED sends none; PARTIAL is
+  dashed amber, distinct from COMPLETE. Every state also has a text label
+  and glyph; `prefers-reduced-motion` disables all motion; below 860px
+  viewport or 720px container width the radial layout stacks.
+- **Reconnect / polling.** Canonical run state is re-read from the service
+  on every render; session_state caches presentation only (previous bot
+  states, specialist rows re-fetched only when the finished count changes,
+  outcome note, in-flight flag). An `@st.fragment(run_every=3)` polls only
+  while the run is non-terminal and not stuck; a transient read failure
+  shows a caption and never restarts anything.
+- **Stuck runs.** A run `is_full_run_stuck` reports is shown as "Analysis
+  interrupted" with all animation stopped and polling off; the only action
+  is the explicit "Mark this run as stopped" (→ FAILED), after which the
+  user may explicitly run again. Nothing auto-reruns (daemon-thread caveat
+  above still applies).
+- **Completed result** (same page): a static specialist status strip, a
+  COMPLETE / PARTIAL (naming each incomplete domain) / FAILED banner, then
+  Executive Intelligence, Requirements & Compliance, Evaluation
+  Intelligence, Scope & Delivery, Commercial & Contractual, Schedule &
+  Submission (reconciled findings grouped by first producer, "also raised
+  by" noted, canonical-fact vs specialist-interpretation tags,
+  needs-confirmation tags) and Cross-Domain Risks & Gaps. Each section has
+  an "Evidence references" expander of canonical/finding ids. With no
+  reconciled findings it falls back to the persisted specialist findings.
+- **Verified** against historical run 32 (bid 8) read-only: renders
+  COMPLETE, 77 reconciled findings grouped 13/13/13/12/13/13, 9 risks / 20
+  gaps / 4 ambiguities / 25 confirmation items; replaying its real 23-event
+  log shows at most 3 concurrent RUNNING bots and one packet per
+  completion. Run 32 was not modified and is not shown as PARTIAL.
+- Tests: `tests/test_full_analysis_ma2b.py` (54, all mocked, zero provider
+  or database calls).
+
 ## Architectural fact-type separation
 
 Every subsystem above keeps these categories distinct, never merges them:
