@@ -169,6 +169,37 @@ Where to look, not what everything means. Read
 - Live-validated against the real Bank of Canada corpus (bid 8, run 19)
   with **zero Anthropic calls** -- see SYSTEM_STATE.md for the counts.
 
+**MA-1: Bounded Specialist Full Analysis (2026-09-22)**
+- `full_analysis.py` (new) -- the whole multi-agent backend. Read it for
+  anything specialist-related: `build_canonical_package` (the one frozen
+  shared truth, assembled from a Fast Analysis result / raw snapshot;
+  re-derives a missing CI-1/CI-1.1 field via the frozen Layer 1/2
+  functions, never re-extracts), `SPECIALIST_INPUT_TYPES` +
+  `build_specialist_input` (**THE strict input boundary -- a new
+  specialist declares its permitted canonical object types here, never
+  by reaching for the package directly**), `SPECIALIST_BRIEFS`,
+  `validate_findings` (unknown finding type / uncited or unknown
+  canonical id -> rejected, fail closed), `run_specialist`,
+  `consolidate_findings` / `detect_orphaned_requirements` /
+  `detect_category_scope_inconsistencies` /
+  `detect_evaluation_scope_mismatches` / `enforce_canonical_authority`
+  (deterministic assurance -- survives a reconciliation model failure),
+  `build_reconciliation_input` (ids/labels only, never document text),
+  `run_reconciliation`, `run_full_analysis` (bounded parallel
+  orchestration; 6 + 1 calls, zero retries).
+- Entry point: `analysis_service.run_full_analysis_for_run(run_id,
+  api_key)` -- EXPLICIT mode only, against an already-COMPLETE Fast
+  Analysis run. Fast Analysis is untouched and never dispatches
+  specialists.
+- Persistence: none yet (`analysis_service.FULL_ANALYSIS_PERSISTENCE_GAP`)
+  -- `analysis_runs.analysis_mode` has no 'FULL' value and
+  analysis_results has no Full Analysis column. **No migration added.**
+- Live smoke (one-off, deliberate, not part of any test):
+  `scripts/run_ma1_live_smoke.py <analysis_run_id>`.
+- Tests: `tests/test_full_analysis_ma1.py` (47, every model call mocked).
+- Live-validated against Bank of Canada bid 8 / run 19 with exactly 7
+  Anthropic calls -- see SYSTEM_STATE.md for the per-domain findings.
+
 **Buyer Intelligence**
 - Produced/threaded via `scripts/fast_analysis_report_adapter.py`
   (`buyer_intelligence` parameter), consumed in `pages/stage_understand.py`.

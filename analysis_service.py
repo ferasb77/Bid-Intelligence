@@ -680,6 +680,72 @@ def regenerate_report_from_raw_snapshot(run_id: int, buyer_intelligence: dict | 
     return _render_pdf_bytes(content)
 
 
+# ---------------------------------------------------------------------------
+# MA-1: Full Analysis (bounded specialist multi-agent analysis).
+#
+# DELIBERATELY SEPARATE from Fast Analysis (task section 17). Fast Analysis
+# above is unchanged: it does not call any of this, it does not dispatch
+# specialist work, and no ingestion path reaches here. Full Analysis is an
+# EXPLICIT action a caller takes against an already-COMPLETE Fast Analysis
+# run, whose durable raw snapshot IS the canonical package input.
+#
+# PERSISTENCE (task section 16): MA-1 is compute-and-return. The existing
+# analysis_runs/analysis_results architecture was inspected first and is a
+# good future home, but analysis_runs.analysis_mode is constrained by
+# migrations/004_analysis_runs.sql to ('FAST','DEEP_VERIFY') and
+# analysis_results has no Full Analysis column -- persisting a FULL run
+# therefore requires schema work, which MA-1 does not perform. The gap is
+# reported explicitly rather than worked around by writing a Full Analysis
+# result into a column that means something else.
+# ---------------------------------------------------------------------------
+
+FULL_ANALYSIS_PERSISTENCE_GAP = (
+    "MA-1 Full Analysis is compute-and-return: analysis_runs.analysis_mode "
+    "does not permit 'FULL' and analysis_results has no full_analysis_result "
+    "column, so a Full Analysis result is not durably persisted yet."
+)
+
+
+def run_full_analysis_for_run(run_id: int, api_key: str, *, include_documents: bool = True):
+    """Run MA-1 Full Analysis against a COMPLETE Fast Analysis run's durable
+    canonical snapshot. Returns a `full_analysis.FullAnalysisResult`.
+
+    Makes exactly six specialist provider calls plus one reconciliation
+    call. Performs NO extraction: the canonical package is built from the
+    already-persisted raw Fast Analysis snapshot (and, for a snapshot that
+    predates a CI-1.1 canonical field, from the corpus text only to
+    re-derive that frozen Layer-2 field deterministically -- the
+    specialists themselves never receive document text).
+
+    Nothing is persisted (see FULL_ANALYSIS_PERSISTENCE_GAP)."""
+    import full_analysis
+
+    run = db.get_analysis_run(run_id)
+    if not run or run.get("status") != "COMPLETE":
+        raise ValueError(f"analysis run {run_id} is not COMPLETE; cannot run Full Analysis")
+    result = load_raw_fast_analysis_result(run_id)
+    if isinstance(result, str):
+        raise ValueError(
+            f"analysis run {run_id} has no durably persisted raw Fast Analysis snapshot ({result})")
+
+    bid_id = run.get("bid_id")
+    documents: list[tuple[str, str]] | None = None
+    if include_documents:
+        documents = []
+        for d in db.get_documents(bid_id):
+            if d.get("doc_type") != "RFP / Source" or not d.get("storage_path"):
+                continue
+            file_bytes = db.download_file(d["storage_path"])
+            if not file_bytes:
+                continue
+            text, _ = extract_document_with_metadata(file_bytes, d["name"])
+            documents.append((d["name"], text))
+
+    package = full_analysis.build_canonical_package(
+        result, bid_id=bid_id, analysis_run_id=run_id, documents=documents)
+    return full_analysis.run_full_analysis(package, api_key)
+
+
 def _parse_timestamp(value: str | None):
     if not value:
         return None

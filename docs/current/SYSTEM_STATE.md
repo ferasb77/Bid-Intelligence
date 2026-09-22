@@ -1558,6 +1558,106 @@ Full suite: **3092 passed, 2 skipped**.
 
 **Layers 1–2 are ready to freeze for MA-1.**
 
+### MA-1: Bounded Specialist Full Analysis (2026-09-22)
+
+The first genuine multi-agent Full Analysis backend, and the first
+consumer of the now-FROZEN Layers 1–2. Backend only — no UI, no
+animation, no drafting, no OM, no Fast Analysis feature work.
+
+**Architecture** (`full_analysis.py`, new): one canonical procurement
+package → six bounded specialist analyses (parallel) → one reconciliation
+stage → one structured `FullAnalysisResult`. Specialists:
+PROCUREMENT_STRUCTURE, REQUIREMENTS_COMPLIANCE, EVALUATION_INTELLIGENCE,
+SCOPE_DELIVERABLES, COMMERCIAL_CONTRACTUAL, SCHEDULE_SUBMISSION.
+
+**One shared canonical truth.** `build_canonical_package()` assembles a
+FROZEN `CanonicalPackage` (frozen dataclass; tuples and
+`MappingProxyType` throughout) from a completed Fast Analysis result —
+live or reconstructed from a durable raw snapshot. It re-extracts
+nothing: where an older snapshot predates a CI-1/CI-1.1 field, the
+frozen Layer 1/2 function that produces that field is re-run over the
+snapshot's own base material. Every object carries a deterministic
+canonical id (`IDENT`, `SUBMISSION`, `PKG`, `DOC-*`, `REL-*`, `CAT-*`,
+`REQ-*`, `CRIT-*`, `SCOPE-*`, `OBL-*`, `MS-*`) — **those ids are the
+entire citation vocabulary**.
+
+**Strict input boundaries.** `SPECIALIST_INPUT_TYPES` declares exactly
+which canonical object types each specialist may see;
+`build_specialist_input()` assembles only those, deeply read-only, so a
+specialist cannot mutate canonical state and never holds another
+domain's material. SCOPE_DELIVERABLES deliberately has NO
+`SCOPED_EVALUATION_CRITERION` entry — CI-1 Defect B is enforced a second
+time at the agent boundary, and `CATEGORY_SCOPE_ITEM` objects are
+re-gated through `classify_semantic_type` on the way in. No specialist
+reads raw document text, queries OM, re-runs ingestion, re-normalizes
+requirements, invokes another specialist, or reaches drafting; the
+module imports none of those systems and a test asserts that.
+
+**Typed findings, fail closed.** Six types only — FACT, RISK, GAP,
+AMBIGUITY, ATTENTION_ITEM, INTERPRETATION. `validate_findings()` rejects
+(never repairs, never re-buckets) a finding with an unknown type, empty
+body, or — for every type except INTERPRETATION — no canonical id **from
+that specialist's own slice**. An INTERPRETATION may stand uncited but
+is then `UNSUPPORTED_INTERPRETATION`, `SPECIALIST_INTERPRETATION`
+authority, and human-confirmation-required: interpretation is never
+presented as source fact.
+
+**Parallelism.** Genuine `ThreadPoolExecutor`, `MAX_SPECIALIST_CONCURRENCY
+= 3`, no shared mutable state (per-specialist telemetry lists merged in
+fixed order afterwards), isolated failure handling (a failed specialist
+returns `status=FAILED` with its reason and empty findings — never
+generic substituted reasoning), and `SPECIALIST_RETRY_ATTEMPTS = 0`:
+exactly one provider call per specialist.
+
+**Reconciliation.** Deterministic assurance runs FIRST and survives a
+model failure: cross-specialist finding consolidation (reusing CI-1's own
+near-duplicate primitive, never merging across categories, preserving
+every producing specialist), orphaned canonical requirements, category
+scope inconsistencies, evaluation-vs-scope mismatches, and canonical
+authority enforcement (a specialist FACT contradicting a canonical
+category scope is demoted and recorded — agreement count is never
+consulted, facts are never majority-voted). Then ONE bounded model call
+over the specialists' structured outputs plus a MINIMAL canonical index
+(ids/labels only — no clause text, no response prompts, no document
+text). Reconciliation output citing an unknown id is dropped.
+
+**Fast Analysis is untouched.** `fast_analysis.py` does not import or
+dispatch any of this. Full Analysis is an explicit action:
+`analysis_service.run_full_analysis_for_run(run_id, api_key)` against an
+already-COMPLETE Fast Analysis run. Nothing in ingestion reaches it.
+
+**Persistence: compute-and-return (known gap).** The existing
+analysis_runs/analysis_results architecture was inspected first and is
+the right future home, but `analysis_runs.analysis_mode` is constrained
+to `('FAST','DEEP_VERIFY')` (migration 004) and analysis_results has no
+Full Analysis column. MA-1 therefore does **not** persist, and does
+**not** add a migration — see `analysis_service.
+FULL_ANALYSIS_PERSISTENCE_GAP`. Highest migration in repo remains 019.
+
+**Bank of Canada validation** (bid 8, analysis run 19; canonical digest
+`e98b77538ce796a5`): package = 3 service categories, 41 canonical
+requirements, 23 scoped criteria, 22 category scope items, 112 typed
+commercial obligations, 15 scoped milestones, 13 typed documents. ONE
+bounded live smoke: 7 provider calls (6 specialists + 1 reconciliation),
+89.3s wall, 86,733 input / 18,144 output tokens, all six specialists
+COMPLETE, completeness COMPLETE. Per-specialist prompts 12k–50k chars —
+no specialist ever receives the whole package. Verified behaviors: the
+multi-vendor call-off model with per-category award caps (5/3/7)
+surfaced from canonical PROCUREMENT_MECHANIC material; D1/D2/D3 stayed
+cleanly separated with per-category dominant criteria and Corporate
+Profile's differing weights reported as scoped variation, not conflict;
+Category 1 (week of Oct 26) and Category 3 (week of Nov 2) presentation
+windows coexisted with an explicit "category-specific schedules are
+normal, not conflicts" finding; Assignment / Indemnity / IP / tax
+clauses stayed on their CI-1 topics (no Defect G misbinding); 7
+cross-specialist duplicates consolidated with producers preserved; 14
+orphaned requirements and 9 non-canonical category labels surfaced as
+assurance signals rather than silently accepted.
+
+Tests: `tests/test_full_analysis_ma1.py` (47, fully deterministic and
+synthetic — **every model call mocked, zero provider calls, no DB, no
+file I/O**). Full suite: **3139 passed, 2 skipped**.
+
 ## Architectural fact-type separation
 
 Every subsystem above keeps these categories distinct, never merges them:
