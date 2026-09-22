@@ -57,7 +57,12 @@ from extractor import _safe_parse_json_with_status
 # ═══════════════════════════════════════════════════════════════════════
 
 FULL_ANALYSIS_VERSION = "ma-1"
-SPECIALIST_VERSION = "ma-1.0"
+#: MA-2A: bumped from "ma-1.0" -- the specialist contract gained explicit
+#: allowed-category / exact-id instructions and bounded category-label and
+#: canonical-id normalization (see `normalize_category_scope` /
+#: `normalize_canonical_id`). Bumping it invalidates every prior Full
+#: Analysis fingerprint (`compute_full_analysis_fingerprint`).
+SPECIALIST_VERSION = "ma-1.1"
 RECONCILIATION_VERSION = "ma-1.0"
 
 #: Model used for every specialist and the reconciliation stage. Same
@@ -215,6 +220,18 @@ STATUS_NOT_RUN = "NOT_RUN"
 COMPLETENESS_COMPLETE = "COMPLETE"
 COMPLETENESS_PARTIAL = "PARTIAL"
 COMPLETENESS_FAILED = "FAILED"
+
+#: MA-2A execution events emitted by `run_full_analysis(on_event=...)`.
+#: The durable run service (full_analysis_service.py) owns the run-level
+#: events (RUN_CREATED, CANONICAL_PACKAGE_READY, RUN_COMPLETED/PARTIAL/
+#: FAILED); these are the ones only the orchestrator itself can observe.
+EVENT_SPECIALIST_QUEUED = "SPECIALIST_QUEUED"
+EVENT_SPECIALIST_STARTED = "SPECIALIST_STARTED"
+EVENT_SPECIALIST_COMPLETED = "SPECIALIST_COMPLETED"
+EVENT_SPECIALIST_FAILED = "SPECIALIST_FAILED"
+EVENT_RECONCILIATION_STARTED = "RECONCILIATION_STARTED"
+EVENT_RECONCILIATION_COMPLETED = "RECONCILIATION_COMPLETED"
+EVENT_RECONCILIATION_FAILED = "RECONCILIATION_FAILED"
 
 
 class CanonicalBoundaryError(ValueError):
@@ -725,10 +742,33 @@ has genuinely irreconcilable dates.""",
 }
 
 
+def _allowed_category_rules(slice_payload) -> str:
+    """MA-2A residual hardening (task sections 14/15): MA-1's live smoke
+    surfaced 9 findings whose `category_scope` paraphrased a canonical
+    service-category label (e.g. "Category 1" / "D1" instead of the exact
+    canonical label). The fix is to state the closed set explicitly in the
+    prompt -- canonical ids preferred over labels -- rather than loosen any
+    validation downstream."""
+    objects = _thaw(slice_payload).get("objects", {})
+    categories = [o for o in objects.get(OBJ_SERVICE_CATEGORY, []) if isinstance(o, dict)]
+    if not categories:
+        return ('\n- "category_scope" MUST be the empty string "" -- you have not been given '
+                'any service category objects, so you may not name one.\n')
+    lines = "\n".join(f'    {c["canonical_id"]}  =  {c["label"]}' for c in categories)
+    return ('\n- "category_scope" MUST be either the empty string "" (applies to all '
+            'categories / not category-specific) or EXACTLY one of the canonical category '
+            'ids below (preferred) or its exact label. Never paraphrase, abbreviate or '
+            'renumber a category ("Category 1", "D1", "L&D" are NOT valid). A category not '
+            'in this list does not exist:\n' + lines + "\n"
+            '- "canonical_ids" must contain canonical_id values copied character-for-character '
+            'from the objects below -- never a title, label, page reference or document name.\n')
+
+
 def _build_specialist_prompt(specialist_id: str, slice_payload) -> str:
     body = json.dumps(_thaw(slice_payload)["objects"], indent=1, ensure_ascii=False, default=str)
     return (
         SPECIALIST_BRIEFS[specialist_id].strip() + "\n" + _SHARED_RULES +
+        _allowed_category_rules(slice_payload) +
         "\nCANONICAL OBJECTS (the complete and only material available to you):\n" + body
     )
 
@@ -762,11 +802,23 @@ def _call_model(prompt: str, *, client, call_label: str, max_tokens: int,
         "provider_call_attempted": True,
     }
     telemetry.append(row)
+    # MA-2A telemetry linkage (task section 13): when the caller supplies a
+    # telemetry_context (the durable-run service does, with workflow=
+    # "full_analysis" and the Full Analysis run id), each call is recorded
+    # through the EXISTING model_usage_events path with an operation naming
+    # exactly which specialist / reconciliation made it. No second
+    # telemetry system; the in-memory `telemetry` list is unchanged.
+    call_context = None
+    if telemetry_context:
+        call_context = dict(telemetry_context)
+        call_context["operation"] = call_label
+        call_context["metadata"] = {**(telemetry_context.get("metadata") or {}),
+                                    "call_label": call_label}
     try:
         response = execute_messages_create(
             client, model=FULL_ANALYSIS_MODEL, max_tokens=max_tokens,
             messages=[{"role": "user", "content": [{"type": "text", "text": prompt}]}],
-            **({"telemetry_context": telemetry_context} if telemetry_context else {}),
+            **({"telemetry_context": call_context} if call_context else {}),
         )
     except Exception as exc:
         row["call_ended_at"] = datetime.now(timezone.utc).isoformat()
@@ -793,7 +845,80 @@ def _call_model(prompt: str, *, client, call_label: str, max_tokens: int,
 _SEVERITIES = ("HIGH", "MEDIUM", "LOW")
 
 
-def validate_findings(raw_findings, permitted_ids: set, *, produced_by: str) -> tuple:
+CATEGORY_SCOPE_EXACT = "EXACT"
+CATEGORY_SCOPE_EMPTY = "EMPTY"
+CATEGORY_SCOPE_NORMALIZED = "NORMALIZED"
+CATEGORY_SCOPE_UNRECOGNIZED = "UNRECOGNIZED"
+
+
+def _label_key(text) -> str:
+    return re.sub(r'[^a-z0-9]+', ' ', str(text or "").lower()).strip()
+
+
+def normalize_category_scope(value, categories) -> tuple:
+    """Bounded label -> canonical category normalization (MA-2A section 15).
+
+    `categories` is an iterable of (canonical_id, label) pairs -- the ONLY
+    categories that exist. Returns (category_scope, status):
+
+      * ""                          -> ("", EMPTY)
+      * exact canonical label       -> (label, EXACT)
+      * a canonical CAT-* id        -> (label, NORMALIZED)
+      * the same label differing only in case/punctuation/whitespace
+                                    -> (label, NORMALIZED)
+      * a phrase that is a whole-word sub-phrase of EXACTLY ONE canonical
+        label (e.g. "HR Advisory" for "Appendix D2 - HR Advisory")
+                                    -> (label, NORMALIZED)
+      * anything else, including a phrase matching two or more labels, or a
+        renumbering like "Category 1" that appears in no label
+                                    -> (original value, UNRECOGNIZED)
+
+    Canonical ids stay authoritative; the model can never create a
+    category, and an ambiguous or unrecognized label FAILS CLOSED (it is
+    returned unchanged and flagged, so the deterministic
+    CATEGORY_NOT_CANONICAL assurance still surfaces it)."""
+    raw = str(value or "").strip()
+    if not raw:
+        return "", CATEGORY_SCOPE_EMPTY
+    pairs = [(str(cid), str(label)) for cid, label in (categories or []) if label]
+    for _, label in pairs:
+        if raw == label:
+            return label, CATEGORY_SCOPE_EXACT
+    for cid, label in pairs:
+        if raw == cid or raw.upper() == cid.upper():
+            return label, CATEGORY_SCOPE_NORMALIZED
+    key = _label_key(raw)
+    if not key:
+        return raw, CATEGORY_SCOPE_UNRECOGNIZED
+    same = [label for _, label in pairs if _label_key(label) == key]
+    if len(same) == 1:
+        return same[0], CATEGORY_SCOPE_NORMALIZED
+    # Whole-word sub-phrase match; a single short token ("d", "1") is never
+    # enough on its own -- require >= 2 words or >= 4 characters.
+    if len(key.split()) >= 2 or len(key) >= 4:
+        padded = f" {key} "
+        contains = [label for _, label in pairs if padded in f" {_label_key(label)} "]
+        if len(contains) == 1:
+            return contains[0], CATEGORY_SCOPE_NORMALIZED
+    return raw, CATEGORY_SCOPE_UNRECOGNIZED
+
+
+def normalize_canonical_id(value, permitted_ids) -> str | None:
+    """Exact id, else a unique case-/whitespace-insensitive match against the
+    ids this specialist was actually given. Never maps to an id outside
+    `permitted_ids`; an ambiguous or unknown id returns None (fail closed)."""
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    if raw in permitted_ids:
+        return raw
+    folded = re.sub(r'\s+', '', raw).upper()
+    matches = [p for p in permitted_ids if re.sub(r'\s+', '', p).upper() == folded]
+    return matches[0] if len(matches) == 1 else None
+
+
+def validate_findings(raw_findings, permitted_ids: set, *, produced_by: str,
+                      categories=None) -> tuple:
     """Type, validate and ground one specialist's raw findings.
 
     Returns (accepted, rejected). A finding is REJECTED (never silently
@@ -822,8 +947,15 @@ def validate_findings(raw_findings, permitted_ids: set, *, produced_by: str) -> 
             rejected.append({"reason": "EMPTY", "finding_type": finding_type})
             continue
         cited = [str(i).strip() for i in (raw.get("canonical_ids") or []) if str(i).strip()]
-        known = [i for i in cited if i in permitted_ids]
-        unknown = [i for i in cited if i not in permitted_ids]
+        known, unknown, id_normalizations = [], [], []
+        for cid in cited:
+            resolved = normalize_canonical_id(cid, permitted_ids)
+            if resolved is None:
+                unknown.append(cid)
+            elif resolved not in known:
+                known.append(resolved)
+                if resolved != cid:
+                    id_normalizations.append({"from": cid, "to": resolved})
         if finding_type in CITATION_REQUIRED_FINDING_TYPES and not known:
             rejected.append({
                 "reason": "UNCITED_OR_UNKNOWN_CANONICAL_ID", "finding_type": finding_type,
@@ -831,22 +963,35 @@ def validate_findings(raw_findings, permitted_ids: set, *, produced_by: str) -> 
             continue
         severity = str(raw.get("severity") or "MEDIUM").strip().upper()
         support = SUPPORT_CANONICAL if known else SUPPORT_UNSUPPORTED
-        accepted.append({
+        raw_scope = _clip(raw.get("category_scope"), 160)
+        if categories is None:
+            category_scope, scope_status = raw_scope, None
+        else:
+            category_scope, scope_status = normalize_category_scope(raw_scope, categories)
+        entry = {
             "finding_id": f"{produced_by}:{len(accepted)}",
             "finding_type": finding_type,
             "title": title,
             "detail": detail,
             "canonical_ids": known,
             "rejected_canonical_ids": unknown,
-            "category_scope": _clip(raw.get("category_scope"), 160),
+            "category_scope": category_scope,
             "severity": severity if severity in _SEVERITIES else "MEDIUM",
             "support_status": support,
             "authority": AUTHORITY_CANONICAL if finding_type == FINDING_FACT and known
                          else AUTHORITY_SPECIALIST,
             "human_confirmation_required": bool(raw.get("human_confirmation_required"))
-                                           or support == SUPPORT_UNSUPPORTED,
+                                           or support == SUPPORT_UNSUPPORTED
+                                           or scope_status == CATEGORY_SCOPE_UNRECOGNIZED,
             "produced_by": [produced_by],
-        })
+        }
+        if scope_status is not None:
+            entry["category_scope_status"] = scope_status
+            if scope_status == CATEGORY_SCOPE_NORMALIZED:
+                entry["category_scope_normalized_from"] = raw_scope
+        if id_normalizations:
+            entry["canonical_id_normalizations"] = id_normalizations
+        accepted.append(entry)
     return accepted, rejected
 
 
@@ -918,7 +1063,8 @@ def run_specialist(package: CanonicalPackage, specialist_id: str, *, client,
         }
 
         accepted, rejected = validate_findings(
-            data.get("findings"), permitted_ids, produced_by=specialist_id)
+            data.get("findings"), permitted_ids, produced_by=specialist_id,
+            categories=[(c["canonical_id"], c["label"]) for c in package.service_categories])
         result.findings = accepted
         result.rejected_findings = rejected
         for finding in accepted:
@@ -1357,7 +1503,8 @@ def run_full_analysis(package: CanonicalPackage, api_key: str | None = None, *,
                       client=None, max_concurrency: int = MAX_SPECIALIST_CONCURRENCY,
                       specialists: tuple = SPECIALIST_IDS,
                       telemetry_context: dict | None = None,
-                      on_specialist_done=None) -> FullAnalysisResult:
+                      on_specialist_done=None,
+                      on_event=None) -> FullAnalysisResult:
     """Run the six bounded specialists (concurrently, bounded) over one
     canonical package, then the single reconciliation stage.
 
@@ -1370,7 +1517,17 @@ def run_full_analysis(package: CanonicalPackage, api_key: str | None = None, *,
     frozen package and returns its own SpecialistResult; nothing is shared
     and mutated. Telemetry rows are collected per specialist and merged in
     a fixed specialist order after the pool drains, so the aggregate is
-    deterministic in ORDER as well as content."""
+    deterministic in ORDER as well as content.
+
+    `on_event(event_type, payload)` (MA-2A, optional, purely observational)
+    is invoked at REAL execution boundaries only -- never on a timer:
+    SPECIALIST_QUEUED (before submission), SPECIALIST_STARTED (inside the
+    worker, immediately before the specialist's own work begins),
+    SPECIALIST_COMPLETED / SPECIALIST_FAILED (inside the worker, the moment
+    `run_specialist` returns, carrying the SpecialistResult),
+    RECONCILIATION_STARTED, RECONCILIATION_COMPLETED / RECONCILIATION_FAILED.
+    It may be called from worker threads concurrently; an exception raised
+    by the observer is swallowed and never affects the analysis."""
     started = datetime.now(timezone.utc)
     t0 = time.monotonic()
     if client is None:
@@ -1379,10 +1536,26 @@ def run_full_analysis(package: CanonicalPackage, api_key: str | None = None, *,
     ordered = [s for s in SPECIALIST_IDS if s in specialists]
     per_specialist_telemetry: dict = {s: [] for s in ordered}
 
+    def _emit(event_type: str, payload: dict) -> None:
+        if on_event is None:
+            return
+        try:
+            on_event(event_type, payload)
+        except Exception:
+            pass
+
+    for sid in ordered:
+        _emit(EVENT_SPECIALIST_QUEUED, {"specialist_id": sid})
+
     def _run(specialist_id: str):
-        return run_specialist(package, specialist_id, client=client,
-                              telemetry=per_specialist_telemetry[specialist_id],
-                              telemetry_context=telemetry_context)
+        _emit(EVENT_SPECIALIST_STARTED, {"specialist_id": specialist_id})
+        outcome = run_specialist(package, specialist_id, client=client,
+                                 telemetry=per_specialist_telemetry[specialist_id],
+                                 telemetry_context=telemetry_context)
+        _emit(EVENT_SPECIALIST_COMPLETED if outcome.status == STATUS_COMPLETE
+              else EVENT_SPECIALIST_FAILED,
+              {"specialist_id": specialist_id, "result": outcome})
+        return outcome
 
     results_by_id: dict = {}
     with ThreadPoolExecutor(max_workers=max(1, min(max_concurrency, len(ordered) or 1))) as pool:
@@ -1406,9 +1579,14 @@ def run_full_analysis(package: CanonicalPackage, api_key: str | None = None, *,
     for sid in ordered:
         telemetry.extend(per_specialist_telemetry[sid])
 
+    _emit(EVENT_RECONCILIATION_STARTED, {
+        "incomplete_domains": [r.specialist_id for r in specialist_results
+                               if r.status != STATUS_COMPLETE]})
     reconciliation = run_reconciliation(package, specialist_results, client=client,
                                         telemetry=telemetry,
                                         telemetry_context=telemetry_context)
+    _emit(EVENT_RECONCILIATION_COMPLETED if reconciliation.status == STATUS_COMPLETE
+          else EVENT_RECONCILIATION_FAILED, {"reconciliation": reconciliation})
 
     completed = [r for r in specialist_results if r.status == STATUS_COMPLETE]
     if not completed:
@@ -1470,3 +1648,77 @@ def run_full_analysis(package: CanonicalPackage, api_key: str | None = None, *,
         telemetry=telemetry,
     )
     return result
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 12. MA-2A: Full Analysis input fingerprint (freshness / reuse contract)
+# ═══════════════════════════════════════════════════════════════════════
+
+#: Version of the fingerprint recipe itself. Bumping it invalidates every
+#: persisted Full Analysis fingerprint.
+FULL_ANALYSIS_FINGERPRINT_VERSION = "ma-2a-fp-1"
+
+
+def canonical_content_digest(package: CanonicalPackage) -> str:
+    """sha256 over EVERY canonical object type the specialists can be given
+    (all of CANONICAL_OBJECT_TYPES, in fixed order). `package.package_digest`
+    (MA-1) deliberately stays unchanged, but it omits document
+    relationships, package completeness and service categories -- all of
+    which reach a specialist -- so the Full Analysis fingerprint covers this
+    complete digest as well. Pure; excludes bid_id / analysis_run_id, so the
+    same canonical truth produces the same digest regardless of which Fast
+    Analysis run it was assembled from."""
+    return _digest({t: [_thaw(o) for o in package.objects_of_type(t)]
+                    for t in CANONICAL_OBJECT_TYPES})
+
+
+def specialist_contract_digests() -> dict:
+    """Per-specialist contract/prompt identity: the declared version plus a
+    digest of everything that shapes that specialist's behaviour -- its
+    brief, the shared rules, its permitted input types, the model and its
+    output ceiling. A prompt edit therefore invalidates prior results even
+    if someone forgets to bump SPECIALIST_VERSION."""
+    return {
+        sid: {
+            "specialist_version": SPECIALIST_VERSION,
+            "contract_digest": _digest({
+                "brief": SPECIALIST_BRIEFS[sid],
+                "shared_rules": _SHARED_RULES,
+                "category_rules_fn": "allowed_category_rules_v1",
+                "input_types": sorted(SPECIALIST_INPUT_TYPES[sid]),
+                "model": FULL_ANALYSIS_MODEL,
+                "max_tokens": SPECIALIST_MAX_OUTPUT_TOKENS,
+                "max_items": MAX_ITEMS_PER_SLICE_SECTION,
+                "max_chars": MAX_TEXT_CHARS_PER_ITEM,
+            }),
+        }
+        for sid in SPECIALIST_IDS
+    }
+
+
+def reconciliation_contract_digest() -> str:
+    return _digest({"version": RECONCILIATION_VERSION, "rules": _RECONCILIATION_RULES,
+                    "model": FULL_ANALYSIS_MODEL,
+                    "max_tokens": RECONCILIATION_MAX_OUTPUT_TOKENS})
+
+
+def full_analysis_fingerprint_inputs(package: CanonicalPackage) -> dict:
+    """Exactly what a Full Analysis result depends on -- and nothing else
+    (no bid/run ids, no timestamps, no UI state)."""
+    return {
+        "fingerprint_version": FULL_ANALYSIS_FINGERPRINT_VERSION,
+        "architecture_version": FULL_ANALYSIS_VERSION,
+        "canonical_snapshot_digest": package.package_digest,
+        "canonical_content_digest": canonical_content_digest(package),
+        "specialists": specialist_contract_digests(),
+        "reconciliation": {"reconciliation_version": RECONCILIATION_VERSION,
+                           "contract_digest": reconciliation_contract_digest()},
+    }
+
+
+def compute_full_analysis_fingerprint(package: CanonicalPackage) -> str:
+    """Deterministic sha256 (same sorted-key JSON convention as
+    proposal_intelligence.compute_package_digest / evidence_strengthening.
+    compute_input_fingerprint). A persisted Full Analysis result is reusable
+    only when this matches exactly."""
+    return _digest(full_analysis_fingerprint_inputs(package))

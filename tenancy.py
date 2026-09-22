@@ -258,6 +258,63 @@ def start_fast_analysis_for_organization(
     return analysis_service.start_fast_analysis(bid_id, api_key, created_by=created_by)
 
 
+def start_full_analysis_for_organization(
+    bid_id: int, organization_id: str, api_key: str, *, source_run_id: int | None = None,
+    created_by_user_id: str | None = None, retry: bool = False, execution: str = "background",
+) -> dict:
+    """MA-2A authorization boundary in front of full_analysis_service.
+    start_full_analysis(). Organization ownership of bid_id is verified
+    BEFORE the canonical package is built, before any run row is created
+    and before any model call. The fingerprint lookup/reuse that follows is
+    bid-scoped (a bid belongs to exactly one organization), so a result
+    can never be reused across bids or organizations."""
+    require_bid_access(bid_id, organization_id)
+    import full_analysis_service
+    return full_analysis_service.start_full_analysis(
+        bid_id, api_key, source_run_id=source_run_id,
+        created_by_user_id=created_by_user_id, retry=retry, execution=execution)
+
+
+def get_full_analysis_status_for_organization(
+    bid_id: int, organization_id: str, run_id: int | None = None, *, after_sequence: int = 0,
+) -> dict | None:
+    """Read-only Full Analysis run status + event log (MA-2A). Verifies
+    bid ownership, and (inside the service) that run_id is a FULL run of
+    THIS bid, before any privileged read."""
+    require_bid_access(bid_id, organization_id)
+    import full_analysis_service
+    try:
+        return full_analysis_service.get_full_analysis_status(
+            bid_id, run_id, after_sequence=after_sequence)
+    except full_analysis_service.RunNotFoundError as exc:
+        raise AccessDeniedError(str(exc))
+
+
+def get_full_analysis_result_for_organization(
+    bid_id: int, organization_id: str, run_id: int | None = None,
+) -> dict | None:
+    """Read-only persisted FullAnalysisResult (MA-2A), same two checks."""
+    require_bid_access(bid_id, organization_id)
+    import full_analysis_service
+    try:
+        return full_analysis_service.get_full_analysis_result(bid_id, run_id)
+    except full_analysis_service.RunNotFoundError as exc:
+        raise AccessDeniedError(str(exc))
+
+
+def mark_full_analysis_run_stuck_for_organization(
+    bid_id: int, organization_id: str, run_id: int,
+) -> dict:
+    """Explicit user action: mark a genuinely stuck FULL run FAILED (MA-2A).
+    Never starts a replacement run."""
+    require_bid_access(bid_id, organization_id)
+    import full_analysis_service
+    try:
+        return full_analysis_service.mark_full_analysis_run_stuck(bid_id, run_id)
+    except full_analysis_service.RunNotFoundError as exc:
+        raise AccessDeniedError(str(exc))
+
+
 def get_report_for_organization(bid_id: int, run_id: int, organization_id: str) -> bytes:
     """Authorization boundary in front of analysis_service.regenerate_report()
     (instruction 18). Verifies the caller's organization owns bid_id, AND
@@ -657,6 +714,12 @@ def get_bid_analysis_authenticated(access_token: str, bid_id: int) -> dict:
     )
     latest_result = None
     for run in runs:
+        # MA-2A: a FULL run's analysis_results row carries only a compact
+        # summary in structured_intelligence -- this helper's contract is
+        # the latest Fast Analysis structured result, so FULL runs are
+        # listed in `runs` but never selected as `latest_result`.
+        if run.get("analysis_mode") == "FULL":
+            continue
         if run.get("status") == "COMPLETE":
             rows = (
                 client.table("analysis_results")

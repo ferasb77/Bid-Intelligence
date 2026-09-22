@@ -1658,6 +1658,95 @@ Tests: `tests/test_full_analysis_ma1.py` (47, fully deterministic and
 synthetic — **every model call mocked, zero provider calls, no DB, no
 file I/O**). Full suite: **3139 passed, 2 skipped**.
 
+### MA-2A: Durable Full Analysis Runs & Progress Events (2026-09-22)
+
+Persistence / idempotency / progress layer around MA-1. Backend only — no
+UI, no animation, no polling page (MA-2B). Frozen CI-1/CI-1.1 Layers 1–2
+untouched (`fast_analysis.py`, `canonical_procurement.py`,
+`procurement_normalization.py`, `document_provenance.py` unchanged).
+
+**Persistence reuses `analysis_runs`/`analysis_results`** with
+`analysis_mode='FULL'` (so `model_usage_events.analysis_run_id` links Full
+Analysis telemetry with no new telemetry schema). New
+`migrations/020_full_analysis_runs.sql` — **written, NOT applied live**
+(live commissioning is a separate task): widens the mode CHECK to
+FAST/DEEP_VERIFY/FULL and the status CHECK with RUNNING + PARTIAL (PARTIAL
+is terminal and was added to the one-active-run partial index's terminal
+set); adds `input_fingerprint`, `source_analysis_run_id`,
+`last_progress_at` (FULL rows must carry the first two); a unique index of
+one COMPLETE FULL run per (bid, fingerprint);
+`analysis_results.full_analysis_result`; two new append-only tables,
+`full_analysis_events` (gap-free per-run `sequence`, closed event/status
+vocabulary, bounded `detail` ≤4000 bytes, never model text) and
+`full_analysis_specialist_results` (write-once, one per specialist,
+persisted THE MOMENT that specialist finishes). Composite `(run_id,
+bid_id)` FKs; RLS authenticated SELECT via `can_access_bid` only;
+triggers make events append-only and a terminal FULL run immutable even
+for service_role. Writes only through three service_role-only SECURITY
+DEFINER RPCs: `start_full_analysis_run` (per-bid advisory lock; outcomes
+CREATED / ACTIVE_RUN_EXISTS / REUSED_COMPLETE / EXISTING_FAILED /
+EXISTING_PARTIAL — FAILED/PARTIAL need explicit `p_retry`),
+`record_full_analysis_event` (per-run advisory lock, refuses terminal
+runs), `finalize_full_analysis_run` (atomic result + terminal event +
+status; refuses COMPLETE unless the result's `completeness_status` is
+COMPLETE).
+
+**Fingerprint** (`full_analysis.compute_full_analysis_fingerprint`):
+sha256 over fingerprint-recipe version, `FULL_ANALYSIS_VERSION`, MA-1's
+`package_digest`, a new complete `canonical_content_digest` (all 11
+canonical object types — MA-1's digest omits completeness/relationships/
+categories, which do reach specialists), per-specialist
+`SPECIALIST_VERSION` + contract digest (brief, shared rules, input types,
+model, limits), reconciliation version + prompt digest. No bid/run ids,
+timestamps, buyer intelligence or UI state.
+
+**Service** `full_analysis_service.py` (the only entry point a UI may
+use, via `tenancy.start_full_analysis_for_organization` /
+`get_full_analysis_status_for_organization` /
+`get_full_analysis_result_for_organization` /
+`mark_full_analysis_run_stuck_for_organization`): builds the package via
+`analysis_service.build_full_analysis_package` (factored out of MA-1's
+entry point; skips document download when the snapshot already has
+CI-1.1 scope items), fingerprints, calls the start RPC, and only on
+CREATED executes. Progress comes from a new observational
+`full_analysis.run_full_analysis(on_event=...)` hook fired at real
+boundaries (QUEUED before submit, STARTED in the worker before the call,
+COMPLETED/FAILED when `run_specialist` returns, RECONCILIATION_*); no
+percentages. Run statuses QUEUED/RUNNING/COMPLETE/PARTIAL/FAILED;
+specialist states QUEUED/RUNNING/COMPLETE/FAILED/SKIPPED (SKIPPED only on
+a terminal run for a domain that never finished).
+
+**Background execution:** reuses Fast Analysis's existing in-process
+daemon-thread pattern (no job queue exists in this repo). Honest limit:
+not resilient to a process restart — mitigated by durable incremental
+state and stuck detection (`is_full_run_stuck`: no progress for 10 min or
+age > 30 min), with an explicit user-initiated FAILED marking that never
+relaunches. `execution="inline"` runs synchronously.
+
+**Telemetry:** each provider call is recorded through the existing
+`execute_messages_create(telemetry_context=...)` path with
+`workflow="full_analysis"`, `analysis_run_id=<FULL run>`,
+`operation=specialist_<id>|reconciliation`; run-level usage summary in
+`analysis_runs.telemetry`.
+
+**MA-1 residual hardening** (`SPECIALIST_VERSION` ma-1.0 → ma-1.1):
+specialist prompts now list the allowed category ids/labels and state
+that ids must be copied exactly; `normalize_category_scope` (exact label,
+CAT-id, punctuation/case-equal label, or unique whole-word sub-phrase →
+canonical label; ambiguous/unknown fails closed and forces human
+confirmation) and `normalize_canonical_id` (unique case/whitespace match
+within the specialist's own slice only) — no validation loosened.
+Post-hardening live rejection rates are NOT yet measured (no live call
+made in MA-2A).
+
+Also: `database.get_active_analysis_run` and
+`tenancy.get_bid_analysis_authenticated` treat PARTIAL as terminal /
+skip FULL rows so FAST consumers are unaffected. Tests:
+`tests/test_full_analysis_ma2a.py` (62, zero provider calls, in-memory
+stand-in for migration 020's RPC contract + static SQL assertions). Full
+suite: **3201 passed, 2 skipped**. Highest migration in repo: **020 (not
+applied)**.
+
 ## Architectural fact-type separation
 
 Every subsystem above keeps these categories distinct, never merges them:

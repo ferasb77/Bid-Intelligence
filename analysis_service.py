@@ -700,9 +700,10 @@ def regenerate_report_from_raw_snapshot(run_id: int, buyer_intelligence: dict | 
 # ---------------------------------------------------------------------------
 
 FULL_ANALYSIS_PERSISTENCE_GAP = (
-    "MA-1 Full Analysis is compute-and-return: analysis_runs.analysis_mode "
-    "does not permit 'FULL' and analysis_results has no full_analysis_result "
-    "column, so a Full Analysis result is not durably persisted yet."
+    "MA-1's run_full_analysis_for_run is compute-and-return. MA-2A adds the "
+    "durable path: full_analysis_service.start_full_analysis (analysis_mode "
+    "'FULL', migrations/020_full_analysis_runs.sql -- written, NOT yet applied "
+    "live). This compute-and-return entry point is kept for one-off smokes."
 )
 
 
@@ -720,15 +721,35 @@ def run_full_analysis_for_run(run_id: int, api_key: str, *, include_documents: b
     Nothing is persisted (see FULL_ANALYSIS_PERSISTENCE_GAP)."""
     import full_analysis
 
+    package = build_full_analysis_package(run_id, include_documents=include_documents)
+    return full_analysis.run_full_analysis(package, api_key)
+
+
+def build_full_analysis_package(run_id: int, *, include_documents: bool = True,
+                                documents_only_if_needed: bool = False):
+    """The ONE canonical-package assembly path for Full Analysis (MA-1's
+    compute-and-return entry point above and MA-2A's durable service both
+    use it). Deterministic, zero model calls. Raises ValueError if run_id
+    is not a COMPLETE FAST run with a durable raw snapshot.
+
+    `documents_only_if_needed` (MA-2A): corpus text is only ever used by
+    build_canonical_package to re-derive CI-1.1 `category_scope_items` for
+    a snapshot that predates that field -- when the snapshot already has
+    it, downloading/extracting every source document is skipped, which
+    keeps a freshness check cheap."""
+    import full_analysis
+
     run = db.get_analysis_run(run_id)
-    if not run or run.get("status") != "COMPLETE":
-        raise ValueError(f"analysis run {run_id} is not COMPLETE; cannot run Full Analysis")
+    if not run or run.get("status") != "COMPLETE" or run.get("analysis_mode", "FAST") != "FAST":
+        raise ValueError(f"analysis run {run_id} is not a COMPLETE FAST run; cannot run Full Analysis")
     result = load_raw_fast_analysis_result(run_id)
     if isinstance(result, str):
         raise ValueError(
             f"analysis run {run_id} has no durably persisted raw Fast Analysis snapshot ({result})")
 
     bid_id = run.get("bid_id")
+    if documents_only_if_needed and getattr(result, "category_scope_items", None):
+        include_documents = False
     documents: list[tuple[str, str]] | None = None
     if include_documents:
         documents = []
@@ -741,9 +762,8 @@ def run_full_analysis_for_run(run_id: int, api_key: str, *, include_documents: b
             text, _ = extract_document_with_metadata(file_bytes, d["name"])
             documents.append((d["name"], text))
 
-    package = full_analysis.build_canonical_package(
+    return full_analysis.build_canonical_package(
         result, bid_id=bid_id, analysis_run_id=run_id, documents=documents)
-    return full_analysis.run_full_analysis(package, api_key)
 
 
 def _parse_timestamp(value: str | None):

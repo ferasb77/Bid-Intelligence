@@ -836,7 +836,7 @@ def get_active_analysis_run(bid_id: int, analysis_mode: str) -> dict | None:
     sb = get_client()
     rows = _rows(sb.table("analysis_runs").select("*")
                  .eq("bid_id", bid_id).eq("analysis_mode", analysis_mode)
-                 .not_.in_("status", ["COMPLETE", "FAILED"])
+                 .not_.in_("status", ["COMPLETE", "PARTIAL", "FAILED"])
                  .order("created_at", desc=True).limit(1).execute())
     return rows[0] if rows else None
 
@@ -921,6 +921,85 @@ def get_latest_analysis_result(bid_id: int, analysis_mode: str = "FAST") -> dict
     if not runs:
         return None
     return get_analysis_result(runs[0]["id"])
+
+
+# ── Full Analysis runs (MA-2A, migrations/020_full_analysis_runs.sql) ─────────
+# FULL runs live in the SAME analysis_runs / analysis_results tables as Fast
+# Analysis (analysis_mode='FULL'). Every WRITE is one call into one of
+# migration 020's three service_role-only SECURITY DEFINER functions --
+# never a direct .insert()/.update() on analysis_runs for a FULL run (the
+# migration's trigger would also refuse to mutate a terminal FULL run).
+# Must only be reached through full_analysis_service.py, which itself is
+# only reached through tenancy.py's require_bid_access() wrappers.
+
+def start_full_analysis_run(bid_id: int, source_analysis_run_id: int, input_fingerprint: str,
+                            engine_version: str, *, corpus_digest: str | None = None,
+                            created_by_user_id: str | None = None, retry: bool = False,
+                            detail: dict | None = None) -> dict:
+    """Advisory-locked idempotent get-or-create. Returns
+    {"outcome": CREATED|ACTIVE_RUN_EXISTS|REUSED_COMPLETE|EXISTING_FAILED|
+    EXISTING_PARTIAL, "run": <analysis_runs row>}. Do NOT replace this with
+    a Python SELECT-then-INSERT -- that is the race the RPC closes."""
+    return _rpc_one(get_client().rpc("start_full_analysis_run", {
+        "p_bid_id": bid_id, "p_source_analysis_run_id": source_analysis_run_id,
+        "p_input_fingerprint": input_fingerprint, "p_engine_version": engine_version,
+        "p_corpus_digest": corpus_digest, "p_created_by_user_id": created_by_user_id,
+        "p_retry": bool(retry), "p_detail": detail or {},
+    }).execute())
+
+
+def record_full_analysis_event(run_id: int, bid_id: int, event_type: str, *,
+                               specialist_id: str | None = None, status: str | None = None,
+                               duration_seconds: float | None = None,
+                               failure_summary: str | None = None, detail: dict | None = None,
+                               specialist_result: dict | None = None) -> dict | None:
+    """Appends one sequenced execution event (sequence assigned server-side
+    under a per-run advisory lock); with SPECIALIST_COMPLETED/FAILED it may
+    also durably write that specialist's result in the same transaction.
+    Raises if the run is not an active FULL run of this bid."""
+    return _rpc_one(get_client().rpc("record_full_analysis_event", {
+        "p_run_id": run_id, "p_bid_id": bid_id, "p_event_type": event_type,
+        "p_specialist_id": specialist_id, "p_status": status,
+        "p_duration_seconds": duration_seconds, "p_failure_summary": failure_summary,
+        "p_detail": detail or {}, "p_specialist_result": specialist_result,
+    }).execute())
+
+
+def finalize_full_analysis_run(run_id: int, bid_id: int, status: str, *,
+                               result: dict | None = None, summary: dict | None = None,
+                               failure_reason: str | None = None,
+                               failure_detail: dict | None = None,
+                               telemetry: dict | None = None) -> dict | None:
+    """Atomically persists the FullAnalysisResult (if any), the terminal
+    RUN_* event and the terminal status. Raises if the run is already
+    terminal, or if status COMPLETE is claimed for a non-COMPLETE result."""
+    return _rpc_one(get_client().rpc("finalize_full_analysis_run", {
+        "p_run_id": run_id, "p_bid_id": bid_id, "p_status": status,
+        "p_result": result, "p_summary": summary or {},
+        "p_failure_reason": failure_reason, "p_failure_detail": failure_detail,
+        "p_telemetry": telemetry,
+    }).execute())
+
+
+def get_full_analysis_runs(bid_id: int, *, limit: int = 50) -> list[dict]:
+    """FULL run history for one bid (every status), most recent first."""
+    return _rows(get_client().table("analysis_runs").select("*")
+                .eq("bid_id", bid_id).eq("analysis_mode", "FULL")
+                .order("created_at", desc=True).order("id", desc=True)
+                .limit(limit).execute())
+
+
+def get_full_analysis_events(run_id: int, *, after_sequence: int = 0) -> list[dict]:
+    """Ordered event log for one run; `after_sequence` supports incremental
+    polling (only events newer than what a client already has)."""
+    return _rows(get_client().table("full_analysis_events").select("*")
+                .eq("run_id", run_id).gt("sequence", after_sequence)
+                .order("sequence").execute())
+
+
+def get_full_analysis_specialist_results(run_id: int) -> list[dict]:
+    return _rows(get_client().table("full_analysis_specialist_results").select("*")
+                .eq("run_id", run_id).order("id").execute())
 
 
 def save_firm_profile(data: dict) -> None:

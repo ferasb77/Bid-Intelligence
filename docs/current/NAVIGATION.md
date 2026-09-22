@@ -191,14 +191,40 @@ Where to look, not what everything means. Read
   api_key)` -- EXPLICIT mode only, against an already-COMPLETE Fast
   Analysis run. Fast Analysis is untouched and never dispatches
   specialists.
-- Persistence: none yet (`analysis_service.FULL_ANALYSIS_PERSISTENCE_GAP`)
-  -- `analysis_runs.analysis_mode` has no 'FULL' value and
-  analysis_results has no Full Analysis column. **No migration added.**
+- Persistence: added by MA-2A (below); `run_full_analysis_for_run` itself
+  remains compute-and-return for one-off smokes.
 - Live smoke (one-off, deliberate, not part of any test):
   `scripts/run_ma1_live_smoke.py <analysis_run_id>`.
 - Tests: `tests/test_full_analysis_ma1.py` (47, every model call mocked).
 - Live-validated against Bank of Canada bid 8 / run 19 with exactly 7
   Anthropic calls -- see SYSTEM_STATE.md for the per-domain findings.
+
+**MA-2A: Durable Full Analysis Runs & Progress Events (2026-09-22)**
+- `full_analysis_service.py` -- THE orchestration boundary (a UI never
+  calls `full_analysis.py`): `start_full_analysis` (fingerprint ->
+  idempotent start RPC -> inline/background execution),
+  `get_full_analysis_status` (durable run + ordered events +
+  `derive_execution_state` + `is_full_run_stuck`, `after_sequence` for
+  incremental polling), `get_full_analysis_result`,
+  `mark_full_analysis_run_stuck` (explicit, never relaunches),
+  `_EventRecorder` (maps `run_full_analysis(on_event=...)` to RPC writes).
+- `tenancy.py` -- `start_full_analysis_for_organization`,
+  `get_full_analysis_status_for_organization`,
+  `get_full_analysis_result_for_organization`,
+  `mark_full_analysis_run_stuck_for_organization` (require_bid_access
+  first; foreign run ids -> AccessDeniedError).
+- `full_analysis.py` -- `on_event` hook + `EVENT_*` constants,
+  `compute_full_analysis_fingerprint` / `full_analysis_fingerprint_inputs`
+  / `canonical_content_digest`, `normalize_category_scope` /
+  `normalize_canonical_id`, `_allowed_category_rules` (prompt hardening).
+- `analysis_service.build_full_analysis_package` -- the single package
+  assembly path.
+- `database.py` -- `start_full_analysis_run` / `record_full_analysis_event`
+  / `finalize_full_analysis_run` (the ONLY FULL write paths, RPCs) and
+  `get_full_analysis_runs` / `get_full_analysis_events` /
+  `get_full_analysis_specialist_results`.
+- `migrations/020_full_analysis_runs.sql` -- **written, NOT applied live.**
+- Tests: `tests/test_full_analysis_ma2a.py` (62).
 
 **Buyer Intelligence**
 - Produced/threaded via `scripts/fast_analysis_report_adapter.py`
