@@ -585,6 +585,19 @@ def _numeric_magnitude(weight: str) -> float | None:
     return float(m.group()) if m else None
 
 
+def _canonical_procurement():
+    """Lazy import of the CI-1 canonical contract. Deferred because
+    `canonical_procurement` itself imports this module for its shared
+    dedup primitives (the same convention `procurement_normalization`
+    and `document_provenance` already follow)."""
+    import canonical_procurement as _canon
+    return _canon
+
+
+def _re_norm_label(label: str) -> str:
+    return re.sub(r'\s+', ' ', (label or "").strip()).lower()
+
+
 def _prune_non_distinct_leftover_rows(
         candidates: list[tuple[str, str]],
         rendered_categories: list[list[tuple[str, str]]]) -> list[tuple[str, str]]:
@@ -847,25 +860,27 @@ def _minimum_scores_for_category(result: FastAnalysisResult, category_label: str
 
 
 def _merged_doc_metadata(result: FastAnalysisResult) -> dict:
-    """Document precedence: master RFP / solicitation documents outrank draft contracts
-    and appendices for opportunity identity (e.g. title, buyer, solicitation number).
-    First non-empty value per field wins along document priority order."""
-    def doc_priority(doc_name: str) -> int:
-        d_lower = doc_name.lower()
-        if "contract" in d_lower or "agreement" in d_lower or "form_of_contract" in d_lower:
-            return 3
-        if "appendix" in d_lower or "schedule" in d_lower or "annex" in d_lower or "form" in d_lower:
-            return 2
-        return 1  # master RFP / solicitation has highest precedence
+    """Canonical procurement IDENTITY resolution (CI-1 Defect A).
 
-    sorted_docs = sorted(result.doc_metadata_by_doc.items(), key=lambda kv: doc_priority(kv[0]))
-    merged: dict = {}
-    for _, meta in sorted_docs:
-        if not isinstance(meta, dict):
-            continue
-        for k, v in meta.items():
-            if v and not merged.get(k):
-                merged[k] = v
+    Identity is resolved through `canonical_procurement.merge_identity_
+    fields`, which applies the IDENTITY field-family authority ranking --
+    NOT one universal "latest/first document wins" ranking. The concrete
+    behaviour this fixes: an addendum carries the solicitation number in
+    its own filename and its own doc_metadata, and the previous priority
+    function scored it 1 (same as the master RFP), so "RFP 2026-026
+    Addendum #2" could become the canonical opportunity title and a
+    truncated buyer string could become the canonical buyer.
+
+    An AMENDMENT-role document now has NO identity authority at all; it
+    remains authoritative for the clauses it actually amends (handled in
+    the clause/commercial layer, not here). It contributes an identity
+    field only in the degenerate case where the package contains no
+    identity-bearing document whatsoever."""
+    import canonical_procurement as _canon
+
+    merged: dict = dict(_canon.merge_identity_fields(
+        {k: v for k, v in result.doc_metadata_by_doc.items() if isinstance(v, dict)},
+        field_family="identity"))
 
     # Clean and normalize title: RFP / Solicitation title outranks draft SERVICES AGREEMENT.
     # Buyer-agnostic prefix strip -- e.g. "SERVICES AGREEMENT for Coaching and
@@ -1655,6 +1670,20 @@ def build_fast_report_content(result: FastAnalysisResult,
         leftover_candidates = _weight_rows_for_category(
             result, None, exclude_labels=frozenset(c.lower() for c in eval_categories))
         leftover = _prune_non_distinct_leftover_rows(leftover_candidates, rendered_category_rows)
+        # CI-1 Defect E: a criterion label that already exists inside one
+        # or more CATEGORY-SCOPED evaluation tables is a scoped criterion
+        # instance (or several), never a separate procurement-wide
+        # criterion -- "same label + different category" is multiple
+        # scoped criteria, not one global one. Only a label carrying no
+        # category scope anywhere survives into this bucket.
+        _scoped_pairs = [
+            (cat_key, _re_norm_label(label))
+            for cat_key, rows in C.EVAL_WEIGHTS.items() for label, _w in rows
+        ]
+        leftover = [
+            (label, weight) for label, weight in leftover
+            if _canonical_procurement().is_genuinely_global_criterion(label, _scoped_pairs)
+        ]
         if leftover:
             # Check if leftover is merely "Response Guideline 1..6" duplicating Category 1
             is_rg_duplicate = all(re.match(r'response guideline \d+', l.lower()) for l, _ in leftover)
@@ -1734,9 +1763,55 @@ def build_fast_report_content(result: FastAnalysisResult,
         section = (refs[0].get("section") or "")
         return section.lower().startswith("table of contents")
 
+    # CI-1 Defect G: the clause_kind an upstream extraction assigned is
+    # treated as a CANDIDATE, not as truth. Before a clause may be
+    # rendered under a named commercial/contractual topic, its own text
+    # (and its explicit source heading, when the source supplied one) is
+    # classified deterministically by `canonical_procurement.classify_
+    # commercial_topic`, ordered most-specific-first. A clause whose
+    # actual subject contradicts the slot -- a provider's right to
+    # DECLINE AN ENGAGEMENT filed under "Assignment", a CPP/EI/workplace-
+    # insurance remittance obligation filed under "Liability & Indemnity"
+    # -- is dropped from that slot rather than rendered under a wrong,
+    # and in the legal case genuinely dangerous, label. A clause the
+    # classifier cannot place is left where it was: CI-1 removes wrong
+    # bindings, it does not discard unclassifiable clauses.
+    _canon = _canonical_procurement()
+    _SLOT_SEMANTIC_TOPIC = {
+        "PRICING_ESCALATION": _canon.TOPIC_PRICING_ESCALATION,
+        "ASSIGNMENT": _canon.TOPIC_ASSIGNMENT,
+        "TERMINATION": _canon.TOPIC_TERMINATION,
+        "LIABILITY_INDEMNITY": _canon.TOPIC_INDEMNITY,
+        "GOVERNING_LAW_DISPUTE": _canon.TOPIC_GOVERNING_LAW,
+        "DATA_PROTECTION_PRIVACY": _canon.TOPIC_PRIVACY,
+        "CYBERSECURITY_SECURITY": _canon.TOPIC_CYBERSECURITY,
+    }
+
+    def _clause_heading(c: dict) -> str | None:
+        refs = c.get("source_refs") or []
+        if refs and isinstance(refs[0], dict):
+            return refs[0].get("section") or refs[0].get("heading")
+        return None
+
+    def _semantically_permitted(c: dict, kind: str) -> bool:
+        """Strict for the named legal/commercial slots: a clause must
+        POSITIVELY classify as that slot's topic to be rendered under it.
+        Task section 9 is explicit -- "Do not force unrelated clauses
+        into a topic just to fill a report slot. If a topic is absent,
+        omit it or say not identified." A slot left with no positively
+        supported clause is therefore simply not rendered. Clause kinds
+        with no mapped semantic topic (the open-ended fallback kinds) are
+        unaffected."""
+        topic = _SLOT_SEMANTIC_TOPIC.get(kind)
+        if topic is None:
+            return True
+        text = (c.get("source_fact") or "") + " " + (c.get("topic") or "")
+        return _canon.classify_commercial_topic(text, _clause_heading(c)) == topic
+
     clauses_by_kind: dict[str, str] = {}
     for kind, rules in _SLOT_VALIDATION.items():
-        matching = [c for c in result.commercial_clauses if c.get("clause_kind") == kind]
+        matching = [c for c in result.commercial_clauses
+                    if c.get("clause_kind") == kind and _semantically_permitted(c, kind)]
         prefers = rules["prefer"]
         rejects = rules["reject"]
         valid = [c for c in matching if not any(rk in (c.get("topic", "") + " " + c.get("source_fact", "")).lower() for rk in rejects)]
@@ -1756,7 +1831,10 @@ def build_fast_report_content(result: FastAnalysisResult,
 
     _fallback_kinds = {c.get("clause_kind") or "OTHER" for c in result.commercial_clauses} - set(_SLOT_VALIDATION)
     for kind in _fallback_kinds:
-        matching = [c for c in result.commercial_clauses if (c.get("clause_kind") or "OTHER") == kind]
+        matching = [c for c in result.commercial_clauses
+                    if (c.get("clause_kind") or "OTHER") == kind and _semantically_permitted(c, kind)]
+        if not matching:
+            continue
         # Prefer the first non-TOC-sourced occurrence; only fall back to a
         # TOC-sourced one if that's all this kind has -- generic, applies
         # identically to every clause_kind and every buyer's corpus.
@@ -1813,7 +1891,21 @@ def build_fast_report_content(result: FastAnalysisResult,
         C.FACT_ORIGINS[f"COMMERCIAL_POINTS.{label}"] = "LIVE_FAST_LLM"
 
     # ---- Section 8: Ambiguities (from deterministic detectors, not Stage C) ----
-    tagged_ambiguities = _build_ambiguities(result.ambiguities)
+    # CI-1 Defect F: the report consumes the CANONICAL model, so the
+    # scope-aware milestone verdict is recomputed here from the result's
+    # own typed observations rather than replayed from whatever verdict
+    # was frozen into a persisted snapshot at analysis time. Without
+    # this, regenerating a report from a pre-CI-1 raw snapshot would
+    # still render the false "multiple distinct dates" ambiguity even
+    # though the corrected detector no longer raises it. Only this one
+    # key is recomputed; every other ambiguity class is passed through
+    # exactly as analysis produced it.
+    _ambiguities = dict(result.ambiguities or {})
+    if result.typed_observations:
+        import fast_analysis as _fa
+        _ambiguities["category_date_distinctions"] = _fa.detect_category_date_distinctions(
+            result.typed_observations)
+    tagged_ambiguities = _build_ambiguities(_ambiguities)
     C.AMBIGUITIES = tagged_ambiguities
     if not tagged_ambiguities:
         C.SNAPSHOT_NOTE = (
@@ -1946,11 +2038,29 @@ def build_fast_report_content(result: FastAnalysisResult,
     # mandatory gates and weighted criteria -- only fires when the source
     # documents genuinely state one (structured QUALIFICATION_MECHANISM
     # extraction, not a buyer-specific assumption).
-    if C.QUALIFICATION_MECHANISMS:
+    # CI-1 Defect H: an attention point must be bound to evidence of its
+    # OWN semantic topic. Previously the reference-check point cited
+    # QUALIFICATION_MECHANISMS[0] unconditionally, which on a corpus
+    # whose first qualification mechanism is a BILINGUALISM requirement
+    # produced "Reference checks apply ... <bilingualism text> ... prepare
+    # credible references" -- semantically incoherent. The supporting
+    # facts are now validated against the topic and the point is omitted
+    # entirely when none genuinely support it (fail-closed), while
+    # bilingualism gets its own correctly-topiced point.
+    _reference_facts = _canon.select_supporting_facts(
+        "REFERENCE_CHECK", C.QUALIFICATION_MECHANISMS)
+    if _reference_facts:
         attention_points.append(
             "Reference checks apply and are evaluated separately from the weighted criteria: "
-            f"{_shorten_to_sentence(C.QUALIFICATION_MECHANISMS[0], limit=220)} Prepare credible, "
+            f"{_shorten_to_sentence(_reference_facts[0], limit=220)} Prepare credible, "
             "responsive references in advance.")
+    _bilingual_facts = _canon.select_supporting_facts(
+        "BILINGUALISM", C.QUALIFICATION_MECHANISMS)
+    if _bilingual_facts:
+        attention_points.append(
+            "A language / bilingual delivery capability is assessed as a pass-fail qualification "
+            f"mechanism: {_shorten_to_sentence(_bilingual_facts[0], limit=220)} Confirm delivery "
+            "capacity in each required language before committing.")
 
     # Technology / security review: derived from whichever commercial clause
     # was actually selected for this kind above (real extracted text, not

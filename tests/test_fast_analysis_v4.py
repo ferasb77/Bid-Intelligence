@@ -536,15 +536,19 @@ class TestFactOriginMetadata(unittest.TestCase):
 class TestV1ThroughV3RegressionCoverage(unittest.TestCase):
     """14/19 (Regression). Every prior fix must survive V4's changes."""
 
-    def test_category_date_distinction_detector_unchanged(self):
+    def test_category_date_distinction_detector_is_now_scope_aware(self):
+        """Updated by CI-1 Defect F: the detector is scope-aware, so two
+        categories' demo dates no longer produce a false ambiguity. Same
+        scope + conflicting dates still does."""
         observations = [
             {"family": "MILESTONE", "semantic_kind": "PRESENTATION_OR_DEMO", "date": "2026-10-26",
              "scope": {"category": "Category 1"}},
             {"family": "MILESTONE", "semantic_kind": "PRESENTATION_OR_DEMO", "date": "2026-11-02",
              "scope": {"category": "Category 3"}},
         ]
-        result = detect_category_date_distinctions(observations)
-        self.assertEqual(len(result), 1)
+        self.assertEqual(detect_category_date_distinctions(observations), [])
+        same_scope = [dict(o, scope={"category": "Category 1"}) for o in observations]
+        self.assertEqual(len(detect_category_date_distinctions(same_scope)), 1)
 
     def test_insurance_prompt_stays_reverted_no_v2_experiment_reintroduced(self):
         from fast_analysis import _build_prompt, ROUTE_COMMERCIAL_ONLY

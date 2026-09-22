@@ -26,7 +26,13 @@ class TestServiceCategoryRowsDefectD(unittest.TestCase):
         """Root cause reproduced: the category label never appears
         verbatim inside any requirement description (the real Bank of
         Canada failure mode) -- must now fall back to Defect A's captured
-        response prompts instead of rendering _NOT_EXTRACTED."""
+        response prompts instead of rendering _NOT_EXTRACTED.
+
+        CI-1 Defect B narrowed this fallback: only prompt text that
+        actually describes the WORK may become scope. The prompt below
+        was changed from "Describe your approach to ..." (an instruction
+        to the proponent) to a genuine scope statement for exactly that
+        reason -- see test_response_prompt_never_becomes_scope_row."""
         result = _result(
             requirements=[{"category": "Rated", "description": "Describe your delivery methodology."}],
             evaluation_occurrences=[
@@ -34,7 +40,9 @@ class TestServiceCategoryRowsDefectD(unittest.TestCase):
                  "category_scope": "Category 1 — Learning & Development", "parent_heading": "Category 1 — Learning & Development"},
             ],
             deterministic_criterion_response_prompts={
-                "Curriculum Design": {"response_prompt": "Describe your approach to curriculum design and delivery.", "truncated": False},
+                "Curriculum Design": {
+                    "response_prompt": "The Services will include curriculum design and delivery of learning programs.",
+                    "truncated": False},
             },
         )
         rows = _service_category_rows(result, ["Category 1 — Learning & Development"])
@@ -42,6 +50,26 @@ class TestServiceCategoryRowsDefectD(unittest.TestCase):
         label, _tag, desc = rows[0]
         self.assertNotEqual(desc, _NOT_EXTRACTED)
         self.assertIn("curriculum design", desc.lower())
+
+    def test_response_prompt_never_becomes_scope_row(self):
+        """CI-1 Defect B, at the report boundary: the Bank of Canada
+        failure mode where all three service categories rendered
+        'Proponents are to describe their organisation...' as their
+        scope. The honest answer is _NOT_EXTRACTED."""
+        result = _result(
+            requirements=[],
+            evaluation_occurrences=[
+                {"criterion_label": "Corporate Profile", "weight": "20 points",
+                 "category_scope": "Category 2 — HR Advisory", "parent_heading": "Category 2 — HR Advisory"},
+            ],
+            deterministic_criterion_response_prompts={
+                "Corporate Profile": {
+                    "response_prompt": "Proponents are to describe their organisation and its service offerings.",
+                    "truncated": False},
+            },
+        )
+        rows = _service_category_rows(result, ["Category 2 — HR Advisory"])
+        self.assertEqual(rows[0][2], _NOT_EXTRACTED)
 
     def test_still_not_extracted_when_genuinely_no_signal(self):
         result = _result(requirements=[], evaluation_occurrences=[], deterministic_criterion_response_prompts={})

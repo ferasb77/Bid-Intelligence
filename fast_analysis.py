@@ -1296,21 +1296,75 @@ def _resolve_obs_date(obs: dict) -> str | None:
         return v
     return None
 
+def _dates_genuinely_disagree(observations: list[dict]) -> bool:
+    """CI-1 Defect F: two ALTERNATE REPRESENTATIONS of the same date
+    ("Week of October 26" and "2026-10-26") are not a disagreement, even
+    though their literal strings differ. Reuses `procurement_
+    normalization._extract_date_window`'s normalization -- the SAME
+    primitive `canonicalize_milestones` already uses to merge alternate
+    wordings -- and reports a disagreement only when two observations'
+    normalized date WINDOWS genuinely fail to overlap.
+
+    Fails conservatively in the direction of honesty: an observation
+    whose wording this normalization cannot parse at all still counts as
+    a potential disagreement, so a real conflict is never hidden by an
+    unparseable wording."""
+    import procurement_normalization as _pn
+
+    assumed_year = None
+    for obs in observations:
+        for field in ("date", "original_value"):
+            value = (obs.get(field) or "").strip()
+            if len(value) >= 4 and value[:4].isdigit():
+                assumed_year = int(value[:4])
+                break
+        if assumed_year:
+            break
+
+    windows = []
+    for obs in observations:
+        text = f'{obs.get("date") or ""} {obs.get("original_value") or ""}'.strip()
+        window = _pn._extract_date_window(text, assumed_year)
+        if window is None:
+            return True  # unparseable wording -- never silently reconciled
+        windows.append(window)
+
+    for i in range(len(windows)):
+        for j in range(i + 1, len(windows)):
+            a_start, a_end, _ = windows[i]
+            b_start, b_end, _ = windows[j]
+            if not (a_start <= b_end and b_start <= a_end):
+                return True
+    return False
+
+
 def detect_category_date_distinctions(all_typed_observations: list[dict]) -> list[dict]:
     """Not a conflict-detector in the Stage-C sense: this specifically
     distinguishes genuinely different, category-scoped dates sharing the
     same milestone label (Ambiguity 3 in the Deep Verify PDF) from a true
     single-value disagreement, using the same 'scope' signal the narrow
-    prompt was explicitly asked to capture."""
-    by_kind: dict[str, list[dict]] = {}
+    prompt was explicitly asked to capture.
+
+    CI-1 Defect F: a milestone's canonical identity is
+    (event_type, scope), never event_type alone -- grouping by
+    semantic_kind only made two DIFFERENT categories' presentation/demo
+    dates look like one contradictory milestone. Grouping now uses
+    `canonical_procurement.milestone_scope_key`, so an ambiguity is
+    raised only when two authoritative sources disagree about the SAME
+    scoped event. Distinct scopes sharing an event type are reported
+    separately as `scope_distinct_events`, which is information, not a
+    conflict."""
+    import canonical_procurement as _canon
+
+    by_kind: dict[tuple, list[dict]] = {}
     for obs in all_typed_observations:
         if obs.get("family") != "MILESTONE":
             continue
         kind = obs.get("semantic_kind") or ""
-        by_kind.setdefault(kind, []).append(obs)
+        by_kind.setdefault((kind, _canon.milestone_scope_key(obs)), []).append(obs)
     distinctions = []
     _NON_CLOSING_TERMS = ("selection", "award", "start date", "contract start", "anticipate", "schedule of events")
-    for kind, obs_list in by_kind.items():
+    for (kind, scope_key), obs_list in by_kind.items():
         filtered_obs = obs_list
         if kind == "SUBMISSION_DEADLINE":
             # Guard against post-closing milestones misclassified as SUBMISSION_DEADLINE
@@ -1329,13 +1383,58 @@ def detect_category_date_distinctions(all_typed_observations: list[dict]) -> lis
 
         dated = [o for o in filtered_obs if _resolve_obs_date(o) is not None]
         values = {_resolve_obs_date(o) for o in dated}
-        if len(values) > 1:
+        if len(values) > 1 and _dates_genuinely_disagree(dated):
             distinctions.append({
                 "type": "CATEGORY_DATE_DISTINCTION",
                 "milestone_kind": kind,
+                "scope": list(scope_key),
                 "occurrences": dated,
             })
     return distinctions
+
+
+def derive_scope_distinct_milestones(all_typed_observations: list[dict]) -> list[dict]:
+    """CI-1 Defect F's companion to `detect_category_date_distinctions`:
+    the same event type occurring on DIFFERENT dates for DIFFERENT
+    scopes is not a conflict, but it IS information a bidder needs. This
+    returns those scope-distinct event sets so the intelligence is
+    preserved rather than simply deleted along with the false ambiguity.
+
+    Emitted only when at least two DIFFERENT scopes are involved and they
+    genuinely carry different dates -- never for a single scope, and
+    never for unscoped observations (a date disagreement there is a real
+    ambiguity, handled by `detect_category_date_distinctions`)."""
+    import canonical_procurement as _canon
+
+    by_kind: dict[str, dict[tuple, set]] = {}
+    occurrences: dict[str, list[dict]] = {}
+    for obs in all_typed_observations:
+        if obs.get("family") != "MILESTONE":
+            continue
+        resolved = _resolve_obs_date(obs)
+        if resolved is None:
+            continue
+        scope_key = _canon.milestone_scope_key(obs)
+        if not scope_key:
+            continue
+        kind = obs.get("semantic_kind") or ""
+        by_kind.setdefault(kind, {}).setdefault(scope_key, set()).add(resolved)
+        occurrences.setdefault(kind, []).append(obs)
+
+    results = []
+    for kind, scopes in by_kind.items():
+        if len(scopes) < 2:
+            continue
+        all_dates = {d for dates in scopes.values() for d in dates}
+        if len(all_dates) < 2:
+            continue
+        results.append({
+            "type": "SCOPE_DISTINCT_MILESTONE",
+            "milestone_kind": kind,
+            "scopes": {"/".join(k): sorted(v) for k, v in scopes.items()},
+            "occurrences": occurrences[kind],
+        })
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -1892,6 +1991,10 @@ def run_fast_analysis_corpus(documents: list[tuple[str, str]], api_key: str,
         "pricing_stage_ambiguity": detect_pricing_stage_ambiguity(
             result.evaluation_criteria, combined_pricing_occurrences),
         "category_date_distinctions": detect_category_date_distinctions(result.typed_observations),
+        # CI-1 Defect F: genuinely distinct, differently-scoped events of
+        # the same type -- preserved as information, deliberately NOT in
+        # the ambiguity list the report renders as "needs clarification".
+        "scope_distinct_milestones": derive_scope_distinct_milestones(result.typed_observations),
     }
 
     # 5. Full-Package Analysis Integrity Remediation (2026-09-22) -- all

@@ -243,12 +243,32 @@ class TestCategoryDateDistinction(unittest.TestCase):
     """I. Category-specific date handling -- distinguishes real distinctions
     from a true single-value conflict, using the same milestone family."""
 
-    def test_detects_distinct_dates_for_same_milestone_kind(self):
+    def test_different_categories_different_dates_is_not_an_ambiguity(self):
+        """CI-1 Defect F deliberately overturns this case's previous
+        expectation. A milestone's canonical identity is (event_type,
+        scope): two categories' demo dates are two distinct scoped
+        events, not one contradictory milestone. They are preserved as
+        information by `derive_scope_distinct_milestones`, not raised as
+        something the buyer must clarify."""
+        from fast_analysis import derive_scope_distinct_milestones
         observations = [
             {"family": "MILESTONE", "semantic_kind": "PRESENTATION_OR_DEMO", "date": "2026-10-26",
              "scope": {"category": "Category 1"}},
             {"family": "MILESTONE", "semantic_kind": "PRESENTATION_OR_DEMO", "date": "2026-11-02",
              "scope": {"category": "Category 3"}},
+        ]
+        self.assertEqual(detect_category_date_distinctions(observations), [])
+        preserved = derive_scope_distinct_milestones(observations)
+        self.assertEqual(len(preserved), 1)
+        self.assertEqual(preserved[0]["milestone_kind"], "PRESENTATION_OR_DEMO")
+        self.assertEqual(len(preserved[0]["scopes"]), 2)
+
+    def test_same_scope_conflicting_dates_is_still_an_ambiguity(self):
+        observations = [
+            {"family": "MILESTONE", "semantic_kind": "PRESENTATION_OR_DEMO", "date": "2026-10-26",
+             "scope": {"category": "Category 1"}},
+            {"family": "MILESTONE", "semantic_kind": "PRESENTATION_OR_DEMO", "date": "2026-11-02",
+             "scope": {"category": "Category 1"}},
         ]
         result = detect_category_date_distinctions(observations)
         self.assertEqual(len(result), 1)

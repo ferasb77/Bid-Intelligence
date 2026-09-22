@@ -248,8 +248,17 @@ class TestAmbiguityDetectionAfterSplitRecovery(unittest.TestCase):
         pricing_conflicts = detect_pricing_stage_ambiguity(result["evaluation_criteria"])
         self.assertEqual(len(pricing_conflicts), 1)
 
-        date_distinctions = detect_category_date_distinctions(result["typed_observations"])
-        self.assertEqual(len(date_distinctions), 1, "category-date detection must remain unregressed")
+        # CI-1 Defect F: the two recovered milestone observations carry
+        # DIFFERENT category scopes, so they are two distinct scoped
+        # events, not an ambiguity. What this test is actually about --
+        # does the split-recovered observation survive into detection? --
+        # is now asserted through the scope-distinct milestone output,
+        # which requires BOTH observations to have survived the merge.
+        from fast_analysis import derive_scope_distinct_milestones
+        self.assertEqual(detect_category_date_distinctions(result["typed_observations"]), [])
+        preserved = derive_scope_distinct_milestones(result["typed_observations"])
+        self.assertEqual(len(preserved), 1, "split-recovered milestone must survive the merge")
+        self.assertEqual(len(preserved[0]["scopes"]), 2)
 
 
 class Test18PrimaryEvaluationWeightsUnregressed(unittest.TestCase):

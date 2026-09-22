@@ -111,6 +111,40 @@ def extract_criterion_response_prompts(doc_text: str, known_criterion_labels: li
 # Defect B -- cross-document duplicate requirement canonicalization
 # ═══════════════════════════════════════════════════════════════════════════
 
+# A normative standard/statute identity: an acronym plus its version
+# number ("WCAG 2.1", "ISO 27001", "EN 301 549"), or a bare statutory
+# acronym ("AODA", "PIPEDA"). Deliberately EXCLUDES conformance-level
+# suffixes ("Level AA" vs plain "AA"), which are wording variants of the
+# SAME standard citation -- including them would make two restatements of
+# one obligation look like two different standards, which is exactly the
+# semantic-duplicate failure Defect I is about.
+_STANDARD_VERSIONED_RE = re.compile(r'\b([A-Z]{2,6})\s?(\d{1,4}(?:[.\-]\d{1,3})*)\b')
+_STANDARD_BARE_RE = re.compile(r'\b(AODA|ADA|WCAG|PIPEDA|FIPPA|GDPR)\b')
+
+_OBLIGATION_TARGET_RE = re.compile(
+    r'\b(accessib\w+|privacy|security|confidentialit\w+|insurance|'
+    r'bilingual\w+|indemnit\w+|environment\w+)\b', re.IGNORECASE)
+
+
+def _cited_standards(text: str) -> frozenset:
+    """Normative standards/statutes a requirement explicitly cites (e.g.
+    "WCAG 2.1 AA", "AODA", "EN 301 549"). Used ONLY as an additional
+    same-obligation identity signal inside an already-narrowed candidate
+    bucket -- never on its own."""
+    body = text or ""
+    versioned = {f"{m.group(1).upper()} {m.group(2)}" for m in _STANDARD_VERSIONED_RE.finditer(body)}
+    if versioned:
+        return frozenset(versioned)
+    return frozenset(m.group(1).upper() for m in _STANDARD_BARE_RE.finditer(body))
+
+
+def _obligation_target(text: str) -> frozenset:
+    """The subject-matter target(s) an obligation is about (accessibility,
+    privacy, security ...). Two passages citing the same standard AND
+    about the same target are the same obligation restated."""
+    return frozenset(m.group(1).lower()[:6] for m in _OBLIGATION_TARGET_RE.finditer(text or ""))
+
+
 def canonicalize_requirements(requirements: list[dict]) -> list[dict]:
     """Collapses semantically-equivalent requirement rows (the SAME
     obligation restated across the main RFP, an appendix, a mandatory-
@@ -143,7 +177,14 @@ def canonicalize_requirements(requirements: list[dict]) -> list[dict]:
     `description`/`source_doc`/`source_refs` fields are UNCHANGED for a
     requirement that had no duplicate (still gains the new fields, for a
     uniform output shape)."""
+    import canonical_procurement as _canon
     import requirement_semantics as rs
+
+    # CI-1 Defects C + I: every canonical requirement now RETAINS its
+    # category applicability, and applicability is part of the dedup
+    # candidate key -- two identically-worded obligations scoped to
+    # different service categories are two obligations, never one.
+    applicability = [_canon.derive_requirement_applicability(r) for r in requirements]
 
     by_category: dict[str, list[int]] = {}
     for i, r in enumerate(requirements):
@@ -164,17 +205,40 @@ def canonicalize_requirements(requirements: list[dict]) -> list[dict]:
 
     cache_norm = [rs.normalize_requirement_identity_text(r.get("description") or "") for r in requirements]
     cache_words = [_fuzzy_word_set(r.get("description") or "") for r in requirements]
+    cache_standards = [_cited_standards(r.get("description") or "") for r in requirements]
+    cache_targets = [_obligation_target(r.get("description") or "") for r in requirements]
 
     for category, indices in by_category.items():
         for a_pos in range(len(indices)):
             i = indices[a_pos]
             for b_pos in range(a_pos + 1, len(indices)):
                 j = indices[b_pos]
+                # CI-1 Defects C + I: conflicting STATED category
+                # applicability is an absolute merge barrier -- the same
+                # sentence scoped to Category 1 and to Category 2 is two
+                # obligations. Silence is not a conflict (see
+                # canonical_procurement.applicability_compatible).
+                if not _canon.applicability_compatible(applicability[i], applicability[j]):
+                    continue
                 if cache_norm[i] and cache_norm[i] == cache_norm[j]:
                     union(i, j)
                     continue
                 desc_i, desc_j = requirements[i].get("description") or "", requirements[j].get("description") or ""
                 if _is_near_duplicate(desc_i, cache_words[i], desc_j, cache_words[j]):
+                    union(i, j)
+                    continue
+                # Tier 3 (CI-1 Defect I): semantic duplicates whose WORDING
+                # differs too much for Tier 2's word-overlap heuristic, but
+                # which cite the SAME normative standard/statute AND impose
+                # the same obligation target. Bounded by the same
+                # same-category+same-applicability candidate narrowing as
+                # Tier 1/2 -- never an all-vs-all corpus comparison, and
+                # never a model call. Requires a shared standard token,
+                # which is a much stronger identity signal than shared
+                # prose, so a genuinely different obligation citing a
+                # different standard is still kept separate.
+                std_i, std_j = cache_standards[i], cache_standards[j]
+                if std_i and std_i == std_j and cache_targets[i] == cache_targets[j]:
                     union(i, j)
 
     groups: dict[int, list[int]] = {}
@@ -207,6 +271,16 @@ def canonicalize_requirements(requirements: list[dict]) -> list[dict]:
         canonical["source_docs"] = source_docs
         canonical["source_refs_all"] = source_refs_all
         canonical["duplicate_count"] = len(members)
+
+        # CI-1 Defect C: applicability survives canonicalization. The
+        # group's applicability is the single stated one its members
+        # agree on (never widened, never invented).
+        group_applicability = _canon.most_specific_applicability(
+            [applicability[i] for i in member_indices])
+        canonical["applicability"] = group_applicability["applicability"]
+        canonical["applicable_category_ids"] = list(group_applicability["category_ids"])
+        canonical["applicability_basis"] = group_applicability["basis"]
+        canonical["semantic_type"] = group_applicability["semantic_type"]
         canonical_list.append(canonical)
 
     return canonical_list
@@ -375,11 +449,17 @@ def derive_category_scope_summaries(
     a new extraction pass:
 
       1. Each of the category's OWN criteria (from `weights_by_category`)
-         that has a captured response_prompt (Defect A) -- a criterion
-         like "Curriculum & Program Design Capability" whose response
-         form explicitly describes "designing, developing, delivering and
+         that has a captured response_prompt (Defect A) AND whose prompt
+         text is semantically typed as scope material -- a criterion like
+         "Curriculum & Program Design Capability" whose response form
+         explicitly describes "designing, developing, delivering and
          updating learning solutions" IS a real, source-grounded scope
-         signal for that category, not an invented summary.
+         signal for that category. CI-1 Defect B added the type gate:
+         a prompt that merely instructs the proponent ("Proponents are to
+         describe their organisation...") is a RESPONSE_PROMPT and is
+         NEVER offered as scope, no matter how many service words it
+         contains. Such prompts are returned separately under
+         `response_prompts_not_scope`, not discarded.
       2. `deterministic_service_scope`'s own enumerated services list
          (extract_enumerated_service_scope), when the category name
          shares significant words with the scope's own trigger sentence
@@ -390,17 +470,36 @@ def derive_category_scope_summaries(
     `"summary_available": False` -- the caller renders "not stated" for
     that category honestly, never fabricating a generic summary from the
     title."""
+    import canonical_procurement as _canon
+
     result = {}
     scope_items = (deterministic_service_scope or {}).get("items") or []
     scope_words = _fuzzy_word_set(" ".join(scope_items)) if scope_items else frozenset()
 
     for category, rows in (weights_by_category or {}).items():
         criteria_labels = [r.get("criterion") for r in (rows or []) if isinstance(r, dict) and r.get("criterion")]
-        criteria_prompts = [
-            {"criterion": label, "response_prompt": criterion_response_prompts[label]["response_prompt"]}
-            for label in criteria_labels
-            if label in criterion_response_prompts
-        ]
+        # CI-1 Defect B: a criterion's response prompt is an EVALUATION/
+        # RESPONSE instruction ("Proponents are to describe their
+        # organisation..."), not a statement of the scope of work. Each
+        # prompt is semantically typed and only the ones that genuinely
+        # describe the work itself may be offered as scope; the rest are
+        # preserved separately, correctly labelled, so the evaluation
+        # layer keeps them without the scope layer ever adopting them.
+        criteria_prompts = []
+        response_prompts_only = []
+        for label in criteria_labels:
+            if label not in criterion_response_prompts:
+                continue
+            prompt_text = criterion_response_prompts[label]["response_prompt"]
+            entry = {
+                "criterion": label,
+                "response_prompt": prompt_text,
+                "semantic_type": _canon.classify_semantic_type(prompt_text),
+            }
+            if _canon.is_usable_as_scope(prompt_text):
+                criteria_prompts.append(entry)
+            else:
+                response_prompts_only.append(entry)
 
         category_words = _fuzzy_word_set(category)
         related_scope_items = []
@@ -409,6 +508,7 @@ def derive_category_scope_summaries(
 
         result[category] = {
             "criteria_prompts": criteria_prompts,
+            "response_prompts_not_scope": response_prompts_only,
             "enumerated_scope_items": related_scope_items,
             "summary_available": bool(criteria_prompts or related_scope_items),
         }

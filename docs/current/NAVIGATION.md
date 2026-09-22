@@ -109,6 +109,34 @@ Where to look, not what everything means. Read
   entry for the full before/after and the multi-agent-readiness boundary
   writeup.
 
+**CI-1: Typed & Scoped Canonical Procurement Intelligence (2026-09-22)**
+- `canonical_procurement.py` (new, pure, no I/O, no model call) -- THE
+  shared canonical contract. Semantic type vocabulary
+  (`classify_semantic_type`/`is_usable_as_scope`), per-field source
+  authority (`classify_identity_role(s)`/`AUTHORITY_BY_FIELD_FAMILY`/
+  `merge_identity_fields[_with_provenance]`), category applicability
+  (`derive_requirement_applicability`/`applicability_compatible`/
+  `most_specific_applicability`), scoped evaluation identity
+  (`scoped_criterion_key`/`is_genuinely_global_criterion`), scoped
+  milestone identity (`milestone_scope_key`), bounded commercial taxonomy
+  (`classify_commercial_topic`/`clause_supports_topic`), and
+  attention-point evidence contracts (`select_supporting_facts`).
+  **Any new consumer types/scopes through this module -- never its own
+  parallel vocabulary.**
+- Wiring points (four, all thin): `procurement_normalization.
+  canonicalize_requirements` (applicability + Tier-3 standard-based
+  semantic dedup) and `derive_category_scope_summaries` (scope type
+  gate); `fast_analysis.detect_category_date_distinctions` (scope-aware,
+  plus `_dates_genuinely_disagree`) and the new `derive_scope_distinct_
+  milestones`; `scripts/fast_analysis_report_adapter.py`'s
+  `_merged_doc_metadata` (identity authority), the "Other Rated Criteria"
+  leftover prune, the commercial slot's `_semantically_permitted` gate,
+  and the attention-point binding.
+- No migration. Tests: `tests/test_canonical_procurement.py` (46).
+- Live-validated against the real Bank of Canada corpus (**bid_id 8,
+  analysis run 19**) with **zero Anthropic calls** -- see SYSTEM_STATE.md
+  for the full defect-by-defect before/after.
+
 **Buyer Intelligence**
 - Produced/threaded via `scripts/fast_analysis_report_adapter.py`
   (`buyer_intelligence` parameter), consumed in `pages/stage_understand.py`.

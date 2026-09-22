@@ -1315,6 +1315,136 @@ wiring). Full existing fast_analysis/report-adapter/app-adapter/PI-3/
 Section-Analyzer/migration-013 suites re-run and pass unchanged (zero
 regressions) -- 2987 passed, 2 skipped (pre-existing) full-suite total.
 
+### CI-1: Typed & Scoped Canonical Procurement Intelligence (2026-09-22)
+
+Hardening of the shared canonical procurement model so that every future
+specialist analyzer consumes the same correctly **typed**, **scoped** and
+**authority-aware** source of truth. A correctness task, not a
+report-cosmetics one: no report string was patched; the canonical model
+was corrected and the report improved as a consequence. **No multi-agent
+system was built.** No migration — every new field rides inside the
+existing `structured_intelligence`/raw-snapshot JSON.
+
+`canonical_procurement.py` (new, pure, deterministic, no I/O, no model
+call) is now THE shared contract, sitting alongside the two layers the
+2026-09-22 remediation introduced (`document_provenance.py` = Layer 1
+source/provenance; `procurement_normalization.py` = Layer 2 canonical
+procurement intelligence). It holds:
+
+- **Semantic type vocabulary** (`SEMANTIC_*`, `classify_semantic_type`,
+  `is_usable_as_scope`) — a closed 15-member vocabulary. An instruction
+  addressed to the proponent is `RESPONSE_PROMPT`/`REQUESTED_EVIDENCE`
+  **regardless of the structural slot it was found in**, and can never
+  populate a scope field. `SEMANTIC_UNKNOWN` is a fail-closed answer, not
+  a default bucket.
+- **Per-field source authority** (`IDENTITY_ROLE_*`,
+  `classify_identity_role(s)`, `AUTHORITY_BY_FIELD_FAMILY`,
+  `merge_identity_fields[_with_provenance]`) — identity / clause /
+  contract / response-form families each have their OWN ranking. An
+  AMENDMENT has **zero identity authority** while remaining first
+  authority for clauses it amends.
+- **Category applicability** (`APPLICABILITY_*`,
+  `derive_requirement_applicability`, `applicability_compatible`,
+  `most_specific_applicability`) — precedence: explicit field → stated in
+  text → source document's own category identifier → semantic type →
+  `UNKNOWN`. "Appears in a shared summary document" never implies global.
+- **Scoped evaluation identity** (`scoped_criterion_key`,
+  `is_genuinely_global_criterion`) — a criterion is `(category, label)`,
+  never label alone.
+- **Scoped milestone identity** (`milestone_scope_key`).
+- **Bounded commercial taxonomy** (`COMMERCIAL_TOPICS`,
+  `classify_commercial_topic`, `clause_supports_topic`) — explicit source
+  heading first, then ordered most-specific-first contextual rules, then
+  `UNCLASSIFIED`. No model call was needed for any live clause.
+- **Attention-point evidence contracts**
+  (`attention_evidence_supports_topic`, `select_supporting_facts`).
+
+Defect root causes and fixes (all live-verified against the real Bank of
+Canada corpus, **bid_id 8 / analysis run 19**, with **zero Anthropic
+calls**):
+
+- **A — identity**: `_merged_doc_metadata`'s priority function scored an
+  addendum 1, the same as the master RFP, so "first non-empty value wins"
+  could let it define buyer/title. Now resolved through the identity
+  field-family authority. Result: Bank of Canada / 2026-026 / "Request
+  for Proposal for Talent, Learning and Organizational Development
+  Services".
+- **B — semantic type**: `derive_category_scope_summaries` treated any
+  captured criterion response prompt as scope. Now type-gated; rejected
+  prompts are preserved under `response_prompts_not_scope`. The three
+  BoC categories now render an honest "Not stated in the extracted data"
+  instead of a Corporate Profile prompt masquerading as SOW scope.
+- **C — applicability**: requirements carried no applicability at all.
+  `canonicalize_requirements` now emits `applicability` /
+  `applicable_category_ids` / `applicability_basis` / `semantic_type` on
+  every canonical requirement (BoC: 12 CONTRACT_WIDE, 8 UNKNOWN, 4
+  CATEGORY_SPECIFIC, 1 ALL_CATEGORIES).
+- **D/E — evaluation scope**: the "Other Rated Criteria" leftover bucket
+  only pruned rows sharing an *identical weight*. Now any label already
+  present in a category-scoped table is recognized as a scoped instance
+  and never becomes a global criterion. BoC renders three clean
+  category tables and no leftover bucket.
+- **F — milestone scope**: `detect_category_date_distinctions` grouped by
+  `semantic_kind` ALONE. Now grouped by `(event_type, scope)`, and within
+  one scope alternate representations of one date ("Week of October 26"
+  vs "2026-10-26") are reconciled through
+  `procurement_normalization._extract_date_window` before any conflict is
+  claimed (`_dates_genuinely_disagree`). Genuinely distinct scoped events
+  are preserved, not deleted, by the new
+  `fast_analysis.derive_scope_distinct_milestones`
+  (`ambiguities["scope_distinct_milestones"]`) — information, not an
+  ambiguity. The report **recomputes** this one verdict from
+  `typed_observations` so regenerating from a pre-CI-1 snapshot also
+  benefits. BoC: false "multiple distinct dates" ambiguity gone; both
+  category demo dates coexist with original wording preserved.
+- **G — commercial taxonomy**: the extraction's `clause_kind` was trusted
+  outright. It is now a *candidate*: a clause must **positively** classify
+  as a mapped slot's semantic topic to render under it, otherwise the
+  slot is omitted. BoC dropped three misbound rows (a planning-work
+  clause filed under Assignment, a pricing-clarification clause filed
+  under Pricing Escalation, a records clause filed under Cybersecurity);
+  the seven remaining rows each positively match their topic.
+- **H — attention-point binding**: the reference-check point cited
+  `QUALIFICATION_MECHANISMS[0]` unconditionally. Supporting facts are now
+  validated against the point's own topic (fail-closed: no matching fact,
+  no point), and bilingualism gets its own correctly-topiced point.
+- **I — semantic duplicates**: added a bounded Tier 3 to
+  `canonicalize_requirements` — same candidate bucket, same cited
+  normative standard (`_cited_standards`, level-suffix-insensitive so
+  "WCAG 2.1 Level AA" and "WCAG 2.1 AA" are one citation) and same
+  obligation target (`_obligation_target`). Still no all-vs-all pass and
+  no model call. Conflicting *stated* applicability is an absolute merge
+  barrier; silence is not a conflict. BoC: 41 → 25 canonical
+  requirements, 10 merged groups, every source ref retained.
+- **J — document identity**: identity ROLE and source RELATIONSHIP are
+  kept as two independent axes rather than one overloaded ranking;
+  `document_provenance`'s existing short-identifier guard already keeps
+  category-specific forms (D1/D2/D3) from collapsing.
+
+Live validation used **zero Anthropic calls**: every canonical object was
+recomputed from the already-persisted raw snapshot, and the single fresh
+report preview came from `regenerate_report_from_raw_snapshot(19)`.
+
+Tests: `tests/test_canonical_procurement.py` (46, all synthetic — no live
+DB, no provider call). Six pre-CI-1 tests were deliberately updated where
+they encoded behaviour CI-1 explicitly overturns (the false
+category-date ambiguity in `test_fast_analysis.py`,
+`test_fast_analysis_v3.py`, `test_fast_analysis_v4.py`,
+`test_fast_analysis_pricing_evaluation_separation.py`,
+`test_phase5_generic_assembly.py`; response-prompt-as-scope in
+`test_procurement_normalization.py` and
+`test_fast_analysis_remediation_report.py`) — each rewritten to assert
+the corrected contract plus the previously-untested opposite case. Full
+suite: **3045 passed, 2 skipped**.
+
+**Multi-agent readiness**: Layers 1 and 2 are now stable and typed;
+Layer 3 (specialist interpretation) and Layer 4 (cross-domain
+reconciliation) remain unbuilt by design. No architectural blocker to
+MA-1 was found. What must stay centralized and deterministic: document
+identity/authority, semantic typing, applicability derivation, dedup, and
+milestone reconciliation — a specialist must consume these, never
+re-derive its own.
+
 ## Architectural fact-type separation
 
 Every subsystem above keeps these categories distinct, never merges them:

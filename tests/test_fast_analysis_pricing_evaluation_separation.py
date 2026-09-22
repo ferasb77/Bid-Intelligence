@@ -233,9 +233,15 @@ class TestScopedDateAmbiguityFramingMatchesActualData(unittest.TestCase):
         self.assertNotIn("category/scope", content.AMBIGUITIES[0]["question"])
         self.assertNotIn("category", content.AMBIGUITIES[0]["why"].lower())
 
-    def test_real_scope_data_still_uses_category_scope_wording_boc_unregressed(self):
-        """The exact Bank of Canada shape -- category-scoped presentation
-        dates -- must render with the original, unchanged wording."""
+    def test_real_scope_data_no_longer_produces_a_false_ambiguity(self):
+        """CI-1 Defect F overturns this case's previous expectation. The
+        exact Bank of Canada shape -- a Category 1 demo date and a
+        Category 3 demo date -- is two distinct scoped events. Rendering
+        it as something the buyer must clarify was a false ambiguity, so
+        no AMBIGUITIES row is produced at all; the remaining wording
+        assertions for a genuine same-scope conflict are covered by
+        test_generic_wording_when_no_real_scope_data above and by
+        tests/test_canonical_procurement.py."""
         import fast_analysis as fa
         result = FastAnalysisResult()
         result.typed_observations = [
@@ -249,11 +255,10 @@ class TestScopedDateAmbiguityFramingMatchesActualData(unittest.TestCase):
             "category_date_distinctions": fa.detect_category_date_distinctions(result.typed_observations),
         }
         content = build_fast_report_content(result)
-        self.assertEqual(len(content.AMBIGUITIES), 1)
-        self.assertEqual(content.AMBIGUITIES[0]["question"],
-                         "Please confirm the date applicable to each category/scope.")
-        self.assertEqual(content.AMBIGUITIES[0]["why"],
-                         "Likely category-specific scheduling, not a true conflict, but worth confirming.")
+        self.assertEqual(content.AMBIGUITIES, [])
+        preserved = fa.derive_scope_distinct_milestones(result.typed_observations)
+        self.assertEqual(len(preserved), 1)
+        self.assertEqual(len(preserved[0]["scopes"]), 2)
 
 
 if __name__ == "__main__":

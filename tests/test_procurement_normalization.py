@@ -253,11 +253,33 @@ class TestCanonicalizeMilestones:
 class TestDeriveCategoryScopeSummaries:
 
     def test_scope_derived_only_from_source_supported_material(self):
+        """CI-1 Defect B updated this case deliberately: prompt text that
+        describes the WORK ("The Services will include ...") is genuine
+        scope material; prompt text that instructs the PROPONENT is not
+        (see test_response_prompt_never_becomes_scope below)."""
         weights = {"Category 1 — Learning & Development": [{"weight": "35 points", "criterion": "Curriculum Design"}]}
-        prompts = {"Curriculum Design": {"response_prompt": "Describe your curriculum design methodology.", "truncated": False}}
+        prompts = {"Curriculum Design": {
+            "response_prompt": "The Services will include designing, developing and delivering learning solutions.",
+            "truncated": False}}
         summaries = pn.derive_category_scope_summaries(weights, prompts)
         assert summaries["Category 1 — Learning & Development"]["summary_available"] is True
-        assert "curriculum design methodology" in summaries["Category 1 — Learning & Development"]["criteria_prompts"][0]["response_prompt"]
+        assert "designing, developing" in summaries["Category 1 — Learning & Development"]["criteria_prompts"][0]["response_prompt"]
+
+    def test_response_prompt_never_becomes_scope(self):
+        """CI-1 Defect B: 'Proponents are to describe their organisation...'
+        is an evaluation/response instruction. It must never populate a
+        scope-of-work field, however many service words it contains --
+        it is preserved, correctly typed, under
+        `response_prompts_not_scope` instead."""
+        weights = {"Category 2 — HR Advisory": [{"weight": "20 points", "criterion": "Corporate Profile"}]}
+        prompts = {"Corporate Profile": {
+            "response_prompt": "Proponents are to describe their organisation and its advisory services experience.",
+            "truncated": False}}
+        summaries = pn.derive_category_scope_summaries(weights, prompts)
+        cat = summaries["Category 2 — HR Advisory"]
+        assert cat["criteria_prompts"] == []
+        assert cat["summary_available"] is False
+        assert cat["response_prompts_not_scope"][0]["semantic_type"] == "RESPONSE_PROMPT"
 
     def test_category_title_alone_never_fabricates_a_summary(self):
         weights = {"Category 1 — Learning & Development": [{"weight": "35 points", "criterion": "Curriculum Design"}]}

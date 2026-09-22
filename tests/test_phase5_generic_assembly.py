@@ -168,9 +168,15 @@ class TestBankOfCanadaNonRegression(unittest.TestCase):
         content = build_fast_report_content(_boc_shaped_result())
         self.assertEqual(content.FACT_ORIGINS["AMBIGUITY.pricing_stage_ambiguity"], "LIVE_FAST_LLM")
 
-    def test_category_date_distinction_present(self):
+    def test_category_date_distinction_is_no_longer_a_false_ambiguity(self):
+        """CI-1 Defect F: this fixture is the exact Bank of Canada shape
+        -- a Category 1 demo date and a Category 3 demo date. Those are
+        two distinct scoped events, so the report must no longer raise a
+        'multiple distinct dates' ambiguity for them. The report now
+        recomputes this verdict from the result's own typed observations
+        rather than replaying a frozen pre-CI-1 one."""
         content = build_fast_report_content(_boc_shaped_result())
-        self.assertEqual(content.FACT_ORIGINS["AMBIGUITY.category_date_distinction"], "LIVE_FAST_LLM")
+        self.assertEqual(content.FACT_ORIGINS["AMBIGUITY.category_date_distinction"], "NOT_PRESENT")
 
     def test_buyer_intelligence_still_renders_for_bank_of_canada(self):
         content = build_fast_report_content(_boc_shaped_result())
