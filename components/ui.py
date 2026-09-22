@@ -1,6 +1,6 @@
 import streamlit as st
 
-STAGES     = ["Identified", "Qualifying", "In Progress", "Review", "Submitted", "Won", "Lost", "Withdrawn", "No Bid"]
+STAGES     = ["Identified", "Understand", "Qualifying", "In Progress", "Review", "Submitted", "Won", "Lost", "Withdrawn", "No Bid"]
 STATUSES   = ["Not Started", "In Progress", "Draft", "In Review", "Complete", "Blocked", "N/A"]
 PRIORITIES = ["Critical", "High", "Medium", "Low"]
 CATEGORIES = ["Mandatory", "Rated", "Financial", "Supporting"]
@@ -12,6 +12,7 @@ EVIDENCE_STATUSES = ["READY", "PARTIAL", "MISSING", "NOT REQUIRED"]
 
 STAGE_COLOURS = {
     "Identified":  "#6E6C66",
+    "Understand":  "#8E7CC3",
     "Qualifying":  "#C9A96E",
     "In Progress": "#2980B9",
     "Review":      "#8E44AD",
