@@ -33,6 +33,32 @@ _CONTRACT_RISK_TOPICS = {
 }
 
 
+def _scoped_key(occ: dict) -> str:
+    """This evaluation occurrence's canonical scoped criterion identity
+    (CI-1.1): (category_scope, criterion_label), never the label alone."""
+    import canonical_procurement as _canon
+
+    return _canon.scoped_criterion_map_key(
+        occ.get("category_scope"), occ.get("criterion_label") or "")
+
+
+def _scoped_prompt_entry(result: FastAnalysisResult, occ: dict) -> dict:
+    """This occurrence's own response-prompt entry, looked up by SCOPED
+    identity first (CI-1.1 gap 1: a criterion label shared across service
+    categories must not resolve to another category's prompt), falling
+    back to the older label-keyed map only for a snapshot persisted before
+    the scoped map existed."""
+    scoped = getattr(result, "scoped_criterion_response_prompts", None) or {}
+    if scoped:
+        # The scoped map is authoritative once it exists: a MISS here means
+        # this category genuinely has no prompt for this criterion, and
+        # falling back to the label-keyed map would hand it ANOTHER
+        # category's prompt -- exactly the leakage CI-1.1 removes.
+        return scoped.get(_scoped_key(occ)) or {}
+    label_keyed = getattr(result, "deterministic_criterion_response_prompts", None) or {}
+    return label_keyed.get(occ.get("criterion_label")) or {}
+
+
 def build_opportunity_intelligence(result: FastAnalysisResult) -> dict:
     """The full, durable, source-traceable structured contract. Independent
     of any one rendering (PDF, bid_briefs projection, a future progressive
@@ -124,10 +150,13 @@ def build_opportunity_intelligence(result: FastAnalysisResult) -> dict:
                     **{k: occ.get(k) for k in
                        ("criterion_label", "weight", "category_scope", "evaluation_stage",
                         "parent_heading", "source_doc", "source_refs")},
-                    "response_prompt": (result.deterministic_criterion_response_prompts
-                                        .get(occ.get("criterion_label"), {}).get("response_prompt")),
-                    "response_prompt_truncated": (result.deterministic_criterion_response_prompts
-                                                  .get(occ.get("criterion_label"), {}).get("truncated", False)),
+                    "response_prompt": _scoped_prompt_entry(result, occ).get("response_prompt"),
+                    "response_prompt_truncated": _scoped_prompt_entry(result, occ).get("truncated", False),
+                    # CI-1.1: the canonical scoped identity of THIS
+                    # occurrence's criterion, so a downstream consumer can
+                    # join to scoped_criterion_evaluation without
+                    # re-deriving the key.
+                    "scoped_criterion_key": _scoped_key(occ),
                 }
                 for occ in carry_forward_category_scope(result.evaluation_occurrences)
             ],

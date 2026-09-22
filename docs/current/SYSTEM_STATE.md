@@ -1445,6 +1445,119 @@ identity/authority, semantic typing, applicability derivation, dedup, and
 milestone reconciliation — a specialist must consume these, never
 re-derive its own.
 
+### CI-1.1: Canonical Evaluation Prompt Scoping + Scope Extraction Coverage (2026-09-22)
+
+A narrowly bounded closure task on the two material gaps CI-1 left open.
+No migration, no multi-agent work, no source-map lineage change (Defect
+J's display enrichment stays deferred).
+
+**Gap 1 — cross-category prompt collapse.** `FastAnalysisResult.
+deterministic_criterion_response_prompts` was a `{criterion_label:
+entry}` map, and `run_fast_analysis_corpus` filled it with `setdefault`
+per document. A criterion label a buyer scores independently in several
+service categories therefore kept only the FIRST document's prompt: for
+the Bank of Canada corpus "Corporate Profile" is scored in Category 1
+(5 points), Category 2 (5 points) and Category 3 (10 points), and two of
+those three prompts were silently discarded. The canonical identity is
+now `canonical_procurement.scoped_criterion_map_key(category,
+criterion)` — the persistable string form of CI-1's own
+`scoped_criterion_key` — and the new field
+`scoped_criterion_response_prompts` is keyed by it. The old label-keyed
+field is retained unchanged for older snapshots; every consumer prefers
+the scoped map and, once it exists, NEVER falls back to the label map
+(a scoped miss means "this category has no prompt", and falling back
+would hand it another category's).
+Three supporting pieces, all deterministic:
+`procurement_normalization.extract_scoped_criterion_response_prompts`
+(the same heading-convention scan, now tracking the category heading
+each criterion sits under, with a new score-cell guard so a weights-table
+row like "35 points" is not mistaken for a prompt),
+`category_for_document_name` (a per-category response form states its
+criteria without repeating the category heading inside — its filename is
+the scope signal, the same source-document signal
+`derive_requirement_applicability` already trusts), and
+`select_authoritative_prompts` (which document wins a scoped prompt is
+CI-1's `AUTHORITY_BY_FIELD_FAMILY["response_form"]` ranking, never scan
+order).
+Retention (task section 2) is `build_scoped_criterion_records` — ONE
+canonical record per (category, criterion) carrying category/scope,
+label, weight, minimum score, response prompt, requested evidence,
+required examples, personnel/resource requirements, methodology
+requirements, constraints/limits, authoritative source + role,
+source docs/refs and provenance version. Typed facets come from
+`canonical_procurement.extract_requested_evidence_elements`. Conflicting
+stated weights/minimums are preserved in `weight_variants`/
+`minimum_score_variants` rather than silently resolved. The record also
+carries `criterion_label`, the SAME field name Fast Analysis occurrences
+and `section_analyzer._match_evaluation_criterion` already use, so it
+drops straight into PI-3A's existing `EvaluationContext` — no parallel
+evaluation model. `criteria_for_category` is the future Evaluation
+Agent's read contract (exact, normalized category match).
+
+**Gap 2 — positive scope extraction.** CI-1 stopped prompts masquerading
+as scope but added none, leaving Bank of Canada Categories 1/2/3
+correct-but-empty. `procurement_normalization.extract_category_scope_
+items` is the positive half: a deterministic pass over the SAME corpus
+text, tracking scope-of-work section boundaries (`_SOW_SECTION_RE` opens,
+an evaluation/submission/pricing/contract heading closes) and the same
+category-heading tracker, extended so a statement of work naming
+"CATEGORY 2:" binds to the evaluation tables' "Appendix D2 - ..."
+category via the shared ordinal (registered as an ordinary
+ambiguity-checked token). Enumerated service lines inside a scope
+section are emitted as SEMANTIC_SERVICE; paragraphs are emitted only
+when they pass `canonical_procurement.is_usable_as_scope` on their own
+words. Fail-closed rejections before typing: bidder
+certifications/representations, buyer reserved rights, and scoring
+tables (two or more "N points") can never become scope. The
+RESPONSE_PROMPT guarantee is structural — `classify_semantic_type` tests
+RESPONSE_PROMPT/REQUESTED_EVIDENCE first and neither is in
+`SCOPE_SEMANTIC_TYPES`, so an evaluation instruction cannot arrive here
+even with an explicit structural hint. `scope_items_for_category` is the
+future Scope Agent's read contract. `derive_category_scope_summaries`
+gained the additive `category_scope_items` parameter and a
+`source_scope_items` output; the report adapter prefers genuine SOW
+material over anything evaluation-derived.
+
+**Bank of Canada validation** (bid 8, analysis run 19, **zero Anthropic
+calls** — the 17 documents with a storage path were downloaded and text
+was re-extracted locally; the persisted run-19 snapshot predates Defect
+A and contains no prompts at all, so both maps were recomputed
+deterministically): label-keyed prompts 12 → scoped prompts 18, 23
+scoped criterion records. Category 1: 7 criteria, 7 with a
+category-specific prompt; Category 2: 7 criteria, 5 with one; Category
+3: 7 criteria, 6 with one. Zero cross-category leakage (every retained
+prompt's own category equals the record's). Each category's prompts now
+come from that category's OWN Appendix D form rather than the main RFP,
+via the response-form authority ranking. Scope: Category 1 = 4 items,
+Category 2 = 11, Category 3 = 7 — all genuine SOW services ("Custom
+curriculum and instructional design", "Competency framework development
+and validation", "Team visioning, norming, and effectiveness sessions"),
+so all three categories land on outcome A, not "explicitly empty". One
+known imperfection, recorded honestly: one Category 2 item carries a
+trailing fragment of the adjacent PDF table column ("HR strategy
+consulting increase and/or be adjusted from year to year based on") —
+verbatim source text, slightly over-captured, never fabricated. Three
+criteria (D2 Methodology and Advisory Approach, D2/D3 Value-add) now
+show "Not stated in the extracted data" where they previously showed a
+weights-table cell ("35 points") — an honest loss of a wrong value.
+
+Snapshot schema 1.1 → **1.2**, purely additive
+(`scoped_criterion_response_prompts`, `scoped_criterion_evaluation`,
+`category_scope_items`); an older 1.x payload still deserializes.
+
+Tests: `tests/test_canonical_evaluation_scoping.py` (47, fully
+synthetic — no live DB, no provider call, no file I/O), covering scoped
+identity, three same-label criteria surviving independently, prompts
+never overwriting each other, body never bleeding across a category
+boundary, scoped requested evidence, revised/amended source authority,
+a response prompt never becoming a scope item, real SOW text producing
+scope items, scope staying empty rather than fabricated, per-category
+form documents, snapshot round trip and older-snapshot tolerance, and
+Section Analyzer / PI-3A DraftingBrief / PI-3D1 outline regressions.
+Full suite: **3092 passed, 2 skipped**.
+
+**Layers 1–2 are ready to freeze for MA-1.**
+
 ## Architectural fact-type separation
 
 Every subsystem above keeps these categories distinct, never merges them:

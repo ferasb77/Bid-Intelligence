@@ -1016,13 +1016,24 @@ def _service_category_rows(result: FastAnalysisResult, categories: list[str]) ->
         if not desc:
             weight_rows = _weight_rows_for_category(result, label)
             weights_by_category = {label: [{"criterion": c, "weight": w} for c, w in weight_rows]} if weight_rows else {}
-            det_prompts = getattr(result, "deterministic_criterion_response_prompts", None) or {}
+            # CI-1.1 gap 1: prefer the SCOPED prompt map (a label shared by
+            # several categories keeps one prompt per category); the older
+            # label-keyed map is used only when no scoped map exists.
+            det_prompts = (getattr(result, "scoped_criterion_response_prompts", None)
+                           or getattr(result, "deterministic_criterion_response_prompts", None) or {})
             summaries = _proc_norm.derive_category_scope_summaries(
-                weights_by_category, det_prompts, getattr(result, "deterministic_service_scope", None))
+                weights_by_category, det_prompts, getattr(result, "deterministic_service_scope", None),
+                getattr(result, "category_scope_items", None))
             cat_summary = summaries.get(label) or {}
             if cat_summary.get("summary_available"):
+                # CI-1.1 gap 2: genuine, source-grounded SOW material for
+                # this category outranks anything derived from evaluation
+                # material; both are already semantic-type gated.
+                sourced = [si["text"] for si in cat_summary.get("source_scope_items") or []][:2]
                 parts = [cp["response_prompt"] for cp in cat_summary["criteria_prompts"][:2]]
-                if parts:
+                if sourced:
+                    desc = " ".join(sourced)
+                elif parts:
                     desc = " ".join(parts)
                 elif cat_summary.get("enumerated_scope_items"):
                     desc = "; ".join(cat_summary["enumerated_scope_items"][:5])
@@ -1154,7 +1165,8 @@ def _summarize_evidence_prompts(prompts: list[str], max_prompts: int = 3) -> str
     return " • ".join(shortened)
 
 
-def _rg_evidence_map(result: FastAnalysisResult, weighted_criteria: list[tuple[str, str]]) -> list[tuple[str, str, str]]:
+def _rg_evidence_map(result: FastAnalysisResult, weighted_criteria: list[tuple[str, str]],
+                     category: str | None = None) -> list[tuple[str, str, str]]:
     """An ordered 'RG1, RG2, ...' evidence map built from the weighted-
     criteria table's own criterion order (excluding Pricing, which has its
     own pricing-submission-rules section) -- generic to any corpus that
@@ -1187,6 +1199,13 @@ def _rg_evidence_map(result: FastAnalysisResult, weighted_criteria: list[tuple[s
          the three shows _NOT_EXTRACTED rather than inventing one."""
     rows: list[tuple[str, str, str]] = []
     det_rgs = getattr(result, "deterministic_response_guidelines", None) or []
+    # CI-1.1 gap 1: this table belongs to ONE evaluation category, so its
+    # prompts are looked up by that category's own scoped criterion
+    # identity. The label-keyed map is consulted only when no scoped map
+    # exists (a snapshot persisted before CI-1.1).
+    import canonical_procurement as _canon
+
+    scoped_prompts = getattr(result, "scoped_criterion_response_prompts", None) or {}
     det_prompts = getattr(result, "deterministic_criterion_response_prompts", None) or {}
     rg_num = 0
     for label, _weight in weighted_criteria:
@@ -1194,8 +1213,12 @@ def _rg_evidence_map(result: FastAnalysisResult, weighted_criteria: list[tuple[s
             continue
         rg_num += 1
         evidence = _NOT_EXTRACTED
-        if label in det_prompts and det_prompts[label].get("response_prompt"):
-            evidence = _shorten_to_sentence(det_prompts[label]["response_prompt"], limit=280)
+        if scoped_prompts:
+            entry = scoped_prompts.get(_canon.scoped_criterion_map_key(category, label)) or {}
+        else:
+            entry = det_prompts.get(label) or {}
+        if entry.get("response_prompt"):
+            evidence = _shorten_to_sentence(entry["response_prompt"], limit=280)
         if evidence == _NOT_EXTRACTED and rg_num <= len(det_rgs):
             evidence = _summarize_evidence_prompts(det_rgs[rg_num - 1].get("evidence_prompts") or [])
         if evidence == _NOT_EXTRACTED:
@@ -1711,7 +1734,8 @@ def build_fast_report_content(result: FastAnalysisResult,
     # not a hardcoded "WEIGHTED EVALUATION — 100 POINTS" lookup).
     _weighted_key = next((k for k in C.EVAL_WEIGHTS if "pricing" not in k.lower()), None)
     C.RG_EVIDENCE_MAP = (
-        _rg_evidence_map(result, C.EVAL_WEIGHTS[_weighted_key]) if _weighted_key else [])
+        _rg_evidence_map(result, C.EVAL_WEIGHTS[_weighted_key], category=_weighted_key)
+        if _weighted_key else [])
     C.FACT_ORIGINS["RG_EVIDENCE_MAP"] = "LIVE_FAST_LLM" if C.RG_EVIDENCE_MAP else "NOT_PRESENT"
 
     C.PRICING_SUBMISSION_RULES = _pricing_submission_rules(result)

@@ -495,6 +495,97 @@ def scoped_criterion_key(category: str | None, criterion: str) -> tuple:
     return (cat, crit)
 
 
+def scoped_criterion_map_key(category: str | None, criterion: str) -> str:
+    """The JSON-safe, persistable string form of `scoped_criterion_key`.
+
+    CI-1.1: a criterion label ALONE is not an identity. Keying any map of
+    per-criterion material (response prompts, requested evidence, weights)
+    by the label alone silently collapses "Corporate Profile" as scored
+    under Category 1, Category 2 and Category 3 into ONE entry, so the
+    first document scanned wins and the other two categories' genuinely
+    different prompts/evidence are lost. Every such map must be keyed by
+    this value instead.
+
+    An unscoped (genuinely procurement-wide) criterion keys as
+    "||<criterion>" -- an explicit empty category component, never a
+    guessed one."""
+    cat, crit = scoped_criterion_key(category, criterion)
+    return f"{cat}||{crit}"
+
+
+def split_scoped_criterion_map_key(key: str) -> tuple:
+    """Inverse of `scoped_criterion_map_key`, for a consumer reading a
+    persisted map back. Returns the normalized (category, criterion)
+    pair; a key with no separator is treated as an unscoped criterion."""
+    if "||" not in (key or ""):
+        return ("", (key or "").strip().lower())
+    cat, _, crit = key.partition("||")
+    return (cat, crit)
+
+
+# Deterministic facets of an evaluation criterion's response/evidence
+# instruction (task section 2's retention list). Each facet is a closed,
+# buyer-agnostic pattern over the criterion's OWN prompt text -- nothing
+# here invents a requirement the prompt does not state.
+_REQUIRED_EXAMPLES_RE = re.compile(
+    r'\b(?:examples?|case\s+stud(?:y|ies)|samples?|illustrat\w+|'
+    r'at\s+least\s+\w+\s+(?:examples?|projects?|engagements?|assignments?)|'
+    r'previous\s+(?:projects?|engagements?|assignments?))\b', re.IGNORECASE)
+_PERSONNEL_RE = re.compile(
+    r'\b(?:personnel|consultants?|facilitators?|coaches?|practitioners?|'
+    r'team\s+members?|roster|staff|resources?|curricul(?:um|a)\s+vitae|\bCVs?\b|'
+    r'r[ée]sum[ée]s?|qualifications?|credentials?|certifications?)\b', re.IGNORECASE)
+_METHODOLOGY_RE = re.compile(
+    r'\b(?:methodolog\w+|approach(?:es)?|framework\w*|process(?:es)?|'
+    r'design\s+(?:process|method)|delivery\s+model|instructional\s+design)\b',
+    re.IGNORECASE)
+_CONSTRAINT_RE = re.compile(
+    r'\b(?:maximum\s+of|no\s+more\s+than|not\s+exceed|limited\s+to|'
+    r'word\s+limit|page\s+limit|within\s+\d+\s+(?:words?|pages?)|'
+    r'\d+\s+pages?\s+maximum|must\s+be\s+completed\s+in)\b', re.IGNORECASE)
+
+MAX_EVIDENCE_ELEMENTS_PER_FACET = 8
+
+_SENTENCE_SPLIT_RE = re.compile(r'(?<=[.!?;])\s+')
+
+
+def extract_requested_evidence_elements(prompt_text: str) -> dict:
+    """Decompose ONE criterion's already-extracted response/evidence
+    instruction into the typed facets task section 2 requires retained:
+    requested evidence, required examples, personnel/resource
+    requirements, methodology requirements and constraints/limits.
+
+    Entirely deterministic sentence classification over the prompt's own
+    words -- a facet is present only when the prompt itself states it, and
+    an absent facet is an empty list, never a placeholder. One sentence
+    may legitimately populate several facets (a sentence asking for two
+    case studies naming the assigned facilitators is both a required
+    example and a personnel requirement); these are facets of the same
+    text, not competing classifications."""
+    body = (prompt_text or "").strip()
+    if not body:
+        return {"requested_evidence": [], "required_examples": [],
+                "personnel_requirements": [], "methodology_requirements": [],
+                "constraints": []}
+
+    sentences = [s.strip() for s in _SENTENCE_SPLIT_RE.split(body) if s.strip()]
+    facets = {
+        "requested_evidence": _REQUESTED_EVIDENCE_RE,
+        "required_examples": _REQUIRED_EXAMPLES_RE,
+        "personnel_requirements": _PERSONNEL_RE,
+        "methodology_requirements": _METHODOLOGY_RE,
+        "constraints": _CONSTRAINT_RE,
+    }
+    out: dict = {name: [] for name in facets}
+    for sentence in sentences:
+        for name, pattern in facets.items():
+            if len(out[name]) >= MAX_EVIDENCE_ELEMENTS_PER_FACET:
+                continue
+            if pattern.search(sentence) and sentence not in out[name]:
+                out[name].append(sentence)
+    return out
+
+
 def is_genuinely_global_criterion(
     criterion: str,
     scoped_criteria: list[tuple],

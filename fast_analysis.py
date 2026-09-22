@@ -1483,6 +1483,25 @@ class FastAnalysisResult:
     #   Defect A: per-criterion requested-response/evidence text, keyed by
     #   the SAME criterion labels evaluation extraction already produced.
     deterministic_criterion_response_prompts: dict = field(default_factory=dict)
+    # CI-1.1 gap 1: the SCOPED form of the field above -- keyed by
+    # canonical_procurement.scoped_criterion_map_key(category, criterion),
+    # so a criterion label shared by several service categories keeps one
+    # independent prompt per category instead of collapsing to whichever
+    # document was scanned first. The label-keyed map above is retained
+    # unchanged for backward compatibility with already-persisted
+    # snapshots and existing consumers.
+    scoped_criterion_response_prompts: dict = field(default_factory=dict)
+    # CI-1.1 section 2: one canonical, scoped evaluation record per
+    # (category, criterion) -- weight, minimum score, response prompt,
+    # requested evidence, required examples, personnel/methodology
+    # requirements, constraints, authoritative source, provenance. See
+    # procurement_normalization.build_scoped_criterion_records.
+    scoped_criterion_evaluation: dict = field(default_factory=dict)
+    # CI-1.1 gap 2: positive, source-grounded, type-gated scope-of-work
+    # items per service category (procurement_normalization.
+    # extract_category_scope_items). A RESPONSE_PROMPT can never appear
+    # here; a category with no qualifying source material is absent.
+    category_scope_items: dict = field(default_factory=dict)
     #   Defect C: canonicalized milestones (see procurement_normalization.
     #   canonicalize_milestones) -- alternate wordings of the SAME event
     #   collapsed to one row; genuinely different dates never merged.
@@ -1518,7 +1537,11 @@ class FastAnalysisResult:
 # a field is removed, renamed, or its meaning changes). Bump MINOR for a
 # purely additive change (a new optional field) -- deserialize_fast_analysis_result
 # tolerates a payload from any MINOR version within the same MAJOR.
-FAST_ANALYSIS_RAW_SNAPSHOT_SCHEMA_VERSION = "1.1"
+# 1.1 -> 1.2 (CI-1.1): purely additive -- scoped_criterion_response_prompts,
+# scoped_criterion_evaluation, category_scope_items. No existing field
+# changed shape or meaning, so an older 1.x payload still deserializes
+# correctly (the new fields fall back to their dataclass defaults).
+FAST_ANALYSIS_RAW_SNAPSHOT_SCHEMA_VERSION = "1.2"
 
 # Every FastAnalysisResult field EXCEPT `telemetry`, which is deliberately
 # reduced to a compact audit summary rather than stored verbatim -- see
@@ -2017,11 +2040,47 @@ def run_fast_analysis_corpus(documents: list[tuple[str, str]], api_key: str,
         for ec in result.evaluation_criteria
         if isinstance(ec, dict) and (ec.get("stage") or "").strip()
     })
+    scoped_occurrences = carry_forward_category_scope(result.evaluation_occurrences)
+    known_category_labels = sorted({
+        (occ.get("category_scope") or "").strip()
+        for occ in scoped_occurrences
+        if isinstance(occ, dict) and (occ.get("category_scope") or "").strip()
+    })
     if known_criterion_labels:
+        scoped_candidates: dict = {}
         for name, doc_text in documents:
             prompts = _proc_norm.extract_criterion_response_prompts(doc_text, known_criterion_labels)
             for label, entry in prompts.items():
                 result.deterministic_criterion_response_prompts.setdefault(label, entry)
+            # CI-1.1 gap 1: the same deterministic pass, scoped by the
+            # service category each criterion heading sits under (and, for
+            # a document that IS one category's own response form, by its
+            # filename), so D1's "Corporate Profile" no longer blocks D2's
+            # and D3's from being captured at all.
+            scoped = _proc_norm.extract_scoped_criterion_response_prompts(
+                doc_text, known_criterion_labels, known_category_labels,
+                default_category=_proc_norm.category_for_document_name(
+                    name, known_category_labels))
+            for key, entry in scoped.items():
+                entry = dict(entry)
+                entry.setdefault("source_doc", name)
+                scoped_candidates.setdefault(key, []).append(entry)
+        # Which document wins a scoped criterion's prompt is decided by
+        # CI-1's response-form source authority, never by scan order.
+        result.scoped_criterion_response_prompts = _proc_norm.select_authoritative_prompts(
+            scoped_candidates)
+
+    # CI-1.1 section 2: the canonical scoped evaluation records every
+    # future specialist agent reads -- built from the SAME occurrences and
+    # the SAME scoped prompts above, never a parallel evaluation model.
+    result.scoped_criterion_evaluation = _proc_norm.build_scoped_criterion_records(
+        scoped_occurrences, result.scoped_criterion_response_prompts,
+        provenance_version=FAST_ANALYSIS_RAW_SNAPSHOT_SCHEMA_VERSION)
+
+    # CI-1.1 gap 2: positive, source-grounded, type-gated category scope.
+    if known_category_labels:
+        result.category_scope_items = _proc_norm.extract_category_scope_items(
+            documents, known_category_labels)
 
     # Defect B: cross-document duplicate requirement canonicalization --
     # replaces result.requirements IN PLACE (same field, same shape plus

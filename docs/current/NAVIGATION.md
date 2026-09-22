@@ -137,6 +137,38 @@ Where to look, not what everything means. Read
   analysis run 19**) with **zero Anthropic calls** -- see SYSTEM_STATE.md
   for the full defect-by-defect before/after.
 
+**CI-1.1: Canonical Evaluation Prompt Scoping + Scope Extraction (2026-09-22)**
+- `canonical_procurement.py` -- `scoped_criterion_map_key`/`split_scoped_
+  criterion_map_key` (the persistable string form of CI-1's
+  `scoped_criterion_key`; **any map of per-criterion material must be
+  keyed by this, never by the label alone**) and
+  `extract_requested_evidence_elements` (typed facets of one prompt:
+  requested evidence / required examples / personnel / methodology /
+  constraints).
+- `procurement_normalization.py` -- `extract_scoped_criterion_response_
+  prompts` (category-heading-aware version of `extract_criterion_response_
+  prompts`, plus a score-cell guard), `category_for_document_name` (a
+  per-category response form's scope comes from its filename),
+  `select_authoritative_prompts` (response-form source authority decides
+  which document wins a prompt, never scan order),
+  `build_scoped_criterion_records` + `criteria_for_category` (the future
+  Evaluation Agent's read contract), `extract_category_scope_items` +
+  `scope_items_for_category` (the future Scope Agent's read contract --
+  SOW-section-bounded, type-gated, boilerplate/scoring-table rejecting),
+  and `derive_category_scope_summaries`' new `category_scope_items`
+  parameter / `source_scope_items` output.
+- `fast_analysis.py` -- three new additive `FastAnalysisResult` fields
+  (`scoped_criterion_response_prompts`, `scoped_criterion_evaluation`,
+  `category_scope_items`), wired in the SAME step 5 as CI-1; raw-snapshot
+  schema 1.1 -> 1.2.
+- `fast_analysis_app_adapter.py`'s `_scoped_key`/`_scoped_prompt_entry`
+  and `scripts/fast_analysis_report_adapter.py`'s `_rg_evidence_map`
+  (new `category` argument) / `_service_category_rows` -- all prefer the
+  scoped map and never fall back across categories once it exists.
+- No migration. Tests: `tests/test_canonical_evaluation_scoping.py` (47).
+- Live-validated against the real Bank of Canada corpus (bid 8, run 19)
+  with **zero Anthropic calls** -- see SYSTEM_STATE.md for the counts.
+
 **Buyer Intelligence**
 - Produced/threaded via `scripts/fast_analysis_report_adapter.py`
   (`buyer_intelligence` parameter), consumed in `pages/stage_understand.py`.
