@@ -62,8 +62,12 @@ FULL_ANALYSIS_VERSION = "ma-1"
 #: canonical-id normalization (see `normalize_category_scope` /
 #: `normalize_canonical_id`). Bumping it invalidates every prior Full
 #: Analysis fingerprint (`compute_full_analysis_fingerprint`).
-SPECIALIST_VERSION = "ma-1.1"
-RECONCILIATION_VERSION = "ma-1.0"
+SPECIALIST_VERSION = "ma-1.2"
+#: MA-2A.2: specialist "ma-1.2" / reconciliation "ma-1.1" -- bounded output
+#: contract (explicit per-list caps, concise evidence-linked detail, no
+#: restated canonical text) after live run 32 showed 3 of 7 calls ending
+#: with stop_reason="max_tokens".
+RECONCILIATION_VERSION = "ma-1.1"
 
 #: Model used for every specialist and the reconciliation stage. Same
 #: provider client/invocation helper Fast Analysis already uses
@@ -214,8 +218,21 @@ AUTHORITY_CANONICAL = "CANONICAL"
 AUTHORITY_SPECIALIST = "SPECIALIST_INTERPRETATION"
 
 STATUS_COMPLETE = "COMPLETE"
+#: MA-2A.2: the stage returned usable, validated structured output, but the
+#: provider reported it stopped at the output-token ceiling
+#: (stop_reason == "max_tokens"), so the output is potentially truncated.
+#: Valid parsed findings are preserved; the stage is NEVER reported COMPLETE.
+STATUS_PARTIAL = "PARTIAL"
 STATUS_FAILED = "FAILED"
 STATUS_NOT_RUN = "NOT_RUN"
+
+#: Provider termination metadata (Anthropic Messages API `stop_reason`,
+#: already captured per call in telemetry / model_usage_events).
+STOP_REASON_MAX_TOKENS = "max_tokens"
+OUTPUT_TRUNCATED_REASON = "OUTPUT_TRUNCATED"
+
+#: Statuses whose output is usable (preserved and reconciled).
+USABLE_STATUSES = frozenset({STATUS_COMPLETE, STATUS_PARTIAL})
 
 COMPLETENESS_COMPLETE = "COMPLETE"
 COMPLETENESS_PARTIAL = "PARTIAL"
@@ -225,6 +242,13 @@ COMPLETENESS_FAILED = "FAILED"
 #: The durable run service (full_analysis_service.py) owns the run-level
 #: events (RUN_CREATED, CANONICAL_PACKAGE_READY, RUN_COMPLETED/PARTIAL/
 #: FAILED); these are the ones only the orchestrator itself can observe.
+#:
+#: MA-2A.2 event semantics: SPECIALIST_COMPLETED / RECONCILIATION_COMPLETED
+#: mean "the stage FINISHED and returned a usable result" -- NOT "fully
+#: complete". Completion integrity is carried by the event's `status`
+#: column: COMPLETE (normal provider stop) or PARTIAL (output truncated at
+#: the provider limit). Migration 020's CHECK constraints already allow
+#: status='PARTIAL' on events, so no new event type / migration is needed.
 EVENT_SPECIALIST_QUEUED = "SPECIALIST_QUEUED"
 EVENT_SPECIALIST_STARTED = "SPECIALIST_STARTED"
 EVENT_SPECIALIST_COMPLETED = "SPECIALIST_COMPLETED"
@@ -672,13 +696,19 @@ HARD RULES (these outrank anything else in this prompt):
   and "severity", never in "finding_type". A finding whose finding_type is not
   one of the six values above is DISCARDED.
 
+OUTPUT BOUNDS (your output has a hard length limit; exceeding it truncates your answer):
+- Return AT MOST 12 findings, highest-value first. Stop when the valuable findings end.
+- "title": at most 12 words. "detail": at most 2 short sentences (about 45 words).
+- Reference canonical objects by canonical_id. NEVER quote or restate clause text,
+  criterion wording, response prompts or requirement descriptions -- the reader has them.
+- Never emit two findings that make the same point.
+
 Return ONLY a JSON object, no prose outside it:
 {"findings": [{"finding_type": "FACT|RISK|GAP|AMBIGUITY|ATTENTION_ITEM|INTERPRETATION",
-  "title": "<short>", "detail": "<2-4 sentences>", "canonical_ids": ["<id>", ...],
+  "title": "<short>", "detail": "<1-2 concise sentences>", "canonical_ids": ["<id>", ...],
   "category_scope": "<category label or empty string>",
   "severity": "HIGH|MEDIUM|LOW",
   "human_confirmation_required": true|false}]}
-Return at most 14 findings, highest-value first.
 """
 
 SPECIALIST_BRIEFS = {
@@ -836,6 +866,15 @@ def _call_model(prompt: str, *, client, call_label: str, max_tokens: int,
         "parse_status": parse_status,
     })
     return data if isinstance(data, dict) else {}
+
+
+def _termination(rows: list) -> tuple:
+    """(stop_reason, parse_status, output_truncated) of the stage's model
+    call, read from the provider's own termination metadata captured in
+    the telemetry row -- never inferred from a token count."""
+    row = rows[-1] if rows else {}
+    stop_reason = row.get("stop_reason")
+    return stop_reason, row.get("parse_status"), stop_reason == STOP_REASON_MAX_TOKENS
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1019,6 +1058,10 @@ class SpecialistResult:
     failure_reason: str | None = None
     duration_seconds: float = 0.0
     usage: dict = field(default_factory=dict)
+    #: MA-2A.2 completion integrity (persisted with the result JSON).
+    stop_reason: str | None = None
+    parse_status: str | None = None
+    output_truncated: bool = False
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -1061,6 +1104,7 @@ def run_specialist(package: CanonicalPackage, specialist_id: str, *, client,
             "request_bytes": sum(r.get("request_bytes") or 0 for r in rows),
             "model": FULL_ANALYSIS_MODEL,
         }
+        result.stop_reason, result.parse_status, result.output_truncated = _termination(rows)
 
         accepted, rejected = validate_findings(
             data.get("findings"), permitted_ids, produced_by=specialist_id,
@@ -1086,7 +1130,22 @@ def run_specialist(package: CanonicalPackage, specialist_id: str, *, client,
         supported = sum(1 for f in accepted if f["support_status"] == SUPPORT_CANONICAL)
         result.confidence = ("HIGH" if accepted and supported == len(accepted)
                              else "MEDIUM" if supported else "LOW")
-        result.status = STATUS_COMPLETE
+        if not result.output_truncated:
+            result.status = STATUS_COMPLETE
+        elif accepted:
+            # MA-2A.2: provider stopped at the output ceiling. Keep every
+            # validated finding, but never claim the domain is complete.
+            result.status = STATUS_PARTIAL
+            result.failure_reason = (
+                f"{OUTPUT_TRUNCATED_REASON}: provider stop_reason=max_tokens at "
+                f"{SPECIALIST_MAX_OUTPUT_TOKENS} output tokens; {len(accepted)} validated "
+                f"finding(s) preserved, further output may be missing")
+        else:
+            result.status = STATUS_FAILED
+            result.confidence = "NONE"
+            result.failure_reason = (
+                f"{OUTPUT_TRUNCATED_REASON}: provider stop_reason=max_tokens and no valid "
+                f"finding could be recovered (parse_status={result.parse_status})")
     except Exception as exc:
         # Isolated failure handling: recorded, never re-raised into the
         # orchestrator, never substituted with generic model reasoning.
@@ -1296,14 +1355,21 @@ Identify: cross-domain contradictions, cross-domain risks and dependencies
 (schedule/submission dependencies, commercial obligations affecting proposed delivery,
 evaluation-vs-scope mismatches), unresolved ambiguities, and overall completeness.
 
+OUTPUT BOUNDS (your output has a hard length limit; exceeding it truncates your answer):
+- Write "completeness_note" FIRST (1-2 sentences).
+- At most 8 cross_domain_risks, 5 contradictions, 6 unresolved_ambiguities and
+  6 human_confirmation_required items; each "detail" at most 2 short sentences.
+- Reference canonical_ids / finding_ids; NEVER restate specialist finding text.
+- Do not repeat an item a specialist already raised unless you add a cross-domain link.
+
 Return ONLY JSON:
-{"cross_domain_risks": [{"title": "...", "detail": "...", "severity": "HIGH|MEDIUM|LOW",
+{"completeness_note": "<1-2 sentences>",
+ "cross_domain_risks": [{"title": "...", "detail": "...", "severity": "HIGH|MEDIUM|LOW",
    "domains": ["<specialist_id>", ...], "canonical_ids": [...], "finding_ids": [...]}],
  "contradictions": [{"title": "...", "detail": "...", "domains": [...],
    "canonical_ids": [...], "finding_ids": [...]}],
  "unresolved_ambiguities": [{"title": "...", "detail": "...", "canonical_ids": [...]}],
- "human_confirmation_required": [{"title": "...", "detail": "...", "canonical_ids": [...]}],
- "completeness_note": "<1-3 sentences>"}
+ "human_confirmation_required": [{"title": "...", "detail": "...", "canonical_ids": [...]}]}
 """
 
 
@@ -1340,6 +1406,7 @@ def build_reconciliation_input(package: CanonicalPackage, specialist_results: li
             "specialist_id": result.specialist_id,
             "status": result.status,
             "domain_complete": result.status == STATUS_COMPLETE,
+            "output_truncated": bool(getattr(result, "output_truncated", False)),
             "failure_reason": result.failure_reason,
             "findings": [{"finding_id": f["finding_id"], "finding_type": f["finding_type"],
                           "title": f["title"], "detail": f["detail"],
@@ -1369,6 +1436,9 @@ class ReconciliationResult:
     failure_reason: str | None = None
     duration_seconds: float = 0.0
     usage: dict = field(default_factory=dict)
+    stop_reason: str | None = None
+    parse_status: str | None = None
+    output_truncated: bool = False
 
 
 def _validated_index_items(items, permitted_ids: set, *, keep_finding_ids: set) -> list:
@@ -1410,6 +1480,8 @@ def run_reconciliation(package: CanonicalPackage, specialist_results: list, *, c
     out.incomplete_domains = [
         {"specialist_id": r.specialist_id, "status": r.status, "reason": r.failure_reason}
         for r in specialist_results if r.status != STATUS_COMPLETE]
+    # PARTIAL (truncated) domains are listed above as incomplete AND their
+    # preserved findings still flow into consolidation below.
 
     merged, duplicates = consolidate_findings(specialist_results)
     merged, overrides = enforce_canonical_authority(merged, package)
@@ -1453,7 +1525,16 @@ def run_reconciliation(package: CanonicalPackage, specialist_results: list, *, c
             data.get("human_confirmation_required"), set(package.canonical_ids),
             keep_finding_ids=finding_ids)
         out.completeness_note = _clip(data.get("completeness_note"), 600)
-        out.status = STATUS_COMPLETE
+        out.stop_reason, out.parse_status, out.output_truncated = _termination(rows)
+        if out.output_truncated:
+            # Recovered items above are kept; the stage is not complete.
+            out.status = STATUS_PARTIAL
+            out.failure_reason = (
+                f"{OUTPUT_TRUNCATED_REASON}: provider stop_reason=max_tokens at "
+                f"{RECONCILIATION_MAX_OUTPUT_TOKENS} output tokens; recovered reconciliation "
+                f"output preserved, further output may be missing")
+        else:
+            out.status = STATUS_COMPLETE
     except Exception as exc:
         # The deterministic half above is already populated and stays --
         # a reconciliation model failure degrades the stage, it does not
@@ -1552,7 +1633,7 @@ def run_full_analysis(package: CanonicalPackage, api_key: str | None = None, *,
         outcome = run_specialist(package, specialist_id, client=client,
                                  telemetry=per_specialist_telemetry[specialist_id],
                                  telemetry_context=telemetry_context)
-        _emit(EVENT_SPECIALIST_COMPLETED if outcome.status == STATUS_COMPLETE
+        _emit(EVENT_SPECIALIST_COMPLETED if outcome.status in USABLE_STATUSES
               else EVENT_SPECIALIST_FAILED,
               {"specialist_id": specialist_id, "result": outcome})
         return outcome
@@ -1585,11 +1666,12 @@ def run_full_analysis(package: CanonicalPackage, api_key: str | None = None, *,
     reconciliation = run_reconciliation(package, specialist_results, client=client,
                                         telemetry=telemetry,
                                         telemetry_context=telemetry_context)
-    _emit(EVENT_RECONCILIATION_COMPLETED if reconciliation.status == STATUS_COMPLETE
+    _emit(EVENT_RECONCILIATION_COMPLETED if reconciliation.status in USABLE_STATUSES
           else EVENT_RECONCILIATION_FAILED, {"reconciliation": reconciliation})
 
+    usable = [r for r in specialist_results if r.status in USABLE_STATUSES]
     completed = [r for r in specialist_results if r.status == STATUS_COMPLETE]
-    if not completed:
+    if not usable:
         completeness = COMPLETENESS_FAILED
     elif len(completed) == len(ordered) and reconciliation.status == STATUS_COMPLETE:
         completeness = COMPLETENESS_COMPLETE
@@ -1604,9 +1686,13 @@ def run_full_analysis(package: CanonicalPackage, api_key: str | None = None, *,
              for o in reconciliation.orphaned_requirements]
     gaps += [{"finding_type": FINDING_GAP,
               "title": f"Incomplete domain: {d['specialist_id']}",
-              "detail": f"Specialist {d['specialist_id']} did not complete "
-                        f"({d['reason'] or d['status']}); this domain of the Full Analysis "
-                        f"is incomplete.",
+              "detail": (f"Specialist {d['specialist_id']} output was truncated at the "
+                         f"provider output limit; its preserved findings are included but "
+                         f"this domain of the Full Analysis is incomplete."
+                         if d["status"] == STATUS_PARTIAL else
+                         f"Specialist {d['specialist_id']} did not complete "
+                         f"({d['reason'] or d['status']}); this domain of the Full Analysis "
+                         f"is incomplete."),
               "canonical_ids": [], "produced_by": [d["specialist_id"]],
               "authority": AUTHORITY_CANONICAL, "severity": "HIGH"}
              for d in reconciliation.incomplete_domains]

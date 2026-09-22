@@ -71,9 +71,14 @@ TERMINAL_RUN_STATUSES = (RUN_COMPLETE, RUN_PARTIAL, RUN_FAILED)
 SPEC_QUEUED = "QUEUED"
 SPEC_RUNNING = "RUNNING"
 SPEC_COMPLETE = "COMPLETE"
+#: MA-2A.2: finished with usable output that the provider truncated at the
+#: output-token ceiling (stop_reason=max_tokens). Never shown as COMPLETE.
+SPEC_PARTIAL = "PARTIAL"
 SPEC_FAILED = "FAILED"
 SPEC_SKIPPED = "SKIPPED"
-SPECIALIST_STATUSES = (SPEC_QUEUED, SPEC_RUNNING, SPEC_COMPLETE, SPEC_FAILED, SPEC_SKIPPED)
+SPECIALIST_STATUSES = (SPEC_QUEUED, SPEC_RUNNING, SPEC_COMPLETE, SPEC_PARTIAL, SPEC_FAILED,
+                       SPEC_SKIPPED)
+_FINISHED_SPEC_STATUSES = (SPEC_COMPLETE, SPEC_PARTIAL, SPEC_FAILED)
 
 # Event vocabulary (mirrors migration 020's CHECK constraint exactly).
 EVENT_RUN_CREATED = "RUN_CREATED"
@@ -191,6 +196,9 @@ def _specialist_event_detail(result) -> dict:
         "finding_count": len(result.findings),
         "rejected_finding_count": len(result.rejected_findings),
         "confidence": result.confidence,
+        "stop_reason": getattr(result, "stop_reason", None),
+        "parse_status": getattr(result, "parse_status", None),
+        "output_truncated": bool(getattr(result, "output_truncated", False)),
         "calls": usage.get("calls", 0),
         "input_tokens": usage.get("input_tokens", 0),
         "output_tokens": usage.get("output_tokens", 0),
@@ -221,12 +229,38 @@ def _result_summary(result) -> dict:
         "completeness_status": result.completeness_status,
         "specialist_statuses": dict(result.specialist_statuses),
         "reconciliation_status": (result.reconciliation or {}).get("status"),
+        "truncated_stages": _truncated_stages(result),
         "reconciled_finding_count": len(result.reconciled_findings),
         "unresolved_gap_count": len(result.unresolved_gaps),
         "cross_domain_risk_count": len(result.cross_domain_risks),
         "ambiguity_count": len(result.ambiguities),
         "human_confirmation_count": len(result.human_confirmation_required),
     }
+
+
+def _truncated_stages(result) -> list:
+    """Stages whose provider call ended with stop_reason=max_tokens."""
+    out = [s.get("specialist_id") for s in (result.specialist_results or [])
+           if s.get("output_truncated")]
+    if (result.reconciliation or {}).get("output_truncated"):
+        out.append("RECONCILIATION")
+    return out
+
+
+def effective_specialist_status(row: dict) -> str | None:
+    """MA-2A.2 read-side status of a persisted full_analysis_specialist_results
+    row. Migration 020's `status` column only allows COMPLETE/FAILED/SKIPPED
+    and its RPC writes COMPLETE for every SPECIALIST_COMPLETED event, so a
+    truncated specialist's column reads COMPLETE ("finished with a result").
+    The authoritative completion-integrity state is the SpecialistResult's
+    own `status` inside the persisted `result` JSON (PARTIAL when truncated),
+    which is what this returns. Pre-MA-2A.2 rows carry no such distinction
+    and are returned unchanged (historical immutability)."""
+    payload = row.get("result") or {}
+    inner = payload.get("status") if isinstance(payload, dict) else None
+    if inner in (SPEC_COMPLETE, SPEC_PARTIAL, SPEC_FAILED):
+        return inner
+    return row.get("status")
 
 
 def _telemetry_summary(result) -> dict:
@@ -241,6 +275,7 @@ def _telemetry_summary(result) -> dict:
         "wall_seconds": result.wall_seconds,
         "by_specialist": usage.get("by_specialist", {}),
         "reconciliation": usage.get("reconciliation", {}),
+        "truncated_stages": _truncated_stages(result),
         "per_call_rows": "model_usage_events (workflow='full_analysis', analysis_run_id=<this run>)",
     }
 
@@ -301,6 +336,8 @@ class _EventRecorder:
         status = self._STATUS_FOR.get(event_type)
         if event_type in (fa.EVENT_SPECIALIST_COMPLETED, fa.EVENT_SPECIALIST_FAILED):
             result = payload["result"]
+            if event_type == fa.EVENT_SPECIALIST_COMPLETED and result.status == fa.STATUS_PARTIAL:
+                status = SPEC_PARTIAL  # truthful: finished, but output truncated
             self.record(event_type, specialist_id=result.specialist_id, status=status,
                         duration_seconds=result.duration_seconds,
                         failure_summary=result.failure_reason,
@@ -313,6 +350,8 @@ class _EventRecorder:
                         detail={"incomplete_domains": list(payload.get("incomplete_domains") or [])})
         elif event_type in (fa.EVENT_RECONCILIATION_COMPLETED, fa.EVENT_RECONCILIATION_FAILED):
             rec = payload["reconciliation"]
+            if event_type == fa.EVENT_RECONCILIATION_COMPLETED and rec.status == fa.STATUS_PARTIAL:
+                status = SPEC_PARTIAL
             self.record(event_type, status=status, duration_seconds=rec.duration_seconds,
                         failure_summary=rec.failure_reason,
                         detail={"reconciliation_version": rec.reconciliation_version,
@@ -320,6 +359,9 @@ class _EventRecorder:
                                 "cross_domain_risk_count": len(rec.cross_domain_risks),
                                 "contradiction_count": len(rec.contradictions),
                                 "reconciled_finding_count": len(rec.reconciled_findings),
+                                "stop_reason": rec.stop_reason,
+                                "parse_status": rec.parse_status,
+                                "output_truncated": bool(rec.output_truncated),
                                 "calls": (rec.usage or {}).get("calls", 0)})
 
 
@@ -352,10 +394,13 @@ def _execute_full_analysis_run(run: dict, package, *, fingerprint: str,
         if status == RUN_FAILED:
             failure_reason = "no specialist completed; Full Analysis failed"
         elif status == RUN_PARTIAL:
-            incomplete = [sid for sid, st in result.specialist_statuses.items()
+            incomplete = [sid + (" (output truncated)" if st == fa.STATUS_PARTIAL else "")
+                          for sid, st in result.specialist_statuses.items()
                           if st != fa.STATUS_COMPLETE]
-            if (result.reconciliation or {}).get("status") != fa.STATUS_COMPLETE:
-                incomplete.append("RECONCILIATION")
+            rec_status = (result.reconciliation or {}).get("status")
+            if rec_status != fa.STATUS_COMPLETE:
+                incomplete.append("RECONCILIATION" + (" (output truncated)"
+                                                      if rec_status == fa.STATUS_PARTIAL else ""))
             failure_reason = "incomplete domains: " + ", ".join(incomplete)
         db.finalize_full_analysis_run(
             run_id, bid_id, status,
@@ -493,7 +538,10 @@ def derive_execution_state(run: dict, events: list[dict]) -> dict:
             elif et == fa.EVENT_SPECIALIST_STARTED:
                 s["status"], s["started_at"] = SPEC_RUNNING, ev.get("occurred_at")
             elif et in (fa.EVENT_SPECIALIST_COMPLETED, fa.EVENT_SPECIALIST_FAILED):
-                s["status"] = SPEC_COMPLETE if et == fa.EVENT_SPECIALIST_COMPLETED else SPEC_FAILED
+                if et == fa.EVENT_SPECIALIST_FAILED:
+                    s["status"] = SPEC_FAILED
+                else:
+                    s["status"] = SPEC_PARTIAL if ev.get("status") == SPEC_PARTIAL else SPEC_COMPLETE
                 s["finished_at"] = ev.get("occurred_at")
                 s["duration_seconds"] = ev.get("duration_seconds")
                 s["failure_summary"] = ev.get("failure_summary")
@@ -503,14 +551,15 @@ def derive_execution_state(run: dict, events: list[dict]) -> dict:
                                   detail=ev.get("detail") or {})
         elif et in (fa.EVENT_RECONCILIATION_COMPLETED, fa.EVENT_RECONCILIATION_FAILED):
             reconciliation.update(
-                status=SPEC_COMPLETE if et == fa.EVENT_RECONCILIATION_COMPLETED else SPEC_FAILED,
+                status=(SPEC_FAILED if et == fa.EVENT_RECONCILIATION_FAILED
+                        else SPEC_PARTIAL if ev.get("status") == SPEC_PARTIAL else SPEC_COMPLETE),
                 finished_at=ev.get("occurred_at"), duration_seconds=ev.get("duration_seconds"),
                 failure_summary=ev.get("failure_summary"), detail=ev.get("detail") or {})
     if run.get("status") in TERMINAL_RUN_STATUSES:
         for s in specialists.values():
-            if s["status"] not in (SPEC_COMPLETE, SPEC_FAILED):
+            if s["status"] not in _FINISHED_SPEC_STATUSES:
                 s["status"] = SPEC_SKIPPED
-        if reconciliation["status"] not in (SPEC_COMPLETE, SPEC_FAILED):
+        if reconciliation["status"] not in _FINISHED_SPEC_STATUSES:
             reconciliation["status"] = SPEC_SKIPPED
     return {"specialists": specialists, "reconciliation": reconciliation}
 
@@ -576,10 +625,15 @@ def get_full_analysis_result(bid_id: int, run_id: int | None = None) -> dict | N
     else:
         run = _get_full_run(bid_id, run_id)
     stored = db.get_analysis_result(int(run["id"]))
+    rows = []
+    for row in db.get_full_analysis_specialist_results(int(run["id"])) or []:
+        row = dict(row)
+        row["effective_status"] = effective_specialist_status(row)
+        rows.append(row)
     return {
         "run": run,
         "result": (stored or {}).get("full_analysis_result"),
-        "specialist_results": db.get_full_analysis_specialist_results(int(run["id"])),
+        "specialist_results": rows,
         "is_complete": run.get("status") == RUN_COMPLETE,
     }
 

@@ -199,6 +199,19 @@ Where to look, not what everything means. Read
 - Live-validated against Bank of Canada bid 8 / run 19 with exactly 7
   Anthropic calls -- see SYSTEM_STATE.md for the per-domain findings.
 
+**MA-2A.2: Specialist Output Truncation Integrity (2026-09-23)**
+- `full_analysis.py` -- `STATUS_PARTIAL`, `STOP_REASON_MAX_TOKENS`,
+  `USABLE_STATUSES`, `_termination` (reads provider `stop_reason` from the
+  telemetry row); `run_specialist` / `run_reconciliation` set PARTIAL on
+  `max_tokens`; `OUTPUT BOUNDS` block in `_SHARED_RULES` /
+  `_RECONCILIATION_RULES`.
+- `full_analysis_service.py` -- `SPEC_PARTIAL`, `effective_specialist_status`
+  (authoritative status from the persisted result JSON, since migration
+  020's specialist-results `status` column cannot hold PARTIAL),
+  `_EventRecorder` writes `status='PARTIAL'` on *_COMPLETED events,
+  `derive_execution_state` surfaces it.
+- Tests: `tests/test_full_analysis_ma2a2.py` (17, zero provider calls).
+
 **MA-2A: Durable Full Analysis Runs & Progress Events (2026-09-22)**
 - `full_analysis_service.py` -- THE orchestration boundary (a UI never
   calls `full_analysis.py`): `start_full_analysis` (fingerprint ->

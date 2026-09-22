@@ -1845,6 +1845,8 @@ simply not selected.
    visible in `model_usage_events`, not in the persisted specialist
    result. A future task should either raise the cap or surface
    truncation in the result (changes the fingerprint contract).
+   **Fixed by MA-2A.2 (below)**; run 32 itself is left unmodified as
+   historical evidence (its persisted rows still read COMPLETE).
 2. **No scoped evaluation prompts in the package.** Run 19's snapshot
    predates CI-1.1's prompt fields and `build_canonical_package` re-derives
    only `category_scope_items` from documents, so all 23 criteria carry
@@ -1859,6 +1861,55 @@ simply not selected.
    (run 32: 97.8s engine wall vs MA-1's 89.3s). Not a correctness issue.
 4. Two service-category labels contain U+FFFD (source-extraction
    artifact in canonical data); normalization maps to them exactly.
+
+### MA-2A.2: Specialist Output Truncation Integrity (2026-09-23)
+
+**Diagnosis (read-only queries of live run 32):** `model_usage_events`
+already stores the provider's `stop_reason`. EVALUATION_INTELLIGENCE
+(3000 out, 14 findings), COMMERCIAL_CONTRACTUAL (3000 out, 14 accepted +
+1 rejected = 15 emitted, above the prompt's cap of 14; mean finding detail
+484 chars) and reconciliation (3000 out; `completeness_note` empty and
+`contradictions` 0, so it was cut before its last keys) all ended with
+`stop_reason="max_tokens"`; the other four ended `end_turn`. Root cause:
+`run_specialist`/`run_reconciliation` set COMPLETE whenever parsing
+produced a dict, ignoring `stop_reason`, and
+`_safe_parse_json_with_status` silently repairs truncated JSON
+(`RECOVERED_TRUNCATED`). Output was driven by verbose `detail` text
+("2-4 sentences"), restated canonical text, and unbounded reconciliation
+lists with `completeness_note` last.
+
+**Contract:** new stage status `PARTIAL` (`fa.STATUS_PARTIAL`): the
+provider's `stop_reason == "max_tokens"` and at least one valid finding
+(or, for reconciliation, the model call returned) — validated output is
+kept, `failure_reason` starts `OUTPUT_TRUNCATED:`. Truncated with nothing
+recoverable → FAILED. Results carry `stop_reason`, `parse_status`,
+`output_truncated`. Malformed `end_turn` output and provider exceptions
+keep their pre-existing behavior. Overall: FAILED only when no specialist
+is COMPLETE/PARTIAL; COMPLETE only when all six and reconciliation are
+COMPLETE; otherwise PARTIAL (run status PARTIAL, failure_reason names
+"(output truncated)" stages). Reconciliation lists PARTIAL domains as
+incomplete (`output_truncated: true` in its input) and still consolidates
+their findings.
+
+**Persistence/events (no migration):** `SPECIALIST_COMPLETED` /
+`RECONCILIATION_COMPLETED` now mean "finished with usable output"; the
+event `status` column (migration 020 already allows `PARTIAL`) carries
+COMPLETE vs PARTIAL, and event `detail` carries `stop_reason` /
+`output_truncated`. `full_analysis_specialist_results.status` can only be
+COMPLETE/FAILED/SKIPPED and the RPC writes COMPLETE for a COMPLETED event,
+so the authoritative per-specialist state is `result->>'status'`, exposed
+as `effective_status` by `get_full_analysis_result`. Run summary and
+telemetry gain `truncated_stages`. `derive_execution_state` reports
+QUEUED / RUNNING / COMPLETE / PARTIAL / FAILED / SKIPPED. A PARTIAL run is
+never returned as REUSED_COMPLETE (EXISTING_PARTIAL; retry is explicit).
+
+**Boundedness:** specialist prompt: at most 12 findings, detail ≤ 2 short
+sentences, cite canonical ids, never restate source text; reconciliation:
+`completeness_note` first, per-list caps (8/5/6/6). Output ceilings stay
+3000 (no evidence yet that the bounded schema needs more). Versions:
+specialist `ma-1.2`, reconciliation `ma-1.1` (invalidates prior
+fingerprints). Not live-validated: no provider call was made.
+Tests: `tests/test_full_analysis_ma2a2.py` (17).
 
 **Execution limitation (production-hardening item):** execution is an
 in-process daemon thread. The run row, every event and every finished
