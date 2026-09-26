@@ -1,0 +1,520 @@
+{
+ "_provenance": "Buyer-side canonical procurement objects of benchmark bid 1360, Fast Analysis run 34 (fast-analysis-v4, persisted raw snapshot, read with zero model calls). Requirements are the canonicalized FastAnalysisResult.requirements verbatim (req_id = canonical REQ-<i>); criteria are the RFP evaluation-table rows. One clearly-labelled VERBATIM supplemental clause (B2) is appended; it is NOT part of the Fast Analysis canonical set.",
+ "analysis_run_id": 34,
+ "requirements": [
+  {
+   "req_id": "REQ-0",
+   "category": "Supporting",
+   "description": "Pricing-calculation formula: Total weighted cost = (0.55 × item 1 cost + 0.35 × item 2 cost + 0.10 × item 3 cost). Item 1: Cohort Program Development & Design and Program Delivery (25 people, 3 full days (8 hr. per day), 3 modules) – weight 0.55. Item 2: Cohort Program Development & Design and Program Delivery (25 people, 3 1/2 days (4 hrs. per day), 3 modules) – weight 0.35. Item 3: Travel Expenses (includes round-trip airfare to Calgary (economy class), three (3) nights' accommodation, meals, and other related travel costs) – weight 0.10.",
+   "source_doc": "Appendix D _ Price Form_26-1603.xlsx"
+  },
+  {
+   "req_id": "REQ-1",
+   "category": "Supporting",
+   "description": "For item 1 & 2 above The City will require a cost breakdown form the highest rated negotiations proponent",
+   "source_doc": "Appendix D _ Price Form_26-1603.xlsx"
+  },
+  {
+   "req_id": "REQ-2",
+   "category": "Supporting",
+   "description": "The Consultant shall provide post-facilitation support per participant within each Cohort. Post-facilitation support may include, but is not limited to: addressing participant questions/or availability to answer questions from participants, assess assignments that may be required for the class. For the purposes of the Pricing Form; Pricing shall be based on three (3) hours of post-facilitation support per participant within each Cohort.",
+   "source_doc": "Addendum Four.pdf"
+  },
+  {
+   "req_id": "REQ-3",
+   "category": "Mandatory",
+   "description": "Proponents must be registered in Alberta Registries or registered in another jurisdiction and subject to the Business Corporations Act to legally carry on business in Alberta.",
+   "source_doc": "QA Log 26-1603_Updated _June 26_2026.xlsx"
+  },
+  {
+   "req_id": "REQ-4",
+   "category": "Mandatory",
+   "description": "Pricing must be provided in lump sum format for each cohort using the sample scenarios provided in the Excel spreadsheet.",
+   "source_doc": "QA Log 26-1603_Updated _June 26_2026.xlsx"
+  },
+  {
+   "req_id": "REQ-5",
+   "category": "Mandatory",
+   "description": "Proponents must provide pricing based only on the requirements and scenarios outlined in the pricing form; the solicitation is limited to the scope of services as defined in the RFP and does not include additional services such as coaching or psychometric assessments.",
+   "source_doc": "QA Log 26-1603_Updated _June 26_2026.xlsx"
+  },
+  {
+   "req_id": "REQ-6",
+   "category": "Mandatory",
+   "description": "Travel costs must be captured within the Price Form and are incorporated into the overall pricing formula used for evaluation and scoring.",
+   "source_doc": "QA Log 26-1603_Updated _June 26_2026.xlsx"
+  },
+  {
+   "req_id": "REQ-7",
+   "category": "Mandatory",
+   "description": "Account Manager responsibilities are to act primarily as a key contact for project/account management and oversight. The City is open to proponents assigning a separate leadership/L&D subject matter expert responsible for program design.",
+   "source_doc": "QA Log 26-1603_Updated _June 26_2026.xlsx"
+  },
+  {
+   "req_id": "REQ-8",
+   "category": "Supporting",
+   "description": "Maximum submission length is 20 pages as stated in clause 2.3 Proposal Format of the RFP.",
+   "source_doc": "QA Log 26-1603_Updated _June 30_2026.xlsx"
+  },
+  {
+   "req_id": "REQ-9",
+   "category": "Supporting",
+   "description": "Personnel resumes included in appendices will not be considered in the number of pages and may be included as an Appendix to the section on Team Experience and Qualifications; they will be evaluated as part of Evaluation Criteria 2, subsection 2.2 – Other Personnel.",
+   "source_doc": "QA Log 26-1603_Updated _June 30_2026.xlsx"
+  },
+  {
+   "req_id": "REQ-10",
+   "category": "Mandatory",
+   "description": "Proponents must submit proposals with a maximum submission length of 20 pages (excluding appendices such as personnel resumes and the executive summary which is considered equivalent to a cover letter). Submissions must be made via SAP Ariba; a Zip folder is acceptable to accommodate the completed Excel Pricing Form (Appendix D). Either separate submission or combined submission of the Excel Pricing Form and Proposal Content is acceptable.",
+   "source_doc": "QA Log 26-1603_Updated _July 08_2026.xlsx"
+  },
+  {
+   "req_id": "REQ-11",
+   "category": "Mandatory",
+   "description": "Cohort sessions are expected to be delivered as consecutive full-day sessions (e.g., three full days in sequence). The baseline cohort duration of approximately three days applies consistently across all six leadership levels (Personal Leadership through Leading Supervisors/Managers).",
+   "source_doc": "QA Log 26-1603_Updated _July 08_2026.xlsx"
+  },
+  {
+   "req_id": "REQ-12",
+   "category": "Mandatory",
+   "description": "The City will be reviewing its tracking system in 2028 and does not require integration with the existing LMS for tracking participation and learning progress at this time. The City is open to proponents using the vendor platform to deploy content, either by itself or in tandem with the City's LMS.",
+   "source_doc": "QA Log 26-1603_Updated _July 08_2026.xlsx"
+  },
+  {
+   "req_id": "REQ-13",
+   "category": "Mandatory",
+   "description": "The City's preferred method is a balanced effort of modalities that include classroom, online, practice and asynchronous e-learning materials. The City's LMS system is Cornerstone. The City is open to suggestions and does not have preferences regarding allocation of learning methods, modalities, or program durations by level/role; it depends on the learning needs assessment.",
+   "source_doc": "QA Log 26-1603_Updated _July 08_2026.xlsx"
+  },
+  {
+   "req_id": "REQ-14",
+   "category": "Mandatory",
+   "description": "Proponents must provide three (3) examples where their firm has delivered services of comparable scale, scope, or relevance. The specific scale of the proposed City project and anticipated volume of cohorts is provided in Addendum 2 response to Question 19.",
+   "source_doc": "QA Log 26-1603_Updated _July 08_2026.xlsx"
+  },
+  {
+   "req_id": "REQ-15",
+   "category": "Mandatory",
+   "description": "Urgent inquiries are those that may impact the Supplier's ability to meet a scheduled service delivery; the City requires acknowledgement within response timeframes specified in Section 6.3 so that any potential risks, delays, or corrective actions can be addressed promptly. Non-urgent inquiries are requests, questions, or administrative matters that do not require immediate action and do not pose a risk to scheduled service delivery.",
+   "source_doc": "QA Log 26-1603_Updated _July 08_2026.xlsx"
+  },
+  {
+   "req_id": "REQ-16",
+   "category": "Mandatory",
+   "description": "",
+   "source_doc": "QA Log 26-1603_Updated _July 08_2026.xlsx"
+  },
+  {
+   "req_id": "REQ-17",
+   "category": "Mandatory",
+   "description": "a) As per Ariba instructions, a Zip folder is acceptable. b) Either is acceptable. The RFP requires completion of the Excel Pricing Form (Appendix D), and the Proposal Content for Rated Criteria may be submitted together or separately.",
+   "source_doc": "QA Log 26-1603_Updated _July 08_2026.xlsx"
+  },
+  {
+   "req_id": "REQ-18",
+   "category": "Mandatory",
+   "description": "The executive summary is considered equivalent to a cover letter and does not count toward the page limit. Submission must maintain the twenty (20) page limit for proposal content.",
+   "source_doc": "QA Log 26-1603_Updated _July 08_2026.xlsx"
+  },
+  {
+   "req_id": "REQ-19",
+   "category": "Supporting",
+   "description": "A module refers to a unit of training content delivered during the session. In Scenario 1, each module is delivered within an 8-hour (full-day) session, and in Scenario 2, each module is delivered within a 4-hour (half-day) session. Based on the sample scenarios provided, Scenario 1 consists of three modules delivered over three full days, while Scenario 2 consists of three modules delivered over three half-days.",
+   "source_doc": "QA Log 26-1603_Updated _July 08_2026.xlsx"
+  },
+  {
+   "req_id": "REQ-20",
+   "category": "Supporting",
+   "description": "Cohorts are to be delivered as consecutive full-day sessions. Consecutive full-day sessions are required for cohort delivery.",
+   "source_doc": "QA Log 26-1603_Updated _July 08_2026.xlsx"
+  },
+  {
+   "req_id": "REQ-21",
+   "category": "Supporting",
+   "description": "Urgent inquiries are those that may impact the Supplier's ability to meet a scheduled service delivery. In these situations, the City requires acknowledgement within the response timeframes specified in Section 6.3 so that any potential risks, delays, or corrective actions can be addressed promptly. Non-urgent inquiries are requests, questions, or administrative matters that do not require immediate action and do not pose a risk to scheduled service delivery.",
+   "source_doc": "QA Log 26-1603_Updated _July 08_2026.xlsx"
+  },
+  {
+   "req_id": "REQ-22",
+   "category": "Mandatory",
+   "description": "Appendix D – Pricing Form Instructions: Instruction #1: Delete hourly rate and replace it with price.",
+   "source_doc": "S-PT-024 - Addendum One V4.0.pdf"
+  },
+  {
+   "req_id": "REQ-23",
+   "category": "Supporting",
+   "description": "The Personal Leadership Program target audience are Individual Contributors who are not in supervisory roles/do not have direct reports and who have not taken the Emerging Leaders Program. PLP participants will self-enroll for the program to further develop their interpersonal and informal leadership skills. Emerging Leaders are those who have been identified as future leaders, and who may take up a supervisory role within a year of taking the program.",
+   "source_doc": "S-PT-024 - Addendum One V4.0.pdf"
+  },
+  {
+   "req_id": "REQ-24",
+   "category": "Supporting",
+   "description": "Expected time duration of one cohort: approx. three days for one cohort",
+   "source_doc": "S-PT-024 - Addendum One V4.0.pdf"
+  },
+  {
+   "req_id": "REQ-25",
+   "category": "Mandatory",
+   "description": "Pricing is to be provided for one (1) sample cohort only, as per Appendix B: Deliverables. Lump Sum (LS) price for one (1) sample cohort under Item 1. Lump Sum (LS) price for one (1) sample cohort under Item 2. If applicable, a fixed travel expense fee for one (1) person under Item 3. Annual pricing, pricing for all six (6) leadership levels, pricing for multiple cohorts, and pricing for the total value of the contract term are NOT being asked for.",
+   "source_doc": "S-PT-024 - Addendum Five.pdf"
+  },
+  {
+   "req_id": "REQ-26",
+   "category": "Mandatory",
+   "description": "Pricing calculation formula: Total weighted cost = (0.55 × Item 1 cost + 0.35 × Item 2 cost + 0.10 × Item 3 cost). Item 1 weighted at 55%, Item 2 weighted at 35%, Item 3 weighted at 10%.",
+   "source_doc": "S-PT-024 - Addendum Five.pdf"
+  },
+  {
+   "req_id": "REQ-27",
+   "category": "Mandatory",
+   "description": "For the purposes of the Pricing Form; Pricing shall be based on three (3) hours of post-facilitation support per participant within One (1) cohort. 25 participants X 3 hours = 75 hours",
+   "source_doc": "S-PT-024 - Addendum Five.pdf"
+  },
+  {
+   "req_id": "REQ-28",
+   "category": "Mandatory",
+   "description": "For Item 1 & 2, The City will require a cost breakdown form the Highest Rated Negotiations proponent.",
+   "source_doc": "S-PT-024 - Addendum Five.pdf"
+  },
+  {
+   "req_id": "REQ-29",
+   "category": "Mandatory",
+   "description": "Proponent must acknowledge receipt, examination, and understanding of the RFP and all Addenda as part of the RFP.",
+   "source_doc": "S-PT-073 with Price Proponent Acknowledgements V1.0.docx"
+  },
+  {
+   "req_id": "REQ-30",
+   "category": "Mandatory",
+   "description": "Proponent must demonstrate ability to provide Deliverables in accordance with the RFP for the pricing proposed and availability to commence performance within one week following execution of the Agreement or timeframe specified or otherwise agreed to.",
+   "source_doc": "S-PT-073 with Price Proponent Acknowledgements V1.0.docx"
+  },
+  {
+   "req_id": "REQ-31",
+   "category": "Mandatory",
+   "description": "Proposed pricing must include all applicable duties and taxes (except GST which should be itemized separately if required), all labour and material costs, all travel and carriage costs, all insurance costs, all cost of delivery to The City, all costs of installation and set up including pre-delivery inspection charges, and all other overhead including any fees or other charges required by law.",
+   "source_doc": "S-PT-073 with Price Proponent Acknowledgements V1.0.docx"
+  },
+  {
+   "req_id": "REQ-32",
+   "category": "Mandatory",
+   "description": "Proponent must confirm no outstanding debts or unpaid taxes owed to The City or under any applicable law, all required returns have been filed, and tax obligations have been met or satisfactory payment arrangements made and maintained.",
+   "source_doc": "S-PT-073 with Price Proponent Acknowledgements V1.0.docx"
+  },
+  {
+   "req_id": "REQ-33",
+   "category": "Mandatory",
+   "description": "Proponent must provide complete Conflicts of Interest table in Submission Form (Appendix E) including all conflicts already declared or reported to The City, or confirm table is blank if no conflict of interest exists.",
+   "source_doc": "S-PT-073 with Price Proponent Acknowledgements V1.0.docx"
+  },
+  {
+   "req_id": "REQ-34",
+   "category": "Mandatory",
+   "description": "Proponent must have read and understand the Supplier Code of Conduct and will comply with it at all times, including during the RFP process and before and after the Agreement effective date.",
+   "source_doc": "S-PT-073 with Price Proponent Acknowledgements V1.0.docx"
+  },
+  {
+   "req_id": "REQ-35",
+   "category": "Mandatory",
+   "description": "Proponent must maintain current and detailed documentation to demonstrate compliance with the Supplier Code of Conduct and provide such documentation to The City upon request pursuant to the Agreement.",
+   "source_doc": "S-PT-073 with Price Proponent Acknowledgements V1.0.docx"
+  },
+  {
+   "req_id": "REQ-36",
+   "category": "Mandatory",
+   "description": "Proponent must cooperate with any inspections or audits reasonably required by The City pursuant to the Agreement to confirm compliance with the Supplier Code of Conduct, including independent verification at the Supplier's expense.",
+   "source_doc": "S-PT-073 with Price Proponent Acknowledgements V1.0.docx"
+  },
+  {
+   "req_id": "REQ-37",
+   "category": "Mandatory",
+   "description": "Proponent must confirm that except for legal actions, claims, lawsuits or proceedings set out in the table in Submission Form (Appendix E), there are no such actions pending or threatened against the proponent or any Team Member, and proponent is not aware of any ground on which such action might be commenced that could have a material adverse effect on ability to perform the Agreement.",
+   "source_doc": "S-PT-073 with Price Proponent Acknowledgements V1.0.docx"
+  },
+  {
+   "req_id": "REQ-38",
+   "category": "Mandatory",
+   "description": "Proponents must be a registered supplier in the SAP ARIBA Business Network portal to submit a proposal. Proposals must be submitted electronically on SAP ARIBA on or before the Submission Deadline. To submit a proposal, a proponent must navigate to the Event Contents page and use the \"Attach a File\" link in the \"RFX Information and Supplier Submission\" section to include their submission response and then use the \"Submit Entire Response\" button to complete submission of the Proposal. The submission receipt provided electronically by SAP ARIBA upon submission of a Proposal will be the date and time of submission for the purpose of determining whether a Proposal is submitted on or before the Submission Deadline. Proposals that do not comply with the above instructions will not be considered.",
+   "source_doc": "S-PT-073-RFP with Price - V2.5_Design and Delivery Services for Leadership Learning and Development_June 12.docx"
+  },
+  {
+   "req_id": "REQ-39",
+   "category": "Mandatory",
+   "description": "Service Category: Personal Leadership (People Capabilities); Emerging Leaders (People Capabilities); Foundational Leadership: Office - new leader/new to City 1–5 years' experience; Front-Line Leaders: Field - new leader/new to City 1–5 years' experience; Mid-to Senior-Level Leaders: have direct reports 5+ yrs experience leading projects; Leading supervisors and leading managers. The Consultant shall provide leadership learning and development consulting services aligned with the City's Learning and Development Strategy for the listed Leadership Development Cohorts.",
+   "source_doc": "S-PT-073-RFP with Price - V2.5_Design and Delivery Services for Leadership Learning and Development_June 12.docx"
+  },
+  {
+   "req_id": "REQ-40",
+   "category": "Mandatory",
+   "description": "Pricing Form requirement: Complete the pricing table by providing proposed hourly rates. All prices must be flat rate only as ranges will not be considered. The proposed rates must be inclusive of all labour costs, all insurance costs, and all material costs of photocopying, long-distance telephone services or conference calls, fax transmissions, any postage or courier costs. Any additional costs must be approved in writing by The City prior to submission of any invoices for payment of them. Proponent must keep all proposed unit prices firm for a period of two (2) years following the official award. Upon renewal, any price adjustment related to inflation may be negotiated, subject to City approval, and must be based on actual and relevant costs associated with delivering the services and reflective of local and national economic conditions. All proposed pricing must be in Canadian currency and exclusive of GST.",
+   "source_doc": "S-PT-073-RFP with Price - V2.5_Design and Delivery Services for Leadership Learning and Development_June 12.docx"
+  },
+  {
+   "req_id": "REQ-41",
+   "category": "Rated",
+   "description": "Provide three (3) examples from the past five (5) years (other than The City) where your firm delivered services of comparable scale, scope, or relevance to the requirements of this RFP. (10% for each example) At a minimum each example should provide: Strong emphasis on Cohort learning design. An overview of the services provided, including program objectives, content areas, delivery methods, duration, and level of customization, monetary value, program scale. Key outcomes, results, or demonstrated benefits achieved for the client. Challenges or issues that arose during design/delivery and how they were mitigated.",
+   "source_doc": "S-PT-073-RFP with Price - V2.5_Design and Delivery Services for Leadership Learning and Development_June 12.docx"
+  },
+  {
+   "req_id": "REQ-42",
+   "category": "Rated",
+   "description": "2.1 Key Personnel Main point of contact (10%): Identify your firm's team member that will serve as the main point of contact and will be managing the relationship with The City. Describe applicable skill sets, time commitment and availability to meet, response times, credentials, and demonstrated experience and expertise in similar scopes of work.",
+   "source_doc": "S-PT-073-RFP with Price - V2.5_Design and Delivery Services for Leadership Learning and Development_June 12.docx"
+  },
+  {
+   "req_id": "REQ-43",
+   "category": "Rated",
+   "description": "2.2 Other Personnel (10%): Provide an organizational chart of the team members that will be available to provide services to The City including: Roles and responsibilities of the team as it relates to the RFP scope of work. Outline team members involved (if possible) in specific projects for examples provided. Bios/resumes for each team member including relevant credentials and experience related to scope of work iterated in this RFP. How team members will be organized and deployed to complete service requests that arise, with reference to applicable skill sets, credentials, and demonstrated experience.",
+   "source_doc": "S-PT-073-RFP with Price - V2.5_Design and Delivery Services for Leadership Learning and Development_June 12.docx"
+  },
+  {
+   "req_id": "REQ-44",
+   "category": "Rated",
+   "description": "3.1 Understanding of the Services: Describe your firm's methodology and approach to delivering on this RFP. Details should include: Methods and approach to delivering design services. Process to handle a City request once received. Consultation/collaborative approaches used to meet the request. Delivery modes and methods. Goals and objectives – ability to show program mandate - what does success look like. Processes and practices for managing the relationship with The City to ensure successful delivery, including: Issues resolution/escalation measures, quality assurance process, response times to City requests for urgent matters. Ability to deliver services/provide coverage if principal is not available or on demand.",
+   "source_doc": "S-PT-073-RFP with Price - V2.5_Design and Delivery Services for Leadership Learning and Development_June 12.docx"
+  },
+  {
+   "req_id": "REQ-45",
+   "category": "Rated",
+   "description": "Social Procurement - Weight: 10%: Complete the 'Social Procurement Questionnaire' as requested as a prerequisite of this RFP.",
+   "source_doc": "S-PT-073-RFP with Price - V2.5_Design and Delivery Services for Leadership Learning and Development_June 12.docx"
+  },
+  {
+   "req_id": "SUPP-B2-VERBATIM",
+   "category": "Mandatory",
+   "description": "Each proposal that is submitted on behalf of, and contemplates the provision of the Deliverables by a Multi-Party Team must include a Multi-Party Confirmation Form completed and signed by all Team Members.",
+   "source_doc": "S-PT-073-RFP with Price - V2.5_Design and Delivery Services for Leadership Learning and Development_June 12.docx (word/document.xml, B2: MULTI-PARTY CONFIRMATION FORM)",
+   "provenance": "VERBATIM_BUYER_CLAUSE_NOT_IN_FAST_ANALYSIS"
+  }
+ ],
+ "rfp_evaluation_criteria": [
+  {
+   "criterion_label": "Pricing",
+   "weight": "10%",
+   "threshold": null
+  },
+  {
+   "criterion_label": "Firm Experience",
+   "weight": "30%",
+   "threshold": "60%"
+  },
+  {
+   "criterion_label": "Team Experience and Qualifications",
+   "weight": "20%",
+   "threshold": null
+  },
+  {
+   "criterion_label": "Service Delivery",
+   "weight": "30%",
+   "threshold": null
+  },
+  {
+   "criterion_label": "Social Procurement",
+   "weight": "10%",
+   "threshold": null
+  },
+  {
+   "criterion_label": "Price",
+   "weight": "10%",
+   "threshold": null
+  },
+  {
+   "criterion_label": "Key Personnel Main point of contact",
+   "weight": "10%",
+   "threshold": null
+  },
+  {
+   "criterion_label": "Other Personnel",
+   "weight": "10%",
+   "threshold": null
+  },
+  {
+   "criterion_label": "Understanding of the Services",
+   "weight": null,
+   "threshold": null
+  }
+ ],
+ "milestones": [
+  {
+   "label": "SUBMISSION_DEADLINE",
+   "original_wording": [
+    "2026 July 16, 16:00:59 (MST)"
+   ],
+   "normalized_date_start": "2026-07-16"
+  },
+  {
+   "label": "CLARIFICATION_DEADLINE",
+   "original_wording": [
+    "2026 July 15"
+   ],
+   "normalized_date_start": "2026-07-15"
+  },
+  {
+   "label": "AMENDMENT_DATE",
+   "original_wording": [
+    "2026 July 10"
+   ],
+   "normalized_date_start": "2026-07-10"
+  },
+  {
+   "label": "SUBMISSION_DEADLINE",
+   "original_wording": [
+    "July 7",
+    "July 7 2026"
+   ],
+   "normalized_date_start": "2026-07-07"
+  },
+  {
+   "label": "CLARIFICATION_DEADLINE",
+   "original_wording": [
+    "July 3",
+    "July 3 2026"
+   ],
+   "normalized_date_start": "2026-07-03"
+  },
+  {
+   "label": "SUBMISSION_DEADLINE",
+   "original_wording": [
+    "July 7"
+   ],
+   "normalized_date_start": null
+  },
+  {
+   "label": "CLARIFICATION_DEADLINE",
+   "original_wording": [
+    "June 30 2026"
+   ],
+   "normalized_date_start": "2026-06-30"
+  },
+  {
+   "label": "CLARIFICATION_DEADLINE",
+   "original_wording": [
+    "July 8 2026",
+    "Prior to 16:00:59 (MST) on 2026 July 8"
+   ],
+   "normalized_date_start": "2026-07-08"
+  },
+  {
+   "label": "SUBMISSION_DEADLINE",
+   "original_wording": [
+    "2026 July 14 16:00:59 (MST)"
+   ],
+   "normalized_date_start": "2026-07-14"
+  },
+  {
+   "label": "AMENDMENT_DATE",
+   "original_wording": [
+    "2026 June 26"
+   ],
+   "normalized_date_start": "2026-06-26"
+  },
+  {
+   "label": "AMENDMENT_DATE",
+   "original_wording": [
+    "2026-07-13"
+   ],
+   "normalized_date_start": "2026-07-13"
+  },
+  {
+   "label": "AMENDMENT_DATE",
+   "original_wording": [
+    "2026 July 8"
+   ],
+   "normalized_date_start": "2026-07-08"
+  },
+  {
+   "label": "AMENDMENT_DATE",
+   "original_wording": [
+    "2026 June 30"
+   ],
+   "normalized_date_start": "2026-06-30"
+  },
+  {
+   "label": "PRESENTATION_OR_DEMO",
+   "original_wording": [
+    "Three (3) short-listed proponents"
+   ],
+   "normalized_date_start": null
+  }
+ ],
+ "identity_by_document": {
+  "Addendum Four.pdf": {
+   "title": "Design and Delivery Services for Leadership Learning and Development",
+   "client": "The City of Calgary",
+   "file_number": "26-1603",
+   "submission_time": "16:00:59 (MST)",
+   "submission_deadline": "2026-07-16",
+   "clarification_deadline": "2026-07-15"
+  },
+  "CGC 2026-05-13.pdf": {
+   "title": "Consulting General Conditions X 900 (2026-05)",
+   "client": "The City of Calgary"
+  },
+  "QA Log 26-1603.xlsx": {
+   "title": "Design and Delivery Services for Leadership Learning and Development",
+   "client": "The City",
+   "file_number": "26-1603"
+  },
+  "S-PT-024 - Addendum Five.pdf": {
+   "title": "Addendum Five (5) - Design and Delivery Services for Leadership Learning and Development",
+   "client": "The City",
+   "file_number": "26-1603"
+  },
+  "S-PT-024 - Addendum Three.pdf": {
+   "title": "Design and Delivery Services for Leadership Learning and Development",
+   "client": "The City of Calgary",
+   "file_number": "26-1603"
+  },
+  "S-PT-024 - Addendum One V4.0.pdf": {
+   "title": "Design and Delivery Services for Leadership Learning and Development",
+   "client": "The City of Calgary",
+   "file_number": "26-1610",
+   "submission_time": "16:00:59 (MST)",
+   "submission_deadline": "2026-07-14",
+   "clarification_deadline": "2026-07-08"
+  },
+  "S-PT-024 - Addendum Two V4.0.pdf": {
+   "title": "Design and Delivery Services for Leadership Learning and Development",
+   "client": "The City of Calgary",
+   "file_number": "26-1603"
+  },
+  "Appendix D _ Price Form_26-1603.xlsx": {
+   "title": "Design and Delivery Consulting Services for Leadership Learning and Development",
+   "client": "The City",
+   "file_number": "26-1603"
+  },
+  "QA Log 26-1603_Updated _July 08_2026.xlsx": {
+   "title": "Design and Delivery Services for Leadership Learning and Development",
+   "client": "The City",
+   "file_number": "26-1603",
+   "submission_deadline": "2026-07-07",
+   "clarification_deadline": "2026-07-03"
+  },
+  "QA Log 26-1603_Updated _June 26_2026.xlsx": {
+   "title": "Design and Delivery Services for Leadership Learning and Development",
+   "client": "The City",
+   "file_number": "26-1603",
+   "submission_deadline": "2026-07-07",
+   "clarification_deadline": "2026-07-03"
+  },
+  "QA Log 26-1603_Updated _June 30_2026.xlsx": {
+   "title": "Design and Delivery Services for Leadership Learning and Development",
+   "client": "The City",
+   "file_number": "26-1603"
+  },
+  "S-PT-073 with Price Proponent Acknowledgements V1.0.docx": {
+   "title": "Proponent Acknowledgements",
+   "client": "The City"
+  },
+  "S-PT-073-RFP with Price - V2.5_Design and Delivery Services for Leadership Learning and Development_June 12.docx": {
+   "title": "Design and Delivery Services for Leadership Learning and Development",
+   "client": "The City of Calgary",
+   "file_number": "26-1603"
+  }
+ },
+ "ambiguities": [
+  "pricing_stage_ambiguity",
+  "scope_distinct_milestones",
+  "category_date_distinctions",
+  "evaluation_weight_conflicts"
+ ]
+}

@@ -609,6 +609,8 @@ class TestPersistenceShape:
         assert "for select to authenticated" in sql
         assert not re.search(r"for\s+(insert|update|delete|all)\s+to\s+authenticated", sql)
         assert "references proposal_package_snapshots (id, bid_id)" in sql
-        assert "unique (bid_id, evidence_id)" in sql
+        # CHECK-1.1: evidence ids are unique per bid AND package snapshot (an
+        # unchanged file in a later re-submission keeps its deterministic id).
+        assert "unique (bid_id, package_snapshot_id, evidence_id)" in sql
         assert "from anon, authenticated" in sql and "to service_role" in sql
         assert "section_drafts" not in sql.split("-- ═")[-1]  # historical drafting tables untouched

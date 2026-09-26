@@ -2171,11 +2171,115 @@ package. `tenancy.build_submission_evidence_package_for_organization` is
 the read-only auth boundary. Persistence: `migrations/021_submission_
 evidence_registry.sql` (`submission_documents`, `submission_evidence_
 items`, RPC `create_submission_evidence_bundle`, hanging off migration
-015's `proposal_package_snapshots` by composite FK) is **WRITTEN, NOT
-APPLIED**; no Python writer is wired yet. Calgary 26-1603 benchmark:
-live bid 1 requirements (read-only snapshot) + a SYNTHETIC four-artifact
-package (the real Price Form / Appendix E / B2 files are not in the repo
-or live DB). Tests: `tests/test_check1_submission_package.py`.
+015's `proposal_package_snapshots` by composite FK) -- see CHECK-1.1
+below (now **applied and live-commissioned**). Tests:
+`tests/test_check1_submission_package.py`.
+
+**CHECK-1.1 (Real Calgary Package Commissioning) -- 2026-09-27.** CHECK-1
+re-validated against the REAL City of Calgary RFP 26-1603 buyer package
+and the REAL Phoenix Consulting Canada submission (replacing CHECK-1's
+synthetic Price Form / Appendix E / B2). No CHECK-2 (no adjudication).
+
+- **Migration 021 applied and live-commissioned** (project
+  `whonalbdpbubaqhpzrnw`, ledger `20260926220922
+  submission_evidence_registry`), after a direct preflight (020 live by
+  object inspection; no 021 object/policy/name collision;
+  `proposal_package_snapshots` has `UNIQUE(id,bid_id)`; `can_access_bid`
+  SECURITY DEFINER + pinned search_path). Amended IN PLACE before its
+  first application: logical-artifact / representation columns
+  (`logical_artifact_id`, `representation_relationship` in AUTHORITATIVE /
+  ALTERNATE_REPRESENTATION / SUPERSEDED_OR_DRAFT_VARIANT / TEMPLATE_VARIANT
+  / BYTE_IDENTICAL_DUPLICATE, `representation_of`, `representation_basis`,
+  plus `duplicate_of`/`unusable_reason` the payload always carried),
+  deferred same-bid/same-snapshot self-FKs for `representation_of` /
+  `duplicate_of`, a CHECK that exactly the authoritative member has no
+  `representation_of`, a partial unique index (one AUTHORITATIVE per
+  logical artifact per snapshot), and evidence uniqueness widened from
+  `(bid_id, evidence_id)` to `(bid_id, package_snapshot_id, evidence_id)`
+  (deterministic ids would otherwise make any re-submission keeping one
+  unchanged file fail). Verified live: RLS on both tables, authenticated
+  SELECT-only policies via `can_access_bid`; org member reads 13/294 rows,
+  non-member authenticated 0/0, anon 0/0; authenticated INSERT rejected
+  (42501 RLS), UPDATE/DELETE affect 0 rows, RPC EXECUTE denied to
+  anon/authenticated (service_role only); constraint probes rejected a
+  dangling `representation_of` (23503), a second AUTHORITATIVE (23505), an
+  authoritative row with a link (23514), and cross-bid document/evidence
+  rows (23503). RPC returns a bare integer (evidence rows inserted; `0` on
+  an idempotent re-call); cross-bid snapshot and non-array payloads raise
+  P0001. Security advisors: only the 3 pre-existing findings.
+- **Python writer/reader now wired**: `database.create_submission_
+  evidence_bundle` / `get_submission_documents` /
+  `get_submission_evidence_items` (paged past PostgREST's 1000-row cap),
+  `tenancy.persist_submission_evidence_package_for_organization`
+  (require_bid_access first; reuses the migration-015 snapshot by
+  package digest; idempotent) and `tenancy.load_submission_evidence_
+  package_for_organization` (fresh rebuild from rows via
+  `submission_package.package_from_persisted_rows`; foreign snapshot ->
+  AccessDeniedError; foreign row -> CrossBidEvidenceError).
+- **Canonical CHECK benchmark = bid 1360** ("RFP 26-1603 - Design and
+  Delivery Services for Leadership Learning and Development", org
+  `4326b564-...`). Buyer side: all 13 authoritative package files as `RFP
+  / Source` documents 199-211 (RFP with Price V2.5, Proponent
+  Acknowledgements V1.0, Appendix D Price Form template, CGC 2026-05-13,
+  Addenda One-Five, four Q&A logs) + ONE Fast Analysis run **34**
+  (COMPLETE, 45 provider calls). Bidder side is NOT in `documents`: it is
+  package snapshot **9** (digest `9c3ffa6d...2307`) with 13
+  `submission_documents` + 294 `submission_evidence_items`. Bid 1 (older,
+  incomplete Calgary corpus without the RFP itself) is NOT the benchmark.
+- **Real logical artifacts (4, from 13 files)**: Appendix C technical
+  proposal PDF (TECHNICAL_PROPOSAL; embedded PRICING/MULTI_PARTY
+  secondaries from its "PART 6 -- PRICING: Provided in Appendix D" and
+  "PART 2 -- CONSORTIUM" headings; 18 pages, 16 sections, 181 evidence),
+  completed Appendix D workbook (PRICING_FORM; sheet "Price Form", input
+  cells D6/D7/D8 completed formulas; 32 evidence), Appendix E PDF
+  (SUBMISSION_FORM; 13 evidence incl. 4 label->value fields), B2
+  Multi-Party Confirmation PDF (MULTI_PARTY_FORM; Phoenix Consulting
+  Canada lead + Inquisitive Talent; 68 evidence). All four authoritative
+  members come from the nested `Appendices Submission_Phoenix Consulting
+  Canada.zip` (the buyer's Q&A #50 confirms "a Zip folder is
+  acceptable"); DOCX sources / re-saved workbooks are
+  ALTERNATE_REPRESENTATION, the outer PDFs BYTE_IDENTICAL_DUPLICATE,
+  `APPENDIX E.docx` SUPERSEDED_OR_DRAFT_VARIANT -- none double-counted.
+- **Integration-shape fixes found on the real files** (all deterministic):
+  opt-in ONE-level nested ZIP expansion
+  (`extractor.unpack_submission_package(expand_nested_zips=True)`, same
+  safety guards, default callers unchanged); representation linking
+  (`submission_package.link_representations`); PDF label->value form
+  tables (`_pdf_form_table_fields`, merged-cell continuation rows); PDF
+  tables emitted in reading order (were attributed to the previous
+  section); DOCX content controls (`w:sdt`) descended (real Appendix E
+  labels were dropped); placeholder regex needs a word boundary
+  ("Enterprise ..." read as an "enter" placeholder); buyer-named
+  questionnaire without a document anchor -> possibly portal-native.
+  Contract version `check-1.1.0`.
+- **Known-bad regression now structurally prevented**: "Price Form
+  missing", "Submission declarations missing", "Multi-party confirmation
+  not provided" all screen CONTRADICTED_BY_PACKAGE against the persisted
+  real package; 0 of 47 buyer requirement inputs permit an absence claim
+  (45 ARTIFACT_PRESENT, 2 POSSIBLY_PORTAL_NATIVE: SAP Ariba registration
+  and the Social Procurement Questionnaire).
+- **Buyer-side gaps reported, not patched** (CHECK-2 preconditions):
+  `full_analysis.build_canonical_package` projects `requirement_type=None`
+  for this run (raw requirements carry `category`) and zero
+  `scoped_criteria` (no `evaluation_occurrences`/`scoped_criterion_
+  evaluation`; the 20 raw `evaluation_criteria` hold the real 30/20/30/10
+  + Price 10 table plus conflicting Q&A-log weight restatements, flagged
+  by Fast Analysis's own `evaluation_weight_conflicts`); identity merge
+  chose the CGC title and the stale 2026-07-07 deadline although
+  Addendum Four's 2026-07-16 16:00:59 MST is in `canonical_milestones`;
+  `page_limits`/`submission_method` empty (the 20-page limit and SAP Ariba
+  exist only as requirement text); the RFP's B2 "must include a
+  Multi-Party Confirmation Form" sentence lives in a DOCX content control
+  the buyer extractor does not read, so no canonical multi-party
+  requirement exists (commissioning used it verbatim, labelled, never
+  persisted).
+- Tests: `tests/test_check11_real_calgary_benchmark.py` (derived fixtures
+  `tests/fixtures/calgary_26_1603_real_submission_benchmark.json` --
+  content-free -- and `calgary_26_1603_canonical_buyer_snapshot.json`;
+  real-file tests skip unless `CHECK11_BIDDER_ZIP`/`CHECK11_BUYER_ZIP`
+  or the default Downloads paths exist). One-off scripts:
+  `scripts/commission_check11_calgary_buyer.py`,
+  `scripts/commission_check11_calgary_bidder.py`.
 
 Absent an explicit task instruction otherwise, still do not: apply
 migration 013, alter/reapply migration 015, 016, 017, 018, or 019,
@@ -2186,8 +2290,9 @@ merge `main`/deploy.
 ## Migrations known in this repository (files, not live-database state)
 
 Highest migration file present: **021**
-(`021_submission_evidence_registry.sql`, CHECK-1, **written, NOT applied**
-to any live database). Before it: **020**
+(`021_submission_evidence_registry.sql`, CHECK-1, amended before first
+application and **applied and live-commissioned 2026-09-27 by CHECK-1.1**,
+ledger entry `20260926220922 submission_evidence_registry`). Before it: **020**
 (`020_full_analysis_runs.sql`, **applied and live-commissioned
 2026-09-22**, ledger entry `20260922202352 full_analysis_runs` — see
 "MA-2A.1" below). Migration 019

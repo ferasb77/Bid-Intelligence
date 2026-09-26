@@ -1644,3 +1644,50 @@ def approve_organizational_memory_item(
         "p_fact_content": fact_content,
     }).execute())
 
+
+
+# ── CHECK-1.1: submission evidence registry (migration 021) ─────────────────
+
+def create_submission_evidence_bundle(bid_id: int, package_snapshot_id: int, contract_version: str,
+                                      documents: list[dict], evidence_items: list[dict]) -> int:
+    """The ONLY write path for submission_documents / submission_evidence_
+    items: create_submission_evidence_bundle() (migration 021) inserts every
+    document + evidence row of one package snapshot in a single transaction
+    (all or nothing) and forces every row to p_bid_id. Idempotent per
+    snapshot: a snapshot that already has documents returns 0 and writes
+    nothing (write-once, never an UPDATE). Returns the number of evidence
+    rows inserted (a scalar integer RPC result)."""
+    data = get_client().rpc("create_submission_evidence_bundle", {
+        "p_bid_id": bid_id, "p_package_snapshot_id": package_snapshot_id,
+        "p_contract_version": contract_version,
+        "p_documents": documents or [], "p_evidence_items": evidence_items or [],
+    }).execute().data
+    if isinstance(data, list):
+        data = data[0] if data else 0
+    return int(data or 0)
+
+
+def _paged_rows(query_factory, page_size: int = 1000) -> list[dict]:
+    """PostgREST caps a single response (default 1000 rows); an evidence
+    registry can exceed that, so reads page explicitly -- never a silently
+    truncated registry."""
+    out: list[dict] = []
+    start = 0
+    while True:
+        batch = _rows(query_factory().range(start, start + page_size - 1).execute())
+        out.extend(batch)
+        if len(batch) < page_size:
+            return out
+        start += page_size
+
+
+def get_submission_documents(bid_id: int, package_snapshot_id: int) -> list[dict]:
+    """Bid- AND snapshot-scoped read (service role; callers go through
+    tenancy.load_submission_evidence_package_for_organization)."""
+    return _paged_rows(lambda: get_client().table("submission_documents").select("*")
+                       .eq("bid_id", bid_id).eq("package_snapshot_id", package_snapshot_id).order("id"))
+
+
+def get_submission_evidence_items(bid_id: int, package_snapshot_id: int) -> list[dict]:
+    return _paged_rows(lambda: get_client().table("submission_evidence_items").select("*")
+                       .eq("bid_id", bid_id).eq("package_snapshot_id", package_snapshot_id).order("id"))

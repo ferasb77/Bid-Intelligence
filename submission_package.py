@@ -71,7 +71,7 @@ from typing import Iterable, Optional
 
 import canonical_procurement as cp
 
-CHECK1_CONTRACT_VERSION = "check-1.0.0"
+CHECK1_CONTRACT_VERSION = "check-1.1.0"
 
 # ═══════════════════════════════════════════════════════════════════════
 # 1. Closed vocabularies
@@ -466,7 +466,10 @@ def _section_location(tracker: _SectionTracker) -> dict:
             "section_title": cur["title"], "section_path": tracker.path()}
 
 
-_PLACEHOLDER_RE = re.compile(r"^[\s_.\-—–]*$|^\[?\s*(?:insert|enter|type|tbd|n/?a\s+if|click\s+here)[^\]]*\]?$", re.IGNORECASE)
+# `\b` after the keyword matters (CHECK-1.1, real Calgary proposal): a real
+# answer beginning "Enterprise administration ..." must not read as an
+# "enter ..." placeholder.
+_PLACEHOLDER_RE = re.compile(r"^[\s_.\-—–]*$|^\[?\s*(?:insert|enter|type|tbd|n/?a\s+if|click\s+here)\b[^\]]*\]?$", re.IGNORECASE)
 _LABEL_VALUE_RE = re.compile(r"^([A-Z][^:\n]{1,80}?)\s*:\s*(.*)$")
 # Checkbox glyphs only (ballot boxes / bracketed x). Tick marks and
 # filled squares are routinely used as list bullets in narrative
@@ -521,6 +524,60 @@ def _line_items(lines: list[str], tracker: _SectionTracker, page: Optional[int],
                                     "completed": _is_completed(value)}))
 
 
+def _pdf_form_table_fields(rows: list) -> Optional[list[dict]]:
+    """CHECK-1.1 (real Calgary Appendix E): a PDF LABEL -> VALUE form table
+    (a label column, a value column, labels wrapped over several visual
+    lines) is NOT a header-mapped data table. PyMuPDF reports each wrapped
+    label line as its own row and marks the value cell of a continuation
+    line as None (merged cell) -- that None/'' distinction is what groups
+    lines into fields, so no layout guessing is needed. Returns None when
+    the table is not a label/value form (header-like first row, no
+    'Label:' cell, or no value column), leaving the existing header-mapped
+    TABLE_ROW path in charge."""
+    if not rows or max(len(r) for r in rows) < 2:
+        return None
+    norm = [[(c.replace("\n", " ").strip() if isinstance(c, str) else None) for c in r] for r in rows]
+    first_non_empty = [c for c in norm[0] if c]
+    if len(first_non_empty) >= 3:
+        return None  # a header row of a data table
+    if not any(any((c or "").endswith((":", "?")) for c in r[:-1]) for r in norm):
+        return None
+    value_col = None
+    for r in norm:
+        idx = [i for i, c in enumerate(r) if c]
+        if len(idx) >= 2:
+            value_col = max(value_col or 0, idx[-1])
+    if value_col is None:
+        # A wholly BLANK form (labels only): the value column is the last
+        # one -- every field must still be recorded, as not completed.
+        value_col = max(len(r) for r in norm) - 1
+    fields: list[dict] = []
+    for ri, r in enumerate(norm):
+        labels = [c for c in r[:value_col] if c]
+        cell = r[value_col] if value_col < len(r) else None
+        if cell is not None or not fields:
+            parts: list[str] = []
+            for c in labels:  # drop a wrapped fragment repeated in a sibling cell
+                if not any(c != o and c in o for o in labels) and c not in parts:
+                    parts.append(c)
+            fields.append({"label_parts": parts, "value": cell or "", "row_start": ri, "row_end": ri})
+        else:
+            cur = fields[-1]
+            for c in labels:
+                if not any(c in p for p in cur["label_parts"]):
+                    cur["label_parts"].append(c)
+            if labels:
+                cur["row_end"] = ri
+    out = []
+    for f in fields:
+        label = " ".join(f["label_parts"]).strip()
+        if not label and not f["value"]:
+            continue
+        out.append({"label": label or "(unlabelled)", "value": f["value"],
+                    "row_start": f["row_start"], "row_end": f["row_end"]})
+    return out or None
+
+
 def parse_pdf_structure(file_bytes: bytes) -> dict:
     """Per-page, per-block PDF structure: heading hierarchy, prose blocks
     with page + section, tables (PyMuPDF find_tables) as header-mapped
@@ -535,6 +592,7 @@ def parse_pdf_structure(file_bytes: bytes) -> dict:
     tables_count = 0
     for pno, page in enumerate(doc, 1):
         table_rects = []
+        pending_tables: list[tuple] = []   # (y0, ti, rows)
         try:
             found = page.find_tables()
             for ti, table in enumerate(found.tables):
@@ -543,26 +601,51 @@ def parse_pdf_structure(file_bytes: bytes) -> dict:
                     continue
                 tables_count += 1
                 table_rects.append(fitz.Rect(table.bbox))
-                header = [(c or "").replace("\n", " ").strip() for c in rows[0]]
-                use_header = sum(1 for h in header if h) >= max(2, len(header) // 2)
-                for ri, row in enumerate(rows[1:] if use_header else rows, 1 if use_header else 0):
-                    cells = [(c or "").replace("\n", " ").strip() for c in row]
-                    if not any(cells):
-                        continue
-                    mapping = ({(header[i] or f"col{i + 1}"): cells[i] for i in range(min(len(header), len(cells)))}
-                               if use_header else {f"col{i + 1}": c for i, c in enumerate(cells)})
-                    loc = {"page": pno, "table_index": ti, "row_index": ri, **_section_location(tracker)}
-                    items.append(_raw_item(EVIDENCE_KIND_TABLE_ROW, f"p{pno}t{ti}r{ri}",
-                                           " | ".join(c for c in cells if c), loc,
-                                           {"columns": mapping, "completed": any(_is_completed(c) for c in cells)}))
+                pending_tables.append((fitz.Rect(table.bbox).y0, ti, rows))
         except Exception:
-            table_rects = []
+            table_rects, pending_tables = [], []
+
+        def _emit_table(ti: int, rows: list) -> None:
+            # Emitted in READING ORDER (CHECK-1.1): a table is attributed to
+            # the section heading that precedes it on the page, not to
+            # whatever section was open when the page started.
+            form_fields = _pdf_form_table_fields(rows)
+            if form_fields is not None:
+                for fi, fld in enumerate(form_fields):
+                    loc = {"page": pno, "table_index": ti, "row_index": fld["row_start"],
+                           "row_end": fld["row_end"], **_section_location(tracker)}
+                    content = f"{fld['label']}: {fld['value']}" if fld["value"] else f"{fld['label']}: (blank)"
+                    items.append(_raw_item(EVIDENCE_KIND_FORM_FIELD, f"p{pno}t{ti}f{fi}", content, loc,
+                                           {"label": fld["label"], "value": fld["value"] or None,
+                                            "completed": _is_completed(fld["value"] or ""),
+                                            "source": "pdf_form_table"}))
+                return
+            header = [(c or "").replace("\n", " ").strip() for c in rows[0]]
+            use_header = sum(1 for h in header if h) >= max(2, len(header) // 2)
+            for ri, row in enumerate(rows[1:] if use_header else rows, 1 if use_header else 0):
+                cells = [(c or "").replace("\n", " ").strip() for c in row]
+                if not any(cells):
+                    continue
+                mapping = ({(header[i] or f"col{i + 1}"): cells[i] for i in range(min(len(header), len(cells)))}
+                           if use_header else {f"col{i + 1}": c for i, c in enumerate(cells)})
+                loc = {"page": pno, "table_index": ti, "row_index": ri, **_section_location(tracker)}
+                items.append(_raw_item(EVIDENCE_KIND_TABLE_ROW, f"p{pno}t{ti}r{ri}",
+                                       " | ".join(c for c in cells if c), loc,
+                                       {"columns": mapping, "completed": any(_is_completed(c) for c in cells)}))
+
+        pending_tables.sort(key=lambda t: (t[0], t[1]))
 
         blocks = page.get_text("blocks") or []
-        for bi, block in enumerate(blocks):
+        # Top-to-bottom order (PyMuPDF can emit a page footer before the
+        # body); `bi` stays the original block index so locators are stable.
+        ordered = sorted(enumerate(blocks), key=lambda ib: (round(ib[1][1]), ib[1][0]) if len(ib[1]) >= 4 else (0, 0))
+        for bi, block in ordered:
             if len(block) < 7 or block[6] != 0:
                 continue  # image block
             rect = fitz.Rect(block[:4])
+            while pending_tables and pending_tables[0][0] <= rect.y0:
+                _, t_i, t_rows = pending_tables.pop(0)
+                _emit_table(t_i, t_rows)
             if any(rect.intersects(tr) and (rect & tr).get_area() > 0.6 * max(rect.get_area(), 1) for tr in table_rects):
                 continue  # already captured as table rows
             lines = [ln.strip() for ln in (block[4] or "").splitlines() if ln.strip()]
@@ -596,6 +679,8 @@ def parse_pdf_structure(file_bytes: bytes) -> dict:
                 # Wrapped PDF prose makes long "Label: text" lines look like
                 # form fields; only short-valued lines count.
                 _line_items(run, tracker, pno, f"p{pno}{suffix}", items, bi, max_value_chars=60)
+        for _, t_i, t_rows in pending_tables:
+            _emit_table(t_i, t_rows)
     sections = tracker.finish()
     return {"parser": "pymupdf", "page_count": page_count, "sections": sections,
             "items": items, "tables_count": tables_count}
@@ -606,12 +691,23 @@ def _iter_docx_blocks(document):
     separately; body order matters for section context)."""
     from docx.table import Table
     from docx.text.paragraph import Paragraph
-    for child in document.element.body.iterchildren():
-        tag = child.tag.rsplit("}", 1)[-1]
-        if tag == "p":
-            yield Paragraph(child, document)
-        elif tag == "tbl":
-            yield Table(child, document)
+
+    def _walk(parent):
+        for child in parent.iterchildren():
+            tag = child.tag.rsplit("}", 1)[-1]
+            if tag == "p":
+                yield Paragraph(child, document)
+            elif tag == "tbl":
+                yield Table(child, document)
+            elif tag in ("sdt", "sdtContent", "customXml", "smartTag"):
+                # CHECK-1.1: real buyer forms (e.g. a Submission Form
+                # template) wrap labels/paragraphs/tables in content
+                # controls (w:sdt). python-docx's body iteration skips
+                # them, which silently dropped every label of the real
+                # Appendix E DOCX -- descend, in body order.
+                yield from _walk(child)
+
+    yield from _walk(document.element.body)
 
 
 def parse_docx_structure(file_bytes: bytes) -> dict:
@@ -991,6 +1087,15 @@ class SubmissionDocument:
     evidence_count: int = 0
     duplicate_of: Optional[str] = None
     unusable_reason: Optional[str] = None
+    # CHECK-1.1 -- logical-artifact identity. Several FILES can be ONE
+    # submitted item (a DOCX source + its submitted PDF, a re-saved copy of
+    # the same completed workbook, a byte-identical copy inside a nested
+    # archive, an earlier draft). Exactly one member per logical artifact is
+    # AUTHORITATIVE; only it contributes evidence and package membership.
+    logical_artifact_id: Optional[str] = None
+    representation_relationship: str = "AUTHORITATIVE"
+    representation_of: Optional[str] = None
+    representation_basis: Optional[str] = None
 
     @property
     def document_role(self) -> str:
@@ -1004,6 +1109,10 @@ class SubmissionDocument:
     def readable(self) -> bool:
         return self.parse_status == "PARSED"
 
+    @property
+    def is_authoritative(self) -> bool:
+        return self.representation_relationship == REP_AUTHORITATIVE
+
     def to_dict(self) -> dict:
         return {
             "submission_document_id": self.submission_document_id, "content_hash": self.content_hash,
@@ -1014,6 +1123,10 @@ class SubmissionDocument:
             "sheets": list(self.sheets), "sections": [s.to_dict() for s in self.sections],
             "evidence_count": self.evidence_count, "duplicate_of": self.duplicate_of,
             "unusable_reason": self.unusable_reason,
+            "logical_artifact_id": self.logical_artifact_id,
+            "representation_relationship": self.representation_relationship,
+            "representation_of": self.representation_of,
+            "representation_basis": self.representation_basis,
         }
 
 
@@ -1035,8 +1148,11 @@ class SubmissionPackage:
 
     def member_documents(self) -> list[SubmissionDocument]:
         """Package members that stand for a submitted artifact: included,
-        not a byte-identical duplicate, not a rejected ZIP entry."""
-        return [d for d in self.documents if d.included and d.lifecycle_status not in ("duplicate", "rejected")]
+        not a byte-identical duplicate, not a rejected ZIP entry, and the
+        AUTHORITATIVE representation of its logical artifact (an alternate
+        DOCX/PDF/re-saved representation is never double-counted)."""
+        return [d for d in self.documents
+                if d.included and d.lifecycle_status not in ("duplicate", "rejected") and d.is_authoritative]
 
     def documents_with_roles(self, roles: Iterable[str], *, include_secondary: bool = True) -> list[SubmissionDocument]:
         wanted = set(roles)
@@ -1054,11 +1170,162 @@ class SubmissionPackage:
                 out.setdefault(r, []).append(d.submission_document_id)
         return out
 
+    def logical_artifacts(self) -> list[dict]:
+        """One entry per LOGICAL submitted artifact: its authoritative
+        document plus every linked representation (never double-counted)."""
+        groups: dict[str, dict] = {}
+        for d in self.documents:
+            key = d.logical_artifact_id or d.submission_document_id
+            g = groups.setdefault(key, {"logical_artifact_id": key, "authoritative": None, "representations": []})
+            if d.is_authoritative and g["authoritative"] is None:
+                g["authoritative"] = d
+            else:
+                g["representations"].append(d)
+        return list(groups.values())
+
     def to_dict(self) -> dict:
         return {"bid_id": self.bid_id, "package_digest": self.package_digest,
                 "contract_version": self.contract_version,
                 "documents": [d.to_dict() for d in self.documents],
                 "evidence_count": len(self.registry)}
+
+
+# ── Logical-artifact / representation linking (CHECK-1.1) ──────────────
+
+REP_AUTHORITATIVE = "AUTHORITATIVE"
+REP_ALTERNATE = "ALTERNATE_REPRESENTATION"            # same item, other format / re-saved identical content
+REP_DRAFT = "SUPERSEDED_OR_DRAFT_VARIANT"             # same item, differing (earlier/other) completed content
+REP_TEMPLATE = "TEMPLATE_VARIANT"                     # same item, blank / uncompleted copy
+REP_BYTE_DUPLICATE = "BYTE_IDENTICAL_DUPLICATE"       # extractor-detected identical bytes
+REPRESENTATION_RELATIONSHIPS = (REP_AUTHORITATIVE, REP_ALTERNATE, REP_DRAFT, REP_TEMPLATE, REP_BYTE_DUPLICATE)
+
+# Final submitted formats rank ahead of editable sources. A spreadsheet is
+# its own final format (a pricing workbook is submitted as the workbook).
+_FORMAT_RANK = {"pdf": 0, "xlsx": 0, "xls": 0, "csv": 0, "docx": 1, "txt": 2, "md": 2}
+_STEM_SPLIT_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _stem_tokens(filename: str) -> tuple:
+    stem = re.sub(r"\.[A-Za-z0-9]{1,5}$", "", (filename or "").lower())
+    return tuple(t for t in _STEM_SPLIT_RE.split(stem) if t)
+
+
+def _content_tokens(items: list[dict]) -> set:
+    toks: set = set()
+    for it in items:
+        toks |= set(re.findall(r"[a-z0-9]{3,}", (it.get("content") or "").lower()))
+    return toks
+
+
+def _sheet_signature(items: list[dict]) -> Optional[str]:
+    """Digest of every non-empty worksheet cell VALUE (sheet + coordinate +
+    value). Two workbooks with the same signature carry identical content
+    even when their bytes differ (re-saved / renamed copies)."""
+    rows = sorted((it["locator"], json.dumps(it.get("structured_value"), sort_keys=True, default=str))
+                  for it in items if it["kind"] == EVIDENCE_KIND_SHEET_ROW)
+    if not rows:
+        return None
+    return hashlib.sha256(json.dumps(rows).encode("utf-8")).hexdigest()
+
+
+def _completed_count(items: list[dict]) -> int:
+    return sum(1 for it in items
+               if it["kind"] in (EVIDENCE_KIND_FORM_FIELD, EVIDENCE_KIND_CHECKBOX, EVIDENCE_KIND_TABLE_ROW,
+                                 EVIDENCE_KIND_SHEET_CELL)
+               and (it.get("structured_value") or {}).get("completed"))
+
+
+def _authority_key(rec: dict) -> tuple:
+    return (0 if rec["parse_status"] == "PARSED" else 1,
+            _FORMAT_RANK.get(rec["file_type"], 3),
+            -len(rec["stem"]),                       # the specific (bidder-named) copy over a template-named one
+            -rec["package_path"].count("/"),         # the copy assembled into a (nested) submission archive
+            rec["package_path"])
+
+
+def link_representations(records: list[dict]) -> dict[str, dict]:
+    """Deterministic logical-artifact grouping over per-file records
+    ({file_id, content_hash, filename, package_path, file_type,
+    lifecycle_status, parse_status, duplicate_of, items}). Returns
+    file_id -> {logical_artifact_id, relationship, representation_of,
+    basis}. Linking rules (never a model, never a guess about content the
+    files do not share):
+      * extractor byte-identical duplicate -> BYTE_IDENTICAL_DUPLICATE;
+      * same filename stem, different format (DOCX source + PDF);
+      * spreadsheets with an identical cell-value signature;
+      * one stem a >=2-token prefix of the other AND content-token
+        Jaccard >= 0.6 (an unnamed/earlier copy of a named form).
+    The authoritative member is chosen by `_authority_key` (readable,
+    final format, most specific name, packaged copy)."""
+    base = [r for r in records if r["lifecycle_status"] in ("extracted", "failed")]
+    for r in records:
+        r["stem"] = _stem_tokens(r["filename"])
+    parent = {r["file_id"]: r["file_id"] for r in base}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[max(ra, rb)] = min(ra, rb)
+
+    sig = {r["file_id"]: (_sheet_signature(r["items"]) if r["file_type"] in _SPREADSHEET_TYPES else None) for r in base}
+    toks = {r["file_id"]: _content_tokens(r["items"]) for r in base}
+    for i, a in enumerate(base):
+        for b in base[i + 1:]:
+            if a["stem"] and a["stem"] == b["stem"] and a["file_type"] != b["file_type"]:
+                union(a["file_id"], b["file_id"])
+                continue
+            if sig[a["file_id"]] and sig[a["file_id"]] == sig[b["file_id"]]:
+                union(a["file_id"], b["file_id"])
+                continue
+            short, long_ = sorted((a["stem"], b["stem"]), key=len)
+            if len(short) >= 2 and short != long_ and long_[:len(short)] == short:
+                ta, tb = toks[a["file_id"]], toks[b["file_id"]]
+                if ta and tb and len(ta & tb) / len(ta | tb) >= 0.6:
+                    union(a["file_id"], b["file_id"])
+
+    groups: dict[str, list[dict]] = {}
+    for r in base:
+        groups.setdefault(find(r["file_id"]), []).append(r)
+    out: dict[str, dict] = {}
+    for members in groups.values():
+        auth = sorted(members, key=_authority_key)[0]
+        la_id = "LA-" + hashlib.sha256(auth["content_hash"].encode("utf-8")).hexdigest()[:16]
+        out[auth["file_id"]] = {"logical_artifact_id": la_id, "relationship": REP_AUTHORITATIVE,
+                                "representation_of": None,
+                                "basis": "sole representation" if len(members) == 1 else
+                                "authoritative: readable, final format, most specific filename, packaged copy"}
+        for m in members:
+            if m is auth:
+                continue
+            if m["stem"] == auth["stem"] and m["file_type"] != auth["file_type"]:
+                rel, why = REP_ALTERNATE, f"same filename stem, {m['file_type']} representation of the {auth['file_type']}"
+            elif sig.get(m["file_id"]) and sig.get(m["file_id"]) == sig.get(auth["file_id"]):
+                rel, why = REP_ALTERNATE, "identical worksheet cell values (re-saved / renamed copy)"
+            elif _completed_count(m["items"]) == 0 < _completed_count(auth["items"]):
+                rel, why = REP_TEMPLATE, "no completed fields while the authoritative copy is completed"
+            else:
+                rel, why = REP_DRAFT, "same logical form with differing completed content"
+            out[m["file_id"]] = {"logical_artifact_id": la_id, "relationship": rel,
+                                 "representation_of": auth["file_id"], "basis": why}
+    for r in records:
+        if r["lifecycle_status"] == "duplicate" and r.get("duplicate_of") in out:
+            tgt = out[r["duplicate_of"]]
+            auth_id = r["duplicate_of"] if tgt["relationship"] == REP_AUTHORITATIVE else tgt["representation_of"]
+            out[r["file_id"]] = {"logical_artifact_id": tgt["logical_artifact_id"], "relationship": REP_BYTE_DUPLICATE,
+                                 "representation_of": auth_id,
+                                 "basis": f"byte-identical to {r['duplicate_of']}"}
+        elif r["file_id"] not in out:
+            out[r["file_id"]] = {"logical_artifact_id": "LA-" + hashlib.sha256(
+                (r["content_hash"] + r["file_id"]).encode("utf-8")).hexdigest()[:16],
+                "relationship": REP_AUTHORITATIVE, "representation_of": None,
+                "basis": f"standalone {r['lifecycle_status']} entry"}
+    return out
 
 
 def build_submission_package(
@@ -1069,23 +1336,23 @@ def build_submission_package(
     role_overrides: Optional[dict] = None,
 ) -> SubmissionPackage:
     """Canonicalize one bidder submission package. Reuses
-    extractor.build_alignment_submission_package for ZIP-safe discovery,
-    per-occurrence file identity, byte-identical dedup and text
-    extraction; then parses each readable artifact's STRUCTURE, classifies
-    its role, and mints bid-bound evidence ids. `role_overrides` maps a
-    filename OR submission_document_id to a DOCUMENT_ROLES member."""
+    extractor.build_alignment_submission_package for ZIP-safe discovery
+    (including ONE level of nested archive, CHECK-1.1), per-occurrence
+    file identity, byte-identical dedup and text extraction; then parses
+    each readable artifact's STRUCTURE, classifies its role, links
+    alternate representations into logical artifacts, and mints bid-bound
+    evidence ids for AUTHORITATIVE representations only. `role_overrides`
+    maps a filename OR submission_document_id to a DOCUMENT_ROLES member."""
     import extractor
     import proposal_intelligence
 
     overrides = dict(role_overrides or {})
-    base = extractor.build_alignment_submission_package(raw_files, include_bytes=True)
+    base = extractor.build_alignment_submission_package(raw_files, include_bytes=True, expand_nested_zips=True)
     files = base["files"]
     package_digest = proposal_intelligence.compute_package_digest(extractor.build_report_manifest(files))
 
-    documents: list[SubmissionDocument] = []
-    all_items: list[EvidenceItem] = []
+    records: list[dict] = []
     role_by_file: dict[str, RoleClassification] = {}
-
     for f in files:
         fid = f["file_id"]
         ftype = f.get("file_type") or "unknown"
@@ -1096,45 +1363,106 @@ def build_submission_package(
         if parse_status == "PARSED":
             structure = parse_document_structure(f.get("_bytes") or b"", ftype, f.get("text") or "")
         titles = [s.title for s in structure["sections"]]
-        if f["lifecycle_status"] == "duplicate" and f.get("duplicate_of_file_id") in role_by_file:
-            role = role_by_file[f["duplicate_of_file_id"]]
-        else:
-            role = classify_document_role(f.get("filename") or "", f.get("text") or "", file_type=ftype,
-                                          section_titles=titles, override=override)
+        role = classify_document_role(f.get("filename") or "", f.get("text") or "", file_type=ftype,
+                                      section_titles=titles, override=override)
         role_by_file[fid] = role
+        records.append({"file_id": fid, "content_hash": f["content_hash"], "filename": f.get("filename") or "",
+                        "package_path": f.get("package_path") or "", "file_type": ftype,
+                        "lifecycle_status": f["lifecycle_status"], "parse_status": parse_status,
+                        "duplicate_of": f.get("duplicate_of_file_id"), "items": structure["items"],
+                        "structure": structure, "file": f, "override": override})
 
+    links = link_representations(records)
+
+    documents: list[SubmissionDocument] = []
+    all_items: list[EvidenceItem] = []
+    for rec in records:
+        f, fid, structure = rec["file"], rec["file_id"], rec["structure"]
+        link = links[fid]
+        role = role_by_file[fid]
+        auth_id = link["representation_of"]
+        if auth_id and not rec["override"]:
+            # A representation IS the same logical artifact: it carries the
+            # authoritative member's role (a byte duplicate always did).
+            role = role_by_file[auth_id]
+        authoritative = link["relationship"] == REP_AUTHORITATIVE
         provenance_base = {
             "file_id": fid, "content_hash": f["content_hash"], "filename": f.get("filename"),
-            "package_path": f.get("package_path"), "file_type": ftype, "parser": structure["parser"],
-            "contract_version": CHECK1_CONTRACT_VERSION,
+            "package_path": f.get("package_path"), "file_type": rec["file_type"], "parser": structure["parser"],
+            "logical_artifact_id": link["logical_artifact_id"], "contract_version": CHECK1_CONTRACT_VERSION,
         }
         count = 0
-        seen_ids = set()
-        for raw in structure["items"]:
-            eid = derive_evidence_id(bid_id, fid, raw["kind"], raw["locator"])
-            if eid in seen_ids:
-                continue
-            seen_ids.add(eid)
-            all_items.append(EvidenceItem(
-                evidence_id=eid, bid_id=bid_id, submission_document_id=fid, document_role=role.role,
-                kind=raw["kind"], location={k: v for k, v in raw["location"].items() if v not in (None, [], "")} or {},
-                content=raw["content"], structured_value=raw["structured_value"],
-                provenance=dict(provenance_base, locator=raw["locator"]),
-            ))
-            count += 1
+        if authoritative:
+            seen_ids = set()
+            for raw in structure["items"]:
+                eid = derive_evidence_id(bid_id, fid, raw["kind"], raw["locator"])
+                if eid in seen_ids:
+                    continue
+                seen_ids.add(eid)
+                all_items.append(EvidenceItem(
+                    evidence_id=eid, bid_id=bid_id, submission_document_id=fid, document_role=role.role,
+                    kind=raw["kind"], location={k: v for k, v in raw["location"].items() if v not in (None, [], "")} or {},
+                    content=raw["content"], structured_value=raw["structured_value"],
+                    provenance=dict(provenance_base, locator=raw["locator"]),
+                ))
+                count += 1
+        unusable = f.get("unusable_reason")
+        if not authoritative and rec["lifecycle_status"] != "duplicate":
+            unusable = (f"{link['relationship']} of {auth_id} ({link['basis']}); evidence is registered from "
+                        f"the authoritative representation only")
         documents.append(SubmissionDocument(
             submission_document_id=fid, content_hash=f["content_hash"], filename=f.get("filename") or "",
-            package_path=f.get("package_path") or "", file_type=ftype, lifecycle_status=f["lifecycle_status"],
-            included=bool(f.get("included")), role=role, parse_status=parse_status, parser=structure["parser"],
-            page_count=structure.get("page_count"), sheets=tuple(s["sheet"] for s in structure.get("sheets") or []),
+            package_path=f.get("package_path") or "", file_type=rec["file_type"],
+            lifecycle_status=f["lifecycle_status"],
+            included=bool(f.get("included")) and authoritative, role=role, parse_status=rec["parse_status"],
+            parser=structure["parser"], page_count=structure.get("page_count"),
+            sheets=tuple(s["sheet"] for s in structure.get("sheets") or []),
             sections=tuple(structure["sections"]), evidence_count=count,
-            duplicate_of=f.get("duplicate_of_file_id"), unusable_reason=f.get("unusable_reason"),
+            duplicate_of=f.get("duplicate_of_file_id"), unusable_reason=unusable,
+            logical_artifact_id=link["logical_artifact_id"], representation_relationship=link["relationship"],
+            representation_of=auth_id, representation_basis=link["basis"],
         ))
 
     manifest = tuple(extractor.build_report_manifest(files))
     return SubmissionPackage(bid_id=bid_id, organization_id=organization_id, package_digest=package_digest,
                              documents=tuple(documents), registry=SubmissionEvidenceRegistry(bid_id, all_items),
                              manifest=manifest)
+
+
+def package_from_persisted_rows(bid_id: int, organization_id: str, package_digest: str,
+                                document_rows: list[dict], evidence_rows: list[dict],
+                                manifest: Iterable = ()) -> SubmissionPackage:
+    """Rebuild a SubmissionPackage from migration-021 rows (a FRESH read,
+    no in-memory state). Pure. Every row must belong to `bid_id` -- a
+    foreign row fails closed (CrossBidEvidenceError)."""
+    docs = []
+    for r in sorted(document_rows, key=lambda x: x["id"] if "id" in x else 0):
+        if int(r["bid_id"]) != int(bid_id):
+            raise CrossBidEvidenceError(f"document row belongs to bid {r['bid_id']}, not {bid_id}")
+        role = RoleClassification(r["document_role"], r["role_confidence"], r["role_basis"],
+                                  tuple(r.get("secondary_roles") or ()))
+        secs = tuple(ProposalSection(s["section_id"], s.get("number"), s["title"], s["level"], s.get("parent_id"),
+                                     s.get("page_start"), s.get("page_end")) for s in (r.get("sections") or []))
+        docs.append(SubmissionDocument(
+            submission_document_id=r["submission_document_id"], content_hash=r["content_hash"],
+            filename=r["filename"], package_path=r["package_path"], file_type=r["file_type"],
+            lifecycle_status=r["lifecycle_status"], included=bool(r["included"]), role=role,
+            parse_status=r["parse_status"], parser=None, page_count=r.get("page_count"),
+            sheets=tuple(r.get("sheets") or ()), sections=secs, evidence_count=int(r.get("evidence_count") or 0),
+            duplicate_of=r.get("duplicate_of"), unusable_reason=r.get("unusable_reason"),
+            logical_artifact_id=r.get("logical_artifact_id"),
+            representation_relationship=r.get("representation_relationship") or REP_AUTHORITATIVE,
+            representation_of=r.get("representation_of"), representation_basis=r.get("representation_basis")))
+    items = []
+    for r in evidence_rows:
+        items.append(EvidenceItem(
+            evidence_id=r["evidence_id"], bid_id=int(r["bid_id"]), submission_document_id=r["submission_document_id"],
+            document_role=r["document_role"], kind=r["kind"], location=r.get("location") or {},
+            content=r.get("content") or "", structured_value=r.get("structured_value"),
+            provenance=r.get("provenance") or {}))
+    return SubmissionPackage(bid_id=bid_id, organization_id=organization_id, package_digest=package_digest,
+                             documents=tuple(docs), registry=SubmissionEvidenceRegistry(bid_id, items),
+                             manifest=tuple(manifest or ()))
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1147,6 +1475,16 @@ _PORTAL_NATIVE_RE = re.compile(
     r"(?:\w+\s+){0,2}(?:portal|platform|e-?procurement\s+system|online\s+(?:form|questionnaire))\b"
     r"|\b(?:digiti[sz]ed|online|electronic|portal)\s+questionnaire\b|\bportal[\s-]native\b",
     re.IGNORECASE)
+# CHECK-1.1 (real Calgary 26-1603): "Complete the 'Social Procurement
+# Questionnaire' as requested" -- a buyer-NAMED questionnaire with no
+# document anchor (no appendix / attachment / template) is, in an
+# e-procurement event (SAP Ariba here), answered inside the portal. It is
+# therefore a POSSIBLE portal-native response: never provable present or
+# absent from uploaded files, never MISSING_FROM_PACKAGE.
+_NAMED_QUESTIONNAIRE_RE = re.compile(
+    r"\bcomplet\w*\s+(?:the\s+|your\s+|a\s+)?[‘'\"“]?(?:[\w&/-]+\s+){0,5}questionnaire\b", re.IGNORECASE)
+_DOCUMENT_ANCHOR_RE = re.compile(
+    r"\b(?:appendix|attachment|attached|schedule|annex|exhibit|template|spreadsheet|workbook|excel)\b", re.IGNORECASE)
 _PRICING_LOCATION_RE = re.compile(
     r"\bpric(?:e|ing)\s+(?:form|schedule|sheet|workbook|template)\b|\bexcel\s+(?:spreadsheet|pricing|workbook)\b"
     r"|\b(?:yellow|input)\s+cells?\b|\bpricing\s+formula\b|\brate\s+card\b|\bcost\s+(?:breakdown\s+)?form\b",
@@ -1222,7 +1560,8 @@ def derive_expected_evidence(requirement: dict) -> ExpectedEvidence:
     explicit = req.get("expected_evidence_roles")
     text = " ".join(str(req.get(k) or "") for k in ("description", "evidence", "rfso_ref", "notes"))
     category = (req.get("category") or "").strip().lower()
-    portal = bool(_PORTAL_NATIVE_RE.search(text)) or bool(req.get("portal_native"))
+    portal = (bool(_PORTAL_NATIVE_RE.search(text)) or bool(req.get("portal_native"))
+              or bool(_NAMED_QUESTIONNAIRE_RE.search(text) and not _DOCUMENT_ANCHOR_RE.search(text)))
 
     if isinstance(explicit, (list, tuple)) and explicit:
         roles = tuple(r for r in explicit if r in DOCUMENT_ROLES and r != ROLE_UNKNOWN)
@@ -1605,6 +1944,10 @@ def build_persistence_payload(package: SubmissionPackage) -> dict:
             "role_basis": d.role.basis, "secondary_roles": list(d.role.secondary_roles),
             "parse_status": d.parse_status, "page_count": d.page_count, "sheets": list(d.sheets),
             "sections": [s.to_dict() for s in d.sections], "evidence_count": d.evidence_count,
+            "duplicate_of": d.duplicate_of, "unusable_reason": d.unusable_reason,
+            "logical_artifact_id": d.logical_artifact_id or d.submission_document_id,
+            "representation_relationship": d.representation_relationship,
+            "representation_of": d.representation_of, "representation_basis": d.representation_basis,
         })
     items = []
     for it in package.registry:
@@ -1634,4 +1977,5 @@ __all__ = [n for n in dir() if n.isupper() or n in {
     "RequirementEvidenceMapping", "artifact_status_for", "map_requirement_to_submission",
     "map_requirements_to_submission", "CriterionSectionMapping", "map_evaluation_criteria_to_sections",
     "screen_absence_claim", "to_proposal_source_ref", "candidate_proposal_source_refs",
-    "build_persistence_payload", "package_fingerprint"}]
+    "build_persistence_payload", "package_fingerprint", "link_representations",
+    "package_from_persisted_rows"}]

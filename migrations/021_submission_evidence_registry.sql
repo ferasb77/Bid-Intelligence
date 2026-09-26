@@ -3,12 +3,15 @@
 -- Assurance Foundation (bidder-side canonical submission package + the ONE
 -- shared bidder-evidence registry future CHECK stages reference).
 --
--- STATUS: WRITTEN, NOT APPLIED. Must be applied manually via the Supabase
--- dashboard and live-commissioned in a separate task. No application code
--- writes these tables yet (tenancy.build_submission_evidence_package_for_
--- organization is compute-and-return) -- the same two-step rollout
--- migration 019 used, so production code never calls an RPC that does not
--- exist yet.
+-- STATUS: amended in place BEFORE first application by CHECK-1.1 (real
+-- Calgary 26-1603 commissioning) and then applied/commissioned by that
+-- same task. The CHECK-1.1 amendment adds logical-artifact /
+-- representation columns to submission_documents (a real bidder package
+-- carries the same logical item as DOCX + PDF, re-saved workbook copies,
+-- byte-identical copies inside a nested archive and earlier drafts --
+-- these must be LINKED, never double-counted) plus duplicate_of /
+-- unusable_reason, which the Python payload always carried but this file
+-- had no column for.
 --
 -- Purely additive: creates two tables and one RPC. Does not alter, backfill
 -- or re-grant anything existing. Does not touch requirements (buyer-side
@@ -38,7 +41,7 @@
 -- migration 008), authenticated SELECT only, no authenticated/anon write
 -- policy -- only service_role, in practice only through
 -- create_submission_evidence_bundle() below. evidence_id is unique per
--- bid_id AND already folds bid_id into its own sha256 derivation
+-- (bid_id, package snapshot) AND already folds bid_id into its own sha256 derivation
 -- (submission_package.derive_evidence_id), so an id can never be replayed
 -- under another bid.
 --
@@ -73,8 +76,19 @@ create table if not exists submission_documents (
     sheets                      jsonb not null default '[]'::jsonb,
     sections                    jsonb not null default '[]'::jsonb,
     evidence_count              integer not null default 0,
+    duplicate_of                text,                   -- extractor byte-identical duplicate source
+    unusable_reason             text,
+    logical_artifact_id         text not null,          -- one logical submitted item
+    representation_relationship text not null default 'AUTHORITATIVE'
+                                 check (representation_relationship in (
+                                     'AUTHORITATIVE', 'ALTERNATE_REPRESENTATION', 'SUPERSEDED_OR_DRAFT_VARIANT',
+                                     'TEMPLATE_VARIANT', 'BYTE_IDENTICAL_DUPLICATE')),
+    representation_of           text,                   -- the AUTHORITATIVE member's submission_document_id
+    representation_basis        text,
     contract_version            text not null,
     created_at                  timestamptz not null default now(),
+    -- exactly the AUTHORITATIVE member has no representation_of
+    check ((representation_relationship = 'AUTHORITATIVE') = (representation_of is null)),
     unique (package_snapshot_id, submission_document_id),
     unique (id, bid_id),
     unique (bid_id, package_snapshot_id, submission_document_id),
@@ -84,6 +98,25 @@ create table if not exists submission_documents (
 
 create index if not exists idx_submission_documents_bid_snapshot
     on submission_documents (bid_id, package_snapshot_id);
+
+-- A representation / duplicate link can only point at a document of the
+-- SAME bid and the SAME package snapshot (deferred: one bundle inserts in
+-- any order inside its single transaction).
+alter table submission_documents
+    add constraint submission_documents_representation_of_fkey
+    foreign key (bid_id, package_snapshot_id, representation_of)
+    references submission_documents (bid_id, package_snapshot_id, submission_document_id)
+    deferrable initially deferred;
+alter table submission_documents
+    add constraint submission_documents_duplicate_of_fkey
+    foreign key (bid_id, package_snapshot_id, duplicate_of)
+    references submission_documents (bid_id, package_snapshot_id, submission_document_id)
+    deferrable initially deferred;
+
+-- One authoritative member per logical artifact per package snapshot.
+create unique index if not exists uq_submission_documents_authoritative_artifact
+    on submission_documents (package_snapshot_id, logical_artifact_id)
+    where representation_relationship = 'AUTHORITATIVE';
 
 create table if not exists submission_evidence_items (
     id                          bigserial primary key,
@@ -100,7 +133,12 @@ create table if not exists submission_evidence_items (
     structured_value            jsonb,
     provenance                  jsonb not null,
     created_at                  timestamptz not null default now(),
-    unique (bid_id, evidence_id),
+    -- evidence_id is deterministic over (bid, document occurrence, kind,
+    -- locator), so an unchanged file re-submitted in a LATER package
+    -- snapshot of the same bid legitimately yields the same id: uniqueness
+    -- is per snapshot (CHECK-1.1; a bare (bid_id, evidence_id) key would
+    -- make every re-submission that keeps one file fail to persist).
+    unique (bid_id, package_snapshot_id, evidence_id),
     -- An evidence row must belong to a document of the SAME bid and the
     -- SAME package snapshot -- enforced by the database, not by convention.
     foreign key (bid_id, package_snapshot_id, submission_document_id)
@@ -178,7 +216,9 @@ begin
         insert into public.submission_documents (
             bid_id, package_snapshot_id, submission_document_id, content_hash, filename, package_path,
             file_type, lifecycle_status, included, document_role, role_confidence, role_basis,
-            secondary_roles, parse_status, page_count, sheets, sections, evidence_count, contract_version
+            secondary_roles, parse_status, page_count, sheets, sections, evidence_count,
+            duplicate_of, unusable_reason, logical_artifact_id, representation_relationship,
+            representation_of, representation_basis, contract_version
         ) values (
             p_bid_id, p_package_snapshot_id, v_doc->>'submission_document_id', v_doc->>'content_hash',
             v_doc->>'filename', v_doc->>'package_path', v_doc->>'file_type', v_doc->>'lifecycle_status',
@@ -186,6 +226,10 @@ begin
             v_doc->>'role_basis', coalesce(v_doc->'secondary_roles', '[]'::jsonb), v_doc->>'parse_status',
             nullif(v_doc->>'page_count', '')::integer, coalesce(v_doc->'sheets', '[]'::jsonb),
             coalesce(v_doc->'sections', '[]'::jsonb), coalesce((v_doc->>'evidence_count')::integer, 0),
+            v_doc->>'duplicate_of', v_doc->>'unusable_reason',
+            coalesce(v_doc->>'logical_artifact_id', v_doc->>'submission_document_id'),
+            coalesce(v_doc->>'representation_relationship', 'AUTHORITATIVE'),
+            v_doc->>'representation_of', v_doc->>'representation_basis',
             p_contract_version
         );
     end loop;

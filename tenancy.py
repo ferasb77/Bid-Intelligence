@@ -2528,10 +2528,10 @@ def build_submission_evidence_package_for_organization(
     to THIS bid_id), and bounded RFP->submission candidate mapping.
 
     Read-only end to end: no model call, no database write, no Storage
-    write. Persisting the registry (migrations/021_submission_evidence_
-    registry.sql) is deliberately NOT wired here until that migration is
-    applied and commissioned -- the same two-step rollout migration 019
-    used. No ADDRESSED/PARTIAL/MISSING adjudication (that is CHECK-2)."""
+    write. Persistence is the separate, explicit
+    persist_submission_evidence_package_for_organization below (migration
+    021, live-commissioned in CHECK-1.1). No ADDRESSED/PARTIAL/MISSING
+    adjudication (that is CHECK-2)."""
     require_bid_access(bid_id, organization_id)
     import submission_package as sp
 
@@ -2543,3 +2543,56 @@ def build_submission_evidence_package_for_organization(
         "requirement_mappings": sp.map_requirements_to_submission(requirements, package, top_k=top_k),
         "criteria_mappings": sp.map_evaluation_criteria_to_sections(evaluation_criteria or [], package),
     }
+
+
+def persist_submission_evidence_package_for_organization(
+    bid_id: int,
+    organization_id: str,
+    raw_files: list,
+    *,
+    role_overrides: dict | None = None,
+    created_by_user_id: str | None = None,
+) -> dict:
+    """CHECK-1.1 persistence boundary (migration 021). require_bid_access
+    FIRST, then: build the canonical submission package (pure, no model
+    call), get-or-create its migration-015 proposal_package_snapshots row
+    (same package_digest identity Proposal Intelligence uses -- reused, not
+    duplicated), and persist every document + evidence row atomically via
+    create_submission_evidence_bundle. Idempotent: persisting the same
+    package again reuses the snapshot and writes nothing. Writes ONLY the
+    two bidder-evidence tables + (at most) one snapshot row -- never
+    requirements or any buyer-side canonical procurement object."""
+    require_bid_access(bid_id, organization_id)
+    import submission_package as sp
+
+    package = sp.build_submission_package(
+        raw_files, bid_id=bid_id, organization_id=organization_id, role_overrides=role_overrides)
+    snapshot = db.get_or_create_proposal_package_snapshot(
+        bid_id, package.package_digest, list(package.manifest), created_by_user_id)
+    if not snapshot or int(snapshot.get("bid_id")) != int(bid_id):
+        raise RuntimeError("package snapshot could not be created for this bid")
+    payload = sp.build_persistence_payload(package)
+    existing = db.get_submission_documents(bid_id, int(snapshot["id"]))
+    inserted = 0
+    if not existing:
+        inserted = db.create_submission_evidence_bundle(
+            bid_id, int(snapshot["id"]), payload["contract_version"], payload["documents"], payload["evidence_items"])
+    return {"package": package, "package_snapshot": snapshot, "evidence_rows_inserted": inserted,
+            "already_persisted": bool(existing)}
+
+
+def load_submission_evidence_package_for_organization(bid_id: int, organization_id: str,
+                                                      package_snapshot_id: int):
+    """Rebuild a persisted SubmissionPackage from migration-021 rows only
+    (a fresh read -- no in-memory state). require_bid_access first; a
+    snapshot id belonging to another bid is AccessDeniedError."""
+    require_bid_access(bid_id, organization_id)
+    import submission_package as sp
+
+    snapshot = db.get_proposal_package_snapshot(package_snapshot_id)
+    if not snapshot or int(snapshot.get("bid_id")) != int(bid_id):
+        raise AccessDeniedError("package snapshot does not belong to this bid")
+    docs = db.get_submission_documents(bid_id, package_snapshot_id)
+    items = db.get_submission_evidence_items(bid_id, package_snapshot_id)
+    return sp.package_from_persisted_rows(bid_id, organization_id, snapshot["package_digest"], docs, items,
+                                          manifest=snapshot.get("manifest") or ())

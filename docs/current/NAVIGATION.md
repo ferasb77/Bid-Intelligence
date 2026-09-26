@@ -364,10 +364,38 @@ Where to look, not what everything means. Read
   `build_persistence_payload`.
 - `tenancy.build_submission_evidence_package_for_organization` -- read-only
   auth boundary.
-- `migrations/021_submission_evidence_registry.sql` -- written, NOT applied.
+- `migrations/021_submission_evidence_registry.sql` -- **applied and
+  live-commissioned (CHECK-1.1, ledger `20260926220922`)**, amended before
+  application with logical-artifact / representation columns.
 - Tests: `tests/test_check1_submission_package.py` (+ builders in
   `tests/check1_calgary_fixture.py`, live-requirement snapshot in
   `tests/fixtures/calgary_26_1603_live_requirements.json`).
+
+**CHECK-1.1: Real Calgary 26-1603 benchmark (canonical CHECK benchmark)**
+- Benchmark bid **1360** (buyer: 13 `RFP / Source` docs + Fast Analysis
+  run 34); bidder: `proposal_package_snapshots` id 9 + migration-021 rows.
+  Bid 1 is NOT the benchmark.
+- `submission_package.py` -- `link_representations` (logical artifacts:
+  AUTHORITATIVE vs ALTERNATE_REPRESENTATION / SUPERSEDED_OR_DRAFT_VARIANT /
+  TEMPLATE_VARIANT / BYTE_IDENTICAL_DUPLICATE; `member_documents()` =
+  authoritative only), `_pdf_form_table_fields`, `package_from_persisted_
+  rows`, `_NAMED_QUESTIONNAIRE_RE` (possibly portal-native).
+- `extractor.unpack_submission_package(expand_nested_zips=True)` /
+  `build_alignment_submission_package(expand_nested_zips=...)` -- opt-in
+  one-level nested archive expansion (only CHECK passes True).
+- `database.create_submission_evidence_bundle` / `get_submission_documents`
+  / `get_submission_evidence_items`; `tenancy.persist_submission_evidence_
+  package_for_organization` / `load_submission_evidence_package_for_
+  organization`.
+- Scripts (one-off, deliberate): `scripts/commission_check11_calgary_
+  buyer.py` (bid + docs + ONE Fast Analysis, reuses a covering COMPLETE
+  run), `scripts/commission_check11_calgary_bidder.py` (persist / fresh-
+  process verify / mappings / fixture / buyer_snapshot; zero model calls).
+- Tests: `tests/test_check11_real_calgary_benchmark.py`; fixtures
+  `tests/fixtures/calgary_26_1603_real_submission_benchmark.json`
+  (content-free) and `calgary_26_1603_canonical_buyer_snapshot.json`.
+  Real-file tests read `CHECK11_BIDDER_ZIP` / `CHECK11_BUYER_ZIP` and skip
+  when absent.
 
 **Proposal Intelligence (PI-1, hardened in PI-1.1/PI-1.2, deepened in
 PI-2A/PI-2A.1, extended in PI-2B1)** — durable persistence for CHECK's

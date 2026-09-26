@@ -883,7 +883,7 @@ _SUBMISSION_EXPLICIT_UNSUPPORTED = {
 }
 
 
-def unpack_submission_package(raw_files: list[tuple[str, bytes]]) -> list[dict]:
+def unpack_submission_package(raw_files: list[tuple[str, bytes]], *, expand_nested_zips: bool = False) -> list[dict]:
     """Flattens direct uploads and .zip packages into entries for the
     Alignment Analyzer's Submission Package. Each entry:
       {"filename", "package_path", "bytes", "status", "reason", "occurrence_index"}
@@ -910,51 +910,71 @@ def unpack_submission_package(raw_files: list[tuple[str, bytes]]) -> list[dict]:
             "status": status, "reason": reason, "occurrence_index": len(entries),
         })
 
+    # One size budget per top-level upload, shared with any nested archive
+    # inside it -- nesting can never be used to escape the parent's total.
+    budget = {"running_total": 0}
+
+    def _walk_zip(zip_label: str, zip_path: str, zip_bytes: bytes, depth: int) -> None:
+        try:
+            with zipfile.ZipFile(io.BytesIO(zip_bytes)) as z:
+                count_error = _zip_archive_entry_count_exceeded(z)
+                if count_error:
+                    _emit(zip_label, zip_path, b"", "rejected", f"ZIP rejected: {count_error}.")
+                    return
+
+                for entry in z.infolist():
+                    if entry.is_dir():
+                        continue
+
+                    entry_name = entry.filename.replace("\\", "/")
+                    base_entry = os.path.basename(entry_name)
+                    if base_entry.startswith(".") or entry_name.startswith("__MACOSX"):
+                        continue
+
+                    package_path = f"{zip_path}/{entry_name}"
+
+                    unsafe_reason = _zip_entry_path_is_unsafe(entry_name)
+                    if unsafe_reason:
+                        _emit(base_entry or entry_name, package_path, b"", "rejected",
+                              f"Security: rejected unsafe path in archive ({unsafe_reason}).")
+                        continue
+
+                    limit_reason = _zip_entry_exceeds_limits(entry, budget["running_total"])
+                    if limit_reason:
+                        _emit(base_entry, package_path, b"", "rejected", f"Skipped: {limit_reason}.")
+                        continue
+
+                    ext = os.path.splitext(base_entry)[1].lower()
+                    if ext == ".zip" and expand_nested_zips and depth < 1:
+                        # CHECK-1.1: ONE level of nested-archive expansion,
+                        # opt-in (default callers are unchanged). A bidder's
+                        # "Appendices Submission.zip" inside a delivery ZIP is
+                        # a real submission shape; its members are emitted
+                        # with the full nested package_path
+                        # (outer.zip/inner.zip/file) so provenance is never
+                        # lost. Same path-safety / entry-count / size / ratio
+                        # guards and the SAME shared size budget; an archive
+                        # nested two levels deep is still reported
+                        # unsupported, never silently expanded.
+                        budget["running_total"] += entry.file_size
+                        _walk_zip(base_entry, package_path, z.read(entry.filename), depth + 1)
+                    elif ext in _SUBMISSION_SUPPORTED_EXTENSIONS:
+                        budget["running_total"] += entry.file_size
+                        _emit(base_entry, package_path, z.read(entry.filename), "ok", None)
+                    elif ext in _SUBMISSION_EXPLICIT_UNSUPPORTED:
+                        _emit(base_entry, package_path, b"", "unsupported", _SUBMISSION_EXPLICIT_UNSUPPORTED[ext])
+                    else:
+                        _emit(base_entry, package_path, b"", "unsupported", f"Unsupported file type '{ext or 'unknown'}'.")
+        except Exception as e:
+            _emit(zip_label, zip_path, b"", "rejected", f"Failed to open ZIP archive: {e}")
+
     for fname, fbytes in raw_files:
         fname_clean = os.path.basename(fname.strip())
         lower_name = fname_clean.lower()
 
         if lower_name.endswith(".zip"):
-            try:
-                with zipfile.ZipFile(io.BytesIO(fbytes)) as z:
-                    count_error = _zip_archive_entry_count_exceeded(z)
-                    if count_error:
-                        _emit(fname_clean, fname_clean, b"", "rejected", f"ZIP rejected: {count_error}.")
-                        continue
-
-                    running_total = 0
-                    for entry in z.infolist():
-                        if entry.is_dir():
-                            continue
-
-                        entry_name = entry.filename.replace("\\", "/")
-                        base_entry = os.path.basename(entry_name)
-                        if base_entry.startswith(".") or entry_name.startswith("__MACOSX"):
-                            continue
-
-                        package_path = f"{fname_clean}/{entry_name}"
-
-                        unsafe_reason = _zip_entry_path_is_unsafe(entry_name)
-                        if unsafe_reason:
-                            _emit(base_entry or entry_name, package_path, b"", "rejected",
-                                  f"Security: rejected unsafe path in archive ({unsafe_reason}).")
-                            continue
-
-                        limit_reason = _zip_entry_exceeds_limits(entry, running_total)
-                        if limit_reason:
-                            _emit(base_entry, package_path, b"", "rejected", f"Skipped: {limit_reason}.")
-                            continue
-
-                        ext = os.path.splitext(base_entry)[1].lower()
-                        if ext in _SUBMISSION_SUPPORTED_EXTENSIONS:
-                            running_total += entry.file_size
-                            _emit(base_entry, package_path, z.read(entry.filename), "ok", None)
-                        elif ext in _SUBMISSION_EXPLICIT_UNSUPPORTED:
-                            _emit(base_entry, package_path, b"", "unsupported", _SUBMISSION_EXPLICIT_UNSUPPORTED[ext])
-                        else:
-                            _emit(base_entry, package_path, b"", "unsupported", f"Unsupported file type '{ext or 'unknown'}'.")
-            except Exception as e:
-                _emit(fname_clean, fname_clean, b"", "rejected", f"Failed to open ZIP archive: {e}")
+            budget["running_total"] = 0
+            _walk_zip(fname_clean, fname_clean, fbytes, 0)
         else:
             ext = os.path.splitext(fname_clean)[1].lower()
             if ext in _SUBMISSION_SUPPORTED_EXTENSIONS:
@@ -996,7 +1016,8 @@ def _extraction_failure_reason(text: str, meta: dict) -> str | None:
     return None
 
 
-def build_alignment_submission_package(raw_files: list[tuple[str, bytes]], *, include_bytes: bool = False) -> dict:
+def build_alignment_submission_package(raw_files: list[tuple[str, bytes]], *, include_bytes: bool = False,
+                                       expand_nested_zips: bool = False) -> dict:
     """Full Submission Package assembly for the Proposal Alignment
     Analyzer: ZIP-safe flattening (unpack_submission_package), stable
     per-entry identity, byte-identical duplicate detection, and per-file
@@ -1045,7 +1066,7 @@ def build_alignment_submission_package(raw_files: list[tuple[str, bytes]], *, in
     content_hash a second way. `_bytes` is never part of
     build_report_manifest()'s projection.
     """
-    raw_entries = unpack_submission_package(raw_files)
+    raw_entries = unpack_submission_package(raw_files, expand_nested_zips=expand_nested_zips)
 
     files: list[dict] = []
     seen_content_hashes: dict[str, dict] = {}
