@@ -63,7 +63,6 @@ def _static_bytes_now(workflow: str, operation: str) -> int:
             "clarification_questions": analyst.CLARIFICATION_SYSTEM,
             "bid_no_bid_score": analyst.BID_NOBID_SYSTEM,
             "past_proposal_analysis": analyst.PROPOSAL_ANALYZER_SYSTEM,
-            "draft_proposal_section": analyst.DRAFTER_SYSTEM,
             "submission_readiness_check": analyst.READINESS_SYSTEM,
             "addendum_analysis": analyst.ADDENDUM_SYSTEM,
             "proposal_alignment_chunk": analyst._ALIGN_CHUNK_SYSTEM,

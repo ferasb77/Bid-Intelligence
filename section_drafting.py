@@ -1,36 +1,32 @@
 """
-section_drafting.py -- PI-3A: Evidence-Aware Section Drafting.
+section_drafting.py -- Section Response Intelligence (formerly PI-3A
+"Evidence-Aware Section Drafting").
 
-The first bounded proposal-generation capability in Bid Intelligence. Answers
-exactly one question: "can BI generate a strong proposal-section draft for
-ONE requirement from its EXISTING structured intelligence -- canonical
-requirement text, its Proposal Intelligence assessment, its persisted
-OM-3B Organizational Memory enrichment, and Fast Analysis's evaluation-
-criteria/response-guideline extraction -- without independently re-reading
-the RFP, re-running analysis, or inventing unsupported claims?"
+PRODUCT BOUNDARY: Bid Intelligence no longer generates proposal narrative.
+The proposal-generation path this module once hosted (`draft_section`, its
+`_call_section_draft` model call and drafting prompt) was DECOMMISSIONED
+and deleted. What remains is pure, non-generative response intelligence
+and claim/evidence-validation logic, kept for BUILD's Response Brief and
+as building blocks for future CHECK work:
 
-This is section-LEVEL drafting for ONE requirement, not whole-proposal
-generation.
+    build_brief(...)                  : deterministic assembly of a bounded
+                                         SectionResponseBrief (requirements,
+                                         evaluation intent, evidence tiers,
+                                         gaps, contradictions, human-
+                                         confirmation needs, constraints)
+                                         from ALREADY-FETCHED raw materials
+    compute_draft_input_fingerprint() : freshness fingerprint (still used to
+                                         mark historical persisted drafts as
+                                         stale/current, read-only)
+    evidence_id_registry / reconcile_material_claims /
+    reconcile_structured_result       : fail-closed claim/evidence-support
+                                         validation (no model call)
+    assure_section_draft(...)         : deterministic structural assurance of
+                                         an already-structured result
 
-Architecture (mirrors evidence_strengthening.py/proposal_intelligence.py's
-split exactly -- this module is pure, no I/O of its own; tenancy.py owns
-fetching every raw material and wiring this module's functions together,
-see tenancy.draft_section_for_organization):
-
-    build_brief(...)          : deterministic assembly of a bounded
-                                 SectionDraftingBrief from ALREADY-FETCHED
-                                 raw materials (never fetches anything
-                                 itself)
-    draft_section(...)        : the ONE new bounded model call, reusing
-                                 this codebase's existing structured-output
-                                 infrastructure (config.get_anthropic_client
-                                 /execute_messages_create, the same pattern
-                                 as analyst._call_package_reasoning and
-                                 evidence_strengthening._call_memory_
-                                 adjudication)
-    assure_section_draft(...) : bounded, ENTIRELY DETERMINISTIC post-draft
-                                 assurance (no second model call -- see its
-                                 docstring)
+The file name and `SECTION_DRAFTING_CONTRACT_VERSION` are kept unchanged so
+historical `section_drafts` rows (migrations 018/019) keep their lineage
+and fingerprints. No function here calls a model or writes anything.
 
 Evidence hierarchy (structural, not just behavioral -- the brief itself
 keeps these tiers in separate, distinctly-named fields so nothing can
@@ -65,7 +61,7 @@ current-bid evidence (tiers 1/2) is never overridden by it -- this module
 does not re-derive that precedence (OM-3A/OM-3B already established it);
 it only carries the ALREADY-adjudicated relationship through unchanged.
 
-No independent retrieval during drafting (instruction 6): this module
+No independent retrieval (instruction 6): this module
 NEVER calls organizational_memory.retrieve(), NEVER re-runs OM-3A/OM-3B,
 NEVER re-runs Proposal Alignment, and NEVER fetches full RFP/proposal
 text. `build_brief()` takes an ALREADY-PERSISTED OM-3B enrichment dict (or
@@ -76,7 +72,7 @@ caller that wants fresh Organizational Memory enrichment must invoke OM-3B
 (tenancy.strengthen_requirement_evidence_for_organization) as its OWN,
 separate, prior step -- this module is strictly a downstream consumer.
 
-Claim discipline (instruction 5): every evidence item the drafting model
+Claim discipline (instruction 5): every evidence item a structured result
 cites must reference a stable, bounded evidence id that already exists in
 the brief (see `_evidence_id_registry`) -- an id the model invents, or
 that isn't in the brief, is dropped by fail-closed reconciliation, never
@@ -86,10 +82,9 @@ the same "bounded, addressed-only-by-short-IDs, never resend raw content"
 discipline, applied here to a single-requirement brief instead of a
 whole-package ledger.
 
-Explicitly NOT built here (PI-3A scope, see docs/current/SYSTEM_STATE.md):
-whole-proposal generation, persistence of a draft, a UI, Word export,
-Ask CapOS integration, Red Team, and any new Organizational Memory
-infrastructure.
+Explicitly NOT here: any proposal-prose generation (retired product
+direction -- must not be reintroduced under another name), Word export,
+new Organizational Memory infrastructure.
 """
 
 from __future__ import annotations
@@ -98,7 +93,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Optional
+from typing import Optional
 
 SECTION_DRAFTING_CONTRACT_VERSION = "pi-3a.1.0.0"
 
@@ -201,8 +196,12 @@ class ResponseConstraints:
 
 
 @dataclass(frozen=True)
-class SectionDraftingBrief:
-    """The ONLY substantive input the drafting call receives. Bounded by
+class SectionResponseBrief:
+    """Response-intelligence brief for ONE requirement (formerly named
+    `SectionDraftingBrief`; that name remains as a transitional alias).
+    Non-generative: requirements, evaluation intent, evidence tiers, gaps,
+    contradictions, human-confirmation needs and response constraints --
+    guidance for a HUMAN writer, never proposal prose. Bounded by
     construction -- every field here is either a small scalar or a small,
     already-filtered list; nothing here is the full RFP, the full
     Proposal Intelligence package, or the full Organizational Memory
@@ -263,6 +262,11 @@ class SectionDraftingBrief:
         }
 
 
+# Transitional alias -- the brief never drove generation after the
+# proposal-generation decommission; new code should use SectionResponseBrief.
+SectionDraftingBrief = SectionResponseBrief
+
+
 def build_brief(
     *,
     organization_id: str,
@@ -278,7 +282,7 @@ def build_brief(
     response_constraints: Optional[ResponseConstraints] = None,
     max_related_requirements: int = 5,
     max_findings: int = 5,
-) -> SectionDraftingBrief:
+) -> SectionResponseBrief:
     """Pure, deterministic assembly -- takes only ALREADY-FETCHED raw
     materials (never fetches, never calls a model, never touches
     Organizational Memory). `persisted_enrichment` must be an
@@ -338,7 +342,7 @@ def build_brief(
         for f in list(proposal_intelligence_findings)[:max_findings]
     )
 
-    return SectionDraftingBrief(
+    return SectionResponseBrief(
         organization_id=organization_id, bid_id=bid_id,
         requirement_id=requirement.get("id"), req_id=req_id,
         category=requirement.get("category"), description=requirement.get("description") or "",
@@ -363,7 +367,8 @@ def build_brief(
 
 def compute_draft_input_fingerprint(brief: SectionDraftingBrief) -> str:
     """A deterministic sha256 fingerprint over exactly what
-    `draft_section()`'s output depends on. The brief itself is already
+    a historical draft's output depended on (and what
+    the current Response Brief contains). The brief itself is already
     PI-3A's own bounded, exhaustive statement of everything the draft can
     see -- requirement identity/text, mandatory flag, related-requirement
     context, evaluation criterion/response guideline, response
@@ -425,7 +430,7 @@ def _evidence_id_registry(brief: SectionDraftingBrief) -> dict:
 class EvidenceItemUsed:
     """One evidence item the draft actually cites -- `evidence_id` MUST
     already exist in the brief's registry (fail-closed enforced by
-    `_reconcile_draft_response`); this dataclass can never be constructed
+    `reconcile_structured_result`); this dataclass can never be constructed
     for an invented id by this module's own public entry point."""
 
     evidence_id: str
@@ -509,156 +514,21 @@ class SectionDraftResult:
         }
 
 
-_DRAFTING_SYSTEM = (
-    "You are a precise, evidence-disciplined proposal writer drafting ONE response to ONE "
-    "procurement requirement. Use ONLY the structured brief given below -- never assume or "
-    "invent proposal content, evidence, client names, project examples, metrics, "
-    "certifications, methodologies, personnel credentials, outcomes, delivery history, "
-    "commitments, references, or compliance claims beyond it. For every evidence item you "
-    "cite, tag it as exactly one of VERIFIED_FACT (from current-bid/procurement evidence), "
-    "ORGANIZATIONAL_KNOWLEDGE (from Organizational Memory -- APPROVED_FIRM_KNOWLEDGE is "
-    "reusable firm fact, SOURCE_MEMORY is lower-trust supporting material and must never be "
-    "written as if it were approved company fact), PROPOSED_APPROACH (a future commitment "
-    "you are proposing, not a claim of past fact), or UNSUPPORTED_GAP (evidence the brief "
-    "does not actually have). Where evidence is only partial, write conservatively. Where a "
-    "fact is genuinely missing, insert an explicit placeholder such as "
-    "'[SME confirmation required: <what is needed>]' instead of inventing content -- a "
-    "placeholder is always better than a fabricated fact. Current-bid/RFP evidence always "
-    "outranks Organizational Memory; if an Organizational Memory item conflicts with current-"
-    "bid evidence or the requirement, surface it as a caveat, never as support."
-)
-
-
-def _drafting_prompt(brief: SectionDraftingBrief, registry: dict) -> str:
-    max_claims = MAX_MATERIAL_CLAIMS
-    req_block = (
-        f"req_id: {brief.req_id}\ncategory: {brief.category or ''} "
-        f"(mandatory={brief.is_mandatory})\ndescription: {brief.description}"
-    )
-    related_block = "\n".join(
-        f"- [{r.req_id}] {r.description}" for r in brief.related_requirements
-    ) or "(none)"
-    eval_block = (
-        f"criterion: {brief.evaluation.criterion_label or 'unknown'} | "
-        f"weight: {brief.evaluation.weight or 'unknown'} | "
-        f"minimum_score: {brief.evaluation.minimum_score or 'none stated'}\n"
-        f"response_guideline: {brief.evaluation.response_guideline or '(none)'}"
-    )
-    bid_evidence_block = (
-        f"assessment_status: {brief.bid_specific_evidence.get('assessment_status') or 'unknown'} | "
-        f"evidence_strength: {brief.bid_specific_evidence.get('evidence_strength') or 'unknown'} | "
-        f"confidence: {brief.bid_specific_evidence.get('confidence') or 'unknown'} | "
-        f"gap_kind: {brief.evidence_gap_kind or 'unknown'}\n"
-        f"explanation: {brief.bid_specific_evidence.get('explanation') or '(none)'}"
-    )
-    registry_lines = []
-    for eid, entry in registry.items():
-        registry_lines.append(f"[{eid}] ({entry['source_kind']}) {entry['label']}")
-        if entry["source_kind"] == SOURCE_KIND_ORGANIZATIONAL_MEMORY:
-            om = entry["detail"]
-            registry_lines.append(
-                f"    trust_class={om.get('memory_class')} relationship={om.get('relationship')} "
-                f"rationale={om.get('rationale')} caveat={om.get('caveat')}")
-    registry_block = "\n".join(registry_lines) or "(no evidence available)"
-    gaps_block = "\n".join(f"- {g}" for g in brief.remaining_gaps) or "(none recorded)"
-    findings_block = "\n".join(
-        f"- [{f.get('finding_type')}] {f.get('title')}: {f.get('message') or ''}"
-        for f in brief.proposal_intelligence_findings
-    ) or "(none)"
-    constraints_block = (
-        f"word_limit: {brief.response_constraints.word_limit or 'not set'} | "
-        f"section: {brief.response_constraints.section_title or 'not set'}\n"
-        f"guidance: {brief.response_constraints.section_guidance or '(none)'}"
-    )
-
-    return f"""REQUIREMENT
-{req_block}
-
-RELATED REQUIREMENTS (context only -- draft for the requirement above, not these)
-{related_block}
-
-EVALUATION CONTEXT
-{eval_block}
-
-BID-SPECIFIC EVIDENCE (tier 2 -- current bid's own already-analyzed evidence)
-{bid_evidence_block}
-
-EVIDENCE REGISTRY (cite ONLY these ids in evidence_items_used -- id in brackets)
-{registry_block}
-
-KNOWN REMAINING GAPS (from persisted Organizational Memory enrichment)
-{gaps_block}
-
-RELATED PROPOSAL INTELLIGENCE FINDINGS
-{findings_block}
-
-RESPONSE CONSTRAINTS
-{constraints_block}
-
-TASK: draft this ONE requirement's proposal response now, following every rule above.
-
-Additionally, identify up to {max_claims} MATERIAL factual claims in your draft (skip boilerplate/
-transition sentences -- only claims a reviewer would actually need to verify) and map each to the
-evidence id(s) from the registry above that support it. A claim with no genuine supporting evidence
-id must be tagged UNSUPPORTED_GAP with an empty evidence_ids list -- never cite an id merely to make
-a claim look supported. A PROPOSED_APPROACH claim is a future commitment, not a historical fact --
-its evidence_ids (if any) are context only, never proof.
-
-Return ONLY valid JSON:
-{{
-  "draft_text": "the drafted proposal prose",
-  "requirements_addressed": ["{brief.req_id}"],
-  "requirements_missing": [],
-  "evaluation_criteria_addressed": ["<criterion label(s) actually reflected, or empty>"],
-  "evidence_items_used": [{{"evidence_id": "<id from the registry above>", "claim_type": "VERIFIED_FACT|ORGANIZATIONAL_KNOWLEDGE|PROPOSED_APPROACH|UNSUPPORTED_GAP", "note": "<=200 chars"}}],
-  "unsupported_or_unresolved_points": ["<explicit gaps still open>"],
-  "contradictions_or_caveats": ["<any Organizational Memory contradiction or caveat surfaced>"],
-  "human_confirmation_required": true|false,
-  "drafting_notes": "<=200 chars or null",
-  "word_count": <integer, actual word count of draft_text>,
-  "material_claims": [{{"claim_id": "C1", "claim_text": "<=300 chars, the claim as stated in the draft", "claim_type": "VERIFIED_FACT|ORGANIZATIONAL_KNOWLEDGE|PROPOSED_APPROACH|UNSUPPORTED_GAP", "evidence_ids": ["<id from the registry above>"], "support_status": "SUPPORTED|PARTIALLY_SUPPORTED|UNSUPPORTED|COMMITMENT"}}]
-}}"""
-
-
-def _call_section_draft(prompt: str, *, bid_id: Optional[int], max_tokens: int = 2000) -> tuple:
-    """The ONE new bounded model call PI-3A adds -- reuses this codebase's
-    existing structured-output infrastructure exactly like
-    evidence_strengthening._call_memory_adjudication /
-    analyst._call_package_reasoning. workflow="section_drafting",
-    operation="draft_section" -- its own telemetry bucket. Never raises
-    past this function; a failure returns (None, reason)."""
-    from config import get_anthropic_client, execute_messages_create
-
-    try:
-        client = get_anthropic_client()
-        response = execute_messages_create(
-            client, model="claude-haiku-4-5-20251001", max_tokens=max_tokens,
-            system=_DRAFTING_SYSTEM, messages=[{"role": "user", "content": prompt}],
-            telemetry_context={"workflow": "section_drafting", "operation": "draft_section", "bid_id": bid_id},
-            retry_number=0,
-        )
-        raw = response.content[0].text.strip()
-    except Exception:
-        return None, "api_error"
-
-    import analyst
-    try:
-        parsed = analyst._parse_json(raw)
-    except Exception:
-        return None, "parse_error"
-    if not isinstance(parsed, dict) or not isinstance(parsed.get("draft_text"), str) or not parsed.get("draft_text").strip():
-        return None, "malformed_response"
-    return parsed, None
-
-
 def _coerce_str_list(value) -> tuple:
     if not isinstance(value, list):
         return ()
     return tuple(v.strip() for v in value if isinstance(v, str) and v.strip())
 
 
-def _reconcile_draft_response(parsed: dict, brief: SectionDraftingBrief) -> SectionDraftResult:
-    """Fail-closed reconciliation -- mirrors analyst._reconcile_package_
+def reconcile_structured_result(parsed: dict, brief: SectionDraftingBrief) -> SectionDraftResult:
+    """PURE, NO MODEL CALL. Retained (formerly `reconcile_structured_result`)
+    as reusable claim/evidence-validation logic: given an already-structured
+    payload (historical persisted draft data, or -- in future CHECK work --
+    claims extracted from a HUMAN-written response), fail-closed validates
+    every cited evidence id and material claim against this brief's
+    registry. It never generates prose.
+
+    Fail-closed reconciliation -- mirrors analyst._reconcile_package_
     findings/evidence_strengthening._adjudicate_candidates' discipline. An
     evidence_items_used entry citing an id outside the brief's registry, or
     an unrecognized claim_type, is DROPPED, never invented or coerced into
@@ -725,7 +595,7 @@ def _permits_verified_fact(entry: dict) -> bool:
 
 def _reconcile_material_claims(raw_claims, registry: dict) -> tuple:
     """Fail-closed reconciliation for PI-3C's claim-level support mapping
-    -- mirrors `_reconcile_draft_response`'s evidence_items_used discipline
+    -- mirrors `reconcile_structured_result`'s evidence_items_used discipline
     exactly, plus the additional per-claim-type hierarchy rules instruction
     7 requires:
 
@@ -806,32 +676,11 @@ def _reconcile_material_claims(raw_claims, registry: dict) -> tuple:
     return tuple(claims)
 
 
-def draft_section(
-    *, brief: SectionDraftingBrief, draft_fn: Optional[Callable] = None,
-) -> SectionDraftResult:
-    """The public drafting entry point. `draft_fn` defaults to
-    `_call_section_draft`; tests inject a fake returning
-    `(parsed_dict_or_None, failure_reason_or_None)` -- the SAME injection
-    pattern as evidence_strengthening's `adjudicate_fn`. Never calls
-    Organizational Memory retrieval, never re-runs analysis -- consumes
-    ONLY `brief` (instruction 6). A total API/parse failure returns a
-    SectionDraftResult with empty draft_text, human_confirmation_required
-    True, and `failure_reason` set -- never fabricated prose."""
-    call = draft_fn or _call_section_draft
-    registry = _evidence_id_registry(brief)
-    prompt = _drafting_prompt(brief, registry)
-    parsed, failure_reason = call(prompt, bid_id=brief.bid_id)
-    # Validated uniformly here, not only inside the default _call_section_
-    # draft -- an injected draft_fn (test double or future alternative
-    # caller) that returns a non-None but malformed dict (no usable
-    # draft_text) must still be treated as a failure, never silently
-    # reconciled into an empty, unflagged "success".
-    if not isinstance(parsed, dict) or not isinstance(parsed.get("draft_text"), str) or not parsed.get("draft_text").strip():
-        return SectionDraftResult(
-            requirement_id=brief.requirement_id, req_id=brief.req_id, draft_text="",
-            human_confirmation_required=True, failure_reason=failure_reason or "malformed_response",
-        )
-    return _reconcile_draft_response(parsed, brief)
+# Public names for the retained, reusable claim/evidence-validation logic
+# (likely CHECK building blocks).
+evidence_id_registry = _evidence_id_registry
+reconcile_material_claims = _reconcile_material_claims
+permits_verified_fact = _permits_verified_fact
 
 
 @dataclass(frozen=True)
@@ -899,7 +748,9 @@ __all__ = [
     "SUPPORT_STATUS_UNSUPPORTED", "SUPPORT_STATUS_COMMITMENT", "SUPPORT_STATUSES",
     "MAX_MATERIAL_CLAIMS",
     "RelatedRequirement", "EvaluationContext", "ResponseConstraints",
-    "SectionDraftingBrief", "build_brief", "compute_draft_input_fingerprint",
-    "EvidenceItemUsed", "MaterialClaim", "SectionDraftResult", "draft_section",
+    "SectionResponseBrief", "SectionDraftingBrief", "build_brief", "compute_draft_input_fingerprint",
+    "evidence_id_registry", "reconcile_material_claims", "permits_verified_fact",
+    "reconcile_structured_result",
+    "EvidenceItemUsed", "MaterialClaim", "SectionDraftResult",
     "DraftAssuranceResult", "assure_section_draft",
 ]

@@ -1,7 +1,8 @@
 """
 Stage 3: BUILD — Proposal Workspace
 Consolidated working environment for proposal construction:
-1. Proposal Outline & Integrated Section Drafter
+1. Proposal Outline & Response Intelligence (requirements, evidence, gaps --
+   Bid Intelligence never writes proposal narrative)
 2. Criteria In-View & Semantic Content Reuse
 3. Services & Deliverables Register (SOW & Pricing)
 4. Working Document Registry & Versions
@@ -15,7 +16,7 @@ import proposal_outline
 from config import api_key_configured
 from components.ui import (metric_card, status_badge, priority_badge, readiness_bar,
                            STATUSES, PRIORITIES, DOC_TYPES)
-from pages.section_drafting_workspace import render_requirement_drafting_workspace
+from pages.section_response_brief import render_requirement_response_brief
 
 
 def _current_access_token_and_org():
@@ -37,10 +38,6 @@ _REQ_STATUS_COLOR = {
 # PI-3D: BUILD section-list/detail intelligence rollup labels (see
 # proposal_outline.summarize_section_intelligence).
 _READINESS_COLOR = {"Strong": "#27AE60", "Moderate": "#C9A96E", "Weak": "#E67E22", "None": "#6E6C66"}
-_DRAFT_STATUS_LABEL = {
-    "NOT_APPLICABLE": "—", "NOT_GENERATED": "Not generated",
-    "PARTIAL": "Partially drafted", "GENERATED": "Drafted",
-}
 
 
 def _render_section_review(review: dict, stale: bool, key_prefix: str = ""):
@@ -165,22 +162,22 @@ def page_build(bid_id: int):
     st.markdown("")
 
     tab_outline, tab_deliv, tab_docs, tab_tasks = st.tabs([
-        "📝 Proposal Outline & Section Drafter",
+        "📝 Proposal Outline & Response Intelligence",
         "📦 Deliverables & SOW Detail",
         "📁 Working Document Registry",
         "☑️ Action Tasks"
     ])
 
     # ══════════════════════════════════════════════════════════════════════════
-    # TAB 1: PROPOSAL OUTLINE & INTEGRATED DRAFTER
+    # TAB 1: PROPOSAL OUTLINE & RESPONSE INTELLIGENCE
     # ══════════════════════════════════════════════════════════════════════════
     with tab_outline:
-        st.markdown("### Proposal Outline & Integrated Section Drafter")
+        st.markdown("### Proposal Outline & Response Intelligence")
         st.markdown(
             '<div style="font-size:.82rem;color:#A9A69D;margin-bottom:.8rem">'
-            'BI can propose a grounded proposal structure from this bid\'s analyzed requirements and '
-            'evaluation criteria, then draft each section\'s response from persisted, evidence-aware '
-            'intelligence — or you can build and draft the outline manually.'
+            'Bid Intelligence helps proposal teams understand what must be addressed, what evidence '
+            'supports the response, and where gaps remain. It can propose a grounded proposal structure '
+            'from this bid\'s analyzed requirements — your team writes the response.'
             '</div>',
             unsafe_allow_html=True
         )
@@ -201,14 +198,14 @@ def page_build(bid_id: int):
         section_req_map = tenancy.get_section_requirement_map_authenticated(_token, bid_id)
 
         # ── Primary/secondary workflow toggle ─────────────────────────────
-        # AI-Assisted Build is the default/primary path once the bid has
+        # Intelligence-Guided Build is the default/primary path once the bid has
         # analyzed requirements to build a structure from; Manual stays one
         # click away and every manual capability below remains functional
         # regardless of which mode is selected.
         default_mode = "ai" if reqs else "manual"
         build_mode = st.session_state.get("build_workflow_mode", default_mode)
         c_m1, c_m2 = st.columns(2)
-        if c_m1.button("🤖 AI-Assisted Build", key="mode_ai", use_container_width=True,
+        if c_m1.button("🧠 Intelligence-Guided Build", key="mode_ai", use_container_width=True,
                        type="primary" if build_mode == "ai" else "secondary"):
             st.session_state["build_workflow_mode"] = "ai"
             st.rerun()
@@ -405,13 +402,13 @@ def page_build(bid_id: int):
                             })
                             st.rerun()
 
-        # Integrated drafting panel for active section
+        # Response-intelligence panel for the active section
         with c_sec_draft:
             active_s_id = st.session_state.get("active_draft_sec")
             active_sec = next((s for s in sections if s["id"] == active_s_id), None) if active_s_id else (sections[0] if sections else None)
 
             if not active_sec:
-                st.markdown('<div class="info-box">Select or add a section to start drafting.</div>', unsafe_allow_html=True)
+                st.markdown('<div class="info-box">Select or add a section to see its response intelligence.</div>', unsafe_allow_html=True)
             else:
                 st.markdown(f"#### [{active_sec.get('section_num','')}] {active_sec['title']}")
                 st.markdown(f'<div style="font-size:.78rem;color:#A9A69D;margin-bottom:.5rem">Owner: <strong>{active_sec.get("owner") or "Unassigned"}</strong> · Target: <strong>{active_sec.get("word_limit") or 500} words</strong></div>', unsafe_allow_html=True)
@@ -439,23 +436,14 @@ def page_build(bid_id: int):
                                 _token, bid_id, active_sec["id"], mapped_req_ids)
                             persisted_req_ids = mapped_req_ids
                         except tenancy.SectionMappingUnavailableError as e:
-                            st.caption(f"⚠ {e} Drafting below still uses all bid requirements meanwhile.")
+                            st.caption(f"⚠ {e} The response brief below still uses all bid requirements meanwhile.")
 
-                # ── PI-3D: section intelligence summary (instruction 5) ──────
-                # Pure rollup (proposal_outline.summarize_section_intelligence)
-                # over the bulk context fetched once above plus a bounded,
-                # section-scoped draft-existence read -- never a new evidence
-                # model, never a per-requirement Anthropic/OM call.
-                try:
-                    draft_exists_by_req_id = tenancy.get_draft_existence_map_for_organization(
-                        bid_id, _org_id, mapped_reqs) if mapped_reqs else {}
-                except tenancy.AccessDeniedError:
-                    draft_exists_by_req_id = {}
+                # ── Section intelligence summary (pure rollup over the bulk
+                # context fetched once above -- never a model/OM call).
                 sec_summary = proposal_outline.summarize_section_intelligence(
                     mapped_req_ids,
                     build_ctx.get("criterion_by_req_id") if build_ctx else None,
                     build_ctx.get("assessment_by_req_id") if build_ctx else None,
-                    draft_exists_by_req_id,
                 )
                 readiness_c = _READINESS_COLOR.get(sec_summary["evidence_readiness"], "#6E6C66")
                 st.markdown(
@@ -464,21 +452,17 @@ def page_build(bid_id: int):
                     f'<strong style="color:#EDEAE3">{sec_summary["requirement_count"]}</strong> requirements · '
                     f'<strong style="color:#EDEAE3">{sec_summary["evaluation_criteria_count"]}</strong> evaluation criteria · '
                     f'Evidence: <strong style="color:{readiness_c}">{sec_summary["evidence_readiness"]}</strong> · '
-                    f'<strong style="color:#EDEAE3">{sec_summary["unresolved_gap_count"]}</strong> unresolved · '
-                    f'Draft: <strong style="color:#EDEAE3">{_DRAFT_STATUS_LABEL.get(sec_summary["draft_status"], sec_summary["draft_status"])}</strong>'
+                    f'<strong style="color:#EDEAE3">{sec_summary["unresolved_gap_count"]}</strong> unresolved'
                     f'</div>', unsafe_allow_html=True)
 
-                # ── PI-3D: AI-assisted drafting, made prominent (instructions
-                # 6/7) -- reuses PI-3C's render_requirement_drafting_workspace
-                # verbatim, one requirement at a time (never a whole-section or
-                # whole-proposal call). Was previously buried in a collapsed,
-                # third-level nested expander below a competing, non-evidence-
-                # aware "quick draft" button -- this is now the primary,
-                # expanded-by-default AI drafting surface for this section.
-                st.markdown("##### 🧠 Draft with BI — Evidence-Aware Section Drafting")
+                # ── Response Brief (non-generative) -- per requirement: what the
+                # evaluator asks, evidence available, gaps, contradictions,
+                # human-confirmation needs, constraints. Bid Intelligence no
+                # longer generates proposal narrative; there is no draft action.
+                st.markdown("##### 🧭 Response Brief — Section Requirements, Evidence & Gaps")
                 workspace_pool = mapped_reqs if mapped_reqs else reqs
                 if not workspace_pool:
-                    st.caption("Map requirements to this section above to enable evidence-aware drafting.")
+                    st.caption("Map requirements to this section above to see their response brief.")
                 else:
                     ws_options = {
                         f"[{r.get('req_id','—')}] {r.get('description','')[:70]}": r
@@ -487,7 +471,7 @@ def page_build(bid_id: int):
                     ws_choice = st.selectbox(
                         "Requirement:", list(ws_options.keys()), key=f"ws_req_pick_{active_sec['id']}")
                     if ws_choice:
-                        render_requirement_drafting_workspace(
+                        render_requirement_response_brief(
                             bid_id, ws_options[ws_choice], outline_section=active_sec)
 
                 # Semantic Content Reuse
@@ -500,10 +484,9 @@ def page_build(bid_id: int):
                     else:
                         st.markdown('<div style="font-size:.75rem;color:#6E6C66">No library items found. Add items to the Content Library.</div>', unsafe_allow_html=True)
 
-                # ── Manual section content (instruction 2: manual control
-                # preserved) -- direct authoring/editing, independent of the
-                # AI drafting workspace above (never auto-populated from it).
-                st.markdown("##### ✍️ Manual Section Content")
+                # ── Section content -- written by the human proposal team
+                # (never auto-populated by Bid Intelligence).
+                st.markdown("##### ✍️ Section Content (written by your team)")
                 current_draft = active_sec.get("notes") or ""
                 edited_draft = st.text_area("Section Content", value=current_draft, height=260, key=f"txt_draft_{active_sec['id']}")
 
@@ -677,7 +660,7 @@ def page_build(bid_id: int):
     # ── NEXT STAGE CTA ────────────────────────────────────────────────────────
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
     c1, c2 = st.columns([3, 1])
-    c1.markdown('<div style="color:#A9A69D;font-size:.85rem;padding-top:.4rem">Draft complete? Review compliance and proposal alignment.</div>', unsafe_allow_html=True)
+    c1.markdown('<div style="color:#A9A69D;font-size:.85rem;padding-top:.4rem">Sections written? Review compliance and proposal alignment in CHECK.</div>', unsafe_allow_html=True)
     if c2.button("Proceed to CHECK →", use_container_width=True, type="primary"):
         st.session_state.page = "stage_check"
         st.rerun()

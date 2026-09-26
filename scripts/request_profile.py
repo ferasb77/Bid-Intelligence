@@ -197,11 +197,6 @@ def _analyst_simple_operations():
         ("bid_no_bid_score", lambda: analyst.bid_no_bid_score(bid_info, req, rfp_text)),
         ("past_proposal_analysis", lambda: analyst.analyze_past_proposal(
             "Past proposal text with reusable capability statements.", bid_info)),
-        ("draft_proposal_section", lambda: analyst.draft_proposal_section(
-            "Technical Approach", req,
-            [{"category": "Technical", "title": "Delivery methodology",
-              "content": "Reusable content describing our standard delivery approach."}],
-            bid_info)),
         ("submission_readiness_check", lambda: analyst.submission_readiness_check(
             bid_info, req,
             [{"name": "Technical Proposal.pdf", "mandatory": True}],

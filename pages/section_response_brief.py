@@ -1,30 +1,19 @@
 """
-pages/section_drafting_workspace.py -- PI-3C: Section Drafting Workspace.
+pages/section_response_brief.py -- BUILD Response Brief (formerly the
+PI-3C "Section Drafting Workspace", pages/section_drafting_workspace.py).
 
-The first user-facing proposal-writing experience in Bid Intelligence.
-Renders, for ONE requirement, the flow this phase's own authorization
-names: requirement -> evaluation intent -> evidence -> gaps -> grounded
-draft -> assurance -> evidence behind material claims.
+PRODUCT BOUNDARY: Bid Intelligence no longer generates proposal narrative.
+This panel tells the HUMAN writer, for ONE requirement: what the evaluator
+asks, what evidence exists and how trustworthy it is, what is still
+missing, contradictions/caveats, what needs SME/human confirmation, and
+which response constraints apply. It never writes the response.
 
-NOT a standalone page/global-nav entry -- reused as a rendering function
-from pages/stage_build.py's existing BUILD/Section Analyzer experience
-(the smallest coherent integration point: a user already viewing an
-outline section's mapped requirements can open this workspace for one of
-them, without navigating to a disconnected screen).
-
-Token/execution discipline (instruction 12): rendering this workspace
-calls ONLY tenancy.get_section_draft_status_for_organization, a read-only
-function that never calls Anthropic, never calls Organizational Memory
-retrieval, and never re-runs Proposal Alignment/Fast Analysis -- every
-field shown here comes from already-persisted, already-bounded
-intelligence. Generating or refreshing a draft is an explicit user action
-(a button click) that calls tenancy.get_or_generate_section_draft, which
-may make a real drafting call only when no fresh persisted draft already
-exists for the current intelligence state.
-
-Explicitly NOT built here (PI-3C scope, see docs/current/SYSTEM_STATE.md):
-whole-proposal generation, a collaborative editor (the draft is read-only
-this phase), visual version diffing, Word export, Ask CapOS, Red Team.
+Rendering calls ONLY tenancy.get_section_draft_status_for_organization
+(read-only: never calls a model, never calls Organizational Memory
+retrieval, never writes). There is no generate/refine/regenerate action.
+Historical AI drafts persisted before the decommission (section_drafts,
+migrations 018/019) are shown read-only in a collapsed, explicitly-labelled
+"retired capability" expander so lineage is never hidden or destroyed.
 """
 import streamlit as st
 
@@ -128,7 +117,7 @@ def _render_draft_result(result: dict, assurance: dict | None, is_stale: bool, k
             ), unsafe_allow_html=True)
 
     st.text_area(
-        "Generated draft (read-only — see instruction 11: no editor in this phase)",
+        "Historical AI draft text (read-only record)",
         value=result.get("draft_text", ""), height=240,
         key=f"draft_view_{key_suffix}", disabled=True)
 
@@ -171,7 +160,7 @@ def _render_draft_result(result: dict, assurance: dict | None, is_stale: bool, k
             "claim_mappings.sql).")
 
 
-def render_requirement_drafting_workspace(bid_id: int, requirement: dict, outline_section: dict | None = None):
+def render_requirement_response_brief(bid_id: int, requirement: dict, outline_section: dict | None = None):
     """The public entry point, called from pages/stage_build.py for ONE
     selected requirement. `requirement` must be a `requirements` table row
     (needs at least `id`/`req_id`); `outline_section` is the currently
@@ -179,7 +168,7 @@ def render_requirement_drafting_workspace(bid_id: int, requirement: dict, outlin
     title/notes context (never fetched by this module itself)."""
     requirement_id = requirement.get("id")
     if not requirement_id:
-        st.caption("This requirement has no saved id yet -- save it before opening its drafting workspace.")
+        st.caption("This requirement has no saved id yet -- save it before opening its response brief.")
         return
 
     _token, org_id, user_id = _current_access_and_org()
@@ -251,52 +240,41 @@ def render_requirement_drafting_workspace(bid_id: int, requirement: dict, outlin
             for g in brief["remaining_gaps"]:
                 st.markdown(f"- {g}")
 
-    # ── Draft state + generation ─────────────────────────────────────────
-    st.markdown("##### ✍️ Section Draft")
-    latest = status.get("latest_draft")
-    is_stale = status.get("is_stale")
+    # ── Human confirmation / caveats / constraints ───────────────────────
+    with st.expander("🧑‍⚖️ What must a human confirm, and what constraints apply?", expanded=True):
+        needs_confirmation = bool(
+            brief.get("requires_human_confirmation_from_enrichment")
+            or brief.get("evidence_gap_kind") in ("MISSING", "CONFLICTED")
+            or brief.get("remaining_gaps")
+            or any(e.get("relationship") == "CONTRADICTION" for e in (brief.get("organizational_evidence") or [])))
+        if needs_confirmation:
+            st.markdown("🟡 **SME / human confirmation required** before any claim on this requirement is made.")
+        contradictions = [e for e in (brief.get("organizational_evidence") or []) if e.get("relationship") == "CONTRADICTION"]
+        for c in contradictions:
+            st.markdown(f"- ⚠ Contradiction: **{c.get('title','')}** — {c.get('caveat') or c.get('rationale') or ''}")
+        for f in brief.get("proposal_intelligence_findings") or []:
+            st.markdown(f"- [{f.get('finding_type')}] {f.get('title') or ''}: {f.get('message') or ''}")
+        rc = brief.get("response_constraints") or {}
+        parts = []
+        if rc.get("word_limit"):
+            parts.append(f"Word limit: **{rc['word_limit']}**")
+        if rc.get("section_title"):
+            parts.append(f"Section: **{rc['section_title']}**")
+        st.markdown(" · ".join(parts) if parts else "No explicit response constraints recorded.")
+        st.caption("Bid Intelligence does not write the response — use this brief to guide your team's writing, "
+                   "then assess the written section with the Section Analyzer or in CHECK.")
 
-    if latest is None:
-        st.info("No draft generated yet for the current intelligence state.")
-        gen_label = "✨ Generate Section Draft"
-    elif is_stale:
-        st.warning(
-            "🟠 Stale — the intelligence behind this requirement has changed since this draft "
-            "was generated (a prior immutable version, still viewable below).")
-        gen_label = "🔄 Generate Updated Draft"
-    else:
-        st.success("🟢 This draft is current with the latest intelligence.")
-        gen_label = "🔄 Generate New Version"
-
-    if st.button(gen_label, key=f"gen_draft_{requirement_id}", type="primary"):
-        with st.spinner("Drafting section against buyer requirements…"):
-            try:
-                tenancy.get_or_generate_section_draft(
-                    bid_id, org_id, requirement_id, outline_section=outline_section,
-                    created_by_user_id=user_id)
-                st.rerun()
-            except tenancy.AccessDeniedError as e:
-                st.error(f"Not authorized: {e}")
-            except Exception as e:
-                st.error(f"Draft generation failed: {e}")
-
-    if latest is not None:
-        _render_draft_result(latest, status.get("latest_draft_assurance"), is_stale, key_suffix=f"latest_{requirement_id}")
-
-    # ── Draft history (instruction 10 -- minimal, no visual diffing) ─────
+    # ── Historical AI drafts (retired capability; read-only) ─────────────
     history = status.get("history") or []
-    if len(history) > 1:
-        with st.expander(f"📜 Draft history ({len(history)} version{'s' if len(history) != 1 else ''})", expanded=False):
-            labels = [
-                f"v{len(history) - i} · {h['created_at'][:19].replace('T', ' ')}"
-                + (" (latest)" if i == 0 else "")
-                for i, h in enumerate(history)
-            ]
-            choice = st.selectbox(
-                "View an earlier version", labels, index=0, key=f"draft_history_pick_{requirement_id}")
+    if history:
+        with st.expander(f"🗄 Historical AI draft records — retired capability ({len(history)})", expanded=False):
+            st.caption("Created before Bid Intelligence stopped generating proposal narrative. Kept read-only "
+                       "for lineage; not a recommended response and never regenerated.")
+            labels = [f"v{len(history) - i} · {(h.get('created_at') or '')[:19].replace('T', ' ')}"
+                      for i, h in enumerate(history)]
+            choice = st.selectbox("Record", labels, index=0, key=f"draft_history_pick_{requirement_id}")
             chosen = history[labels.index(choice)]
-            if labels.index(choice) != 0:
-                st.caption("Viewing a prior, superseded version — read-only, never regenerated automatically.")
-                _render_draft_result(
-                    chosen["result"], chosen["assurance"], is_stale=False,
-                    key_suffix=f"hist_{requirement_id}_{chosen['id']}")
+            _render_draft_result(
+                chosen["result"], chosen["assurance"],
+                is_stale=(labels.index(choice) == 0 and bool(status.get("is_stale"))),
+                key_suffix=f"hist_{requirement_id}_{chosen.get('id')}")

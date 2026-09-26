@@ -80,12 +80,6 @@
       "informational_total_request_bytes": 1774, "source": "analyst.PROPOSAL_ANALYZER_SYSTEM"
     },
     {
-      "workflow": "analyst", "operation": "draft_proposal_section",
-      "static_fields": {"system_bytes": 336}, "baseline_static_bytes": 336,
-      "warning_threshold_bytes": 404, "hard_regression_threshold_bytes": 504,
-      "informational_total_request_bytes": 1399, "source": "analyst.DRAFTER_SYSTEM"
-    },
-    {
       "workflow": "analyst", "operation": "submission_readiness_check",
       "static_fields": {"system_bytes": 227}, "baseline_static_bytes": 227,
       "warning_threshold_bytes": 273, "hard_regression_threshold_bytes": 341,

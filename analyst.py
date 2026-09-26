@@ -6,7 +6,7 @@ Provides decision-oriented intelligence across the bid lifecycle:
   3. clarification_qs          — generate strategic, RFP-derived clarification questions
   4. bid_no_bid                — multi-dimensional pursuit evaluation with blocker detection
   5. past_proposal_analyzer    — extract reusable modular blocks and team capabilities
-  6. section_drafter           — evidence-based proposal section drafting
+  6. (retired)                 — proposal section drafting removed (no AI-written narrative)
   7. submission_readiness_check— final gate check before proposal submission
   8. addendum_analyzer         — scan amendments and supplementary documents for changes
   9. proposal_alignment        — two-call comprehensive proposal alignment audit
@@ -483,56 +483,9 @@ Extract all reusable proposal content blocks and key personnel profiles. Return 
     return result
 
 
-# ── 6. Proposal Section Drafter ───────────────────────────────────────────────
-DRAFTER_SYSTEM = """You are a senior proposal writer. Write proposal sections that are specific, evidence-based,
-persuasive, and directly responsive to stated evaluation criteria.
-Every paragraph must demonstrate verified capability or directly answer a requirement.
-Write in professional first-person plural (we / our) from the bidding firm's perspective."""
-
-def draft_proposal_section(section_title: str, requirements: list,
-                            library_items: list, bid_context: dict,
-                            firm_context: str = "", word_limit: int = 500) -> dict:
-    """Draft a tailored proposal section incorporating relevant requirements and library content."""
-    reqs_text = "\n".join(
-        f"- [{r.get('req_id','')}] {r.get('description','')} "
-        f"(Evidence required: {r.get('evidence') or 'not specified'})"
-        for r in requirements
-    )
-    lib_text = "\n\n".join(
-        f"[{item.get('category','')}] {item.get('title','')}\n{item.get('content','')[:600]}"
-        for item in library_items[:6]
-    ) if library_items else "No library content supplied — draft tailored response based on requirements and context."
-
-    prompt = f"""PROPOSAL SECTION TO DRAFT: {section_title}
-TARGET WORD COUNT: approximately {word_limit} words
-
-BID CONTEXT:
-Client: {bid_context.get('client','')}
-Opportunity: {bid_context.get('title','')}
-Client Context: {bid_context.get('notes','')[:300]}
-
-REQUIREMENTS THIS SECTION MUST ADDRESS:
-{reqs_text}
-
-AVAILABLE REUSABLE ASSETS & EVIDENCE:
-{lib_text}
-
-BIDDER FIRM CONTEXT:
-{firm_context[:800] if firm_context else 'Professional services firm specializing in strategic advisory, program delivery, and transformation.'}
-
-Draft the section now. Return ONLY valid JSON:
-{{
-  "section_title": "{section_title}",
-  "draft": "Full drafted section text formatted into cohesive paragraphs with clear headings if helpful.",
-  "requirements_addressed": ["list of req_ids explicitly addressed"],
-  "requirements_missing": ["req_ids requiring further factual evidence"],
-  "word_count": <approximate word count>,
-  "strength_rating": <integer 1-5 where 5 is publication-ready>,
-  "improvement_notes": "Specific suggestions to strengthen score against evaluation criteria"
-}}"""
-
-    raw = _call(DRAFTER_SYSTEM, prompt, max_tokens=3000, operation="draft_proposal_section")
-    return _parse_json(raw)
+# ── 6. (retired) Proposal Section Drafter ─────────────────────────────────────
+# draft_proposal_section/DRAFTER_SYSTEM were removed: Bid Intelligence no
+# longer generates proposal narrative.
 
 
 # ── 7. Final Submission Readiness Check ───────────────────────────────────────

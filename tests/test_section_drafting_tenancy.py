@@ -1,15 +1,17 @@
 """
 tests/test_section_drafting_tenancy.py
 
-PI-3A tenancy wiring (tenancy.draft_section_for_organization) -- proves the
-architecture-discipline claims that matter most at the I/O boundary:
-brief assembly never triggers Organizational Memory retrieval or a fresh
-OM-3A/OM-3B computation, never re-runs Proposal Alignment/Fast Analysis,
-and organization/bid isolation holds. No live database, no live provider
-call -- the drafting model call is always monkeypatched at
-section_drafting._call_memory... er, section_drafting's own
-_call_section_draft is never reached because draft_fn defaults are bypassed
-via a controlled fake.
+Section Response Brief tenancy wiring (tenancy.get_section_draft_status_for_
+organization) -- proves the architecture-discipline claims that matter most
+at the I/O boundary: brief assembly never triggers Organizational Memory
+retrieval or a fresh OM-3A/OM-3B computation, never re-runs Proposal
+Alignment/Fast Analysis, organization/bid isolation holds, and the function
+is read-only end to end. No live database, no live provider call, and no
+model call anywhere -- there is no generation model call to monkeypatch any
+more (`tenancy.draft_section_for_organization` and its section_drafting._
+call_section_draft path were DECOMMISSIONED along with the rest of active
+AI proposal generation; only the read-only status/brief-assembly path this
+file now exercises remains).
 """
 from unittest.mock import patch
 
@@ -19,7 +21,6 @@ import database as db
 import evidence_strengthening as es
 import organizational_memory as om
 import section_analyzer as sa
-import section_drafting as sd
 import tenancy
 
 
@@ -32,17 +33,6 @@ def _requirement(req_id="R-1", category="Mandatory", requirement_id=501):
             "source_refs": []}
 
 
-def _om_row(item_id, memory_class=om.MemoryClass.APPROVED_FIRM_KNOWLEDGE.value):
-    return {
-        "id": item_id, "organization_id": ORG_A, "memory_class": memory_class,
-        "title": "x", "content": "x", "content_hash": "h",
-        "source_file_id": None, "source_content_hash": "sch", "source_filename": None,
-        "source_package_path": None, "source_locator": None, "source_bid_id": None,
-        "approved_by_user_id": None, "approved_at": None, "derived_from_item_id": None,
-        "source_document_id": None, "metadata": {},
-    }
-
-
 class _Harness:
     def __init__(self):
         self.requirement = _requirement()
@@ -51,11 +41,11 @@ class _Harness:
         self.assessment_rows = []
         self.finding_rows = []
         self.enrichment_history = []
+        self.section_drafts_history = []
         self.om_full_reads = 0
         self.om_identity_reads = 0
         self.om_retrieve_calls = 0
         self.strengthen_calls = 0
-        self.draft_calls = 0
 
     def _list_om_items(self, organization_id, memory_class=None):
         self.om_full_reads += 1
@@ -64,10 +54,6 @@ class _Harness:
     def _list_om_identities(self, organization_id, memory_class=None):
         self.om_identity_reads += 1
         return []
-
-    def _fake_draft_fn(self, prompt, *, bid_id, max_tokens=2000):
-        self.draft_calls += 1
-        return ({"draft_text": "drafted text", "requirements_addressed": [self.requirement["req_id"]]}, None)
 
     def patches(self):
         return [
@@ -80,22 +66,22 @@ class _Harness:
             patch.object(db, "get_proposal_intelligence_findings", side_effect=lambda run_id: self.finding_rows),
             patch.object(db, "get_requirement_evidence_enrichments",
                          side_effect=lambda bid_id, req_id: self.enrichment_history),
+            patch.object(db, "get_section_drafts", side_effect=lambda bid_id, req_id: self.section_drafts_history),
             patch.object(db, "list_organizational_memory_items", side_effect=self._list_om_items),
             patch.object(db, "list_organizational_memory_item_identities", side_effect=self._list_om_identities),
             patch.object(sa, "procurement_basis", return_value={"raw_snapshot": None}),
             patch.object(om, "retrieve", side_effect=self._blow_up_retrieve),
             patch.object(es, "strengthen_requirement_evidence", side_effect=self._blow_up_strengthen),
-            patch.object(sd, "_call_section_draft", side_effect=self._fake_draft_fn),
         ]
 
     def _blow_up_retrieve(self, *a, **kw):
         self.om_retrieve_calls += 1
-        raise AssertionError("organizational_memory.retrieve() must never be called during drafting")
+        raise AssertionError("organizational_memory.retrieve() must never be called assembling a response brief")
 
     def _blow_up_strengthen(self, *a, **kw):
         self.strengthen_calls += 1
         raise AssertionError("evidence_strengthening.strengthen_requirement_evidence() must never be "
-                              "called during drafting -- OM-3A/OM-3B must not be re-run")
+                              "called assembling a response brief -- OM-3A/OM-3B must not be re-run")
 
     def __enter__(self):
         self._patchers = self.patches()
@@ -109,37 +95,32 @@ class _Harness:
 
 
 def _call(h: _Harness, bid_id=1, requirement_id=501):
-    return tenancy.draft_section_for_organization(
+    return tenancy.get_section_draft_status_for_organization(
         bid_id=bid_id, organization_id=ORG_A, requirement_id=requirement_id)
 
 
 class TestArchitectureDisciplineAtWiring:
 
-    def test_drafting_never_calls_organizational_memory_retrieve(self):
+    def test_brief_assembly_never_calls_organizational_memory_retrieve(self):
         with _Harness() as h:
             _call(h)
             assert h.om_retrieve_calls == 0
 
-    def test_drafting_never_reruns_om3a_om3b(self):
+    def test_brief_assembly_never_reruns_om3a_om3b(self):
         with _Harness() as h:
             _call(h)
             assert h.strengthen_calls == 0
 
-    def test_drafting_reads_only_persisted_enrichment_never_full_om_content(self):
-        """draft_section_for_organization reads
+    def test_brief_assembly_reads_only_persisted_enrichment_never_full_om_content(self):
+        """The status/brief-assembly path reads
         database.get_requirement_evidence_enrichments (a persisted-row
         READ) but must never call list_organizational_memory_items or
         list_organizational_memory_item_identities -- those are OM-3A/
-        OM-3B's own concerns, not drafting's."""
+        OM-3B's own concerns, never the response brief's."""
         with _Harness() as h:
             _call(h)
             assert h.om_full_reads == 0
             assert h.om_identity_reads == 0
-
-    def test_drafting_calls_the_model_exactly_once(self):
-        with _Harness() as h:
-            _call(h)
-            assert h.draft_calls == 1
 
     def test_requires_bid_access_before_any_read(self):
         with _Harness() as h:
@@ -155,22 +136,26 @@ class TestArchitectureDisciplineAtWiring:
 
 class TestResultShape:
 
-    def test_returns_brief_result_and_assurance(self):
+    def test_returns_brief_and_status_fields_never_generated_prose(self):
         with _Harness() as h:
             payload = _call(h)
-        assert set(payload.keys()) == {"brief", "result", "assurance"}
-        assert payload["result"]["draft_text"] == "drafted text"
+        assert {"brief", "current_fingerprint", "latest_draft", "is_current",
+                "is_stale", "history_count", "history"} <= set(payload.keys())
         assert payload["brief"]["req_id"] == "R-1"
-        assert "passed" in payload["assurance"]
+        # No draft exists in this harness -- nothing generated, nothing to show.
+        assert payload["latest_draft"] is None
+        assert payload["history_count"] == 0
 
     def test_no_persistence_write_function_is_called(self):
-        """PI-3A is compute-and-return only this phase -- no draft
-        persistence table/RPC exists, so nothing beyond the pre-existing
-        OM-3B write path could even be invoked; confirm that path isn't
-        touched either."""
-        with _Harness() as h, patch.object(db, "get_or_create_requirement_evidence_enrichment") as mock_write:
+        """The status/brief path is read-only end to end -- no generation
+        entry point exists any more, so confirm the historical persistence
+        write path is never touched either."""
+        with _Harness() as h, \
+             patch.object(db, "get_or_create_requirement_evidence_enrichment") as mock_enrich_write:
             _call(h)
-            mock_write.assert_not_called()
+            mock_enrich_write.assert_not_called()
+        assert not hasattr(db, "get_or_create_section_draft"), (
+            "the retired drafting write path must not be reintroduced")
 
     def test_related_requirements_exclude_self_and_other_categories(self):
         with _Harness() as h:

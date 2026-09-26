@@ -1973,7 +1973,7 @@ def _enrichment_row_to_dict(row: dict) -> dict:
 
 def _requirement_evidence_context(bid_id: int, req_id: str) -> tuple:
     """Shared by OM-3B (strengthen_requirement_evidence_for_organization)
-    and PI-3A (draft_section_for_organization): the requirement's latest
+    and the Section Response Brief (_assemble_section_drafting_brief): the requirement's latest
     usable Proposal Intelligence assessment row for `req_id` (or None) and
     every finding from that SAME run related to `req_id`. Never triggers a
     new Proposal Intelligence run -- read-only against the latest
@@ -2318,86 +2318,29 @@ def derive_proposal_outline_for_organization(bid_id: int, organization_id: str) 
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Proposal Intelligence (PI-3A: evidence-aware section drafting)
+# Section Response Intelligence (formerly PI-3A/3B/3C section drafting)
+#
+# PRODUCT BOUNDARY: Bid Intelligence no longer generates proposal narrative.
+# draft_section_for_organization (PI-3A) and get_or_generate_section_draft
+# (PI-3B) -- the only application paths that invoked the drafting model --
+# were DELETED. What remains is read-only: Response Brief assembly and
+# historical section_drafts reads. Nothing here calls a model or writes.
 # ═══════════════════════════════════════════════════════════════════════════
-
-def draft_section_for_organization(
-    bid_id: int, organization_id: str, requirement_id: int,
-    outline_section: dict | None = None,
-    max_related_requirements: int = 5, max_findings: int = 5,
-) -> dict:
-    """PI-3A: evidence-aware section drafting for ONE requirement, wired to
-    real, already-persisted intelligence. Verifies bid ownership FIRST.
-
-    Assembles a bounded section_drafting.SectionDraftingBrief from
-    EXISTING, ALREADY-COMPUTED intelligence only:
-      - the requirement's own canonical row (database.get_requirements_by_ids,
-        bid-scoped);
-      - sibling requirements sharing the same category, context only
-        (database.get_requirements), capped at max_related_requirements;
-      - the requirement's latest Proposal Intelligence assessment/findings
-        (tier 2), via the SAME _requirement_evidence_context/
-        _requirement_evidence_state_from_assessment helpers OM-3B uses --
-        never re-run here;
-      - Fast Analysis's evaluation_criteria/response_guidelines, via
-        section_analyzer.procurement_basis plus the SAME matching
-        functions section_analyzer.build_section_context already uses
-        (section_analyzer._match_evaluation_criterion/
-        _matching_response_guideline -- reused, not reimplemented; never
-        re-runs Fast Analysis itself, only reads an already-persisted raw
-        snapshot exactly like section_analyzer.procurement_basis always
-        has);
-      - the requirement's LATEST ALREADY-PERSISTED OM-3B enrichment
-        (database.get_requirement_evidence_enrichments) -- this function
-        NEVER triggers a fresh OM-3A/OM-3B computation. A caller that
-        wants fresh Organizational Memory enrichment first must call
-        strengthen_requirement_evidence_for_organization separately, as
-        its own prior step ("analyze once, persist, draft from persisted
-        intelligence" -- instruction 6);
-      - `outline_section`, ONLY when the caller supplies one (an
-        outline_sections row/dict) for word_limit/title/notes -- never
-        fetched by this function itself, so this has no dependency on
-        migration 013's (still unapplied) outline_section_requirements
-        mapping table.
-
-    Then calls section_drafting.draft_section() (the ONE new bounded model
-    call) and section_drafting.assure_section_draft() (bounded,
-    deterministic, no second model call). Returns
-    {"brief", "result", "assurance"} as plain dicts.
-
-    Read-only end to end: writes nothing anywhere, mutates no
-    Organizational Memory item, creates no requirement_evidence_
-    enrichments row, persists no draft -- PI-3A is compute-and-return only
-    (see docs/current/SYSTEM_STATE.md)."""
-    require_bid_access(bid_id, organization_id)
-    if not organization_id:
-        raise ValueError("draft_section_for_organization requires an explicit organization_id")
-
-    import section_drafting as sd
-
-    brief = _assemble_section_drafting_brief(
-        bid_id, organization_id, requirement_id, outline_section,
-        max_related_requirements, max_findings,
-        not_found_caller="draft_section_for_organization",
-    )
-    result = sd.draft_section(brief=brief)
-    assurance = sd.assure_section_draft(brief, result)
-
-    return {"brief": brief.to_dict(), "result": result.to_dict(), "assurance": assurance.to_dict()}
-
 
 def _assemble_section_drafting_brief(
     bid_id: int, organization_id: str, requirement_id: int,
     outline_section: dict | None, max_related_requirements: int, max_findings: int,
     *, not_found_caller: str,
 ):
-    """Shared by draft_section_for_organization (PI-3A, ephemeral) and
-    get_or_generate_section_draft (PI-3B, persisted) -- assembles the SAME
-    section_drafting.SectionDraftingBrief the same way in both cases, so
-    persistence never changes PI-3A's own drafting semantics. See
-    draft_section_for_organization's docstring for exactly which
-    already-computed intelligence sources this reads (never re-runs
-    anything)."""
+    """Assembles the non-generative section_drafting.SectionResponseBrief
+    for ONE requirement from EXISTING, ALREADY-COMPUTED intelligence only:
+    the requirement's canonical row; same-category sibling requirements
+    (context); its latest Proposal Intelligence assessment/findings (via
+    the SAME helpers OM-3B uses); Fast Analysis evaluation criteria/
+    response guidelines (section_analyzer matchers, advisory-only); its
+    LATEST ALREADY-PERSISTED OM-3B enrichment (never triggers OM
+    retrieval); and `outline_section` word_limit/title/notes when given.
+    Never calls a model, never writes."""
     import section_drafting as sd
 
     reqs = db.get_requirements_by_ids(bid_id, [requirement_id])
@@ -2485,131 +2428,16 @@ def _section_draft_row_to_dict(row: dict) -> dict:
     }
 
 
-def get_or_generate_section_draft(
-    bid_id: int, organization_id: str, requirement_id: int,
-    outline_section: dict | None = None,
-    max_related_requirements: int = 5, max_findings: int = 5,
-    created_by_user_id: str | None = None,
-) -> dict:
-    """PI-3B: "analyze once, draft once, persist, reuse" -- the durable
-    counterpart to draft_section_for_organization (PI-3A), wired to real
-    persistence (migrations/018_section_drafts.sql). Verifies bid
-    ownership FIRST.
-
-    Assembles the SAME SectionDraftingBrief draft_section_for_organization
-    would (via the shared `_assemble_section_drafting_brief` helper --
-    PI-3A's own drafting semantics are never altered to implement
-    persistence), computes section_drafting.compute_draft_input_
-    fingerprint() over it, and searches this requirement's persisted
-    history (database.get_section_drafts, bid-scoped) for a row matching
-    that EXACT fingerprint.
-
-    A match is returned directly -- no drafting model call, no
-    Organizational Memory retrieval, no RFP reread, no requirement
-    reanalysis (the brief-assembly step above already never does any of
-    those either; a cache hit doesn't even need the freshly-assembled
-    brief's evidence content, only its fingerprint, though this function
-    does still assemble it to compute that fingerprint the same way OM-3B
-    does).
-
-    No match means the requirement text, its evaluation context, its
-    current-bid evidence state, its persisted Organizational Memory
-    enrichment, or a related Proposal Intelligence finding has materially
-    changed (or this requirement has never been drafted) -- PI-3A's
-    drafting call and assurance check run for real, and the CANONICAL
-    result is then persisted via database.get_or_create_section_draft
-    (concurrency-safe; a race against another caller computing the SAME
-    fingerprint returns the winner's row, never a duplicate).
-
-    Failure safety: a FAILED drafting attempt (result.failure_reason set
-    -- no usable draft_text) is NEVER persisted; the ephemeral failed
-    result is returned as-is so the caller sees the failure and nothing
-    durable is written. An assurance FAILURE (assurance.passed is False --
-    e.g. a word-limit overage or an unreflected evaluation criterion) is
-    NOT the same as a failed draft -- the draft itself is still a valid,
-    non-fabricated structured result, so it IS persisted, with
-    assurance_passed/assurance_issues recorded transparently for the next
-    reader to see without recomputing. If the persistence RPC completes but
-    returns nothing (`persisted is None`), the freshly computed result is
-    still returned (the caller gets a correct answer; only the cache for
-    next time is missing). A genuine persistence-layer EXCEPTION (a
-    network/DB error) is NOT swallowed here -- it propagates to the
-    caller, exactly like OM-3B's own equivalent function -- so the failure
-    is surfaced rather than hidden. Either way, a persistence failure can
-    never corrupt or silently replace a PRIOR persisted row, since this
-    function only ever INSERTs a new row via get-or-create, never UPDATEs
-    an existing one.
-
-    Returns {"brief", "result", "assurance", "reused"} -- `reused` is True
-    only for an exact-fingerprint cache hit."""
-    require_bid_access(bid_id, organization_id)
-    if not organization_id:
-        raise ValueError("get_or_generate_section_draft requires an explicit organization_id")
-
-    import section_drafting as sd
-
-    brief = _assemble_section_drafting_brief(
-        bid_id, organization_id, requirement_id, outline_section,
-        max_related_requirements, max_findings,
-        not_found_caller="get_or_generate_section_draft",
-    )
-    fingerprint = sd.compute_draft_input_fingerprint(brief)
-
-    for existing_row in db.get_section_drafts(bid_id, brief.req_id):
-        if existing_row.get("input_fingerprint") == fingerprint:
-            return {
-                "brief": brief.to_dict(), "result": _section_draft_row_to_dict(existing_row),
-                "assurance": {"passed": bool(existing_row.get("assurance_passed")),
-                              "issues": existing_row.get("assurance_issues") or []},
-                "reused": True,
-            }
-
-    result = sd.draft_section(brief=brief)
-    assurance = sd.assure_section_draft(brief, result)
-
-    if result.failure_reason:
-        return {"brief": brief.to_dict(), "result": result.to_dict(),
-                "assurance": assurance.to_dict(), "reused": False}
-
-    persisted = db.get_or_create_section_draft(
-        bid_id=bid_id, req_id=brief.req_id, input_fingerprint=fingerprint,
-        contract_version=sd.SECTION_DRAFTING_CONTRACT_VERSION,
-        draft_text=result.draft_text, assurance_passed=assurance.passed,
-        requirement_id=result.requirement_id,
-        requirements_addressed=list(result.requirements_addressed),
-        requirements_missing=list(result.requirements_missing),
-        evaluation_criteria_addressed=list(result.evaluation_criteria_addressed),
-        evidence_items_used=[e.to_dict() for e in result.evidence_items_used],
-        unsupported_or_unresolved_points=list(result.unsupported_or_unresolved_points),
-        contradictions_or_caveats=list(result.contradictions_or_caveats),
-        human_confirmation_required=result.human_confirmation_required,
-        drafting_notes=result.drafting_notes, word_count=result.word_count,
-        assurance_issues=list(assurance.issues),
-        material_claims=[c.to_dict() for c in result.material_claims],
-        created_by_user_id=created_by_user_id,
-    )
-    if persisted is None:
-        return {"brief": brief.to_dict(), "result": result.to_dict(),
-                "assurance": assurance.to_dict(), "reused": False}
-    return {
-        "brief": brief.to_dict(), "result": _section_draft_row_to_dict(persisted),
-        "assurance": {"passed": bool(persisted.get("assurance_passed")),
-                      "issues": persisted.get("assurance_issues") or []},
-        "reused": False,
-    }
-
-
 def get_section_draft_status_for_organization(
     bid_id: int, organization_id: str, requirement_id: int,
     outline_section: dict | None = None,
     max_related_requirements: int = 5, max_findings: int = 5,
 ) -> dict:
-    """PI-3C: the READ-ONLY status check the drafting workspace UI calls
-    on every render (instruction 12: "opening the workspace must not
-    trigger expensive work automatically"). Verifies bid ownership FIRST.
+    """READ-ONLY Response Brief + historical-draft status, called by the
+    BUILD Response Brief panel on every render. Verifies bid ownership
+    FIRST. (Name kept for compatibility; proposal generation is retired.)
 
-    Assembles the SAME SectionDraftingBrief draft_section_for_organization/
-    get_or_generate_section_draft would (via the shared
+    Assembles the SectionResponseBrief (via the shared
     `_assemble_section_drafting_brief` helper), computes the CURRENT
     fingerprint, and reads (never writes) this requirement's persisted
     draft history (`database.get_section_drafts`) to determine:
@@ -2629,10 +2457,9 @@ def get_section_draft_status_for_organization(
     Analysis, and NEVER writes to section_drafts or any other table --
     every read here is against already-persisted, already-bounded
     intelligence (the exact same reads OM-3B/PI-3B's own cache-check
-    already performs and was live-proven cheap). The UI must call
-    get_or_generate_section_draft (a SEPARATE, explicit action, e.g. a
-    button click) to actually generate or refresh a draft -- this function
-    only ever tells the caller what state already exists."""
+    already performs and was live-proven cheap). No generation path
+    exists any more: historical section_drafts rows are surfaced only as
+    read-only records of the retired AI-drafting capability."""
     require_bid_access(bid_id, organization_id)
     if not organization_id:
         raise ValueError(

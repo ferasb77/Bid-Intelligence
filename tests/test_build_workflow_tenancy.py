@@ -302,11 +302,17 @@ class TestDeriveProposalOutlineForOrganization:
 
     def test_never_calls_section_drafting_model(self):
         """The Tier-3 outline call must be proposal_outline's OWN bounded
-        call, never a reuse of section_drafting's call site."""
+        call, never a reuse of a section-drafting call site. Bid
+        Intelligence no longer generates proposal narrative at all, so
+        there is no drafting model call left to reuse -- assert the
+        retired call site is actually gone rather than merely unreached
+        (poisoning it is no longer possible; it doesn't exist)."""
         import section_drafting as sd
 
-        def _blow_up_drafting(*a, **kw):
-            raise AssertionError("section_drafting._call_section_draft must never be called deriving an outline")
+        assert not hasattr(sd, "_call_section_draft"), (
+            "the retired drafting model call must not be reintroduced")
+        assert not hasattr(sd, "draft_section"), (
+            "the retired drafting entry point must not be reintroduced")
 
         def _blow_up_om(*a, **kw):
             raise AssertionError("organizational_memory.retrieve() must never be called deriving an outline")
@@ -316,6 +322,5 @@ class TestDeriveProposalOutlineForOrganization:
             {"structured_intelligence": self._si_two_categories()},
             lambda *a, **kw: (_ for _ in ()).throw(AssertionError("Anthropic should not be reached here")),
             _blow_up_om)
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], \
-             patch.object(sd, "_call_section_draft", side_effect=_blow_up_drafting):
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
             tenancy.derive_proposal_outline_for_organization(1, self.ORG)

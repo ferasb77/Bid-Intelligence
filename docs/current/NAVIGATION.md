@@ -1094,6 +1094,53 @@ deferred, not started.
 - `migrations/` — read the **highest-numbered file** for current schema
   intent; do not assume it's applied (see SYSTEM_STATE.md).
 
+**Product boundary reversal: proposal-generation decommission**
+(post PI-3C — see SYSTEM_STATE.md's "Product boundary reversal" entry for
+the full removed/preserved list). The PI-3A/PI-3B/PI-3C entries above
+describe drafting as an active, live-commissioned capability at the time
+those phases ran; that is now historical narrative, not current state —
+read it for provenance/architecture pattern only, not as a description of
+what the product does today:
+- `analyst.draft_proposal_section`/`DRAFTER_SYSTEM`,
+  `pages_extra.page_section_drafter`, `section_drafting.draft_section`/
+  `_call_section_draft`/`_drafting_prompt`,
+  `tenancy.draft_section_for_organization`/`get_or_generate_section_draft`,
+  and `database.get_or_create_section_draft` (the Python writer) are all
+  DELETED. There is no drafting/generation model call reachable from any
+  normal application path any more.
+- `pages/section_drafting_workspace.py` is renamed
+  `pages/section_response_brief.py`
+  (`render_requirement_drafting_workspace` →
+  `render_requirement_response_brief`); it still renders ONLY
+  `tenancy.get_section_draft_status_for_organization` (read-only), now
+  with no generate button — historical PI-3B/PI-3C drafts show read-only
+  in a collapsed "retired capability" expander.
+- `section_drafting.py`'s brief assembly and fail-closed claim/evidence
+  reconciliation (`build_brief` → `SectionResponseBrief`,
+  `reconcile_structured_result` formerly `_reconcile_draft_response`,
+  `reconcile_material_claims`, `evidence_id_registry`,
+  `assure_section_draft`) are UNCHANGED in behavior and kept as reusable,
+  non-generative building blocks — likely CHECK reuse candidates.
+  `tenancy._assemble_section_drafting_brief`/
+  `get_draft_existence_map_for_organization` are unchanged.
+- Migrations 018/019 and every historical `section_drafts` row are
+  untouched (no destructive migration); `database.get_section_drafts`
+  (read) is the only surviving `database.py` function touching that
+  table.
+- Test suite: `tests/test_section_drafting.py` now calls
+  `sd.reconcile_structured_result` directly instead of the retired
+  `sd.draft_section(brief=..., draft_fn=...)` (same assertions, no
+  generation entry point). `tests/test_section_drafting_tenancy.py` now
+  exercises `tenancy.get_section_draft_status_for_organization`'s
+  architecture discipline instead of the retired
+  `draft_section_for_organization`. `tests/test_section_drafting_workspace.py`
+  now seeds historical `section_drafts` fixtures directly (no generation
+  call) to test staleness/current-status logic. `tests/
+  test_section_drafts_persistence.py` (formerly the PI-3B generate-and-
+  persist orchestration suite) collects zero tests — its reusable
+  assertions moved into `test_section_drafting.py`; nothing survives to
+  test in that file without reintroducing a generation call.
+
 ## Standing rules for this repo
 
 - Do not scan `docs/archive/` (historical operational records, engagement

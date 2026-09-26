@@ -163,17 +163,18 @@ class TestManualWorkflowPreserved(unittest.TestCase):
 
 
 class TestAIDraftingVisibleForMappedSections(unittest.TestCase):
-    """Instruction 6/11.7-8: for a section with mapped requirements, the
-    PI-3C requirement drafting workspace must be reached -- reused, never
-    reproduced -- and it must be the SAME canonical PI-3B orchestration
-    (proven elsewhere; here we only prove it is actually invoked, not
-    hidden behind a collapsed expander nobody opens)."""
+    """For a section with mapped requirements, the Response Brief (formerly
+    the PI-3C requirement drafting workspace) must be reached -- reused,
+    never reproduced -- and it must be the SAME canonical, read-only
+    intelligence assembly (proven elsewhere; here we only prove it is
+    actually invoked, not hidden behind a collapsed expander nobody
+    opens)."""
 
     @patch("streamlit.button", return_value=False)
     @patch("streamlit.expander")
     @patch("streamlit.multiselect", return_value=[])
     @patch("streamlit.selectbox")
-    @patch("pages.stage_build.render_requirement_drafting_workspace")
+    @patch("pages.stage_build.render_requirement_response_brief")
     def test_workspace_invoked_for_active_section_with_mapped_requirement(
             self, mock_workspace, mock_selectbox, mock_multiselect, mock_expander, mock_button):
         reqs = [_req(1, "Technical Approach", "R1")]
@@ -190,18 +191,21 @@ class TestAIDraftingVisibleForMappedSections(unittest.TestCase):
 
 
 class TestNoWholeProposalModelCall(unittest.TestCase):
-    """Instruction 9/11.16: PI-3D must not introduce a batched/whole-
-    proposal drafting call. render_requirement_drafting_workspace (PI-3C's
-    own, per-REQUIREMENT canonical entry point) must be called from
+    """Bid Intelligence must never introduce a batched/whole-proposal
+    generation call. render_requirement_response_brief (the per-
+    REQUIREMENT canonical, non-generative entry point) must be called from
     exactly one call site in stage_build.py -- never in a loop over
-    multiple requirements/sections at once."""
+    multiple requirements/sections at once -- and no generation entry
+    point (retired) may be reintroduced here."""
 
     def test_single_call_site_no_loop_over_requirements(self):
         import inspect
         source = inspect.getsource(build)
-        assert source.count("render_requirement_drafting_workspace(") == 1
-        # No batch/bulk drafting entry point exists in this file.
+        assert source.count("render_requirement_response_brief(") == 1
+        # No batch/bulk drafting entry point exists in this file, and the
+        # retired generation function must not be reintroduced.
         assert "get_or_generate_section_draft" not in source
+        assert "draft_proposal_section" not in source
 
 
 class TestIntelligentOutlineGenerationAndApproval(unittest.TestCase):

@@ -153,7 +153,7 @@ class TestNoRemainingBareServiceRoleCalls(unittest.TestCase):
         line or the import statement)."""
         dead_names = [
             "page_proposal_analyzer", "page_clarifications",
-            "page_section_drafter", "page_submission_assembler",
+            "page_submission_assembler",
         ]
         app_source = _read("app.py")
         for name in dead_names:
@@ -168,6 +168,10 @@ class TestNoRemainingBareServiceRoleCalls(unittest.TestCase):
                 call_sites, [],
                 f"{name} has a real call site in app.py -- reachability classification is stale",
             )
+        # page_section_drafter (the retired analyst.draft_proposal_section
+        # UI) was deleted outright by the proposal-generation decommission.
+        self.assertNotIn("page_section_drafter", app_source)
+        self.assertNotIn("def page_section_drafter", _read("pages_extra.py"))
         # pages_extra.py's own page_debrief (distinct from
         # pages.stage_debrief.page_debrief, which IS live) is never
         # imported by app.py at all.

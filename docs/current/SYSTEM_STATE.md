@@ -32,8 +32,13 @@ needs that history).
 - **Buyer Intelligence** — external, advisory context attached to a
   `FastAnalysisResult`, always kept visibly separate from procurement
   requirement facts in every consumer.
-- **BUILD workspace** (`pages/stage_build.py`) — the Proposal Outline &
-  Integrated Section Drafter.
+- **BUILD workspace** (`pages/stage_build.py`) — Proposal Outline & Response
+  Intelligence. **Product boundary: Bid Intelligence no longer generates
+  proposal narrative** (see "Product boundary reversal" below) — BUILD
+  surfaces requirements-to-section mapping, evaluation criteria, evidence
+  and gaps (`pages/section_response_brief.py`'s
+  `render_requirement_response_brief`), and manual section authoring; it
+  never writes the response.
 - **Section Analyzer** (`section_analyzer.py`) — a *formative*, per-section
   review inside BUILD ("is this section heading in the right direction?"),
   distinct from the later, holistic CHECK-stage audit below.
@@ -2082,10 +2087,64 @@ whole-proposal generation, a collaborative editor, visual version
 diffing, Word export, Ask CapOS integration, Red Team, Section Analyzer
 UI *redesign* (this phase integrates into it, not replaces it).
 
+**Product boundary reversal: Bid Intelligence no longer generates proposal
+narrative.** Product strategy changed after PI-3C: the product is
+UNDERSTAND (procurement intelligence) → DECIDE (bid/no-bid support) →
+BUILD/Response Intelligence (tell the human proposal team what must be
+addressed, what evidence exists, what is missing/risky, what the evaluator
+expects — never write the proposal) → CHECK (independently assess the
+human-written proposal). All active AI proposal-generation capability was
+removed:
+
+- **Removed**: `analyst.draft_proposal_section`/`DRAFTER_SYSTEM` (the
+  original, non-evidence-aware drafter); `pages_extra.page_section_drafter`
+  and its call site in `app.py`; `section_drafting._call_section_draft`/
+  `_drafting_prompt`/`draft_section` (PI-3A's one model call and its
+  orchestration); `tenancy.draft_section_for_organization` (PI-3A) and
+  `tenancy.get_or_generate_section_draft` (PI-3B, the persist-on-generate
+  path); `database.get_or_create_section_draft` (the Python writer for the
+  migration-018 RPC — the RPC itself and the table are untouched); every
+  "Draft"/"Generate"/"Refine with AI"/"Redraft" UI control. The
+  `REQUEST_BUDGETS.json` entry and `scripts/request_profile.py` probe for
+  `draft_proposal_section` were removed with it.
+- **Preserved / renamed, not deleted**: `section_drafting.py`'s brief
+  assembly (`build_brief`, now returning `SectionResponseBrief` —
+  `SectionDraftingBrief` kept as a transitional alias) and its
+  fail-closed claim/evidence-validation logic
+  (`reconcile_structured_result` — formerly `_reconcile_draft_response`;
+  `reconcile_material_claims`, `evidence_id_registry`,
+  `permits_verified_fact`), `compute_draft_input_fingerprint`, and
+  `assure_section_draft` all remain — pure, no model call, no I/O — as
+  building blocks for BUILD's Response Brief and likely reuse in future
+  CHECK claim-verification work. `pages/section_drafting_workspace.py` was
+  renamed to `pages/section_response_brief.py`
+  (`render_requirement_drafting_workspace` →
+  `render_requirement_response_brief`); it renders ONLY
+  `tenancy.get_section_draft_status_for_organization` (read-only: brief +
+  historical-draft status, no generate action) and shows historical PI-3B/
+  PI-3C drafts (migrations 018/019) read-only in a collapsed "retired
+  capability" expander — never hidden, never destroyed, never
+  regenerated. `tenancy.get_draft_existence_map_for_organization` (a plain
+  existence read) is unchanged.
+- **Historical data**: migrations 018/019 and every existing
+  `section_drafts` row are untouched — no destructive migration, no schema
+  change. `database.get_section_drafts` (read) remains the only
+  `database.py` function touching that table; there is no write path left.
+- **CHECK reuse candidates** identified while auditing this removal:
+  `reconcile_structured_result`/`reconcile_material_claims` (fail-closed
+  claim-to-evidence-id validation), `evidence_id_registry` (bounded
+  evidence-id vocabulary construction from tier-1/tier-2/OM sources),
+  `SectionResponseBrief`'s evidence-tier separation, and
+  `assure_section_draft`'s mandatory-coverage/evaluation-criteria/
+  word-limit/contradiction checks — all directly applicable to auditing a
+  HUMAN-written response instead of a model-drafted one. CHECK V2 itself
+  was explicitly NOT started this phase.
+
 Absent an explicit task instruction otherwise, still do not: apply
 migration 013, alter/reapply migration 015, 016, 017, 018, or 019,
 activate the compact-wire prototype, change chunk sizes/max_tokens/model
-routing/caching, or merge `main`/deploy.
+routing/caching, reintroduce proposal-generation under another name, or
+merge `main`/deploy.
 
 ## Migrations known in this repository (files, not live-database state)
 

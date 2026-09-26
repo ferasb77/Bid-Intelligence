@@ -11,7 +11,7 @@ from database import (init_db, get_bid, update_bid, delete_bid,
                       get_readiness, get_bid_brief, upsert_bid_brief)
 from config import api_key_configured, classify_anthropic_error
 from pages_extra import (page_content_library, page_proposal_analyzer,
-    page_team_roster, page_clarifications, page_section_drafter,
+    page_team_roster, page_clarifications,
     page_submission_assembler, page_exec_dashboard)
 from pages.stage_understand import page_understand, _render_fast_analysis_panel
 from pages.stage_decide import page_decide
