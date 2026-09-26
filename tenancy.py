@@ -2507,3 +2507,39 @@ def get_section_draft_status_for_organization(
             for row in history
         ],
     }
+
+
+# ── CHECK-1: package-aware submission evidence (read-only, compute-and-return) ──
+
+def build_submission_evidence_package_for_organization(
+    bid_id: int,
+    organization_id: str,
+    raw_files: list,
+    *,
+    role_overrides: dict | None = None,
+    evaluation_criteria: list | None = None,
+    top_k: int = 5,
+) -> dict:
+    """CHECK-1 authorization boundary. require_bid_access FIRST (a foreign
+    organization gets AccessDeniedError before any file is parsed or any
+    requirement is read), then: the bid's own canonical requirements
+    (bid-scoped read, input only -- never written), the canonical
+    submission package + shared evidence registry (every evidence id bound
+    to THIS bid_id), and bounded RFP->submission candidate mapping.
+
+    Read-only end to end: no model call, no database write, no Storage
+    write. Persisting the registry (migrations/021_submission_evidence_
+    registry.sql) is deliberately NOT wired here until that migration is
+    applied and commissioned -- the same two-step rollout migration 019
+    used. No ADDRESSED/PARTIAL/MISSING adjudication (that is CHECK-2)."""
+    require_bid_access(bid_id, organization_id)
+    import submission_package as sp
+
+    requirements = db.get_requirements(bid_id) or []
+    package = sp.build_submission_package(
+        raw_files, bid_id=bid_id, organization_id=organization_id, role_overrides=role_overrides)
+    return {
+        "package": package,
+        "requirement_mappings": sp.map_requirements_to_submission(requirements, package, top_k=top_k),
+        "criteria_mappings": sp.map_evaluation_criteria_to_sections(evaluation_criteria or [], package),
+    }

@@ -996,7 +996,7 @@ def _extraction_failure_reason(text: str, meta: dict) -> str | None:
     return None
 
 
-def build_alignment_submission_package(raw_files: list[tuple[str, bytes]]) -> dict:
+def build_alignment_submission_package(raw_files: list[tuple[str, bytes]], *, include_bytes: bool = False) -> dict:
     """Full Submission Package assembly for the Proposal Alignment
     Analyzer: ZIP-safe flattening (unpack_submission_package), stable
     per-entry identity, byte-identical duplicate detection, and per-file
@@ -1035,6 +1035,15 @@ def build_alignment_submission_package(raw_files: list[tuple[str, bytes]]) -> di
     occurrence with the same content_hash becomes lifecycle_status
     "duplicate" with duplicate_of_file_id set to the retained
     occurrence's own (unique) file_id -- never its own.
+
+    `include_bytes` (CHECK-1, default False -- every existing caller's
+    contract is unchanged): when True, each successfully-extracted or
+    failed record additionally carries `_bytes` (the exact bytes its
+    content_hash was computed over) so submission_package.py can do
+    structured per-page/per-sheet/per-form parsing on the SAME file
+    identity this function established, instead of deriving file_id/
+    content_hash a second way. `_bytes` is never part of
+    build_report_manifest()'s projection.
     """
     raw_entries = unpack_submission_package(raw_files)
 
@@ -1087,6 +1096,8 @@ def build_alignment_submission_package(raw_files: list[tuple[str, bytes]]) -> di
             "unusable_reason": failure_reason,
             "extraction_meta": meta,
         })
+        if include_bytes:
+            files[-1]["_bytes"] = fbytes
         seen_content_hashes[content_hash] = {"file_id": file_id, "package_path": package_path}
 
     # Default include/exclude: duplicates carry no unique content (never

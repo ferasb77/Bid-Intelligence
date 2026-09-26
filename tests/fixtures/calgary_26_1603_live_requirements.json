@@ -1,0 +1,45 @@
+{
+  "_provenance": "Read-only SELECT (2026-09-27) of the LIVE canonical requirements table for bid_id=1 ('Consulting General Conditions 2026' / The City of Calgary, the 26-1603 buyer package: CGC 2026-05-13, Addenda 1-5, Q&A logs) in project whonalbdpbubaqhpzrnw. req_id/category/description copied verbatim; no field altered. The live package does NOT contain the main RFP 26-1603 document itself, so no live rated-criteria or joint-bid requirement exists -- see 'supplemental_synthetic' for the clearly-labelled synthetic additions the CHECK-1 tests use for those cases.",
+  "bid_id": 1,
+  "requirements": [
+    {"req_id": "M5", "category": "Mandatory", "description": "Consultant must immediately disclose any actual or potential conflict of interest"},
+    {"req_id": "M13", "category": "Mandatory", "description": "Consultant must maintain commercial general liability insurance of minimum $5,000,000"},
+    {"req_id": "M17", "category": "Mandatory", "description": "Consultant must submit invoices within 10 Business Days of payment period end with required details"},
+    {"req_id": "M28", "category": "Mandatory", "description": "Consultant must cease work and report any found substances encountered at project site immediately"},
+    {"req_id": "M32", "category": "Financial", "description": "Rates represent full amount chargeable including all taxes, fees, labour, materials, travel, insurance and overhead"},
+    {"req_id": "M33", "category": "Financial", "description": "City may hold back or set off payment if Consultant fails to comply and does not rectify within 7 days of notice"},
+    {"req_id": "A1-M40", "category": "Mandatory", "description": "Consultant must identify and disclose Conflicts of Interest during procurement and perform work, including unfair advantage in procurement or preferred treatment communications"},
+    {"req_id": "A1-M42", "category": "Mandatory", "description": "Consultant must have Consultant's own power to contract and representatives authorized to bind Consultant per Article 3.01-3.02"},
+    {"req_id": "A4-M44", "category": "Mandatory", "description": "Consultant shall provide post-facilitation support per participant within each Cohort, including addressing participant questions and assessing assignments. Pricing based on 3 hours per participant per Cohort."},
+    {"req_id": "A5-M45", "category": "Financial", "description": "Pricing must be provided for one sample cohort only, not annual, multiple cohorts, or total contract term"},
+    {"req_id": "A5-M46", "category": "Financial", "description": "Highest Rated Negotiations proponent must provide cost breakdown form for Items 1 and 2"},
+    {"req_id": "A5-M45-CLARIFIED-V3", "category": "Financial", "description": "Yellow cells in Excel pricing form require lump sum price for each cohort scenario provided; customization level based on employee role (Individual Contributor vs. Senior Leader)"},
+    {"req_id": "NEW-M-SCOPE-LIMITATION", "category": "Mandatory", "description": "Pricing and proposal scope limited to services defined in RFP. Additional services (coaching, psychometric assessments) are not included and must not be priced separately."},
+    {"req_id": "NEW-M50", "category": "Mandatory", "description": "Alberta incorporation/registration required under Business Corporations Act to legally carry on business in Alberta, regardless of incorporation jurisdiction"},
+    {"req_id": "NEW-M51", "category": "Mandatory", "description": "Travel costs must be captured within Price Form and incorporated into overall pricing formula for evaluation and scoring"},
+    {"req_id": "NEW-M52", "category": "Mandatory", "description": "Account Manager may be separate individual from L&D SME if needed for program design and content guidance"},
+    {"req_id": "M44-V2", "category": "Mandatory", "description": "Proponents must include travel costs within Price Form; travel costs incorporated into overall pricing formula for evaluation and scoring."}
+  ],
+  "supplemental_synthetic": {
+    "_note": "SYNTHETIC -- not live data. Stand-ins for main-RFP obligations that are absent from the live bid (the main RFP document was never uploaded). Wording is generic procurement language, not a quotation of the Calgary RFP.",
+    "requirements": [
+      {"req_id": "SYN-MP1", "category": "Mandatory", "description": "Where a proposal is submitted jointly by more than one party (a joint bid / consortium), each party must complete and sign the Multi-Party Confirmation Form."},
+      {"req_id": "SYN-SF1", "category": "Mandatory", "description": "The Submission Form must be completed and signed by an authorized signatory, including the acknowledgement of addenda and the conflict of interest declaration."},
+      {"req_id": "SYN-PN1", "category": "Mandatory", "description": "Proponents must complete the supplier questionnaire directly in the Ariba portal."},
+      {"req_id": "SYN-R1", "category": "Rated", "description": "Describe the proposed methodology and six-stage programme delivery approach, including goals, objectives and how success measures are evaluated."}
+    ],
+    "evaluation_criteria": [
+      {"criterion_label": "Methodology and Programme Delivery Approach", "category": null, "weight": null, "prompt": "Describe the methodology, delivery modalities and programme design approach."},
+      {"criterion_label": "Team Experience and Qualifications", "category": null, "weight": null, "prompt": "Describe the experience and qualifications of the facilitators and account manager."},
+      {"criterion_label": "Programme Governance, Quality Assurance and Evaluation", "category": null, "weight": null, "prompt": "Describe governance, quality assurance and evaluation of learning outcomes."}
+    ]
+  },
+  "known_bad_baseline_findings": {
+    "_note": "Regression inputs only -- the false missing-artifact findings an earlier narrative-only proposal review produced for this bid (per the CHECK-1 task statement). NOT treated as truth.",
+    "findings": [
+      {"title": "Price Form missing", "issue": "The proposal does not include the completed Price Form; no pricing values were provided."},
+      {"title": "Submission declarations missing", "issue": "Required declarations (conflict of interest, addenda acknowledgement) were not provided."},
+      {"title": "Multi-party confirmation not provided", "issue": "No multi-party / consortium confirmation form is included for the joint submission."}
+    ]
+  }
+}

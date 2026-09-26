@@ -802,8 +802,11 @@ def test_migration_adds_full_mode_and_keeps_existing_values():
 
 def test_committed_migrations_are_unmodified_and_020_is_next():
     names = sorted(p.name for p in (ROOT / "migrations").glob("*.sql"))
-    assert names[-1] == "020_full_analysis_runs.sql"
-    assert names[-2] == "019_section_draft_claim_mappings.sql"
+    i = names.index("020_full_analysis_runs.sql")
+    assert names[i - 1] == "019_section_draft_claim_mappings.sql"
+    # CHECK-1 added 021 after 020 (written, not applied); MA-2A's own
+    # guarantee is only that 020 directly follows 019.
+    assert names[i + 1:] in ([], ["021_submission_evidence_registry.sql"])
 
 
 def test_model_results_never_write_canonical_layers(fake, monkeypatch):

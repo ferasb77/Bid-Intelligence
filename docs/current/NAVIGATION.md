@@ -349,6 +349,26 @@ Where to look, not what everything means. Read
   coverage_complete/ledger_complete is false and no positive evidence is
   cited).
 
+**CHECK-1: Package-Aware Submission Evidence (bidder side)**
+- `submission_package.py` (pure, no model, no I/O) -- `build_submission_
+  package` (canonical package; reuses `extractor.build_alignment_
+  submission_package(include_bytes=True)` identity), `classify_document_
+  role`, `parse_pdf_structure` / `parse_docx_structure` /
+  `parse_xlsx_structure`, `SubmissionEvidenceRegistry` (THE shared
+  bidder-evidence registry -- future CHECK analyzers cite `evidence_id`s,
+  never their own evidence store), `derive_expected_evidence`,
+  `map_requirements_to_submission` / `map_evaluation_criteria_to_
+  sections` (candidates only, no adjudication), `screen_absence_claim`,
+  `to_proposal_source_ref` (bridge into `section_drafting`'s
+  evidence_id_registry / reconcile_material_claims),
+  `build_persistence_payload`.
+- `tenancy.build_submission_evidence_package_for_organization` -- read-only
+  auth boundary.
+- `migrations/021_submission_evidence_registry.sql` -- written, NOT applied.
+- Tests: `tests/test_check1_submission_package.py` (+ builders in
+  `tests/check1_calgary_fixture.py`, live-requirement snapshot in
+  `tests/fixtures/calgary_26_1603_live_requirements.json`).
+
 **Proposal Intelligence (PI-1, hardened in PI-1.1/PI-1.2, deepened in
 PI-2A/PI-2A.1, extended in PI-2B1)** — durable persistence for CHECK's
 Proposal Alignment output. PI-2A added structured proposal/procurement

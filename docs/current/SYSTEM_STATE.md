@@ -2140,6 +2140,43 @@ removed:
   HUMAN-written response instead of a model-drafted one. CHECK V2 itself
   was explicitly NOT started this phase.
 
+**CHECK-1 (Package-Aware Proposal Assurance Foundation) is implemented**
+(`submission_package.py`, pure/deterministic, no model call, no I/O) --
+ingestion, canonicalization and candidate mapping ONLY; no ADDRESSED/
+PARTIAL/MISSING adjudication, score, claims assurance or recommendation
+(that is CHECK-2, not started). CHECK now treats a bidder submission as a
+PACKAGE of role-classified artifacts (`SubmissionDocument`: TECHNICAL_
+PROPOSAL / PRICING_FORM / SUBMISSION_FORM / MULTI_PARTY_FORM / SOCIAL_
+PROCUREMENT_RESPONSE / CERTIFICATE / EVIDENCE_ATTACHMENT / RESUME /
+ORGANIZATION_CHART / SUPPORTING_DOCUMENT / UNKNOWN, deterministic
+filename + content classification with embedded-section secondary roles
+and human override), reusing extractor's file_id/content_hash identity
+(`build_alignment_submission_package(include_bytes=True)`) and
+`proposal_intelligence.compute_package_digest`. Structure is parsed per
+artifact, never flattened: PDF heading hierarchy + page + table rows,
+DOCX label->value form fields / checkbox declarations / tables, XLSX
+sheet + cell + row label + column header + yellow/unlocked INPUT cells
+(completed vs blank) + formula flags. ONE shared bid-bound evidence
+registry (`EvidenceItem`, `evidence_id` = sha256 over bid_id/document/
+kind/locator; cross-bid resolution fails closed). `derive_expected_
+evidence` maps each canonical requirement to expected evidence ROLES
+(or flexible / PORTAL_NATIVE); `map_requirements_to_submission` returns
+bounded candidates plus a package-level ARTIFACT status
+(ARTIFACT_PRESENT / MISSING_FROM_PACKAGE / POSSIBLY_PORTAL_NATIVE /
+NOT_VERIFIABLE_FROM_FILES / FLEXIBLE_LOCATION) -- an absence claim is
+permitted only for MISSING_FROM_PACKAGE, which structurally prevents the
+"Price Form missing because the narrative has no prices" defect class;
+`screen_absence_claim` checks any missing-artifact claim against the
+package. `tenancy.build_submission_evidence_package_for_organization` is
+the read-only auth boundary. Persistence: `migrations/021_submission_
+evidence_registry.sql` (`submission_documents`, `submission_evidence_
+items`, RPC `create_submission_evidence_bundle`, hanging off migration
+015's `proposal_package_snapshots` by composite FK) is **WRITTEN, NOT
+APPLIED**; no Python writer is wired yet. Calgary 26-1603 benchmark:
+live bid 1 requirements (read-only snapshot) + a SYNTHETIC four-artifact
+package (the real Price Form / Appendix E / B2 files are not in the repo
+or live DB). Tests: `tests/test_check1_submission_package.py`.
+
 Absent an explicit task instruction otherwise, still do not: apply
 migration 013, alter/reapply migration 015, 016, 017, 018, or 019,
 activate the compact-wire prototype, change chunk sizes/max_tokens/model
@@ -2148,7 +2185,9 @@ merge `main`/deploy.
 
 ## Migrations known in this repository (files, not live-database state)
 
-Highest migration file present: **020**
+Highest migration file present: **021**
+(`021_submission_evidence_registry.sql`, CHECK-1, **written, NOT applied**
+to any live database). Before it: **020**
 (`020_full_analysis_runs.sql`, **applied and live-commissioned
 2026-09-22**, ledger entry `20260922202352 full_analysis_runs` — see
 "MA-2A.1" below). Migration 019
