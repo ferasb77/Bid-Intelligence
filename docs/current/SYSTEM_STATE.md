@@ -2281,6 +2281,113 @@ synthetic Price Form / Appendix E / B2). No CHECK-2 (no adjudication).
   `scripts/commission_check11_calgary_buyer.py`,
   `scripts/commission_check11_calgary_bidder.py`.
 
+**CHECK-1.2 (Calgary Buyer Canonicalization Closure) -- 2026-09-27.** Fixes
+the three buyer-side canonicalization defects CHECK-1.1 found and
+explicitly left unpatched (immediately above). All three are GENERAL
+fixes in the frozen Layer 1/2 canonical modules (`canonical_procurement.py`
+/ `procurement_normalization.py` / `fast_analysis.py` step 5) -- the first
+change to those files since MA-1 froze them (`ee1cf42`); see
+`tests/test_full_analysis_ma2a.py::test_frozen_canonical_layers_untouched_by_ma2a`,
+whose historical range was narrowed to `ee1cf42..943623e` (the MA-2A
+family's own commits) so it keeps proving what its name says without
+blocking this authorized later amendment. No migration; no CHECK-2 work;
+migration 021 / bidder-side evidence untouched. Zero Anthropic/model calls
+anywhere in this task (verified: every fix is pure/deterministic; the real
+bid 1360 recomputation below re-ran only local Python against the
+already-downloaded RFP DOCX bytes and the already-persisted Fast Analysis
+run 34 raw snapshot).
+
+- **Defect A (scoped criteria empty) -- root cause**: `procurement_
+  normalization.build_scoped_criterion_records` (and its `full_analysis.
+  build_canonical_package` recompute fallback) only ever read `result.
+  evaluation_occurrences` -- the V4 FOCUSED "rated_criteria" task's own
+  shape. Run 34's routing never dispatched that focused task, so
+  `evaluation_occurrences` was genuinely empty even though 20 real rated
+  criteria sat in `result.evaluation_criteria` (the general route's own
+  `stage`/`parent_stage`/`weight`/`threshold` shape) the whole time. Fix:
+  new pure adapter `procurement_normalization.criteria_as_scoped_
+  occurrences()` converts the general-route shape into the occurrence
+  shape the existing scoping logic already consumes (never inventing a
+  criterion/weight; `category_scope` deliberately left empty rather than
+  guessing at `parent_stage`, which is a table heading, not a service
+  category) -- wired as a fallback in `fast_analysis.py`'s step 5 (only
+  when `evaluation_occurrences` is truly empty) and in `full_analysis.
+  build_canonical_package`'s existing recompute path, so both a live run
+  and a recompute from an already-persisted snapshot benefit. Live-proven
+  against the real, already-persisted run 34 snapshot: 0 -> 13 scoped
+  criteria records recovered (Firm Experience 30%/60% threshold, Team
+  Experience and Qualifications 20%, Service Delivery 30%, Social
+  Procurement 10%, Pricing/Price 10%, the 2.1/2.2 Key Personnel/Other
+  Personnel 10%/10% subcriteria, Understanding of the Services, and the
+  three pricing-formula line items 55%/35%/10%), each with its real
+  authoritative source document -- zero new extraction, zero model call.
+- **Defect B (stale deadline wins) -- root cause**: TWO compounding bugs
+  in `canonical_procurement.py`. (1) `classify_identity_role` had no
+  concept of a Q&A log; a filename like "QA Log ..._Updated _July
+  08_2026.xlsx" fell through every pattern to the
+  `IDENTITY_ROLE_PRIMARY_SOLICITATION` default. (2)
+  `AUTHORITY_BY_FIELD_FAMILY["identity"]` (the ranking `merge_identity_
+  fields_with_provenance` used for EVERY doc-metadata field, deadlines
+  included) ranks `PRIMARY_SOLICITATION` above `AMENDMENT` -- correct for
+  title/client/file_number, wrong for an amendable field like a
+  submission deadline. Together: a Q&A log restating the OLD deadline
+  outranked Addendum Four's genuine amendment of it. Fix: new
+  `IDENTITY_ROLE_QA_LOG` role (recognized before the default fallback,
+  never given authority in any ranking -- last-resort only, same
+  treatment `AMENDMENT` already had for "identity"); new `"deadline"`
+  field family (`AMENDMENT` > `PRIMARY_SOLICITATION` > `SUPPORTING`) and
+  `FIELD_FAMILY_OVERRIDE_BY_FIELD` (`submission_deadline`/
+  `clarification_deadline`/`submission_time` -> `"deadline"`, looked up
+  PER FIELD inside `merge_identity_fields_with_provenance` regardless of
+  the blanket family a caller passes, so the one existing `field_family=
+  "identity"` call site needs no change); within the winning role, several
+  same-authority documents (e.g. two addenda) now resolve to the LATEST
+  ISO-date value rather than whichever was scanned first -- never a
+  cross-role "latest wins" (a lower-authority role's date is never even
+  compared once a higher role has an entry). Live-proven against the real
+  run 34 snapshot: OLD merge (unmodified `canonical_procurement.py` from
+  this task's starting commit) -> stale `2026-07-07`; FIXED merge ->
+  correct `2026-07-16` (Addendum Four, `2026-07-15` clarification
+  deadline), with `canonicalize_milestones` (unchanged, already correct)
+  continuing to preserve `2026-07-07`/`2026-07-14`/`2026-07-16` as three
+  distinct, non-collapsed provenance rows.
+- **Defect C (DOCX content controls not extracted) -- root cause**:
+  `extractor.extract_docx_with_metadata`'s python-docx path only ever read
+  `doc.paragraphs`/`doc.tables` (direct top-level children), never
+  descending a structured document tag (`w:sdt`, block or inline),
+  `w:customXml`, or `w:smartTag` wrapper -- and it appended every table
+  after all paragraphs regardless of true document position. Fix: a
+  document-order block walker (`_docx_walk_blocks`) that descends content
+  controls/custom XML at body, row, cell and run level (never emitting a
+  wrapper's own aggregate text alongside its children -- no duplication),
+  new `meta["content_controls"]` counts and a `meta["blocks"]` location
+  trail. Live-proven against the real bid 1360 RFP DOCX: extracted text
+  grew from 28,856 to 114,677 characters (342 block paragraphs + 19 inline
+  paragraphs + 12 table rows recovered from content controls); the B2
+  "Each proposal ... must include a Multi-Party Confirmation Form
+  completed and signed by all Team Members" sentence (previously entirely
+  absent -- the old extractor only surfaced surrounding checklist
+  boilerplate that happened to sit outside a content control) is now
+  present in the extracted text under its real `APPENDIX F` section
+  marker, ready for the SAME existing requirement-extraction path every
+  other buyer requirement already goes through (this task does not
+  special-case the phrase, and does not fabricate a canonical requirement
+  from the bidder's own B2 evidence -- getting this specific sentence into
+  a NEW canonical `requirements` entry for the already-COMPLETE run 34
+  would require either a full corpus re-run (forbidden by this task) or a
+  new, bounded, requirement-schema-only model call over just this
+  recovered passage, which this task did not make; a future targeted
+  re-extraction pass is the correct next step, tracked here rather than
+  silently declared done).
+- Tests: `tests/test_check12_calgary_buyer_closure.py` (18 -- DOCX content
+  control extraction incl. no-duplication and inline-run cases, general-
+  route scoped-criteria fallback, deadline amendment authority incl. QA-log
+  non-authority and multi-amendment tie-breaking, milestone-provenance
+  preservation, multi-party-clause-now-extracted, bidder-form-alone-never-
+  creates-a-buyer-requirement). Full suite: 3426 passed, 2 skipped (no
+  change in skip count), 0 failed, run twice (once before the frozen-test
+  range fix, once after).
+
 Absent an explicit task instruction otherwise, still do not: apply
 migration 013, alter/reapply migration 015, 016, 017, 018, or 019,
 activate the compact-wire prototype, change chunk sizes/max_tokens/model

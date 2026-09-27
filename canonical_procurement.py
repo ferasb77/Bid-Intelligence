@@ -204,11 +204,24 @@ IDENTITY_ROLE_AMENDMENT = "AMENDMENT"
 IDENTITY_ROLE_RESPONSE_FORM = "RESPONSE_FORM"
 IDENTITY_ROLE_CONTRACT_INSTRUMENT = "CONTRACT_INSTRUMENT"
 IDENTITY_ROLE_SUPPORTING = "SUPPORTING"
+#: CHECK-1.2 Defect B. A Q&A log restates/paraphrases procurement facts
+#: (often including a reminder of the current submission deadline as of
+#: the log's own update date) but is never itself the authoritative
+#: amending instrument -- before this role existed, a Q&A log fell through
+#: to the IDENTITY_ROLE_PRIMARY_SOLICITATION default purely because its
+#: filename didn't match any other pattern, letting a stale, informal
+#: restatement compete on equal footing with (and sometimes beat) the
+#: real primary solicitation or a genuine addendum for identity/deadline
+#: fields. Giving it its own, deliberately unranked role means it never
+#: wins an authoritative field unless NOTHING else supplies one at all
+#: (the same last-resort-only fallback AMENDMENT already had for
+#: "identity" fields).
+IDENTITY_ROLE_QA_LOG = "QA_LOG"
 
 IDENTITY_ROLES = (
     IDENTITY_ROLE_PRIMARY_SOLICITATION, IDENTITY_ROLE_AMENDMENT,
     IDENTITY_ROLE_RESPONSE_FORM, IDENTITY_ROLE_CONTRACT_INSTRUMENT,
-    IDENTITY_ROLE_SUPPORTING,
+    IDENTITY_ROLE_SUPPORTING, IDENTITY_ROLE_QA_LOG,
 )
 
 #: Per-field authority, NOT one universal ranking (task section 15). Each
@@ -237,11 +250,41 @@ AUTHORITY_BY_FIELD_FAMILY = {
         IDENTITY_ROLE_AMENDMENT,
         IDENTITY_ROLE_PRIMARY_SOLICITATION,
     ),
+    # CHECK-1.2 Defect B: a submission/clarification deadline (and its
+    # stated time) is an AMENDABLE fact, unlike title/client/file_number
+    # (genuinely static identity facts an addendum should never override).
+    # An addendum that explicitly restates the deadline is exactly the
+    # authoritative source for it -- ranked like "clause", never like
+    # "identity". A Q&A log or response form is deliberately absent from
+    # this ranking (see IDENTITY_ROLE_QA_LOG) -- an informal restatement
+    # must never outrank the primary solicitation or a real amendment.
+    "deadline": (
+        IDENTITY_ROLE_AMENDMENT,
+        IDENTITY_ROLE_PRIMARY_SOLICITATION,
+        IDENTITY_ROLE_SUPPORTING,
+    ),
+}
+
+#: CHECK-1.2 Defect B: fields whose authority is genuinely field-specific
+#: rather than following whatever blanket `field_family` a caller passes
+#: for "everything about this document's identity". Looked up per-FIELD
+#: inside `merge_identity_fields_with_provenance` so every existing
+#: `field_family="identity"` call site (there is exactly one canonical
+#: identity-merge call site in the whole codebase) gets correct
+#: field-specific amendment authority for these fields with no caller
+#: change required, while every other identity field (title/client/
+#: file_number/...) is completely unaffected.
+FIELD_FAMILY_OVERRIDE_BY_FIELD = {
+    "submission_deadline": "deadline",
+    "clarification_deadline": "deadline",
+    "submission_time": "deadline",
 }
 
 _AMENDMENT_NAME_RE = re.compile(
     r'\b(?:addend(?:um|a)|amendment|revision\s+notice)\b', re.IGNORECASE)
 _AMENDMENT_PATH_RE = re.compile(r'(?:^|/)amendment\s*0*\d+\b', re.IGNORECASE)
+_QA_LOG_NAME_RE = re.compile(
+    r'\bq\s*&?\s*a\s*log\b|\bquestions?\s+and\s+answers?\s+log\b', re.IGNORECASE)
 _RESPONSE_FORM_NAME_RE = re.compile(
     r'\b(?:response\s+form|proposal\s+response|submission\s+form|'
     r'rated\s+criteria|mandatory\s+criteria|qualification\s+requirements?)\b',
@@ -262,11 +305,16 @@ def classify_identity_role(document_name: str) -> str:
     recognized BEFORE the "looks like a main solicitation" fallback, so
     "RFP 2026-026 Addendum #2.pdf" can never be mistaken for the
     procurement-identity document merely because it also carries the
-    solicitation number in its filename."""
+    solicitation number in its filename. A Q&A log is recognized the same
+    way, before the same fallback, for the identical reason (CHECK-1.2
+    Defect B) -- "QA Log 26-1603_Updated_July 08_2026.xlsx" carries the
+    solicitation number too, but is never the primary solicitation."""
     name = (document_name or "")
     base = name.rsplit("/", 1)[-1]
     if _AMENDMENT_PATH_RE.search(name) or _AMENDMENT_NAME_RE.search(base):
         return IDENTITY_ROLE_AMENDMENT
+    if _QA_LOG_NAME_RE.search(base):
+        return IDENTITY_ROLE_QA_LOG
     if _CONTRACT_NAME_RE.search(base):
         return IDENTITY_ROLE_CONTRACT_INSTRUMENT
     if _RESPONSE_FORM_NAME_RE.search(base):
@@ -302,33 +350,77 @@ def merge_identity_fields(
             merge_identity_fields_with_provenance(metadata_by_doc, field_family).items()}
 
 
+_ISO_DATE_ONLY_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+
+
+def _looks_like_iso_date(value) -> bool:
+    return isinstance(value, str) and bool(_ISO_DATE_ONLY_RE.match(value.strip()))
+
+
 def merge_identity_fields_with_provenance(
     metadata_by_doc: dict[str, dict],
     field_family: str = "identity",
 ) -> dict[str, tuple]:
     """As `merge_identity_fields`, but each value is a
     (value, source_document_name) pair so the canonical record stays
-    traceable to the exact document whose authority produced it."""
-    ranking = AUTHORITY_BY_FIELD_FAMILY.get(field_family) or AUTHORITY_BY_FIELD_FAMILY["identity"]
+    traceable to the exact document whose authority produced it.
+
+    CHECK-1.2 Defect B: authority is resolved per FIELD, not once for the
+    whole call -- a field in `FIELD_FAMILY_OVERRIDE_BY_FIELD` (currently
+    the submission/clarification deadline fields) is ranked by its own
+    field family regardless of the blanket `field_family` the caller
+    passed, so an "identity" merge call still gives a deadline field its
+    correct amendment authority. Within the single role that wins a given
+    field, several documents of that SAME role may restate it differently
+    (e.g. two addenda both restate the submission deadline, one extending
+    it further than the other) -- when every candidate value in that role
+    is a plain ISO date, the LATEST one wins; otherwise the first
+    encountered (insertion order) wins, exactly as before. This is never a
+    blanket "latest document wins" rule (task section 5): a lower-authority
+    role's value is never compared against a higher-authority role's value
+    at all -- only ranking order can promote a role, never a date
+    comparison across roles."""
+    default_ranking = AUTHORITY_BY_FIELD_FAMILY.get(field_family) or AUTHORITY_BY_FIELD_FAMILY["identity"]
     roles = classify_identity_roles(list(metadata_by_doc.keys()))
 
-    merged: dict[str, tuple] = {}
-    for role in ranking:
-        for doc_name, meta in metadata_by_doc.items():
-            if roles.get(doc_name) != role or not isinstance(meta, dict):
-                continue
-            for key, value in meta.items():
-                if value and key not in merged:
-                    merged[key] = (value, doc_name)
-
-    # Last resort only: a corpus with no identity-bearing document at all
-    # still gets an honest best-available answer rather than silence.
+    candidates_by_field: dict[str, dict[str, list[tuple]]] = {}
     for doc_name, meta in metadata_by_doc.items():
-        if roles.get(doc_name) in ranking or not isinstance(meta, dict):
+        if not isinstance(meta, dict):
             continue
+        role = roles.get(doc_name)
         for key, value in meta.items():
-            if value and key not in merged:
-                merged[key] = (value, doc_name)
+            if not value:
+                continue
+            candidates_by_field.setdefault(key, {}).setdefault(role, []).append((value, doc_name))
+
+    merged: dict[str, tuple] = {}
+    for key, by_role in candidates_by_field.items():
+        family = FIELD_FAMILY_OVERRIDE_BY_FIELD.get(key, field_family)
+        ranking = AUTHORITY_BY_FIELD_FAMILY.get(family) or default_ranking
+
+        chosen = None
+        for role in ranking:
+            entries = by_role.get(role)
+            if not entries:
+                continue
+            chosen = entries[0]
+            for value, doc_name in entries[1:]:
+                if _looks_like_iso_date(value) and _looks_like_iso_date(chosen[0]) and value > chosen[0]:
+                    chosen = (value, doc_name)
+            break
+
+        if chosen is None:
+            # Last resort only: no document of an authoritative role
+            # supplied this field at all -- a corpus with no identity-
+            # bearing document still gets an honest best-available answer
+            # (first encountered, by insertion order) rather than silence.
+            for role, entries in by_role.items():
+                if role not in ranking and entries:
+                    chosen = entries[0]
+                    break
+
+        if chosen is not None:
+            merged[key] = chosen
     return merged
 
 

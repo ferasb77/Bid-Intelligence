@@ -317,6 +317,50 @@ def extract_scoped_criterion_response_prompts(
     return result
 
 
+def criteria_as_scoped_occurrences(evaluation_criteria: list[dict]) -> list[dict]:
+    """CHECK-1.2 Defect A. `build_scoped_criterion_records` (and its own
+    fallback in `full_analysis.build_canonical_package`) has only ever
+    read `result.evaluation_occurrences` -- the V4 FOCUSED "rated_criteria"
+    task's own shape (`criterion_label`/`category_scope`/`weight`/
+    `minimum_score`). A corpus whose routing never dispatched that focused
+    task (e.g. a smaller RFP handled entirely by the general
+    IDENTITY_EVAL_REQ route) still extracts real rated criteria into
+    `result.evaluation_criteria` (the general-route shape:
+    `stage`/`parent_stage`/`weight`/`threshold`) -- but that shape was
+    never converted into a scoped record at all, so `scoped_criterion_
+    evaluation` came back structurally EMPTY even though the criteria were
+    genuinely extracted and sitting right there. This was true for every
+    RFP the general route alone ever handled, not just one buyer.
+
+    This is a pure, general shape adapter -- never Calgary-specific, never
+    inventing a criterion, weight or category that wasn't already
+    extracted. `category_scope` is deliberately left EMPTY (never the
+    general route's own `parent_stage`, which is a table/heading title,
+    not a service-category scope) -- honestly unscoped, exactly like an
+    `extract_scoped_criterion_response_prompts` heading found before any
+    category heading. A single-category RFP (the common case for the
+    general route) is correctly represented as one unscoped criterion set;
+    a multi-category RFP should be handled by the focused task, whose real
+    `category_scope` this function never overrides or guesses at."""
+    occurrences = []
+    for ec in (evaluation_criteria or []):
+        if not isinstance(ec, dict):
+            continue
+        label = (ec.get("stage") or "").strip()
+        if not label:
+            continue
+        occurrences.append({
+            "criterion_label": label,
+            "category_scope": "",
+            "weight": ec.get("weight"),
+            "minimum_score": ec.get("threshold"),
+            "parent_heading": ec.get("parent_stage"),
+            "source_doc": ec.get("source_doc"),
+            "source_refs": list(ec.get("source_refs") or []),
+        })
+    return occurrences
+
+
 def build_scoped_criterion_records(
     evaluation_occurrences: list[dict],
     scoped_response_prompts: dict[str, dict] | None = None,

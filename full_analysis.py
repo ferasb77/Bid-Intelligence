@@ -415,6 +415,14 @@ def build_canonical_package(
         from fast_analysis import carry_forward_category_scope
         occurrences = carry_forward_category_scope(
             list(getattr(result, "evaluation_occurrences", []) or []))
+        if not occurrences:
+            # CHECK-1.2 Defect A: a pre-fix snapshot (or one whose routing
+            # never dispatched the focused rated_criteria task) has no
+            # evaluation_occurrences at all -- re-derive from the general
+            # route's own evaluation_criteria shape, the same fallback
+            # fast_analysis.py's own step 5 now applies at extraction time.
+            occurrences = pn.criteria_as_scoped_occurrences(
+                list(getattr(result, "evaluation_criteria", []) or []))
         scoped_records = pn.build_scoped_criterion_records(
             occurrences, dict(getattr(result, "scoped_criterion_response_prompts", {}) or {}),
             identity_role_by_doc=roles)

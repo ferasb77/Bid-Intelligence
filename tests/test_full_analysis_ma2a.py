@@ -954,10 +954,22 @@ def test_ma1_compute_and_return_path_still_makes_seven_calls_without_persistence
 
 
 def test_frozen_canonical_layers_untouched_by_ma2a():
+    """Historical regression proof, bounded to the MA-2A family's own
+    commits (ee1cf42 MA-1 -> 943623e MA-2A.2, the last MA-2A-series
+    commit) -- NOT an open-ended "never touched again" gate against
+    all future work. CHECK-1.2 (2026-09-27) is a later, separately
+    authorized task whose entire mandate is fixing three real
+    canonicalization defects that live inside exactly these Layer 1/2
+    files (scoped-evaluation-criteria fallback, field-specific deadline
+    amendment authority, DOCX content-control extraction) -- diffing
+    against a moving HEAD would make this assertion fail on every
+    legitimate future bug fix to the canonical layer, which is not what
+    "untouched BY MA2A" was ever meant to prove."""
     import subprocess
     diff = subprocess.run(
-        ["git", "diff", "--name-only", "ee1cf42", "--", "canonical_procurement.py",
-         "procurement_normalization.py", "document_provenance.py", "fast_analysis.py"],
+        ["git", "diff", "--name-only", "ee1cf42", "943623e", "--",
+         "canonical_procurement.py", "procurement_normalization.py",
+         "document_provenance.py", "fast_analysis.py"],
         cwd=ROOT, capture_output=True, text=True)
     if diff.returncode != 0:
         pytest.skip("git history unavailable")

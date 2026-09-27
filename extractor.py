@@ -382,36 +382,276 @@ def extract_pdf_with_metadata(file_bytes: bytes, filename: str) -> tuple[str, di
     return f"[[SOURCE: {filename} | PAGE: 1]]\n" + raw_text, meta
 
 
+_W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+#: Inline (run-level) wrappers whose children are ordinary visible runs:
+#: structured document tags / content controls, custom XML and smart tags.
+#: python-docx's Paragraph.text reads only direct w:r / w:hyperlink
+#: children, so text inside these wrappers was silently dropped (CHECK-1.2
+#: Defect C -- e.g. a date-picker content control holding the Submission
+#: Deadline, or a whole clause held in a rich-text control).
+_DOCX_INLINE_WRAPPERS = ("sdt", "customXml", "smartTag")
+#: Block-level containers descended in document order (a block content
+#: control can hold whole sections -- paragraphs, headings and tables).
+_DOCX_BLOCK_WRAPPERS = ("sdt", "customXml")
+
+
+def _docx_local(el) -> str:
+    tag = getattr(el, "tag", "")
+    return tag.rsplit("}", 1)[-1] if isinstance(tag, str) else ""
+
+
+def _docx_wrapper_children(el):
+    """Children of a wrapper element that carry content: for w:sdt only the
+    w:sdtContent body (never w:sdtPr/w:sdtEndPr -- properties, placeholder
+    references and data bindings are not visible text)."""
+    if _docx_local(el) == "sdt":
+        content = el.find(f"{_W_NS}sdtContent")
+        return list(content) if content is not None else []
+    return list(el)
+
+
+def _docx_paragraph_text(p) -> tuple[str, bool]:
+    """(visible text, touched_content_control) for one w:p element.
+
+    Identical to python-docx's Paragraph.text (concatenated direct w:r /
+    w:hyperlink text, tabs/breaks mapped the same way) for an ordinary
+    paragraph; additionally descends inline content controls / custom XML
+    / smart tags, in document order, exactly once each. Deleted runs
+    (w:del) and control properties are never read."""
+    parts: list[str] = []
+    touched = False
+
+    def walk(children):
+        nonlocal touched
+        for child in children:
+            local = _docx_local(child)
+            if local in ("r", "hyperlink"):
+                parts.append(getattr(child, "text", None) or "")
+            elif local in _DOCX_INLINE_WRAPPERS:
+                if local == "sdt":
+                    touched = True
+                walk(_docx_wrapper_children(child))
+
+    walk(list(p))
+    return "".join(parts), touched
+
+
+def _docx_row_cells(tr) -> list:
+    """Every w:tc of a row in document order, including cells wrapped in a
+    cell-level content control / custom XML."""
+    cells = []
+    for child in tr:
+        local = _docx_local(child)
+        if local == "tc":
+            cells.append(child)
+        elif local in _DOCX_BLOCK_WRAPPERS:
+            cells.extend(_docx_row_cells_from_wrapper(child))
+    return cells
+
+
+def _docx_row_cells_from_wrapper(el) -> list:
+    out = []
+    for child in _docx_wrapper_children(el):
+        local = _docx_local(child)
+        if local == "tc":
+            out.append(child)
+        elif local in _DOCX_BLOCK_WRAPPERS:
+            out.extend(_docx_row_cells_from_wrapper(child))
+    return out
+
+
+def _docx_table_rows(tbl) -> list:
+    """Every w:tr of a table in document order, including rows wrapped in a
+    row-level content control (python-docx's Table.rows only sees direct
+    w:tr children)."""
+    rows = []
+
+    def walk(children):
+        for child in children:
+            local = _docx_local(child)
+            if local == "tr":
+                rows.append(child)
+            elif local in _DOCX_BLOCK_WRAPPERS:
+                walk(_docx_wrapper_children(child))
+
+    walk(list(tbl))
+    return rows
+
+
+def _docx_grid_span(tc) -> int:
+    span = tc.find(f"{_W_NS}tcPr/{_W_NS}gridSpan")
+    try:
+        return max(1, int(span.get(f"{_W_NS}val"))) if span is not None else 1
+    except (TypeError, ValueError):
+        return 1
+
+
+def _docx_vmerge_continue(tc) -> bool:
+    vm = tc.find(f"{_W_NS}tcPr/{_W_NS}vMerge")
+    return vm is not None and (vm.get(f"{_W_NS}val") in (None, "continue"))
+
+
+def _docx_expand_rows(rows: list) -> list[list]:
+    """Per row, the layout-grid cell sequence with python-docx's
+    `_Row.cells` semantics preserved (a horizontally spanned cell repeats
+    once per spanned grid column; a vertical-merge continuation cell yields
+    the cell it continues) -- so ordinary tables read exactly as before --
+    but computed from the flattened row/cell lists above, so rows and cells
+    held in content controls are included."""
+    expanded: list[list] = []
+    previous_grid: dict[int, object] = {}
+    for tr in rows:
+        grid: dict[int, object] = {}
+        before = tr.find(f"{_W_NS}trPr/{_W_NS}gridBefore")
+        try:
+            offset = int(before.get(f"{_W_NS}val")) if before is not None else 0
+        except (TypeError, ValueError):
+            offset = 0
+        seq = []
+        for tc in _docx_row_cells(tr):
+            span = _docx_grid_span(tc)
+            root = previous_grid.get(offset, tc) if _docx_vmerge_continue(tc) else tc
+            for i in range(span):
+                grid[offset + i] = root
+                seq.append(root)
+            offset += span
+        expanded.append(seq)
+        previous_grid = grid
+    return expanded
+
+
+def _docx_walk_blocks(container_children, visit_paragraph, visit_table, in_control: bool = False):
+    """Document-order walk of block content (body, cell, or content-control
+    body): paragraphs and tables are visited exactly once; block-level
+    content controls / custom XML are descended, never emitted themselves
+    (so a container and its children can never both contribute text)."""
+    for child in container_children:
+        local = _docx_local(child)
+        if local == "p":
+            visit_paragraph(child, in_control)
+        elif local == "tbl":
+            visit_table(child, in_control)
+        elif local in _DOCX_BLOCK_WRAPPERS:
+            _docx_walk_blocks(_docx_wrapper_children(child), visit_paragraph, visit_table,
+                              in_control or local == "sdt")
+
+
+def _docx_cell_text(tc) -> str:
+    """A cell's visible text: its paragraphs (content controls included)
+    joined by newline exactly like python-docx's _Cell.text, plus any
+    nested table's rows (previously dropped) rendered as ' | ' rows."""
+    lines: list[str] = []
+
+    def on_p(p, _in_control):
+        lines.append(_docx_paragraph_text(p)[0])
+
+    def on_tbl(tbl, _in_control):
+        for seq in _docx_expand_rows(_docx_table_rows(tbl)):
+            vals = []
+            last = None
+            for cell in seq:
+                if cell is last:
+                    continue
+                last = cell
+                text = _docx_cell_text(cell).strip()
+                if text:
+                    vals.append(text)
+            if vals:
+                lines.append(" | ".join(vals))
+
+    _docx_walk_blocks(list(tc), on_p, on_tbl)
+    return "\n".join(lines)
+
+
 def extract_docx_with_metadata(file_bytes: bytes, filename: str) -> tuple[str, dict]:
-    """Extract DOCX text with heading / section markers and metadata."""
-    meta = {"sections": [], "tables_count": 0}
-    
-    # 1. Try python-docx
+    """Extract DOCX text with heading / section markers and metadata.
+
+    CHECK-1.2 (Defect C): the body is walked in DOCUMENT ORDER and descends
+    structured document tags / content controls (w:sdt) at block, row,
+    cell and run level, so text a buyer placed inside content controls
+    (whole RFP clauses, form instructions, date-picker deadlines) is no
+    longer dropped. Output format is unchanged: heading paragraphs become
+    `[[SOURCE: f | SECTION: heading]]` markers, table rows become
+    `[[SOURCE: f | TABLE]] cell | cell` lines with python-docx's cell
+    semantics. Because tables now appear where they sit in the document
+    (instead of all appended at the end), the section marker is re-emitted
+    after a table before ordinary text resumes, so a multi-line table row
+    never absorbs the paragraph that follows it and every paragraph keeps
+    its heading context.
+
+    meta: sections, tables_count, content_controls (block/inline counts),
+    and `blocks` -- one location record per emitted block (index, kind,
+    section, table/row index, whether it came from a content control)."""
+    meta = {"sections": [], "tables_count": 0,
+            "content_controls": {"block_paragraphs": 0, "inline_paragraphs": 0, "table_rows": 0},
+            "blocks": []}
+
+    # 1. Try python-docx (for its XML element classes: w:r/w:hyperlink text
+    # mapping stays byte-identical to Paragraph.text).
     try:
         import docx
+        from docx.text.paragraph import Paragraph
         doc = docx.Document(io.BytesIO(file_bytes))
-        paragraphs = []
-        current_heading = "Document Body"
-        for p in doc.paragraphs:
-            text = p.text.strip()
-            if not text:
-                continue
-            if p.style.name.startswith("Heading"):
-                current_heading = text
-                meta["sections"].append(current_heading)
-                paragraphs.append(f"\n[[SOURCE: {filename} | SECTION: {current_heading}]]")
-            else:
-                paragraphs.append(text)
-        
-        for t in doc.tables:
-            meta["tables_count"] += 1
-            for row in t.rows:
-                row_vals = [cell.text.strip() for cell in row.cells if cell.text.strip()]
-                if row_vals:
-                    paragraphs.append(f"[[SOURCE: {filename} | TABLE]] " + " | ".join(row_vals))
+        body = doc.element.body
+        lines: list[str] = []
+        state = {"heading": "Header", "after_table": False, "table_index": -1}
 
-        if paragraphs:
-            return f"[[SOURCE: {filename} | SECTION: Header]]\n" + "\n".join(paragraphs), meta
+        def style_name(p) -> str:
+            try:
+                return Paragraph(p, doc).style.name or ""
+            except Exception:
+                return ""
+
+        def on_p(p, in_control):
+            text, inline_control = _docx_paragraph_text(p)
+            text = text.strip()
+            if not text:
+                return
+            if in_control:
+                meta["content_controls"]["block_paragraphs"] += 1
+            elif inline_control:
+                meta["content_controls"]["inline_paragraphs"] += 1
+            if style_name(p).startswith("Heading"):
+                state["heading"] = text
+                state["after_table"] = False
+                meta["sections"].append(text)
+                lines.append(f"\n[[SOURCE: {filename} | SECTION: {text}]]")
+                meta["blocks"].append({"index": len(meta["blocks"]), "kind": "heading", "section": text,
+                                       "content_control": bool(in_control or inline_control)})
+                return
+            if state["after_table"]:
+                lines.append(f"[[SOURCE: {filename} | SECTION: {state['heading']}]]")
+                state["after_table"] = False
+            lines.append(text)
+            meta["blocks"].append({"index": len(meta["blocks"]), "kind": "paragraph",
+                                   "section": state["heading"],
+                                   "content_control": bool(in_control or inline_control),
+                                   "excerpt": text[:120]})
+
+        def on_tbl(tbl, in_control):
+            meta["tables_count"] += 1
+            state["table_index"] += 1
+            for row_index, seq in enumerate(_docx_expand_rows(_docx_table_rows(tbl))):
+                vals = []
+                for cell in seq:
+                    text = _docx_cell_text(cell).strip()
+                    if text:
+                        vals.append(text)
+                if not vals:
+                    continue
+                if in_control:
+                    meta["content_controls"]["table_rows"] += 1
+                lines.append(f"[[SOURCE: {filename} | TABLE]] " + " | ".join(vals))
+                meta["blocks"].append({"index": len(meta["blocks"]), "kind": "table_row",
+                                       "section": state["heading"], "table_index": state["table_index"],
+                                       "row_index": row_index, "content_control": bool(in_control),
+                                       "excerpt": " | ".join(vals)[:120]})
+            state["after_table"] = True
+
+        _docx_walk_blocks(list(body), on_p, on_tbl)
+
+        if lines:
+            return f"[[SOURCE: {filename} | SECTION: Header]]\n" + "\n".join(lines), meta
     except Exception:
         pass
 

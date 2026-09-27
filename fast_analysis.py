@@ -2041,6 +2041,14 @@ def run_fast_analysis_corpus(documents: list[tuple[str, str]], api_key: str,
         if isinstance(ec, dict) and (ec.get("stage") or "").strip()
     })
     scoped_occurrences = carry_forward_category_scope(result.evaluation_occurrences)
+    if not scoped_occurrences and result.evaluation_criteria:
+        # CHECK-1.2 Defect A: this corpus's routing never dispatched the
+        # V4 focused "rated_criteria" task (so evaluation_occurrences is
+        # genuinely empty), but real rated criteria were still extracted
+        # into the general route's own evaluation_criteria shape -- convert
+        # them (never invent/guess) so scoped_criterion_evaluation below is
+        # never silently empty merely because of which route ran.
+        scoped_occurrences = _proc_norm.criteria_as_scoped_occurrences(result.evaluation_criteria)
     known_category_labels = sorted({
         (occ.get("category_scope") or "").strip()
         for occ in scoped_occurrences

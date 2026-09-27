@@ -397,6 +397,40 @@ Where to look, not what everything means. Read
   Real-file tests read `CHECK11_BIDDER_ZIP` / `CHECK11_BUYER_ZIP` and skip
   when absent.
 
+**CHECK-1.2: Calgary Buyer Canonicalization Closure (2026-09-27)**
+- Fixes the three buyer-side defects CHECK-1.1 found and left unpatched:
+  empty scoped evaluation criteria, a stale canonical submission deadline,
+  and a missing DOCX-content-control-borne multi-party requirement. All
+  three fixes are GENERAL (no Calgary-specific text/date/weight anywhere
+  in production code) and live in the frozen Layer 1/2 modules -- the
+  first change to them since MA-1 (`ee1cf42`); see SYSTEM_STATE.md's own
+  entry for the full root-cause writeup and live-verification detail
+  against the real bid 1360 corpus.
+- `procurement_normalization.criteria_as_scoped_occurrences` -- converts
+  the general (non-focused-task) route's `evaluation_criteria` shape into
+  the occurrence shape `build_scoped_criterion_records` already consumes;
+  wired as a fallback in `fast_analysis.py` step 5 and in `full_analysis.
+  build_canonical_package`'s existing recompute path, used only when
+  `evaluation_occurrences` is genuinely empty.
+- `canonical_procurement.py` -- new `IDENTITY_ROLE_QA_LOG` (a Q&A log
+  never wins an authoritative identity/deadline field, only last-resort),
+  new `"deadline"` field family (`AMENDMENT` > `PRIMARY_SOLICITATION` >
+  `SUPPORTING`) and `FIELD_FAMILY_OVERRIDE_BY_FIELD` (looked up PER FIELD
+  inside `merge_identity_fields_with_provenance`, so the existing
+  `field_family="identity"` call site needs no change), and a same-role
+  latest-ISO-date tie-break (never a cross-role "latest wins").
+- `extractor.extract_docx_with_metadata` -- document-order block walker
+  (`_docx_walk_blocks`/`_docx_paragraph_text`/`_docx_expand_rows`/
+  `_docx_cell_text`) descending `w:sdt`/`w:customXml`/`w:smartTag` at
+  body, row, cell and run level; new `meta["content_controls"]` counts and
+  `meta["blocks"]` location trail; no duplicated text between a wrapper
+  and its children.
+- Tests: `tests/test_check12_calgary_buyer_closure.py` (18, synthetic,
+  zero model/DB calls). `tests/test_full_analysis_ma2a.py::test_frozen_
+  canonical_layers_untouched_by_ma2a` narrowed to the historical
+  `ee1cf42..943623e` (MA-2A family) range so it still proves what its name
+  says without blocking this later, separately authorized amendment.
+
 **Proposal Intelligence (PI-1, hardened in PI-1.1/PI-1.2, deepened in
 PI-2A/PI-2A.1, extended in PI-2B1)** — durable persistence for CHECK's
 Proposal Alignment output. PI-2A added structured proposal/procurement
