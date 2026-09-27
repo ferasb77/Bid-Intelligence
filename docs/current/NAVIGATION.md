@@ -534,7 +534,24 @@ CHECK-1 (1.0-1.3) is COMPLETE and FROZEN -- build on it, do not reopen it.
   `load_submission_evidence_package_for_organization` and (on click)
   `start_check_run_for_organization`; never `check_coverage.py`, never a model.
 - Tests: `tests/test_check2c_assurance_workspace.py` (64).
-- CHECK-2D (report / export) not implemented.
+
+**CHECK-2D: Concise Proposal Assurance Report (2026-09-27)**
+- `components/check_report_model.py` -- pure deterministic report model
+  (no Streamlit / DB / PDF / provider): `build_report_model`,
+  `attention_findings` (`ATTENTION_CLASSES`), `criteria_rows`,
+  `mandatory_addressed_rows`, `Citations` (E# only for ids in this bid's
+  registry), `model_digest`, `report_filename`.
+- `check_assurance_report.py` -- reportlab renderer on the shared report stack
+  (`scripts/build_boc_bid_intelligence_preview_pdf.py`, `full_analysis_report.py`
+  helpers): `render_pdf`, `render_report`, `safe` (brand-font glyph fallback).
+- `tenancy.export_check_assurance_report_for_organization` -- read-only,
+  COMPLETE / PARTIAL only, zero provider calls.
+- `pages/stage_check_assurance.py` -- `export_labels`, `prepare_export`,
+  `_render_export` ("Download Proposal Assurance Report").
+- Live acceptance (one-off, read-only): `scripts/export_check2d_calgary_report.py
+  <out.pdf>` (bid 1360 / run 37; 14 pages).
+- Tests: `tests/test_check2d_assurance_report.py` (47).
+- CHECK-2 is COMPLETE. CHECK-3 not started.
 
 **Proposal Intelligence (PI-1, hardened in PI-1.1/PI-1.2, deepened in
 PI-2A/PI-2A.1, extended in PI-2B1)** — durable persistence for CHECK's

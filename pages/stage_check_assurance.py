@@ -36,6 +36,7 @@ from config import api_key_configured, get_api_key
 _START_INFLIGHT = "chk_start_inflight_{bid}"
 _OUTCOME_NOTE = "chk_outcome_{bid}"
 _BUNDLE = "chk_bundle_{bid}_{run}"
+_EXPORT = "chk_export_{bid}_{run}"
 #: Every session key this page writes starts with this (app.py clears them on logout).
 SESSION_PREFIX = "chk_"
 POLL_INTERVAL_SECONDS = 5
@@ -105,6 +106,39 @@ def load_bundle(bid_id: int, organization_id: str, run_id: int | None, session) 
     if run.get("status") in cwv.TERMINAL_RUN and not evidence_error:
         session[_BUNDLE.format(bid=bid_id, run=run.get("id"))] = bundle
     return bundle
+
+
+def export_labels(run_status: str | None) -> dict | None:
+    """CHECK-2D download labels; None when the run cannot be exported."""
+    if run_status == cwv.RUN_COMPLETE:
+        return {"prepare": "Prepare Proposal Assurance Report (PDF)",
+                "download": "Download Proposal Assurance Report"}
+    if run_status == cwv.RUN_PARTIAL:
+        return {"prepare": "Prepare Partial Proposal Assurance Report (PDF)",
+                "download": "Download Partial Proposal Assurance Report"}
+    return None
+
+
+def prepare_export(bid_id: int, organization_id: str, run_id: int, run_status: str | None, session) -> dict:
+    """CHECK-2D: the durable CHECK run as the Proposal Assurance Report PDF.
+    {"pdf", "filename", "digest"} or {"error"}. Only a terminal COMPLETE /
+    PARTIAL run; reads through tenancy's authorized, read-only export wrapper
+    (never an adjudication, never a model, never a rerun). Cached per
+    (bid, run) in the session: a terminal run is immutable."""
+    if export_labels(run_status) is None:
+        return {"error": "The report can be exported once a CHECK run is complete or partial."}
+    key = _EXPORT.format(bid=bid_id, run=run_id)
+    cached = session.get(key)
+    if cached:
+        return cached
+    try:
+        out = tenancy.export_check_assurance_report_for_organization(bid_id, organization_id, int(run_id))
+    except tenancy.AccessDeniedError:
+        return {"error": "You do not have access to that CHECK run."}
+    except Exception as exc:
+        return {"error": f"Could not build the report: {exc}"}
+    session[key] = out
+    return out
 
 
 def request_start(bid_id: int, organization_id: str, api_key: str | None, session, *,
@@ -252,6 +286,28 @@ def _render_non_submission(adjs: list) -> None:
             _html(f'<div class="ck-att">{rows}</div>')
 
 
+def _render_export(bid_id: int, run_id, run_status: str | None) -> None:
+    """Download the shown durable run as the Proposal Assurance Report."""
+    labels = export_labels(run_status)
+    if labels is None or run_id is None:
+        st.caption("A Proposal Assurance Report can be exported once a CHECK run is complete or partial.")
+        return
+    key = _EXPORT.format(bid=bid_id, run=run_id)
+    if not st.session_state.get(key):
+        if st.button(labels["prepare"], key=f"chk_export_btn_{bid_id}_{run_id}"):
+            _, org, _ = _ctx()
+            out = prepare_export(bid_id, org, run_id, run_status, st.session_state)
+            if out.get("error"):
+                st.error(out["error"])
+                return
+        else:
+            st.caption("Builds a concise PDF from this saved CHECK run. It does not re-run CHECK.")
+            return
+    out = st.session_state[key]
+    st.download_button(labels["download"], data=out["pdf"], file_name=out["filename"], mime="application/pdf",
+                       key=f"chk_dl_{bid_id}_{run_id}", type="primary")
+
+
 def _render_workspace(bid_id: int, bid: dict | None, status: dict, bundle: dict, *, shown_note: str | None) -> None:
     shown_status = {**status, "run_id": bundle["run_id"], "status": bundle["run_status"],
                     "completed_at": bundle["run"].get("completed_at"), "failed_at": bundle["run"].get("failed_at"),
@@ -277,6 +333,8 @@ def _render_workspace(bid_id: int, bid: dict | None, status: dict, bundle: dict,
     if bundle.get("evidence_error"):
         _html(cwv.render_banner("warn", "Submission evidence could not be loaded, so evidence excerpts are "
                                         "not shown.", [bundle["evidence_error"]]))
+
+    _render_export(bid_id, bundle["run_id"], bundle["run_status"])
 
     ov = cwv.overview(adjs)
     _html(cwv.render_counts(ov) + cwv.render_legend())

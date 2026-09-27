@@ -395,6 +395,50 @@ def get_check_run_result_for_organization(
         raise AccessDeniedError(str(exc))
 
 
+def export_check_assurance_report_for_organization(
+    bid_id: int, organization_id: str, run_id: int,
+) -> dict:
+    """CHECK-2D: render the durable CHECK run `run_id` as the concise
+    Proposal Assurance Report PDF. Bid ownership first, then (inside the
+    service) the run must be a CHECK run of THIS bid. READ-ONLY: the
+    persisted run + adjudications (check_run_service.get_check_run_result,
+    zero provider calls), the bid row and this bid's own persisted
+    submission evidence registry (bounded excerpts). Never starts, reruns or
+    mutates a run; never calls a model. Only a COMPLETE or PARTIAL run is
+    exportable (PARTIAL is labelled "Partial Proposal Assurance Report");
+    anything else raises check_report_model.ReportNotExportableError.
+    Returns {"pdf": bytes, "filename": str, "digest": str}."""
+    require_bid_access(bid_id, organization_id)
+    import check_assurance_report
+    import check_run_service
+    from components import check_report_model as crm
+    from components import check_workspace_view as cwv
+    try:
+        res = check_run_service.get_check_run_result(bid_id, run_id)
+    except check_run_service.RunNotFoundError as exc:
+        raise AccessDeniedError(str(exc))
+    if not res or res.get("result") is None:
+        raise crm.ReportNotExportableError("no persisted CHECK result for this run")
+    run = res["run"]
+    if int(run.get("bid_id")) != int(bid_id):  # defence in depth; the service already checks
+        raise AccessDeniedError("CHECK run does not belong to this bid")
+    if run.get("status") not in crm.EXPORTABLE_RUN_STATUSES:
+        raise crm.ReportNotExportableError(f"CHECK run status {run.get('status')!r} is not exportable")
+    adjs = cwv.adjudications(res["result"])
+    index, files = {}, []
+    snapshot_id = run.get("source_package_snapshot_id")
+    if snapshot_id is not None:
+        package = load_submission_evidence_package_for_organization(bid_id, organization_id, int(snapshot_id))
+        index = cwv.build_evidence_index(package, bid_id, [e for a in adjs for e in cwv.cited_evidence_ids(a)])
+        files = cwv.submitted_files(package)
+    out = check_assurance_report.render_report(
+        run=run, adjudications=adjs, evidence_index=index, files=files, bid=db.get_bid(bid_id),
+        partial_lines=cwv.partial_disclosure({"failure_reason": run.get("failure_reason")},
+                                             res.get("result_payload") or {}),
+        digest_verified=bool(res.get("result_digest_verified")))
+    return {"pdf": out["pdf"], "filename": out["filename"], "digest": out["digest"]}
+
+
 def mark_check_run_stuck_for_organization(bid_id: int, organization_id: str, run_id: int) -> dict:
     """Explicit user action: mark a genuinely stale CHECK run FAILED. Never
     starts a replacement run."""

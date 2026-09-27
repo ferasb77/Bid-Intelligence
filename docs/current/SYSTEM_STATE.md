@@ -2747,7 +2747,7 @@ migration 022, canonical procurement / submission package logic) is frozen at
 **CHECK-2C (Client-Facing Proposal Assurance Workspace) -- 2026-09-27.** The
 first customer-facing CHECK experience: an interactive review / comparison
 workspace that RENDERS the durable CHECK-2B run. No PDF / export / report
-(CHECK-2D, not implemented), no claim-level assurance, no proposal generation,
+in CHECK-2C itself (added by CHECK-2D, below), no claim-level assurance, no proposal generation,
 no overall numeric score, readiness percentage, win probability or predicted
 evaluator mark, no animation.
 
@@ -2816,7 +2816,77 @@ evaluator mark, no animation.
   asserted across open / filter / detail / refresh / REUSED_COMPLETE; reuses
   CHECK-2B's `FakeCheckDB` for the real reconstruction path).
 
-**CHECK-2C is COMPLETE.** CHECK-2D (report / export) is NOT implemented.
+**CHECK-2C is COMPLETE.**
+
+**CHECK-2D (Concise Proposal Assurance Report) -- 2026-09-27.** A client-ready
+PDF rendered from the durable CHECK run. It never re-runs adjudication and
+never calls a model: report generation is deterministic selection over the
+persisted CHECK adjudications (zero provider calls, a release gate). No
+migration, no report persistence (compute-and-render on demand), no CHECK
+backend change (`check_coverage.py`, `check_run_service.py`, migration 022,
+canonical procurement / submission package logic still frozen at `e76e103`).
+
+- **Architecture**: durable CHECK result -> `components/check_report_model.py`
+  (pure: no Streamlit / DB / PDF library / provider; `build_report_model`,
+  `model_digest`, `report_filename`; reuses CHECK-2C's pure view helpers) ->
+  `check_assurance_report.py` (reportlab renderer reusing the shared Bid
+  Intelligence stack of `scripts/build_boc_bid_intelligence_preview_pdf.py`
+  and MA-2C's `full_analysis_report.py` helpers: dark cover, brand fonts /
+  tokens, table styling, running header / footer, page numbers). Entry point:
+  `tenancy.export_check_assurance_report_for_organization(bid, org, run)` --
+  bid ownership first, run must be a CHECK run of this bid, read-only
+  (`check_run_service.get_check_run_result`, this bid's evidence registry, the
+  bid row). Workspace: "Prepare / Download Proposal Assurance Report" in
+  `pages/stage_check_assurance.py` (`export_labels`, `prepare_export`, cached
+  per (bid, run) under `chk_export_*`; opening the page builds nothing).
+- **Content**: cover; Assurance Overview (identity, five factual status
+  counts, non-submission count separate, no score / percentage); Evaluation
+  Criteria Overview (every scoped criterion: buyer weight / variants /
+  threshold as buyer metadata, status, bounded buyer expectation, count-based
+  conclusion); Findings Requiring Attention (index + detailed partials:
+  Buyer expected / Demonstrated / Not demonstrated with [E#] citations);
+  Human Review Required (verbatim persisted reasons; "what a reviewer should
+  confirm" only from `element needs review:` segments or recorded
+  unverifiable elements); Not Verifiable & Not Addressed (zero shown as zero);
+  Addressed Mandatory Requirements (where the submission responded); Outside
+  Proposal-Assurance Scope; Evidence Appendix (submitted artifacts + every
+  cited reference, bounded excerpt / field value); Methodology & status
+  definitions.
+- **Deterministic selection** (`ATTENTION_CLASSES`): criterion PARTIAL / HR /
+  NV / NOT_ADDRESSED, then mandatory / submission-wide requirements in the same
+  status order, then other requirements; within a class higher buyer-stated
+  weight, stated threshold, persisted order. A criterion derived from linked
+  requirements points at those requirements' own element lists, so each
+  element set appears once with every criterion it applies to. Citations E#
+  are assigned in report order and only for ids that resolve in THIS bid's
+  registry (unresolved ids are counted, never shown). The CHECK-2B replay
+  placeholder segment "reason text omitted from content-free fixture" is not
+  repeated in the report (`NON_SUBSTANTIVE_REASON_MARKERS`); persisted rows are
+  unchanged. PARTIAL runs export as "Partial Proposal Assurance Report" with
+  the non-complete batches disclosed; FAILED / RUNNING / QUEUED are not
+  exportable. REQ-41's accepted model limitation is rendered as persisted.
+- **Real Calgary acceptance (bid 1360, run 37)**: `scripts/export_check2d_
+  calgary_report.py <out.pdf>` (production path, provider / adjudication /
+  CHECK-write paths poisoned). Final PDF 14 pages (cover + 13), 86,167 bytes,
+  semantic digest `c9407310790a...` (identical to an offline render of the
+  same rows); counts 18 / 11 / 0 / 6 / 2 + 23 non-submission; all 13 criteria;
+  11 attention findings (4 detailed partials REQ-41 / REQ-44 / REQ-42 /
+  REQ-43, 2 human review REQ-5 / REQ-16, 5 not verifiable incl. portal-native
+  REQ-38 / REQ-45); 33 evidence references across the 4 artifacts (Technical
+  Proposal, Appendix D Price Form, Appendix E Submission Form, B2 Multi-Party
+  Confirmation Form). `model_usage_events` 355 before and 355 after five live
+  generations: delta 0; run 37 (60 adjudications, 15 events, 269 evidence
+  links, adjudication-row md5) unchanged; still one CHECK run. Every page
+  visually inspected; fixed during inspection: orphaned finding / sub-section
+  headings, large blank areas from unsplittable blocks, a misaligned
+  two-column element grid, old-style count numerals, ASCII table-rule noise in
+  excerpts, double colons in field labels, glyphs missing from the brand font
+  (mapped to plain equivalents).
+- Tests: `tests/test_check2d_assurance_report.py` (47; zero provider calls
+  asserted). `tests/test_check2c_assurance_workspace.py`'s "no export" guard
+  replaced by "export only through the CHECK-2D read-only wrapper".
+
+**CHECK-2D is COMPLETE; CHECK-2 is COMPLETE.** CHECK-3 is NOT started.
 
 Absent an explicit task instruction otherwise, still do not: alter/reapply
 migration 015, 016, 017, 018, 019, 020, 021 or 022,

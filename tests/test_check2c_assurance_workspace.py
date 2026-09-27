@@ -857,10 +857,16 @@ class TestArchitecture:
         assert src.count("tenancy.start_check_run_for_organization(") == 1
         assert "retry=True" not in src                                    # retry comes only from rerun_cta
 
-    def test_no_export_or_report_in_check2c(self):
-        src = (ROOT / "pages" / "stage_check_assurance.py").read_text(encoding="utf-8").lower()
-        for token in ("download_button", "pdf", "docx", "xlsx", "export"):
-            assert token not in src, token
+    def test_export_only_through_check2d_read_only_wrapper(self):
+        # CHECK-2C shipped with no export; CHECK-2D added exactly one read-only
+        # export path (the durable run rendered as the Proposal Assurance
+        # Report). No other document format or report generator is reachable.
+        src = (ROOT / "pages" / "stage_check_assurance.py").read_text(encoding="utf-8")
+        assert src.count("tenancy.export_check_assurance_report_for_organization(") == 1
+        assert src.count("st.download_button(") == 1
+        low = src.lower()
+        for token in ("docx", "xlsx", "reportlab", "import check_assurance_report", "full_analysis_report"):
+            assert token not in low, token
 
     def test_app_routes_and_nav_entry(self):
         src = (ROOT / "app.py").read_text(encoding="utf-8")
