@@ -1780,7 +1780,10 @@ def map_requirement_to_submission(requirement: dict, package: SubmissionPackage,
     in_role.sort(key=key)
     other.sort(key=key)
     return RequirementEvidenceMapping(
-        req_id=req.get("req_id") or "", requirement_id=req.get("id"), category=req.get("category"),
+        # A full_analysis CanonicalPackage requirement object carries its
+        # buyer-side identity as `canonical_id` (REQ-<i>); accepted as-is.
+        req_id=req.get("req_id") or req.get("canonical_id") or "", requirement_id=req.get("id"),
+        category=req.get("category"),
         expected=expected, artifact_status=status, expected_role_documents=doc_ids,
         candidates=tuple(in_role[:top_k]), other_artifact_candidates=tuple(other[:other_k]), notes=notes,
         primary_role_present=bool(expected.roles) and any(

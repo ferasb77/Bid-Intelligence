@@ -2096,6 +2096,12 @@ def run_fast_analysis_corpus(documents: list[tuple[str, str]], api_key: str,
     # keys) so every downstream consumer (report adapter, structured_
     # intelligence, BUILD/proposal_outline) sees de-duplicated
     # requirements without a separate opt-in field.
+    # CHECK-1.3: a buyer-named required form stated in the corpus but not
+    # covered by any extracted requirement is recovered deterministically
+    # (verbatim sentence, no model call) before canonicalization; a no-op
+    # whenever extraction already covered the form.
+    result.requirements.extend(_proc_norm.recover_uncovered_required_form_obligations(
+        list(documents), result.requirements))
     result.requirements = _proc_norm.canonicalize_requirements(result.requirements)
 
     # Defect C: milestone canonicalization over MILESTONE-family typed

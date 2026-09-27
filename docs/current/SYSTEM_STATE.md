@@ -2388,6 +2388,97 @@ run 34 raw snapshot).
   change in skip count), 0 failed, run twice (once before the frozen-test
   range fix, once after).
 
+**CHECK-1.3 (Final Multi-Party Requirement Gap) -- 2026-09-27.** Closes the
+one gap CHECK-1.2 left open: the real City of Calgary B2 obligation now
+exists as a canonical buyer requirement for bid 1360. **Zero Anthropic
+calls** (the deterministic path sufficed; the authorized single bounded
+call was not needed), no Fast Analysis rerun, no migration, no database
+write, run 34 untouched (raw snapshot md5 `d9020f8e...` identical before
+and after; still the bid's only analysis run). No CHECK-2 work.
+
+- **Buyer source**: `S-PT-073-RFP with Price - V2.5_..._June 12.docx`
+  (buyer document, bid 1360 `RFP / Source`), section `APPENDIX F - OTHER
+  ATTACHMENTS`, sub-heading `B2:  MULTI-PARTY CONFIRMATION FORM`, a
+  content-control paragraph (extractor `blocks[564]`, `content_control:
+  true`): "Each proposal that is submitted on behalf of, and contemplates
+  the provision of the Deliverables by a Multi-Party Team must include a
+  Multi-Party Confirmation Form completed and signed by all Team Members."
+  Next line (context): "THIS FORM TO BE COMPLETED ONLY IF THE PROPOSAL IS
+  SUBMITTED BY A TEAM OF PROPONENTS ...".
+- **Mechanism (general, not Calgary-specific)**: `procurement_
+  normalization.recover_uncovered_required_form_obligations(documents,
+  existing_requirements)` -- a normative ("must"/"shall"/"required to")
+  obligation to include/submit a capitalized, buyer-NAMED "... Form" whose
+  name no existing requirement mentions is carried VERBATIM in the existing
+  Fast Analysis requirement schema (`category` "Mandatory" from the modal,
+  `semantic_type` SUBMISSION_REQUIREMENT, restricting subject clause kept
+  verbatim as `applicability_condition`, `source_refs`/`source_locator`/
+  `source_context`, `requirement_origin =
+  DETERMINISTIC_REQUIRED_FORM_RECOVERY`), then canonicalized with the SAME
+  `canonicalize_requirements`. Fail-safe towards not adding (a form named
+  anywhere in existing requirements is covered), idempotent, table rows /
+  negated modals / lower-case "form" ignored, and only plain (filename,
+  text) buyer-corpus pairs accepted (bidder `EvidenceItem`/
+  `SubmissionDocument` -> TypeError). Wired in two places: `full_analysis.
+  build_canonical_package` (the existing recompute path, only when
+  `documents` are supplied; recovered requirements are APPENDED so every
+  existing REQ-<i> is unchanged) and `fast_analysis.py` step 5 (future runs,
+  before canonicalization). Against the real corpus it recovers exactly one
+  requirement for Calgary (the Submission Form obligation is already
+  covered by run 34) and none for Bank of Canada (run 19; package digest
+  unchanged).
+- **Persistence = recomputation, not a new row**: the canonical buyer model
+  for bid 1360 is `analysis_service.build_full_analysis_package(34)` --
+  immutable run 34 raw snapshot + the persisted buyer documents 199-211 --
+  which now yields **REQ-46** (47 canonical requirements). This is the same
+  existing mechanism CHECK-1.2's 13 scoped criteria use. Caveat:
+  `documents_only_if_needed=True` (the durable FULL path's builder) skips
+  corpus download when a snapshot already has `category_scope_items`; run
+  34 has none, so the FULL path includes REQ-46 too.
+- **Canonical requirement**: REQ-46, Mandatory, SUBMISSION_REQUIREMENT,
+  applicability SUBMISSION_WIDE (conditional on a Multi-Party Team, per the
+  verbatim condition). Expected evidence (`derive_expected_evidence`):
+  MULTI_PARTY_FORM > SUBMISSION_FORM > TECHNICAL_PROPOSAL, basis
+  STATED_IN_REQUIREMENT. `submission_package.map_requirement_to_submission`
+  now accepts a CanonicalPackage requirement's `canonical_id` as its req_id.
+- **Real B2 candidates** (package snapshot 9, reloaded from migration-021
+  rows): ARTIFACT_PRESENT, primary role present, 5 candidates all in
+  `B2 Multi-Party Confirmation Form_Phoenix Consulting Canada & Inquisitive
+  Talent.pdf` (doc `916bc146885a9d0b7a44980f`, logical artifact
+  `LA-9ff3a2721101c45d`, 68 evidence items): `EV-7117f788c301e7cb5c17`,
+  `EV-02121fe4dcea4d8d98b6`, `EV-444aef958ab32b7900b8`,
+  `EV-79daf9954929fb8d21e8`, `EV-334732da15da70757250`; both "Phoenix
+  Consulting Canada" and "Inquisitive Talent" recoverable from the B2
+  evidence; cross-bid resolution rejected. Candidates only -- no
+  adjudication.
+- **Side fix found on the real data**: `canonical_procurement.
+  _CATEGORY_ID_RE` read a document VERSION token ("V2.5", "V4.0") as a
+  category id, making every requirement derived from such a file
+  CATEGORY_SPECIFIC to a phantom "V2"/"V4" category. Narrowly excluded
+  `V<n>.<n>` only (D1.1-style numbering still yields D1). Affects fresh
+  derivation only; run 34's stored applicability values (which carry the
+  old phantom ids for 20 requirements) are untouched, as history.
+- **Regression (live, `scripts/commission_check13_calgary_multiparty.py`,
+  read-only, every Anthropic entry point poisoned, 0 attempts)**: 13
+  bidder files / 4 logical artifacts / 294 evidence (evidence-id digest
+  unchanged); Appendix C TECHNICAL_PROPOSAL, completed Appendix D
+  PRICING_FORM, Appendix E SUBMISSION_FORM, B2 MULTI_PARTY_FORM; 13 scoped
+  criteria; canonical deadline 2026-07-16 with 2026-07-07 / 2026-07-14
+  milestones still preserved.
+- Tests: `tests/test_check13_multiparty_requirement_closure.py` (21 -- 15
+  synthetic incl. buyer/bidder separation, service-path read-only, step-5
+  recovery with stubbed extraction; 6 real-chain, using the committed
+  byte-identical run 34 raw snapshot fixture `tests/fixtures/calgary_26_
+  1603_run34_raw_snapshot.json`, sha256 `45543c0a...`, plus the real
+  buyer/bidder ZIPs, skipped when absent). Full suite: 3447 passed, 2
+  skipped. `scripts/commission_check11_calgary_bidder.py`'s labelled
+  `SUPP-B2-VERBATIM` input (and the CHECK-1.1 fixture row carrying it) is
+  historical and now superseded by canonical REQ-46.
+- **CHECK-2 readiness**: buyer source -> canonical REQ-46 -> MULTI_PARTY_FORM
+  -> real B2 candidates is proven on real data. CHECK-2 must take buyer
+  requirements from `build_full_analysis_package(run_id)` (documents
+  included), not the raw snapshot's `requirements` list.
+
 Absent an explicit task instruction otherwise, still do not: apply
 migration 013, alter/reapply migration 015, 016, 017, 018, or 019,
 activate the compact-wire prototype, change chunk sizes/max_tokens/model

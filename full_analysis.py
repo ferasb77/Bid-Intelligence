@@ -487,8 +487,21 @@ def build_canonical_package(
     category_scope_items = tuple(scope_items)
 
     # ---- canonical requirements ---------------------------------------
+    raw_requirements = [r for r in (getattr(result, "requirements", []) or [])]
+    if documents:
+        # CHECK-1.3: a run completed before CHECK-1.2's DOCX content-control
+        # fix never saw text held in a content control, so a buyer-named
+        # required form stated only there has no canonical requirement in
+        # that (immutable) run. Recompute-time recovery over the SAME buyer
+        # corpus, deterministic and idempotent: a form already covered by
+        # any existing requirement adds nothing, and recovered requirements
+        # are only ever APPENDED, so every existing REQ-<i> id is unchanged.
+        recovered = pn.recover_uncovered_required_form_obligations(
+            list(documents), [r for r in raw_requirements if isinstance(r, dict)])
+        if recovered:
+            raw_requirements.extend(pn.canonicalize_requirements(recovered))
     requirements = []
-    for i, req in enumerate(getattr(result, "requirements", []) or []):
+    for i, req in enumerate(raw_requirements):
         if not isinstance(req, dict):
             continue
         applicability = req.get("applicability")
@@ -513,6 +526,19 @@ def build_canonical_package(
                                 ([req["source_doc"]] if req.get("source_doc") else [])),
             "source_refs": list(req.get("source_refs_all") or req.get("source_refs") or []),
         })
+        if req.get("requirement_origin"):
+            # Provenance of a recovered requirement (additive keys only on
+            # such objects, so every Fast-Analysis-extracted requirement's
+            # canonical shape -- and any existing package digest -- is
+            # unchanged).
+            requirements[-1].update({
+                "requirement_origin": req["requirement_origin"],
+                "category": req.get("category"),
+                "required_form": req.get("required_form"),
+                "applicability_condition": req.get("applicability_condition"),
+                "source_locator": dict(req.get("source_locator") or {}),
+                "source_context": dict(req.get("source_context") or {}),
+            })
     requirements = tuple(requirements)
 
     # ---- typed commercial / contractual obligations --------------------

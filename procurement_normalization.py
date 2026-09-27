@@ -679,6 +679,161 @@ def canonicalize_requirements(requirements: list[dict]) -> list[dict]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# CHECK-1.3 -- deterministic recovery of an uncovered required-form obligation
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: `requirement_origin` of a requirement produced by
+#: `recover_uncovered_required_form_obligations` (never set on a
+#: model-extracted requirement), so every consumer can tell a
+#: deterministic supplemental recovery apart from Fast Analysis's own
+#: extraction.
+REQUIREMENT_ORIGIN_REQUIRED_FORM_RECOVERY = "DETERMINISTIC_REQUIRED_FORM_RECOVERY"
+
+#: A normative obligation to include/submit a buyer-NAMED form: a modal
+#: ("must" / "shall" / "is|are required to") followed, within the same
+#: clause, by an inclusion verb and a capitalized form title ending in
+#: "Form" ("... must include a Multi-Party Confirmation Form ...", "...
+#: shall submit the Price Form ..."). A lower-case "form" ("in electronic
+#: form") is never a named form. Buyer-agnostic procurement phrasing only.
+_REQUIRED_FORM_OBLIGATION_RE = re.compile(
+    r"\b(?P<modal>must|shall|(?:is|are)\s+required\s+to)\b(?P<between>[^.;]{0,80}?)"
+    r"\b(?:include|submit|complete|provide|attach)\b[^.;]{0,60}?"
+    r"\b(?P<form>(?:[A-Z][\w'’&-]*\s+){1,5}Form)\b")
+_NEGATED_MODAL_RE = re.compile(r"^\s*not\b", re.IGNORECASE)
+#: A subject phrase that restricts WHICH proposals the obligation binds
+#: ("Each proposal that is submitted on behalf of a Multi-Party Team ...")
+#: -- recorded verbatim as the applicability condition, never paraphrased.
+_CONDITION_CLAUSE_RE = re.compile(
+    r"\b(?:that|which|who|if|where|when|whenever|unless|on\s+behalf\s+of)\b", re.IGNORECASE)
+_TABLE_MARKER_LINE_RE = re.compile(r'^\[\[SOURCE:[^\]]*\|\s*TABLE\]\]')
+_SECTION_MARKER_RE = re.compile(r'^\[\[SOURCE:\s*[^|\]]*\|\s*SECTION:\s*(?P<section>[^\]]*)\]\]\s*$')
+_SENTENCE_RE = re.compile(r'(?<=[.!?])\s+')
+MAX_RECOVERY_HEADING_CHARS = 120
+MAX_RECOVERY_CONTEXT_CHARS = 400
+
+
+def _form_key(text: str) -> str:
+    folded = _DASH_RE.sub("-", text or "")
+    return re.sub(r'\s+', ' ', folded).strip().lower()
+
+
+def _looks_like_heading(line: str) -> bool:
+    body = (line or "").strip()
+    return bool(body) and len(body) <= MAX_RECOVERY_HEADING_CHARS and not body.endswith((".", ";", ","))
+
+
+def recover_uncovered_required_form_obligations(
+    documents: list[tuple],
+    existing_requirements: list[dict],
+) -> list[dict]:
+    """CHECK-1.3. Deterministic, no-model recovery of a buyer obligation
+    to include a NAMED form that no existing canonical requirement covers.
+
+    Why this exists: CHECK-1.2 fixed `extractor.extract_docx_with_metadata`
+    so text a buyer placed inside DOCX content controls is extracted. A
+    Fast Analysis run completed BEFORE that fix never saw such text, so a
+    required-form obligation living there (e.g. an RFP's "must include a
+    Multi-Party Confirmation Form ..." clause) has no canonical requirement
+    in that historical run -- and the run itself must never be mutated.
+
+    Why no model call is needed: the recovered text is a single explicit
+    normative sentence. It is carried VERBATIM in the existing Fast
+    Analysis requirement schema (`category` / `description` / `source_doc`
+    / `source_refs` -- the IDENTITY_EVAL_REQ route's own topic (b), "what
+    forms are required"), so nothing is interpreted: `category` is
+    "Mandatory" because the sentence itself uses a mandatory modal,
+    `semantic_type` is SUBMISSION_REQUIREMENT because an obligation to
+    include a form in the proposal is by definition a submission
+    requirement, and a restricting subject clause is preserved verbatim as
+    `applicability_condition`, never paraphrased.
+
+    Coverage is fail-safe in the direction of NOT adding: a form whose name
+    already appears in any existing requirement's description/source
+    variants is treated as covered (no duplicate, even when the existing
+    wording differs); only a named form with no canonical requirement at
+    all is recovered. Idempotent: re-running over output that already
+    contains a recovered requirement adds nothing.
+
+    `documents` MUST be the buyer's own procurement corpus -- the same
+    (filename, extracted_text) pairs Fast Analysis is given -- and nothing
+    else; a bidder artifact (SubmissionDocument / EvidenceItem / anything
+    that is not a plain (str, str) pair) is rejected with TypeError rather
+    than silently read. Returns requirement dicts in the Fast Analysis
+    requirement shape plus provenance keys (`requirement_origin`,
+    `required_form`, `applicability_condition`, `source_locator`,
+    `source_context`); callers canonicalize them with
+    `canonicalize_requirements` exactly like any other requirement."""
+    import canonical_procurement as _canon
+
+    covered: set[str] = set()
+    corpus_text = []
+    for req in (existing_requirements or []):
+        if not isinstance(req, dict):
+            continue
+        corpus_text.append(req.get("description") or "")
+        corpus_text.extend(str(v) for v in (req.get("source_variants") or []))
+        if req.get("required_form"):
+            covered.add(_form_key(req["required_form"]))
+    existing_blob = _form_key(" \n ".join(corpus_text))
+
+    recovered: list[dict] = []
+    for entry in (documents or []):
+        if not (isinstance(entry, (tuple, list)) and len(entry) == 2
+                and isinstance(entry[0], str) and isinstance(entry[1], str)):
+            raise TypeError(
+                "recover_uncovered_required_form_obligations accepts only buyer corpus "
+                "(filename, extracted_text) pairs; got " + type(entry).__name__)
+        name, doc_text = entry
+        if not doc_text:
+            continue
+        lines = doc_text.splitlines()
+        section = ""
+        heading = ""
+        for line_index, raw_line in enumerate(lines):
+            line = raw_line.strip()
+            marker = _SECTION_MARKER_RE.match(line)
+            if marker:
+                section = marker.group("section").strip()
+                continue
+            if not line or _SOURCE_MARKER_LINE_RE.match(line) or _TABLE_MARKER_LINE_RE.match(line):
+                continue
+            if _looks_like_heading(line) and not _REQUIRED_FORM_OBLIGATION_RE.search(line):
+                heading = line
+                continue
+            for sentence_index, sentence in enumerate(_SENTENCE_RE.split(line)):
+                sentence = re.sub(r'\s+', ' ', sentence).strip()
+                match = _REQUIRED_FORM_OBLIGATION_RE.search(sentence)
+                if not match or _NEGATED_MODAL_RE.match(match.group("between") or ""):
+                    continue
+                form = re.sub(r'\s+', ' ', match.group("form")).strip()
+                key = _form_key(form)
+                if key in covered or key in existing_blob:
+                    continue
+                covered.add(key)
+                subject = sentence[:match.start("modal")].strip(" ,")
+                condition = subject if _CONDITION_CLAUSE_RE.search(subject) else None
+                following = next((l.strip() for l in lines[line_index + 1:]
+                                  if l.strip() and not _SOURCE_MARKER_LINE_RE.match(l.strip())), "")
+                recovered.append({
+                    "category": "Mandatory",
+                    "description": sentence,
+                    "source_doc": name,
+                    "source_refs": [{"page": None, "sheet": None, "section": section or None,
+                                     "excerpt": sentence, "source_doc": name}],
+                    "semantic_type": _canon.SEMANTIC_SUBMISSION_REQUIREMENT,
+                    "requirement_origin": REQUIREMENT_ORIGIN_REQUIRED_FORM_RECOVERY,
+                    "required_form": form,
+                    "applicability_condition": condition,
+                    "source_locator": {"source_doc": name, "section": section or None,
+                                       "heading": heading or None, "line_index": line_index,
+                                       "sentence_index": sentence_index},
+                    "source_context": {"heading": heading or None,
+                                       "following_text": following[:MAX_RECOVERY_CONTEXT_CHARS] or None},
+                })
+    return recovered
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Defect C -- milestone/date canonicalization
 # ═══════════════════════════════════════════════════════════════════════════
 

@@ -444,7 +444,14 @@ APPLICABILITY_VALUES = (
 # A short letter+digit form/category identifier (C1/D2/B3 ...) -- exactly
 # the convention document_provenance already relies on to keep one
 # category's form distinct from another's.
-_CATEGORY_ID_RE = re.compile(r'\b([A-Z]\d{1,2})\b')
+#: CHECK-1.3: a DOCUMENT VERSION number ("RFP ... V2.5.docx", "Addendum One
+#: V4.0.pdf") is not a category identifier -- the negative lookahead
+#: rejects a letter+digit token immediately followed by ".<digit>".
+#: Before this, every requirement sourced from such a file was derived as
+#: CATEGORY_SPECIFIC to a phantom "V2"/"V4" category. Deliberately narrow
+#: (only a "V<n>.<n>" version form): "D1.1"-style criterion numbering keeps
+#: its D1 category token exactly as before.
+_CATEGORY_ID_RE = re.compile(r'\b(?!V\d{1,2}\.\d)([A-Z]\d{1,2})\b')
 _CATEGORY_NUMBER_RE = re.compile(r'\bcategory\s*(\d{1,2})\b', re.IGNORECASE)
 
 _ALL_CATEGORIES_RE = re.compile(

@@ -431,6 +431,27 @@ Where to look, not what everything means. Read
   `ee1cf42..943623e` (MA-2A family) range so it still proves what its name
   says without blocking this later, separately authorized amendment.
 
+**CHECK-1.3: Final Multi-Party Requirement Gap (2026-09-27)**
+- `procurement_normalization.recover_uncovered_required_form_obligations`
+  -- deterministic (no model) recovery of a buyer-named required-form
+  obligation no existing requirement covers; verbatim, Fast Analysis
+  requirement schema, `requirement_origin =
+  DETERMINISTIC_REQUIRED_FORM_RECOVERY`. Wired into `full_analysis.
+  build_canonical_package` (recompute path, append-only, needs
+  `documents`) and `fast_analysis.py` step 5.
+- Calgary result: `analysis_service.build_full_analysis_package(34)` ->
+  REQ-46 (B2 Multi-Party Confirmation Form obligation); run 34 itself is
+  never mutated. CHECK-2 reads buyer requirements from that package.
+- `canonical_procurement._CATEGORY_ID_RE` no longer reads "V2.5"-style
+  version tokens as categories.
+- `submission_package.map_requirement_to_submission` accepts
+  `canonical_id` as req_id.
+- Live read-only acceptance: `scripts/commission_check13_calgary_
+  multiparty.py <out_json>`.
+- Tests: `tests/test_check13_multiparty_requirement_closure.py` (21);
+  fixture `tests/fixtures/calgary_26_1603_run34_raw_snapshot.json`
+  (byte-identical run 34 raw snapshot, buyer-side only).
+
 **Proposal Intelligence (PI-1, hardened in PI-1.1/PI-1.2, deepened in
 PI-2A/PI-2A.1, extended in PI-2B1)** — durable persistence for CHECK's
 Proposal Alignment output. PI-2A added structured proposal/procurement
