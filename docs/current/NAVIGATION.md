@@ -515,6 +515,26 @@ CHECK-1 (1.0-1.3) is COMPLETE and FROZEN -- build on it, do not reopen it.
   commissioning.py` (+ content-free live record `tests/fixtures/calgary_26_
   1603_check2b1_live_run.json`). CHECK-2B is COMPLETE and FROZEN.
 - Known limitation: REQ-41 recency element (see SYSTEM_STATE.md).
+- CHECK backend frozen at `e76e103`.
+
+**CHECK-2C: Client-Facing Proposal Assurance Workspace (2026-09-27)**
+- `pages/stage_check_assurance.py` -- `page_check_assurance(bid_id)` (sidebar
+  "🛡️ CHECK: Proposal Assurance", `page == "stage_check_assurance"` in
+  `app.py`; also linked from `pages/stage_check.py`). Controller functions
+  `load_status`, `load_bundle` (result + bounded evidence index, cached per
+  terminal run), `request_start` (the ONLY execution path, explicit click,
+  CHECK-2B start outcomes unchanged) are plain and unit-tested.
+- `components/check_workspace_view.py` -- pure view model + HTML/CSS:
+  `overview`, `attention_items` (`ATTENTION_ORDERING`), `criteria`,
+  `filter_findings`, `build_evidence_index` (this bid's registry only),
+  `render_card`, `render_detail` (buyer vs bidder side-by-side),
+  `run_view` / `partial_disclosure` / `rerun_cta`.
+- Only tenancy's `get_check_run_status_for_organization`,
+  `get_check_run_result_for_organization`,
+  `load_submission_evidence_package_for_organization` and (on click)
+  `start_check_run_for_organization`; never `check_coverage.py`, never a model.
+- Tests: `tests/test_check2c_assurance_workspace.py` (64).
+- CHECK-2D (report / export) not implemented.
 
 **Proposal Intelligence (PI-1, hardened in PI-1.1/PI-1.2, deepened in
 PI-2A/PI-2A.1, extended in PI-2B1)** — durable persistence for CHECK's

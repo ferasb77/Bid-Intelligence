@@ -212,6 +212,11 @@ def page_check(bid_id: int):
     st.markdown(f'<div style="font-size:1rem;color:#A9A69D">{bid["client"]} — {bid["title"]}</div>', unsafe_allow_html=True)
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
 
+    # CHECK-2C: link (never a start) to the durable Proposal Assurance workspace.
+    if st.button("Open CHECK: Proposal Assurance", key=f"chk_open_assurance_{bid_id}"):
+        st.session_state.page = "stage_check_assurance"
+        st.rerun()
+
     procurement_state = tenancy.get_procurement_state_for_organization(bid_id, _org_id)
     banner_html = procurement_staleness_banner(
         procurement_state, context_label="The compliance matrix used on this page",

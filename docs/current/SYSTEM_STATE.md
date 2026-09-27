@@ -2740,7 +2740,83 @@ SECURITY DEFINER RPCs executable by service_role only.
   2 skipped.
 
 **CHECK-2B is COMPLETE and FROZEN.** CHECK-2B persistence no longer relies
-only on fake_db.
+only on fake_db. The CHECK backend (`check_coverage.py`, `check_run_service.py`,
+migration 022, canonical procurement / submission package logic) is frozen at
+`e76e103`; CHECK-2C changed none of it.
+
+**CHECK-2C (Client-Facing Proposal Assurance Workspace) -- 2026-09-27.** The
+first customer-facing CHECK experience: an interactive review / comparison
+workspace that RENDERS the durable CHECK-2B run. No PDF / export / report
+(CHECK-2D, not implemented), no claim-level assurance, no proposal generation,
+no overall numeric score, readiness percentage, win probability or predicted
+evaluator mark, no animation.
+
+- **Navigation**: active-bid sidebar entry "🛡️ CHECK: Proposal Assurance"
+  (`page == "stage_check_assurance"` in `app.py`), plus a link button on the
+  existing CHECK page (`pages/stage_check.py`, link only, never a start). Its
+  bid-scoped session keys (`chk_*`) are cleared on logout.
+- **Architecture**: `pages/stage_check_assurance.py` (controller + Streamlit)
+  and `components/check_workspace_view.py` (pure view model + HTML/CSS; no
+  Streamlit / DB / model imports, status vocabulary pinned to check_coverage by
+  a test). Reads ONLY `tenancy.get_check_run_status_for_organization` (durable
+  run status, re-read every render -- never inferred from result rows),
+  `tenancy.get_check_run_result_for_organization` (check_run_service's DB-row
+  reconstruction) and CHECK-1.1's read-only `tenancy.load_submission_evidence_
+  package_for_organization` (bounded evidence excerpts resolved only in THIS
+  bid's registry; an unresolvable id is reported, never fabricated). A terminal
+  run's bundle is cached per (bid, run) in the session, so filters / tabs /
+  expanders / reruns never re-read it. It never imports `check_coverage` /
+  `check_run_service` / a provider.
+- **Explicit execution only**: "Run CHECK" (no run yet) / "Run CHECK again"
+  call `tenancy.start_check_run_for_organization` (one call site) and inherit
+  CHECK-2B's five outcomes unchanged; identical inputs -> REUSED_COMPLETE, zero
+  calls. PARTIAL / FAILED -> labelled explicit retry. A RUNNING run shows
+  durable progress counts (5 s status poll); a stale run offers only "Mark this
+  run as stopped".
+- **Hierarchy**: header (buyer, RFP id, run id / status / finish time,
+  submission assessed) -> status banner (COMPLETE / PARTIAL with the
+  non-complete semantic batches listed / FAILED falling back to the latest
+  saved COMPLETE-or-PARTIAL run, labelled) -> five factual status counts
+  (Addressed / Partially addressed / Not addressed / Not verifiable from files /
+  Human review required) with the excluded non-submission count shown
+  separately -> "Where to look first" (deterministic, documented ordering:
+  criteria before requirements, highest buyer-stated weight, stated threshold,
+  mandatory / submission-wide, status, persisted order -- `ATTENTION_ORDERING`)
+  -> tabs: Evaluation criteria (every scoped criterion, attention-first, buyer
+  weight / variants / threshold as buyer metadata), Requirements and filters
+  (status / object type / assurance scope / expected evidence role /
+  mandatory-only; defaults to partial + human review + not verifiable),
+  Non-submission (grouped by scope, never gaps), Submitted files. Each finding
+  is a card (PARTIAL: "Demonstrated" vs "Not demonstrated" from the persisted
+  element lists, with a count sentence; ADDRESSED: compact, strongest evidence;
+  NOT_VERIFIABLE / HUMAN_REVIEW: verbatim persisted reason + what to confirm)
+  with an expander holding the side-by-side detail: LEFT "What the buyer asked
+  for" (verbatim wording, scope, weight / threshold, buyer source doc /
+  section / page / excerpt), RIGHT "What the bidder submitted" (filename, role,
+  kind, page / section / sheet / cell / row / field locator, clipped excerpt or
+  field value), CHECK conclusion beneath. Every status has a text label and a
+  mark, never colour alone.
+- **Real Calgary acceptance (bid 1360, run 37)**, rendered through a local
+  read-only harness of the real page against the live DB (auth stubbed to the
+  bid's organization; every provider / adjudication / CHECK-write path
+  poisoned and logged): run 37 COMPLETE opened directly; counts 18 / 11 / 0 / 6
+  / 2 plus 23 non-submission; 13 criteria with stored weights (Item 1 55%,
+  Item 2 35%, Service Delivery 30%, Firm Experience 20% / 30% + 60% threshold,
+  Team Experience 20%, others 10%, Understanding of the Services none stated);
+  all 74 cited evidence ids resolved in snapshot 9; REQ-46 on the B2
+  Multi-Party form, pricing criteria on Appendix D cells, REQ-33 / REQ-37 on
+  Appendix E tables, portal-native REQ-38 / REQ-45 / Social Procurement
+  NOT_VERIFIABLE, REQ-5 / REQ-16 HUMAN_REVIEW. `model_usage_events` 355 before
+  and 355 after opening / navigating / filtering / expanding / refreshing:
+  delta 0; zero poisoned-path hits; run 37 and its 60 adjudications / 15 events
+  unchanged, no new CHECK run.
+- REQ-41's documented model limitation is displayed as persisted (never
+  overridden by the UI).
+- Tests: `tests/test_check2c_assurance_workspace.py` (64; zero provider calls
+  asserted across open / filter / detail / refresh / REUSED_COMPLETE; reuses
+  CHECK-2B's `FakeCheckDB` for the real reconstruction path).
+
+**CHECK-2C is COMPLETE.** CHECK-2D (report / export) is NOT implemented.
 
 Absent an explicit task instruction otherwise, still do not: alter/reapply
 migration 015, 016, 017, 018, 019, 020, 021 or 022,

@@ -22,6 +22,7 @@ from pages.stage_debrief import page_debrief
 from pages.settings_firm import page_settings_firm
 from pages.stage_memory import page_memory
 from pages.stage_full_analysis import page_full_analysis
+from pages.stage_check_assurance import page_check_assurance
 from pdf_export import generate_compliance_pdf
 from brand import dashboard_brand_html, sidebar_brand_html
 from components.ui import (inject_css, stage_badge, status_badge, priority_badge,
@@ -59,7 +60,8 @@ if st.session_state.get(_auth_session.RECOVERY_SESSION_KEY):
 # metadata are all namespaced by bid_id (e.g. "align_result_42"), so a
 # fixed-name clear list can't remove them -- every key starting with one
 # of these prefixes is dropped on logout instead.
-_ALIGN_SESSION_KEY_PREFIXES = ("align_package_", "align_result_", "align_inc_", "align_primary_")
+_ALIGN_SESSION_KEY_PREFIXES = ("align_package_", "align_result_", "align_inc_", "align_primary_",
+                               "chk_")  # CHECK-2C Proposal Assurance workspace (bid-scoped)
 
 
 def _clear_all_user_scoped_state():
@@ -252,6 +254,7 @@ with st.sidebar:
                 "⚖️  2. DECIDE":     "stage_decide",
                 "🛠️  3. BUILD":      "stage_build",
                 "🔍  4. CHECK":      "stage_check",
+                "🛡️  CHECK: Proposal Assurance": "stage_check_assurance",
                 "🚀  5. SUBMIT":     "stage_submit",
             }
 
@@ -2238,6 +2241,8 @@ elif page in ("stage_decide", "clarifications", "ai_analyst"):
     page_decide(bid_id)
 elif page in ("stage_build", "outline", "section_drafter", "tasks", "documents", "deliverables"):
     page_build(bid_id)
+elif page == "stage_check_assurance":
+    page_check_assurance(bid_id)
 elif page in ("stage_check", "compliance", "proposal_analyzer"):
     page_check(bid_id)
 elif page in ("stage_submit", "submission_assembler"):
