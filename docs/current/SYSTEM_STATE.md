@@ -2587,16 +2587,116 @@ predicted evaluator marks, no strengths/weaknesses/recommendations.
   record `tests/fixtures/calgary_26_1603_check2a_replay.json` against the
   real ZIPs, skipped when absent). Full suite: 3496 passed, 2 skipped.
 
+**CHECK-2A is ACCEPTED** (commit `b488749`); its adjudication semantics are
+unchanged by CHECK-2B (the only edits to `check_coverage.py` are additive: an
+observation-only `on_event` hook on `run_check_coverage` and five component
+version constants used by the fingerprint).
+
+**CHECK-2B (Durable Proposal Assurance Runs) -- 2026-09-27.** Makes CHECK-2A
+durable, reproducible, reopenable and safe against duplicate model spend,
+mirroring MA-2A's Full Analysis architecture exactly. No UI, no PDF, no claim
+assurance, no recommendations, no rewriting.
+
+- **Run model**: `analysis_runs` row with `analysis_mode='CHECK'` (reused, not
+  a parallel framework): `input_fingerprint`, `source_analysis_run_id` (the
+  COMPLETE FAST run whose raw snapshot is the buyer canonical input), new
+  `source_package_snapshot_id` (composite `(id, bid_id)` FK to
+  `proposal_package_snapshots` -- the bidder package evaluated),
+  `engine_version` (`check-coverage-check-2a.1.0/durable-check-2b.1.0`),
+  status QUEUED -> RUNNING -> COMPLETE | PARTIAL | FAILED, timestamps,
+  `last_progress_at`, failure reason/detail, telemetry summary. The existing
+  one-active-run index gives CHECK one active slot per bid.
+- **Service**: `check_run_service.py` -- `start_check_run` (inputs ->
+  fingerprint -> ONE advisory-locked RPC: CREATED / ACTIVE_RUN_EXISTS /
+  REUSED_COMPLETE / EXISTING_FAILED / EXISTING_PARTIAL; only CREATED executes;
+  FAILED/PARTIAL need explicit `retry=True`), `get_check_run_status` (events +
+  `derive_check_progress` counts + `is_check_run_stuck`),
+  `get_check_run_result` (rows -> CHECK-2A `CheckCoverageResult`, zero
+  provider calls, `result_digest` verified), `mark_check_run_stuck` (explicit
+  only). `tenancy.*_check_run_*_for_organization` wrappers (require_bid_access
+  first). `load_check_inputs` is the production loader (run raw snapshot +
+  buyer 'RFP / Source' documents + migration-021 snapshot rows).
+- **Fingerprint** (`check_fingerprint_inputs` / `compute_check_fingerprint`,
+  `check-2b-fp-1`): buyer = canonical snapshot + content digests, requirement
+  / criterion ids, digest of the exact `BuyerObject`s CHECK reads (verbatim
+  wording, weights / variants / thresholds / prompts / applicability / source
+  refs), expected evidence roles, normalized text sha of every buyer document
+  (deeming statements); bidder = package digest, document roles / logical
+  artifacts / representations, full evidence-registry content (sorted, order
+  independent); architecture = CHECK-2A contract + scope-gate / retrieval /
+  deterministic / adjudication / prompt-schema versions + CHECK-1 contract;
+  model = provider, model id, output ceiling, call bounds, sha of the prompt
+  rules. Excludes bid / run / event / snapshot row ids, timestamps, UI state.
+- **Persistence** (migration 022): `analysis_results.check_coverage_result`
+  (run-level counts / digests / fingerprint inputs / batch log /
+  `run_integrity`); `check_adjudications` (one immutable row per buyer object,
+  the full CHECK-2A contract, structured lists as jsonb arrays, plus
+  `evidence_refs` = logical artifact / document / locator per cited id);
+  `check_adjudication_evidence` (every verdict- AND element-level evidence id,
+  FK to `submission_evidence_items (bid_id, package_snapshot_id,
+  evidence_id)` -- an unknown, buyer-source, cross-bid or cross-snapshot id
+  aborts the whole finalize); `check_semantic_batches` (objects, candidate
+  evidence ids, alias map, structured model output, reconciled output,
+  provider / model / stop_reason / parse_status / tokens / latency, prompt
+  sha256 -- never the prompt, EFFECTIVE status); `check_run_events`
+  (append-only, sequenced, counts only: RUN_CREATED, RUN_STARTED,
+  BUYER_SCOPE_CLASSIFIED, CANDIDATE_RETRIEVAL_COMPLETE,
+  DETERMINISTIC_ADJUDICATION_COMPLETE, SEMANTIC_BATCH_STARTED / COMPLETED /
+  FAILED, EVIDENCE_ASSURANCE_COMPLETE, RUN_COMPLETED / PARTIAL / FAILED).
+  Python re-validates before persisting (`validate_result_for_persistence`);
+  a violation finalizes FAILED with no adjudication rows.
+- **Status / truncation** (MA-2A.2 lesson): a batch is COMPLETE only if no
+  adjudicator error, provider stop_reason normal, parse COMPLETE and every
+  object returned; `max_tokens` / RECOVERED_TRUNCATED / abnormal stop /
+  omitted object -> PARTIAL (FAILED if nothing survived). Any non-COMPLETE
+  batch -> run PARTIAL; `finalize_check_run` refuses COMPLETE unless
+  `run_integrity='COMPLETE'`, every batch row COMPLETE and batch count == plan.
+  HUMAN_REVIEW_REQUIRED / NOT_VERIFIABLE_FROM_FILES objects never make a run
+  partial.
+- **Provider accounting**: calls go through `full_analysis._call_model`
+  with `telemetry_context={workflow:'check_coverage', analysis_run_id:<CHECK
+  run>}` -> existing `model_usage_events` (no second system). Run telemetry
+  separates `adjudicator_invocations` from `live_provider_calls` and records
+  `adjudication_source` (PROVIDER / INJECTED_ADJUDICATOR /
+  REPLAY_OF_RECORDED_LIVE_OUTPUT). REUSED_COMPLETE = zero calls.
+- **Stale runs**: `STALE_RUN_POLICY` (`check-2b-stale-1`: 10 min no durable
+  progress / 45 min age), detection only; never auto-rerun.
+- **Calgary acceptance (zero provider calls)**: `scripts/commission_check2b_
+  calgary.py persist|reopen <out_dir>` loads the LIVE inputs read-only via
+  `load_check_inputs` (bid 1360, run 34, snapshot 9: 294 evidence items),
+  replays the recorded validated CHECK-2A output, persists into
+  `tests/check2b_fake_db.FakeCheckDB` (the in-memory migration-022 contract --
+  022 is not live) seeded with the live snapshot-9 ids, dumps it, and reopens
+  it in a fresh process: 60 objects (47 req + 13 criteria), ADDRESSED 18 /
+  PARTIAL 11 / NOT_APPLICABLE 23 / NOT_VERIFIABLE 6 / HUMAN_REVIEW 2 /
+  NOT_ADDRESSED 0, 3 portal-native, all 74 distinct cited ids (269 links)
+  present live in bid 1360 snapshot 9 and under no other bid, fingerprint
+  `48e9a2e1...` recomputed identically, identical re-start ->
+  REUSED_COMPLETE with 0 adjudicator invocations.
+- **Known limitation retained (REQ-41)**: the CHECK-2A model judged REQ-41's
+  "three (3) examples from the past five (5) years (other than The City)"
+  element PARTIAL although the examples are dated 2024-2026. No general
+  deterministic rule is justified: the recency years sit in bidder prose (not
+  structured dates) and the element also carries "(other than The City)" and
+  an example count -- legitimate semantic judgement. Persisted unchanged;
+  regression test `test_req41_known_model_imperfection_is_preserved_not_
+  overridden`.
+- Tests: `tests/test_check2b_durable_runs.py` (fake: `tests/check2b_fake_db.py`).
+
 Absent an explicit task instruction otherwise, still do not: apply
-migration 013, alter/reapply migration 015, 016, 017, 018, or 019,
+migration 022, alter/reapply migration 015, 016, 017, 018, 019, 020 or 021,
 activate the compact-wire prototype, change chunk sizes/max_tokens/model
 routing/caching, reintroduce proposal-generation under another name, or
 merge `main`/deploy.
 
 ## Migrations known in this repository (files, not live-database state)
 
-Highest migration file present: **021**
-(`021_submission_evidence_registry.sql`, CHECK-1, amended before first
+Highest migration file present: **022** (`022_check_runs.sql`, CHECK-2B --
+**CREATED_NOT_APPLIED**: written, NOT applied to any live database; a later,
+explicitly authorized commissioning task applies it. Live probe 2026-09-27:
+no CHECK tables / RPCs / `source_package_snapshot_id` column exist live and the
+live `analysis_runs_analysis_mode_check` still rejects 'CHECK'). Before it:
+**021** (`021_submission_evidence_registry.sql`, CHECK-1, amended before first
 application and **applied and live-commissioned 2026-09-27 by CHECK-1.1**,
 ledger entry `20260926220922 submission_evidence_registry`). Before it: **020**
 (`020_full_analysis_runs.sql`, **applied and live-commissioned

@@ -350,6 +350,62 @@ def mark_full_analysis_run_stuck_for_organization(
         raise AccessDeniedError(str(exc))
 
 
+def start_check_run_for_organization(
+    bid_id: int, organization_id: str, *, package_snapshot_id: int | None = None,
+    source_run_id: int | None = None, created_by_user_id: str | None = None, retry: bool = False,
+    execution: str = "background", api_key: str | None = None,
+) -> dict:
+    """CHECK-2B authorization boundary in front of check_run_service.
+    start_check_run(). Organization ownership of bid_id is verified BEFORE
+    any input is loaded, any run row is created and any model call. The
+    bidder package is loaded through load_submission_evidence_package_for_
+    organization (snapshot must belong to this bid) and the fingerprint
+    lookup/reuse is bid-scoped, so a CHECK result can never be reused across
+    bids or organizations."""
+    require_bid_access(bid_id, organization_id)
+    import check_run_service
+    return check_run_service.start_check_run(
+        bid_id, organization_id, package_snapshot_id=package_snapshot_id, source_run_id=source_run_id,
+        created_by_user_id=created_by_user_id, retry=retry, execution=execution, api_key=api_key)
+
+
+def get_check_run_status_for_organization(
+    bid_id: int, organization_id: str, run_id: int | None = None, *, after_sequence: int = 0,
+) -> dict | None:
+    """Read-only CHECK run status + event log (CHECK-2B). Bid ownership
+    first, then (inside the service) run_id must be a CHECK run of THIS bid."""
+    require_bid_access(bid_id, organization_id)
+    import check_run_service
+    try:
+        return check_run_service.get_check_run_status(bid_id, run_id, after_sequence=after_sequence)
+    except check_run_service.RunNotFoundError as exc:
+        raise AccessDeniedError(str(exc))
+
+
+def get_check_run_result_for_organization(
+    bid_id: int, organization_id: str, run_id: int | None = None,
+) -> dict | None:
+    """Read-only persisted CHECK adjudication (zero provider calls), same
+    two checks."""
+    require_bid_access(bid_id, organization_id)
+    import check_run_service
+    try:
+        return check_run_service.get_check_run_result(bid_id, run_id)
+    except check_run_service.RunNotFoundError as exc:
+        raise AccessDeniedError(str(exc))
+
+
+def mark_check_run_stuck_for_organization(bid_id: int, organization_id: str, run_id: int) -> dict:
+    """Explicit user action: mark a genuinely stale CHECK run FAILED. Never
+    starts a replacement run."""
+    require_bid_access(bid_id, organization_id)
+    import check_run_service
+    try:
+        return check_run_service.mark_check_run_stuck(bid_id, run_id)
+    except check_run_service.RunNotFoundError as exc:
+        raise AccessDeniedError(str(exc))
+
+
 def get_report_for_organization(bid_id: int, run_id: int, organization_id: str) -> bytes:
     """Authorization boundary in front of analysis_service.regenerate_report()
     (instruction 18). Verifies the caller's organization owns bid_id, AND

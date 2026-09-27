@@ -1691,3 +1691,81 @@ def get_submission_documents(bid_id: int, package_snapshot_id: int) -> list[dict
 def get_submission_evidence_items(bid_id: int, package_snapshot_id: int) -> list[dict]:
     return _paged_rows(lambda: get_client().table("submission_evidence_items").select("*")
                        .eq("bid_id", bid_id).eq("package_snapshot_id", package_snapshot_id).order("id"))
+
+
+# ── CHECK-2B: durable CHECK runs (migrations/022_check_runs.sql) ─────────────
+# CHECK runs live in analysis_runs / analysis_results (analysis_mode='CHECK').
+# Every WRITE is one call into one of migration 022's three service_role-only
+# SECURITY DEFINER functions -- never a direct .insert()/.update(). Reached
+# only through check_run_service.py, itself only reached through tenancy.py's
+# require_bid_access() wrappers. MIGRATION 022 IS CREATED_NOT_APPLIED: until
+# it is commissioned live these calls fail against the live database.
+
+def start_check_run(bid_id: int, source_analysis_run_id: int, package_snapshot_id: int,
+                    input_fingerprint: str, engine_version: str, *,
+                    created_by_user_id: str | None = None, retry: bool = False,
+                    detail: dict | None = None) -> dict:
+    """Advisory-locked idempotent get-or-create. Returns {"outcome":
+    CREATED|ACTIVE_RUN_EXISTS|REUSED_COMPLETE|EXISTING_FAILED|EXISTING_PARTIAL,
+    "run": <analysis_runs row>}. Do NOT replace with SELECT-then-INSERT."""
+    return _rpc_one(get_client().rpc("start_check_run", {
+        "p_bid_id": bid_id, "p_source_analysis_run_id": source_analysis_run_id,
+        "p_package_snapshot_id": package_snapshot_id, "p_input_fingerprint": input_fingerprint,
+        "p_engine_version": engine_version, "p_created_by_user_id": created_by_user_id,
+        "p_retry": bool(retry), "p_detail": detail or {},
+    }).execute())
+
+
+def record_check_run_event(run_id: int, bid_id: int, event_type: str, *, batch_id: str | None = None,
+                           status: str | None = None, duration_seconds: float | None = None,
+                           failure_summary: str | None = None, detail: dict | None = None,
+                           batch_result: dict | None = None) -> dict | None:
+    """One sequenced event; with SEMANTIC_BATCH_COMPLETED/FAILED it may also
+    write that batch's diagnosis row in the same transaction. Raises if the
+    run is not an active CHECK run of this bid."""
+    return _rpc_one(get_client().rpc("record_check_run_event", {
+        "p_run_id": run_id, "p_bid_id": bid_id, "p_event_type": event_type,
+        "p_batch_id": batch_id, "p_status": status, "p_duration_seconds": duration_seconds,
+        "p_failure_summary": failure_summary, "p_detail": detail or {},
+        "p_batch_result": batch_result,
+    }).execute())
+
+
+def finalize_check_run(run_id: int, bid_id: int, status: str, *, result: dict | None = None,
+                       adjudications: list | None = None, summary: dict | None = None,
+                       failure_reason: str | None = None, failure_detail: dict | None = None,
+                       telemetry: dict | None = None) -> dict | None:
+    """Atomically persists the run result, every adjudication + its evidence
+    links, the terminal event and status. Raises (writing nothing) on an
+    already-terminal run, a COMPLETE claim over a non-COMPLETE result or
+    batch, or any evidence id outside the run's bid + package snapshot."""
+    return _rpc_one(get_client().rpc("finalize_check_run", {
+        "p_run_id": run_id, "p_bid_id": bid_id, "p_status": status,
+        "p_result": result, "p_adjudications": adjudications, "p_summary": summary or {},
+        "p_failure_reason": failure_reason, "p_failure_detail": failure_detail,
+        "p_telemetry": telemetry,
+    }).execute())
+
+
+def get_check_runs(bid_id: int, *, limit: int = 50) -> list[dict]:
+    """CHECK run history for one bid (every status), most recent first."""
+    return _rows(get_client().table("analysis_runs").select("*")
+                .eq("bid_id", bid_id).eq("analysis_mode", "CHECK")
+                .order("created_at", desc=True).order("id", desc=True)
+                .limit(limit).execute())
+
+
+def get_check_run_events(run_id: int, *, after_sequence: int = 0) -> list[dict]:
+    return _rows(get_client().table("check_run_events").select("*")
+                .eq("run_id", run_id).gt("sequence", after_sequence)
+                .order("sequence").execute())
+
+
+def get_check_semantic_batches(run_id: int) -> list[dict]:
+    return _rows(get_client().table("check_semantic_batches").select("*")
+                .eq("run_id", run_id).order("id").execute())
+
+
+def get_check_adjudications(run_id: int) -> list[dict]:
+    return _paged_rows(lambda: get_client().table("check_adjudications").select("*")
+                       .eq("run_id", run_id).order("ordinal"))

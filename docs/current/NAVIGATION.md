@@ -476,6 +476,35 @@ CHECK-1 (1.0-1.3) is COMPLETE and FROZEN -- build on it, do not reopen it.
   replay <out_dir>` (bid 1360, run 34, snapshot 9; DB writes poisoned).
 - Tests: `tests/test_check2a_coverage_adjudication.py`; content-free live
   record `tests/fixtures/calgary_26_1603_check2a_replay.json`.
+- CHECK-2A is ACCEPTED (`b488749`). `run_check_coverage(on_event=...)` is an
+  observation-only hook added by CHECK-2B (results identical with/without).
+
+**CHECK-2B: Durable Proposal Assurance Runs (2026-09-27)**
+- `check_run_service.py` -- THE durable CHECK boundary (mirrors
+  `full_analysis_service.py`): `load_check_inputs`, `check_fingerprint_inputs`
+  / `compute_check_fingerprint`, `start_check_run` (5 outcomes; only CREATED
+  spends), `get_check_run_status` / `derive_check_progress` /
+  `is_check_run_stuck` (`STALE_RUN_POLICY`), `get_check_run_result` /
+  `reconstruct_result` / `adjudication_from_row` (zero provider calls),
+  `mark_check_run_stuck`, `validate_result_for_persistence`,
+  `effective_batch_status` / `batch_record` / `run_integrity` (truncation
+  integrity).
+- `tenancy.py` -- `start_check_run_for_organization`,
+  `get_check_run_status_for_organization`, `get_check_run_result_for_
+  organization`, `mark_check_run_stuck_for_organization`.
+- `database.py` -- `start_check_run` / `record_check_run_event` /
+  `finalize_check_run` (the ONLY CHECK write paths, RPCs), `get_check_runs` /
+  `get_check_run_events` / `get_check_semantic_batches` /
+  `get_check_adjudications`.
+- `migrations/022_check_runs.sql` -- **CREATED_NOT_APPLIED** (analysis_mode
+  'CHECK', `source_package_snapshot_id`, `analysis_results.check_coverage_
+  result`, `check_run_events`, `check_semantic_batches`, `check_adjudications`,
+  `check_adjudication_evidence` with FK into `submission_evidence_items`).
+- Calgary replay acceptance (one-off, zero provider calls):
+  `scripts/commission_check2b_calgary.py persist|reopen <out_dir>`.
+- Tests: `tests/test_check2b_durable_runs.py`; in-memory migration-022
+  contract `tests/check2b_fake_db.py`.
+- Known limitation: REQ-41 recency element (see SYSTEM_STATE.md).
 
 **Proposal Intelligence (PI-1, hardened in PI-1.1/PI-1.2, deepened in
 PI-2A/PI-2A.1, extended in PI-2B1)** — durable persistence for CHECK's

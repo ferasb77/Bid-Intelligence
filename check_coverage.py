@@ -138,6 +138,22 @@ MODEL_MAX_OUTPUT_TOKENS = 8000
 MODEL_RETRY_ATTEMPTS = 0          # explicit: no automatic retries (MA-1 precedent)
 
 
+#: CHECK-2B observation events emitted by run_check_coverage(on_event=...).
+EVENT_PLAN_READY = "PLAN_READY"
+EVENT_BATCH_STARTED = "SEMANTIC_BATCH_STARTED"
+EVENT_BATCH_COMPLETED = "SEMANTIC_BATCH_COMPLETED"
+
+# ── CHECK-2B: component versions (inputs to the durable-run fingerprint) ──
+# Bump the one whose logic changes; every persisted CHECK run fingerprint
+# covering it is then invalidated (a changed prompt / model / call bound is
+# ALSO covered automatically by check_run_service's contract digest).
+SCOPE_GATE_VERSION = "check-2a-scope-1"
+RETRIEVAL_VERSION = "check-2a-retrieval-1"
+DETERMINISTIC_RULE_VERSION = "check-2a-deterministic-1"
+ADJUDICATION_VERSION = "check-2a-adjudication-1"
+PROMPT_SCHEMA_VERSION = "check-2a-prompt-1"
+
+
 class BatchPlanningError(RuntimeError):
     """The model-adjudication plan would exceed the hard call ceiling. Raised
     before any provider call is made -- redesign the batching instead."""
@@ -1968,7 +1984,8 @@ def run_check_coverage(canonical_package, submission_package: sp.SubmissionPacka
                        adjudicate_fn: Optional[Callable] = None, client=None, organization_id: str = "",
                        telemetry: Optional[list] = None, telemetry_context: Optional[dict] = None,
                        target: int = MODEL_CALL_TARGET, hard_ceiling: int = MODEL_CALL_HARD_CEILING,
-                       raw_responses: Optional[dict] = None) -> CheckCoverageResult:
+                       raw_responses: Optional[dict] = None,
+                       on_event: Optional[Callable] = None) -> CheckCoverageResult:
     """THE CHECK-2A entry point. Compute-and-return: nothing is persisted.
 
     `adjudicate_fn(prompt, batch) -> dict` performs ONE bounded model call
@@ -1976,9 +1993,19 @@ def run_check_coverage(canonical_package, submission_package: sp.SubmissionPacka
     provider helper with `client`). The call count is bounded by the plan
     (<= target, never > hard_ceiling) and counted here independently of
     the provider. `raw_responses`, when given, receives the parsed response
-    of every batch (for acceptance evidence / replay)."""
+    of every batch (for acceptance evidence / replay).
+
+    `on_event(event_type, payload)` (CHECK-2B, observation only -- same
+    pattern as full_analysis.run_full_analysis(on_event=...)) fires at the
+    real execution boundaries: EVENT_PLAN_READY after the scope gate /
+    retrieval / deterministic stage, EVENT_BATCH_STARTED immediately before
+    a semantic batch's adjudicator call and EVENT_BATCH_COMPLETED after its
+    fail-closed reconciliation. It never alters a result: with or without a
+    hook the adjudications are identical."""
     plan = plan_check_coverage(canonical_package, submission_package, raw_requirements=raw_requirements,
                                buyer_documents=buyer_documents, target=target, hard_ceiling=hard_ceiling)
+    if on_event is not None:
+        on_event(EVENT_PLAN_READY, {"plan": plan})
     telemetry = telemetry if telemetry is not None else []
     by_id: dict = {}
     for obj in plan.objects:
@@ -2012,6 +2039,13 @@ def run_check_coverage(canonical_package, submission_package: sp.SubmissionPacka
         ledger = build_batch_ledger(batch, submission_package, organization_id)
         prompt = build_batch_prompt(batch, submission_package, ledger)
         batch["alias_to_eid"] = dict(ledger["alias_to_eid"])
+        if on_event is not None:
+            on_event(EVENT_BATCH_STARTED, {
+                "batch_id": batch["batch_id"], "domain": batch["domain"],
+                "objects": [t.obj.object_id for t in batch["tasks"]],
+                "candidate_evidence_ids": list(batch["evidence_ids"]),
+                "alias_to_eid": dict(ledger["alias_to_eid"]), "prompt_chars": len(prompt),
+                "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest()})
         calls += 1
         before = len(telemetry)
         stop_reason, error = None, None
@@ -2038,6 +2072,16 @@ def run_check_coverage(canonical_package, submission_package: sp.SubmissionPacka
                           "objects": [t.obj.object_id for t in batch["tasks"]],
                           "evidence_items_sent": len(ledger["alias_to_eid"]), "prompt_chars": len(prompt),
                           "stop_reason": stop_reason, "error": error})
+        if on_event is not None:
+            on_event(EVENT_BATCH_COMPLETED, {
+                "batch_id": batch["batch_id"], "domain": batch["domain"],
+                "objects": [t.obj.object_id for t in batch["tasks"]],
+                "candidate_evidence_ids": list(batch["evidence_ids"]),
+                "alias_to_eid": dict(ledger["alias_to_eid"]), "parsed": parsed,
+                "stop_reason": stop_reason, "error": error,
+                "telemetry_rows": [dict(r) for r in telemetry[before:]],
+                "results": results, "prompt_chars": len(prompt),
+                "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest()})
 
     for obj in plan.objects:
         if obj.object_type != OBJECT_CRITERION:
