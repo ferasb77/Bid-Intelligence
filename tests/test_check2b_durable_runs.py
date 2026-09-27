@@ -840,10 +840,12 @@ def _git_diff(*paths, base="b488749"):
 
 
 class TestMigrationAndRegression:
-    def test_022_follows_021_and_is_marked_not_applied(self):
+    def test_022_follows_021_and_is_marked_commissioned(self):
+        # CHECK-2B.1 applied 022 live; its only pre-application edit was the
+        # STATUS header (see tests/test_check2b1_live_commissioning.py).
         names = sorted(p.name for p in (ROOT / "migrations").glob("*.sql"))
         assert names[-2:] == ["021_submission_evidence_registry.sql", "022_check_runs.sql"]
-        assert "STATUS: CREATED_NOT_APPLIED" in MIGRATION_022
+        assert "STATUS: APPLIED_AND_COMMISSIONED" in MIGRATION_022
 
     def test_migrations_001_to_021_unmodified(self):
         files = [f"migrations/{p.name}" for p in sorted((ROOT / "migrations").glob("0[0-2][0-9]_*.sql"))

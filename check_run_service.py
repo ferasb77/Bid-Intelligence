@@ -28,9 +28,9 @@ Persistence reuses analysis_runs / analysis_results (analysis_mode='CHECK')
 plus migration 022's check_run_events / check_semantic_batches /
 check_adjudications / check_adjudication_evidence. Every write is one of
 migration 022's three service_role-only RPCs (database.start_check_run /
-record_check_run_event / finalize_check_run). MIGRATION 022 IS
-CREATED_NOT_APPLIED: until a commissioning task applies it, these RPCs do not
-exist live.
+record_check_run_event / finalize_check_run). Migration 022 is applied and
+live-commissioned (CHECK-2B.1, ledger 20260927153417 check_runs; first live
+CHECK run: bid 1360, run 37, COMPLETE).
 
 Provider accounting: the default adjudicator is full_analysis._call_model
 (through check_coverage), which records every call through the EXISTING
@@ -512,9 +512,25 @@ def _plan_counts(plan) -> dict:
             "scope_counts": {k: n for k, n in scope_counts.items() if n}}
 
 
+def _source_provenance_block(adjudication_source: str, provenance: dict | None) -> dict:
+    """CHECK-2B.1: provenance of a REPLAYED semantic adjudication. It names
+    the ORIGINAL (already-paid, already-validated) source adjudication -- e.g.
+    the CHECK-2A acceptance run's recorded provider calls / model -- and is
+    explicitly NOT a record of calls executed by this CHECK run (those are
+    `live_provider_calls`, always counted from the batch telemetry)."""
+    if not provenance:
+        return {}
+    return {"source_adjudication_provenance": {
+        **dict(provenance),
+        "applies_to": "SOURCE_ADJUDICATION_NOT_THIS_RUN",
+        "adjudication_source": adjudication_source,
+        "note": ("Describes the original validated adjudication whose recorded output was replayed; "
+                 "provider calls executed by THIS run are live_provider_calls.")}}
+
+
 def _result_payload(result: cc.CheckCoverageResult, *, run: dict, inputs: CheckInputs, fingerprint: str,
                     fingerprint_inputs: dict, plan, batch_records: list, integrity: str,
-                    adjudication_source: str) -> dict:
+                    adjudication_source: str, adjudication_provenance: dict | None = None) -> dict:
     d = result.to_dict()
     d.pop("adjudications", None)
     d.update({
@@ -531,6 +547,7 @@ def _result_payload(result: cc.CheckCoverageResult, *, run: dict, inputs: CheckI
         "adjudication_source": adjudication_source,
         "result_digest": cc.result_digest(result),
     })
+    d.update(_source_provenance_block(adjudication_source, adjudication_provenance))
     return d
 
 
@@ -546,9 +563,10 @@ def _summary(result: cc.CheckCoverageResult, integrity: str, batch_records: list
 
 
 def _telemetry_summary(batch_records: list, result: cc.CheckCoverageResult, adjudication_source: str,
-                       wall_seconds: float) -> dict:
+                       wall_seconds: float, adjudication_provenance: dict | None = None) -> dict:
     import full_analysis as fa
-    return {"engine_version": CHECK_ENGINE_VERSION, "provider": PROVIDER_ANTHROPIC,
+    return {**_source_provenance_block(adjudication_source, adjudication_provenance),
+            "engine_version": CHECK_ENGINE_VERSION, "provider": PROVIDER_ANTHROPIC,
             "model": fa.FULL_ANALYSIS_MODEL, "adjudication_source": adjudication_source,
             "adjudicator_invocations": result.provider_calls,
             "live_provider_calls": sum(b.get("provider_calls", 0) for b in batch_records),
@@ -591,7 +609,8 @@ class _CheckEventRecorder:
 
 
 def _execute_check_run(run: dict, inputs: CheckInputs, *, fingerprint: str, fingerprint_inputs: dict,
-                       client=None, adjudicate_fn=None, adjudication_source: str = SOURCE_PROVIDER) -> None:
+                       client=None, adjudicate_fn=None, adjudication_source: str = SOURCE_PROVIDER,
+                       adjudication_provenance: dict | None = None) -> None:
     """Execute one already-created CHECK run to a terminal state. Never
     raises: every failure is persisted as a FAILED run."""
     run_id, bid_id = int(run["id"]), int(run["bid_id"])
@@ -674,7 +693,7 @@ def _execute_check_run(run: dict, inputs: CheckInputs, *, fingerprint: str, fing
                                                  f"nothing persisted as adjudication",
                                   failure_detail={"integrity_violations": violations[:50]},
                                   telemetry=_telemetry_summary(state["batches"], result, adjudication_source,
-                                                               time.monotonic() - t0))
+                                                               time.monotonic() - t0, adjudication_provenance))
             return
         status, reason = run_integrity(state["batches"])
         db.finalize_check_run(
@@ -682,10 +701,12 @@ def _execute_check_run(run: dict, inputs: CheckInputs, *, fingerprint: str, fing
             result=_result_payload(result, run=run, inputs=inputs, fingerprint=fingerprint,
                                    fingerprint_inputs=fingerprint_inputs, plan=plan,
                                    batch_records=state["batches"], integrity=status,
-                                   adjudication_source=adjudication_source),
+                                   adjudication_source=adjudication_source,
+                                   adjudication_provenance=adjudication_provenance),
             adjudications=[adjudication_row(a, inputs.submission_package) for a in result.adjudications],
             summary=_summary(result, status, state["batches"]), failure_reason=reason,
-            telemetry=_telemetry_summary(state["batches"], result, adjudication_source, time.monotonic() - t0))
+            telemetry=_telemetry_summary(state["batches"], result, adjudication_source, time.monotonic() - t0,
+                                         adjudication_provenance))
     except Exception as exc:
         if recorder.aborted:
             return
@@ -707,7 +728,7 @@ def start_check_run(bid_id: int, organization_id: str, *, package_snapshot_id: i
                     source_run_id: int | None = None, created_by_user_id: str | None = None,
                     retry: bool = False, execution: str = EXECUTION_BACKGROUND, api_key: str | None = None,
                     client=None, adjudicate_fn=None, adjudication_source: str | None = None,
-                    inputs_loader=None) -> dict:
+                    inputs_loader=None, adjudication_provenance: dict | None = None) -> dict:
     """Start (or reuse) the canonical CHECK adjudication for a bid's current
     buyer canonical state and bidder package snapshot.
 
@@ -753,7 +774,8 @@ def start_check_run(bid_id: int, organization_id: str, *, package_snapshot_id: i
         import config
         client = config.get_anthropic_client(api_key)
     kwargs = dict(fingerprint=fingerprint, fingerprint_inputs=fingerprint_inputs, client=client,
-                  adjudicate_fn=adjudicate_fn, adjudication_source=source)
+                  adjudicate_fn=adjudicate_fn, adjudication_source=source,
+                  adjudication_provenance=adjudication_provenance)
     if execution == EXECUTION_INLINE:
         _execute_check_run(run, inputs, **kwargs)
     else:

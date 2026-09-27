@@ -2683,8 +2683,67 @@ assurance, no recommendations, no rewriting.
   overridden`.
 - Tests: `tests/test_check2b_durable_runs.py` (fake: `tests/check2b_fake_db.py`).
 
-Absent an explicit task instruction otherwise, still do not: apply
-migration 022, alter/reapply migration 015, 016, 017, 018, 019, 020 or 021,
+**CHECK-2B.1 (Live Durable-Run Commissioning) -- 2026-09-27.** Migration 022
+applied live (project `whonalbdpbubaqhpzrnw`, ledger `20260927153417
+check_runs`) after a preflight of the live schema (021 highest, no CHECK
+objects, analysis_runs / analysis_results / proposal_package_snapshots
+`(id, bid_id)` / submission_evidence_items `(bid_id, package_snapshot_id,
+evidence_id)` / model_usage_events / can_access_bid all as assumed, existing
+FULL guard trigger compatible) and a review of every Python payload against
+the columns / `->>` TEXT coercions / RPC signatures (all Calgary TEXT-bound
+fields are str/None; no mismatch). The only pre-application edit to 022 was
+its STATUS header comment (no SQL changed; a test asserts the executable SQL
+equals `90945fd`'s). Directly verified live: 4 tables, RLS on, 4
+authenticated-SELECT `can_access_bid` policies, 15 indexes, 5 triggers, 3
+SECURITY DEFINER RPCs executable by service_role only.
+- **Security probes (rolled back, zero residue)**: member reads run 37's
+  rows; non-member authenticated and anon read 0; authenticated / anon direct
+  INSERT rejected by RLS, UPDATE/DELETE affect 0 rows, RPC EXECUTE denied;
+  service_role cannot UPDATE adjudications, DELETE events or touch a terminal
+  run; cross-bid start / event / snapshot FK rejected; finalize citing another
+  bid's evidence, a buyer id (`REQ-1`) or an unknown id aborts on the
+  `submission_evidence_items` FK with nothing persisted.
+- **Calgary durable CHECK run: bid 1360, run 37, COMPLETE** -- created through
+  `check_run_service.start_check_run` (outcome CREATED) with the accepted
+  CHECK-2A output replayed (`adjudication_source=REPLAY_OF_RECORDED_LIVE_
+  OUTPUT`, `live_provider_calls=0`, `model_usage_events` unchanged at 355);
+  fingerprint `48e9a2e172b2...` (source run 34, snapshot 9, 13 buyer docs,
+  47 requirements + 13 criteria, 4 authoritative bidder artifacts, 294
+  evidence items); 15 sequenced events, 4 COMPLETE batches, 60 adjudications,
+  269 evidence links (74 distinct ids, all bid 1360 / snapshot 9). The
+  source CHECK-2A provenance is stored as `source_adjudication_provenance`
+  (`applies_to=SOURCE_ADJUDICATION_NOT_THIS_RUN`).
+- **Fresh-process reconstruction from the DB only** (tenancy wrappers): every
+  field of all 60 adjudications identical to the in-memory result, result
+  digest `67b30896...` verified, statuses / methods / evidence ids identical
+  to the accepted CHECK-2A record; REQ-46 ADDRESSED on B2, pricing criteria on
+  Appendix D, REQ-33/37 on Appendix E, 3 portal-native NOT_VERIFIABLE, 2
+  HUMAN_REVIEW, 23 excluded NOT_APPLICABLE, PARTIAL missing elements exact.
+- **REUSED_COMPLETE against the real DB**: `tenancy.start_check_run_for_
+  organization` with identical inputs (provider poisoned, no adjudicator) ->
+  REUSED_COMPLETE run 37, zero new rows, zero calls. ACTIVE_RUN_EXISTS proven
+  in rolled-back probes (RPC returns it for any fingerprint while a CHECK run
+  is active; a direct second active row violates `idx_analysis_runs_one_
+  active`; a second COMPLETE row for one fingerprint violates
+  `idx_analysis_runs_check_complete_fingerprint`). Truncated / failed /
+  abnormal-stop batches persist as PARTIAL / FAILED and finalize refuses
+  COMPLETE over them.
+- Historical integrity: run 34 row and result (legacy columns) byte-identical,
+  snapshot-9 evidence (294) and submission documents unchanged.
+- Observation (not changed): BUYER_SCOPE_CLASSIFIED's `portal_native` /
+  `checkable` counts are plan-time scope-gate counts (2 / 34); the final result
+  has 3 / 33 because one criterion's scope is set later by derivation.
+- Characteristic (same as migration 020's FULL events): `check_run_events`
+  rejects DELETE, so deleting a bid/run with CHECK events is blocked.
+- REQ-41 remains the documented model limitation, persisted unchanged.
+- Tests: `tests/test_check2b1_live_commissioning.py`. Full suite: 3589 passed,
+  2 skipped.
+
+**CHECK-2B is COMPLETE and FROZEN.** CHECK-2B persistence no longer relies
+only on fake_db.
+
+Absent an explicit task instruction otherwise, still do not: alter/reapply
+migration 015, 016, 017, 018, 019, 020, 021 or 022,
 activate the compact-wire prototype, change chunk sizes/max_tokens/model
 routing/caching, reintroduce proposal-generation under another name, or
 merge `main`/deploy.
@@ -2692,10 +2751,8 @@ merge `main`/deploy.
 ## Migrations known in this repository (files, not live-database state)
 
 Highest migration file present: **022** (`022_check_runs.sql`, CHECK-2B --
-**CREATED_NOT_APPLIED**: written, NOT applied to any live database; a later,
-explicitly authorized commissioning task applies it. Live probe 2026-09-27:
-no CHECK tables / RPCs / `source_package_snapshot_id` column exist live and the
-live `analysis_runs_analysis_mode_check` still rejects 'CHECK'). Before it:
+**applied and live-commissioned 2026-09-27 by CHECK-2B.1**, ledger entry
+`20260927153417 check_runs`; first live CHECK run bid 1360 / run 37). Before it:
 **021** (`021_submission_evidence_registry.sql`, CHECK-1, amended before first
 application and **applied and live-commissioned 2026-09-27 by CHECK-1.1**,
 ledger entry `20260926220922 submission_evidence_registry`). Before it: **020**

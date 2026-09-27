@@ -15,8 +15,9 @@ with ZERO provider calls.
            (tests/fixtures/calgary_26_1603_check2a_replay.json) -- no new paid
            adjudication.
         3. Persists into tests/check2b_fake_db.FakeCheckDB, the in-memory
-           implementation of migration 022's RPC contract, because MIGRATION 022
-           IS CREATED_NOT_APPLIED (this task forbids applying it live). The
+           implementation of migration 022's RPC contract, because migration 022
+           was not yet applied at CHECK-2B time (CHECK-2B.1 later commissioned it
+           live -- see scripts/commission_check2b1_calgary_live.py). The
            store is seeded with the LIVE snapshot-9 evidence ids, so the
            evidence-link FK check runs against the real registry. The store is
            dumped to <out_dir>/check2b_calgary_store.json.

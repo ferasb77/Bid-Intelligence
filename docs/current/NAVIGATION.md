@@ -496,14 +496,24 @@ CHECK-1 (1.0-1.3) is COMPLETE and FROZEN -- build on it, do not reopen it.
   `finalize_check_run` (the ONLY CHECK write paths, RPCs), `get_check_runs` /
   `get_check_run_events` / `get_check_semantic_batches` /
   `get_check_adjudications`.
-- `migrations/022_check_runs.sql` -- **CREATED_NOT_APPLIED** (analysis_mode
-  'CHECK', `source_package_snapshot_id`, `analysis_results.check_coverage_
-  result`, `check_run_events`, `check_semantic_batches`, `check_adjudications`,
-  `check_adjudication_evidence` with FK into `submission_evidence_items`).
-- Calgary replay acceptance (one-off, zero provider calls):
-  `scripts/commission_check2b_calgary.py persist|reopen <out_dir>`.
+- `migrations/022_check_runs.sql` -- **applied and live-commissioned
+  (CHECK-2B.1, ledger `20260927153417 check_runs`)**; only pre-application
+  edit was its STATUS header (analysis_mode 'CHECK', `source_package_
+  snapshot_id`, `analysis_results.check_coverage_result`, `check_run_events`,
+  `check_semantic_batches`, `check_adjudications`, `check_adjudication_evidence`
+  with FK into `submission_evidence_items`).
+- Calgary replay acceptance against the in-memory contract (CHECK-2B, one-off,
+  zero provider calls): `scripts/commission_check2b_calgary.py persist|reopen`.
+- **CHECK-2B.1 live commissioning** (one-off, zero provider calls, creates the
+  real durable run): `scripts/commission_check2b1_calgary_live.py persist|
+  reopen <out_dir>`. Live Calgary durable CHECK run: **bid 1360, run 37,
+  COMPLETE**, fingerprint `48e9a2e1...`; REUSED_COMPLETE proven against the
+  real DB. `start_check_run(adjudication_provenance=...)` records replayed
+  SOURCE adjudication provenance (never counted as this run's calls).
 - Tests: `tests/test_check2b_durable_runs.py`; in-memory migration-022
-  contract `tests/check2b_fake_db.py`.
+  contract `tests/check2b_fake_db.py`; `tests/test_check2b1_live_
+  commissioning.py` (+ content-free live record `tests/fixtures/calgary_26_
+  1603_check2b1_live_run.json`). CHECK-2B is COMPLETE and FROZEN.
 - Known limitation: REQ-41 recency element (see SYSTEM_STATE.md).
 
 **Proposal Intelligence (PI-1, hardened in PI-1.1/PI-1.2, deepened in

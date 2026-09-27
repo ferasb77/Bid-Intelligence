@@ -1,10 +1,12 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Migration 022: Durable CHECK (proposal assurance) runs -- CHECK-2B
 -- ═══════════════════════════════════════════════════════════════════════════
--- STATUS: CREATED_NOT_APPLIED. Written by CHECK-2B; NOT applied to any live
--- database by that task. Per this repo's convention it is applied manually
--- (Supabase SQL editor / dashboard) by a separate, explicitly authorized
--- commissioning task. No code path auto-applies it.
+-- STATUS: APPLIED_AND_COMMISSIONED by CHECK-2B.1 (live durable-run
+-- commissioning, project whonalbdpbubaqhpzrnw). Written by CHECK-2B, which
+-- did not apply it. CHECK-2B.1's pre-application review against the live
+-- schema and the Python payloads found no schema/payload mismatch; the ONLY
+-- pre-application edit was this STATUS comment (no SQL changed). Immutable
+-- from first application onward. No code path auto-applies it.
 --
 -- Does NOT modify migrations 001-021 (their files are byte-for-byte
 -- unchanged). Like migration 020 it WIDENS one live CHECK constraint on

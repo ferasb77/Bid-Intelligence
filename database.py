@@ -1698,8 +1698,8 @@ def get_submission_evidence_items(bid_id: int, package_snapshot_id: int) -> list
 # Every WRITE is one call into one of migration 022's three service_role-only
 # SECURITY DEFINER functions -- never a direct .insert()/.update(). Reached
 # only through check_run_service.py, itself only reached through tenancy.py's
-# require_bid_access() wrappers. MIGRATION 022 IS CREATED_NOT_APPLIED: until
-# it is commissioned live these calls fail against the live database.
+# require_bid_access() wrappers. Migration 022 is applied and live-commissioned
+# (CHECK-2B.1, ledger 20260927153417 check_runs).
 
 def start_check_run(bid_id: int, source_analysis_run_id: int, package_snapshot_id: int,
                     input_fingerprint: str, engine_version: str, *,
