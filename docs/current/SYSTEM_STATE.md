@@ -2888,6 +2888,32 @@ canonical procurement / submission package logic still frozen at `e76e103`).
 
 **CHECK-2D is COMPLETE; CHECK-2 is COMPLETE.** CHECK-3 is NOT started.
 
+**CHECK-2D.1 (durable data & presentation hygiene) -- 2026-09-27.** Not a new
+phase; CHECK-2 remains complete. Every customer-facing CHECK surface (CHECK-2C
+workspace cards / finding detail / attention list / non-submission list and
+the CHECK-2D report model + PDF) now renders ONE client-safe projection of
+`ambiguity_or_review_reason`, `components/check_review_text.py`
+(`client_safe_review_notes`, pure), applied at the single choke point
+`check_workspace_view.review_notes` (`raw_review_notes` keeps the verbatim
+segments for audit). It drops the CHECK-2B.1 commissioning placeholder
+"recorded live adjudication (reason text omitted from content-free fixture)"
+(written by `scripts/commission_check2a_calgary.py`'s `replay_adjudicator`,
+because the content-free replay fixture deliberately omits model free text)
+and restates check_coverage's validation-downgrade routing notation
+("... -> HUMAN_REVIEW_REQUIRED") in plain language; an arrow is treated as
+routing only when a known CHECK status token follows it, and buyer wording
+("element needs review: ...") is never normalized. A HUMAN_REVIEW_REQUIRED
+finding with no reason left shows a fixed neutral sentence, never an invented
+one. Durable raw data is unchanged: run 37 was NOT modified and no
+superseding run was created (migration 022's triggers make terminal runs
+immutable and no audited correction path exists); run-37 adjudication /
+evidence / batch / event / run-row hashes and `model_usage_events` (355)
+verified identical before and after. Zero-call behavior preserved. Run-37
+rows carrying the placeholder: 16 (9 MODEL requirements + 7 derived criteria;
+REQ-5 is the only HUMAN_REVIEW_REQUIRED one); rows with routing notation: 5
+(REQ-5, REQ-40, REQ-44, CRIT-service-delivery, CRIT-understanding-of-the-
+services). Tests: `tests/test_check2d1_presentation_hygiene.py`.
+
 Absent an explicit task instruction otherwise, still do not: alter/reapply
 migration 015, 016, 017, 018, 019, 020, 021 or 022,
 activate the compact-wire prototype, change chunk sizes/max_tokens/model

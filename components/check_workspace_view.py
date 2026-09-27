@@ -28,6 +28,8 @@ import html
 import re
 from datetime import datetime, timezone
 
+from components import check_review_text as crt
+
 # ─── closed vocabularies (mirror check_coverage / check_run_service) ───
 ADDRESSED = "ADDRESSED"
 PARTIAL = "PARTIALLY_ADDRESSED"
@@ -220,10 +222,19 @@ def concise_expectation(a: dict, n: int = EXPECTATION_CHARS) -> str:
 
 
 def review_notes(a: dict) -> list:
-    """The persisted ambiguity / review reason, split into its recorded
-    segments (verbatim, nothing dropped or rephrased)."""
-    reason = a.get("ambiguity_or_review_reason") or ""
-    return [s.strip() for s in str(reason).split(" | ") if s.strip()]
+    """The CLIENT-SAFE projection of the persisted ambiguity / review reason
+    (components.check_review_text -- the one shared projection used by the
+    workspace and the report): recorded segments in order, minus the CHECK-2B.1
+    commissioning placeholder, with internal status-routing notation in plain
+    language. The persisted value is not modified; raw_review_notes() keeps
+    the verbatim segments for audit."""
+    return crt.client_safe_review_notes(a.get("ambiguity_or_review_reason"), a.get("status"))
+
+
+def raw_review_notes(a: dict) -> list:
+    """The persisted reason split into its recorded segments, verbatim
+    (audit / debug only -- never rendered to a customer)."""
+    return crt.raw_review_notes(a.get("ambiguity_or_review_reason"))
 
 
 def element_groups(a: dict) -> dict:

@@ -553,6 +553,19 @@ CHECK-1 (1.0-1.3) is COMPLETE and FROZEN -- build on it, do not reopen it.
 - Tests: `tests/test_check2d_assurance_report.py` (47).
 - CHECK-2 is COMPLETE. CHECK-3 not started.
 
+**CHECK-2D.1: Presentation hygiene for CHECK review reasons (2026-09-27)**
+- `components/check_review_text.py` (pure) -- THE client-safe projection of a
+  persisted `ambiguity_or_review_reason`: `client_safe_review_notes` (drops the
+  CHECK-2B.1 commissioning placeholder, restates known status-routing notation
+  in plain language, neutral sentence only for an otherwise-empty human-review
+  reason), `raw_review_notes` (verbatim, audit only).
+- Wired once at `components/check_workspace_view.review_notes`, which every
+  workspace surface and `components/check_report_model` already use. Any new
+  surface that shows a review reason must go through it, never read
+  `ambiguity_or_review_reason` directly.
+- Persisted rows (run 37 included) are never modified. Tests:
+  `tests/test_check2d1_presentation_hygiene.py`.
+
 **Proposal Intelligence (PI-1, hardened in PI-1.1/PI-1.2, deepened in
 PI-2A/PI-2A.1, extended in PI-2B1)** — durable persistence for CHECK's
 Proposal Alignment output. PI-2A added structured proposal/procurement

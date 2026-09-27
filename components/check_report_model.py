@@ -28,6 +28,7 @@ from __future__ import annotations
 import hashlib
 import json
 
+from components import check_review_text as crt
 from components import check_workspace_view as cwv
 
 REPORT_MODEL_VERSION = "check-2d-report-1"
@@ -87,7 +88,10 @@ ATTENTION_ORDERING_TEXT = (
 #: CHECK-2B replay provenance segments persisted inside a review reason. They
 #: describe how the run was recorded, not why a finding has its status, so
 #: they are not repeated in a client report (the persisted row is unchanged).
-NON_SUBSTANTIVE_REASON_MARKERS = ("reason text omitted from content-free fixture",)
+#: CHECK-2D.1: defined once in components.check_review_text, which
+#: cwv.review_notes already applies (with routing-notation normalization);
+#: kept here as a second guard.
+NON_SUBSTANTIVE_REASON_MARKERS = (crt.COMMISSIONING_PLACEHOLDER_MARKER,)
 _REVIEW_ELEMENT_PREFIX = "element needs review:"
 
 MAX_ELEMENT_CITES = 1
@@ -162,8 +166,10 @@ def attention_key(a: dict) -> tuple:
 
 
 def substantive_reasons(a: dict) -> list:
-    """The persisted review / ambiguity reason segments, verbatim, minus the
-    CHECK-2B replay-provenance placeholder (see NON_SUBSTANTIVE_REASON_MARKERS)."""
+    """The client-safe review / ambiguity reason segments (the shared
+    components.check_review_text projection via cwv.review_notes: persisted
+    text minus the CHECK-2B.1 commissioning placeholder, internal routing
+    notation in plain language)."""
     out = []
     for seg in cwv.review_notes(a):
         body = seg
@@ -437,6 +443,8 @@ def _criterion_conclusion(a: dict, finding_refs: list, cites: Citations) -> tupl
     reasons = _unverifiable_reasons(a) if st == NOT_VERIFIABLE else substantive_reasons(a)
     lead = "Not verifiable from the submitted files" if st == NOT_VERIFIABLE else "Human review required"
     first = _strip_object_prefix(reasons[0]) if reasons else ""
+    if first == crt.NEUTRAL_REVIEW_REASON:
+        first = ""                                   # the lead already says it
     body = f": {clip(first, 130)}" if first else "."
     return f"{lead}{body}{see}", []
 
