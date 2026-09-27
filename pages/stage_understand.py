@@ -699,6 +699,93 @@ def _render_procurement_governance_panel(bid_id: int, organization_id: str, docs
     return state
 
 
+def _is_internal_benchmark_text(text: str) -> bool:
+    if not text:
+        return False
+    low = text.lower()
+    return any(tok in low for tok in (
+        "check-1", "check-2", "migration 021", "migration 022", "benchmark bid",
+        "test fixture", "fixture", "commissioning", "canonical check",
+    ))
+
+
+def _resolve_canonical_deadlines(bid: dict, brief_row: dict, analysis_result: dict | None) -> tuple[str | None, str | None]:
+    """Retrieve canonical submission and clarification deadlines without hardcoding dates.
+    Reads bid -> brief_row -> canonical procurement identity merge -> canonical milestones."""
+    sub_deadline = bid.get("submission_deadline")
+    clar_deadline = bid.get("clarification_deadline")
+
+    if not sub_deadline or not clar_deadline:
+        if not sub_deadline:
+            sub_deadline = brief_row.get("submission_deadline")
+        if not clar_deadline:
+            clar_deadline = brief_row.get("clarification_deadline")
+
+    if (not sub_deadline or not clar_deadline) and analysis_result:
+        snap = analysis_result.get("fast_analysis_result_snapshot") or {}
+        r_snap = snap.get("result") or {}
+        doc_meta = r_snap.get("doc_metadata_by_doc") or {}
+        if doc_meta:
+            try:
+                import canonical_procurement as cp
+                merged_ident = cp.merge_identity_fields(doc_meta)
+                if not sub_deadline:
+                    sub_deadline = merged_ident.get("submission_deadline")
+                if not clar_deadline:
+                    clar_deadline = merged_ident.get("clarification_deadline")
+            except Exception:
+                pass
+
+        if not sub_deadline or not clar_deadline:
+            cms = r_snap.get("canonical_milestones") or []
+            for m in cms:
+                lbl = (m.get("label") or "").upper()
+                d_val = m.get("normalized_date_start")
+                if not sub_deadline and lbl == "SUBMISSION_DEADLINE" and d_val:
+                    sub_deadline = d_val
+                if not clar_deadline and lbl == "CLARIFICATION_DEADLINE" and d_val:
+                    clar_deadline = d_val
+
+        if not sub_deadline or not clar_deadline:
+            oi = analysis_result.get("structured_intelligence") or {}
+            dm = oi.get("dates_and_mechanics") or {}
+            raw_dates = dm.get("raw_date_observations") or []
+            for o in raw_dates:
+                kind = (o.get("semantic_kind") or "").upper()
+                d_val = o.get("date")
+                if not sub_deadline and kind == "SUBMISSION_DEADLINE" and d_val:
+                    sub_deadline = d_val
+                if not clar_deadline and kind in ("CLARIFICATION_DEADLINE", "ENQUIRY_DEADLINE") and d_val:
+                    clar_deadline = d_val
+
+    return sub_deadline, clar_deadline
+
+
+def _resolve_customer_safe_summary(bid: dict, brief_row: dict, analysis_result: dict | None) -> str:
+    """Resolve customer-facing executive summary. Never renders internal benchmark,
+    migration, or QA fixture wording."""
+    raw_summary = brief_row.get("executive_summary")
+    if not raw_summary or _is_internal_benchmark_text(raw_summary):
+        candidate_notes = bid.get("notes")
+        if candidate_notes and not _is_internal_benchmark_text(candidate_notes):
+            raw_summary = candidate_notes
+        else:
+            ps_intro = None
+            if analysis_result:
+                oi = analysis_result.get("structured_intelligence") or {}
+                ps = oi.get("procurement_scope") or {}
+                rc = analysis_result.get("report_content_snapshot") or {}
+                ps_intro = ps.get("intro") or rc.get("PROCURED_INTRO")
+            if ps_intro and not _is_internal_benchmark_text(ps_intro):
+                raw_summary = ps_intro
+            else:
+                client = bid.get("client") or "The buyer"
+                title = bid.get("title") or "services"
+                ref = f" under solicitation #{bid['file_number']}" if bid.get("file_number") else ""
+                raw_summary = f"{client} is procuring {title}{ref}."
+    return raw_summary or "Executive summary pending synthesis."
+
+
 def page_understand(bid_id: int):
     _token, _org_id = _current_access_token_and_org()
     bid = tenancy.get_bid_authenticated(_token, bid_id)
@@ -709,9 +796,10 @@ def page_understand(bid_id: int):
     brief_row = tenancy.get_bid_brief_authenticated(_token, bid_id) or {}
     reqs = tenancy.get_requirements_authenticated(_token, bid_id)
     docs = tenancy.get_documents_authenticated(_token, bid_id)
+    analysis_result = tenancy.get_latest_analysis_result_authenticated(_token, bid_id, "FAST")
 
     # Decode JSON fields from brief_row if present
-    exec_summary = brief_row.get("executive_summary") or bid.get("notes") or "Executive summary pending synthesis."
+    exec_summary = _resolve_customer_safe_summary(bid, brief_row, analysis_result)
     opp_type = brief_row.get("opportunity_type") or "Not classified"
     contract_term = brief_row.get("contract_term") or "Not stated"
     proc_model = brief_row.get("procurement_model") or "Not classified"
@@ -748,13 +836,14 @@ def page_understand(bid_id: int):
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
     # ── TOP KPI SUMMARY CARDS ──────────────────────────────────────────────────
-    sub_days = days_until(bid.get("submission_deadline"))
-    clar_days = days_until(bid.get("clarification_deadline"))
+    sub_deadline, clar_deadline = _resolve_canonical_deadlines(bid, brief_row, analysis_result)
+    sub_days = days_until(sub_deadline)
+    clar_days = days_until(clar_deadline)
     val_str = f"CAD {bid['value_cad']:,.0f}" if bid.get("value_cad") else "Not stated"
 
     k1, k2, k3, k4 = st.columns(4)
-    k1.markdown(metric_card("Submission Deadline", bid.get("submission_deadline") or "—", days_label(sub_days) if sub_days is not None else "Date unconfirmed"), unsafe_allow_html=True)
-    k2.markdown(metric_card("Enquiry Deadline", bid.get("clarification_deadline") or "—", days_label(clar_days) if clar_days is not None else "Date unconfirmed"), unsafe_allow_html=True)
+    k1.markdown(metric_card("Submission Deadline", sub_deadline or "—", days_label(sub_days) if sub_days is not None else "Date unconfirmed"), unsafe_allow_html=True)
+    k2.markdown(metric_card("Enquiry Deadline", clar_deadline or "—", days_label(clar_days) if clar_days is not None else "Date unconfirmed"), unsafe_allow_html=True)
     k3.markdown(metric_card("Est. Value / Term", val_str, contract_term[:32]), unsafe_allow_html=True)
     k4.markdown(metric_card("Procurement Model", proc_model[:22], f"Lead: {bid.get('owner') or 'Unassigned'}"), unsafe_allow_html=True)
     st.markdown("")

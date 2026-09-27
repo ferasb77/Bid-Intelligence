@@ -2914,6 +2914,22 @@ REQ-5 is the only HUMAN_REVIEW_REQUIRED one); rows with routing notation: 5
 (REQ-5, REQ-40, REQ-44, CRIT-service-delivery, CRIT-understanding-of-the-
 services). Tests: `tests/test_check2d1_presentation_hygiene.py`.
 
+**Calgary Prospect Pre-Demo Polish Pass -- 2026-09-28.** Final pre-demo polish pass following
+the completed City of Calgary (RFP 26-1603, bid 1360, run 37) product rehearsal:
+- P1: Suppressed internal benchmark/developer text ("check-1", "check-2", "migration 021",
+  "fixture", "commissioning") in Calgary UNDERSTAND via permanent presentation-layer filter
+  `_resolve_customer_safe_summary()` and updated factual bid notes in database.
+- P2: Consolidated sidebar navigation to exactly ONE customer-facing CHECK entry point:
+  `🛡️  4. CHECK: Proposal Assurance` (`app.py`), routing both `stage_check_assurance` and
+  legacy `stage_check` cleanly to `page_check_assurance(bid_id)`.
+- P2: Surfaced canonical procurement closing date (`2026-07-16`) dynamically in the top
+  metric summary (`_resolve_canonical_deadlines()` via `canonical_procurement.merge_identity_fields()`
+  and `analysis_result.canonical_milestones`) without hardcoding Calgary dates and without
+  fabricating an Award Date.
+- Zero model calls verified (`model_usage_events` delta: 0, 355 baseline preserved). Run 37
+  COMPLETE with 60 adjudications and Run 34 COMPLETE preserved without modification.
+- Tests: `tests/test_predemo_polish.py` (7 tests, all passing).
+
 Absent an explicit task instruction otherwise, still do not: alter/reapply
 migration 015, 016, 017, 018, 019, 020, 021 or 022,
 activate the compact-wire prototype, change chunk sizes/max_tokens/model

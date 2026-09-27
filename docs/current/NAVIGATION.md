@@ -518,9 +518,9 @@ CHECK-1 (1.0-1.3) is COMPLETE and FROZEN -- build on it, do not reopen it.
 - CHECK backend frozen at `e76e103`.
 
 **CHECK-2C: Client-Facing Proposal Assurance Workspace (2026-09-27)**
-- `pages/stage_check_assurance.py` -- `page_check_assurance(bid_id)` (sidebar
-  "🛡️ CHECK: Proposal Assurance", `page == "stage_check_assurance"` in
-  `app.py`; also linked from `pages/stage_check.py`). Controller functions
+- `pages/stage_check_assurance.py` -- `page_check_assurance(bid_id)` (single sidebar
+  entry point "🛡️  4. CHECK: Proposal Assurance", `page == "stage_check_assurance"` in
+  `app.py`; legacy route `stage_check` forwards directly to `page_check_assurance`). Controller functions
   `load_status`, `load_bundle` (result + bounded evidence index, cached per
   terminal run), `request_start` (the ONLY execution path, explicit click,
   CHECK-2B start outcomes unchanged) are plain and unit-tested.

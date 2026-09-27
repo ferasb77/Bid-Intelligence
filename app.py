@@ -253,8 +253,7 @@ with st.sidebar:
                 "🧬  Full Bid Intelligence": "stage_full_analysis",
                 "⚖️  2. DECIDE":     "stage_decide",
                 "🛠️  3. BUILD":      "stage_build",
-                "🔍  4. CHECK":      "stage_check",
-                "🛡️  CHECK: Proposal Assurance": "stage_check_assurance",
+                "🛡️  4. CHECK: Proposal Assurance": "stage_check_assurance",
                 "🚀  5. SUBMIT":     "stage_submit",
             }
 
@@ -2241,10 +2240,8 @@ elif page in ("stage_decide", "clarifications", "ai_analyst"):
     page_decide(bid_id)
 elif page in ("stage_build", "outline", "section_drafter", "tasks", "documents", "deliverables"):
     page_build(bid_id)
-elif page == "stage_check_assurance":
+elif page in ("stage_check_assurance", "stage_check", "compliance", "proposal_analyzer"):
     page_check_assurance(bid_id)
-elif page in ("stage_check", "compliance", "proposal_analyzer"):
-    page_check(bid_id)
 elif page in ("stage_submit", "submission_assembler"):
     page_submit(bid_id)
 elif page in ("stage_debrief", "debrief"):
