@@ -1,0 +1,1264 @@
+{
+ "_provenance": "CONTENT-FREE record of the live CHECK-2A acceptance run on City of Calgary RFP 26-1603 (bid 1360, Fast Analysis run 34, package snapshot 9), written by scripts/commission_check2a_calgary.py run --write-fixture. Per batch: the model's status, evidence ids (CHECK-1 EV ids) and requested elements whose text is VERBATIM buyer wording. No bidder prose and no model free text (summaries / reasons / notes omitted).",
+ "contract_version": "check-2a.1.0",
+ "provider_calls": 4,
+ "buyer_package_digest": "6676678e1823008a359c945afdd1f369825a3a64836a20b890c11357486ce4d0",
+ "submission_package_digest": "9c3ffa6d449afd06f7daa5f588f7a0259486d45e651082d9525d72d3e1cd2307",
+ "batches": {
+  "B1": {
+   "objects": [
+    "REQ-5",
+    "REQ-22",
+    "REQ-25",
+    "REQ-40"
+   ],
+   "adjudications": [
+    {
+     "object_id": "REQ-5",
+     "status": "PARTIALLY_ADDRESSED",
+     "evidence_ids": [
+      "EV-73e80bb97201399fdc2d",
+      "EV-bc817103b9c14d2d31f4",
+      "EV-8a6ab2d81c830015f540",
+      "EV-fbc856a0b128fafcbe09",
+      "EV-e26c86f348f614868131",
+      "EV-406143318b3d03214385",
+      "EV-4a65ec1a7aa12e3e612f",
+      "EV-927065d3291493c8e941",
+      "EV-06fe219aaa0a6fe1599d",
+      "EV-a1ddbac9492e09ee305f",
+      "EV-60934c559c6f95b92716",
+      "EV-ff8bec2052ffc5f12678",
+      "EV-7a037d0977a4ca399633",
+      "EV-c2bddfedc13504a68d26",
+      "EV-7c3958fbf43254bff55d",
+      "EV-7ecbdcf1756e069dbc6c",
+      "EV-0937fd198c86b7a6f2ab"
+     ],
+     "requested_elements": [
+      {
+       "element": "Proponents must provide pricing based only on the requirements and scenarios outlined in the pricing form",
+       "coverage": "PARTIAL",
+       "evidence_ids": [
+        "EV-73e80bb97201399fdc2d",
+        "EV-bc817103b9c14d2d31f4",
+        "EV-8a6ab2d81c830015f540",
+        "EV-fbc856a0b128fafcbe09",
+        "EV-e26c86f348f614868131",
+        "EV-406143318b3d03214385",
+        "EV-4a65ec1a7aa12e3e612f",
+        "EV-927065d3291493c8e941",
+        "EV-06fe219aaa0a6fe1599d",
+        "EV-a1ddbac9492e09ee305f",
+        "EV-60934c559c6f95b92716",
+        "EV-ff8bec2052ffc5f12678"
+       ]
+      },
+      {
+       "element": "the solicitation is limited to the scope of services as defined in the RFP and does not include additional services such as coaching or psychometric assessments",
+       "coverage": "PARTIAL",
+       "evidence_ids": [
+        "EV-7a037d0977a4ca399633",
+        "EV-c2bddfedc13504a68d26",
+        "EV-7c3958fbf43254bff55d",
+        "EV-7ecbdcf1756e069dbc6c",
+        "EV-0937fd198c86b7a6f2ab"
+       ]
+      }
+     ]
+    },
+    {
+     "object_id": "REQ-22",
+     "status": "ADDRESSED",
+     "evidence_ids": [
+      "EV-fbc856a0b128fafcbe09",
+      "EV-927065d3291493c8e941",
+      "EV-ff8bec2052ffc5f12678"
+     ],
+     "requested_elements": [
+      {
+       "element": "Delete hourly rate and replace it with price",
+       "coverage": "ADDRESSED",
+       "evidence_ids": [
+        "EV-fbc856a0b128fafcbe09",
+        "EV-927065d3291493c8e941",
+        "EV-ff8bec2052ffc5f12678"
+       ]
+      }
+     ]
+    },
+    {
+     "object_id": "REQ-25",
+     "status": "ADDRESSED",
+     "evidence_ids": [
+      "EV-73e80bb97201399fdc2d",
+      "EV-bc817103b9c14d2d31f4",
+      "EV-8a6ab2d81c830015f540",
+      "EV-fbc856a0b128fafcbe09",
+      "EV-e26c86f348f614868131",
+      "EV-406143318b3d03214385",
+      "EV-4a65ec1a7aa12e3e612f",
+      "EV-927065d3291493c8e941",
+      "EV-06fe219aaa0a6fe1599d",
+      "EV-a1ddbac9492e09ee305f",
+      "EV-60934c559c6f95b92716",
+      "EV-ff8bec2052ffc5f12678"
+     ],
+     "requested_elements": [
+      {
+       "element": "Pricing is to be provided for one (1) sample cohort only, as per Appendix B: Deliverables",
+       "coverage": "ADDRESSED",
+       "evidence_ids": [
+        "EV-73e80bb97201399fdc2d",
+        "EV-bc817103b9c14d2d31f4",
+        "EV-8a6ab2d81c830015f540",
+        "EV-fbc856a0b128fafcbe09",
+        "EV-e26c86f348f614868131",
+        "EV-406143318b3d03214385",
+        "EV-4a65ec1a7aa12e3e612f",
+        "EV-927065d3291493c8e941"
+       ]
+      },
+      {
+       "element": "Lump Sum (LS) price for one (1) sample cohort under Item 1",
+       "coverage": "ADDRESSED",
+       "evidence_ids": [
+        "EV-bc817103b9c14d2d31f4",
+        "EV-8a6ab2d81c830015f540",
+        "EV-fbc856a0b128fafcbe09"
+       ]
+      },
+      {
+       "element": "Lump Sum (LS) price for one (1) sample cohort under Item 2",
+       "coverage": "ADDRESSED",
+       "evidence_ids": [
+        "EV-406143318b3d03214385",
+        "EV-4a65ec1a7aa12e3e612f",
+        "EV-927065d3291493c8e941"
+       ]
+      },
+      {
+       "element": "If applicable, a fixed travel expense fee for one (1) person under Item 3",
+       "coverage": "ADDRESSED",
+       "evidence_ids": [
+        "EV-a1ddbac9492e09ee305f",
+        "EV-60934c559c6f95b92716",
+        "EV-ff8bec2052ffc5f12678"
+       ]
+      },
+      {
+       "element": "Annual pricing, pricing for all six (6) leadership levels, pricing for multiple cohorts, and pricing for the total value of the contract term are NOT being asked for",
+       "coverage": "ADDRESSED",
+       "evidence_ids": [
+        "EV-73e80bb97201399fdc2d",
+        "EV-bc817103b9c14d2d31f4",
+        "EV-8a6ab2d81c830015f540",
+        "EV-fbc856a0b128fafcbe09",
+        "EV-e26c86f348f614868131",
+        "EV-406143318b3d03214385",
+        "EV-4a65ec1a7aa12e3e612f",
+        "EV-927065d3291493c8e941",
+        "EV-06fe219aaa0a6fe1599d",
+        "EV-a1ddbac9492e09ee305f",
+        "EV-60934c559c6f95b92716",
+        "EV-ff8bec2052ffc5f12678"
+       ]
+      }
+     ]
+    },
+    {
+     "object_id": "REQ-40",
+     "status": "PARTIALLY_ADDRESSED",
+     "evidence_ids": [
+      "EV-fbc856a0b128fafcbe09",
+      "EV-927065d3291493c8e941",
+      "EV-ff8bec2052ffc5f12678"
+     ],
+     "requested_elements": [
+      {
+       "element": "Complete the pricing table by providing proposed hourly rates",
+       "coverage": "PARTIAL",
+       "evidence_ids": [
+        "EV-fbc856a0b128fafcbe09",
+        "EV-927065d3291493c8e941",
+        "EV-ff8bec2052ffc5f12678"
+       ]
+      },
+      {
+       "element": "All prices must be flat rate only as ranges will not be considered",
+       "coverage": "ADDRESSED",
+       "evidence_ids": [
+        "EV-fbc856a0b128fafcbe09",
+        "EV-927065d3291493c8e941",
+        "EV-ff8bec2052ffc5f12678"
+       ]
+      },
+      {
+       "element": "The proposed rates must be inclusive of all labour costs, all insurance costs, and all material costs of photocopying, long-distance telephone services or conference calls, fax transmissions, any postage or courier costs",
+       "coverage": "ABSENT",
+       "evidence_ids": []
+      },
+      {
+       "element": "Any additional costs must be approved in writing by The City prior to submission of any invoices for payment of them",
+       "coverage": "NOT_VERIFIABLE",
+       "evidence_ids": []
+      },
+      {
+       "element": "Proponent must keep all proposed unit prices firm for a period of two (2) years following the official award",
+       "coverage": "NOT_VERIFIABLE",
+       "evidence_ids": []
+      },
+      {
+       "element": "Upon renewal, any price adjustment related to inflation may be negotiated, subject to City approval, and must be based on actual and relevant costs associated with delivering the services and reflective of local and national economic conditions",
+       "coverage": "NOT_VERIFIABLE",
+       "evidence_ids": []
+      },
+      {
+       "element": "All proposed pricing must be in Canadian currency and exclusive of GST",
+       "coverage": "ABSENT",
+       "evidence_ids": []
+      }
+     ]
+    }
+   ]
+  },
+  "B2": {
+   "objects": [
+    "REQ-14",
+    "REQ-41"
+   ],
+   "adjudications": [
+    {
+     "object_id": "REQ-14",
+     "status": "ADDRESSED",
+     "evidence_ids": [
+      "EV-955e405ad6b16d2bde7a",
+      "EV-936ccd7463849c762832",
+      "EV-e5d0ee368615f24adcca",
+      "EV-d216f73c19e90dd391ff",
+      "EV-94b7543e939ec55cd3a4",
+      "EV-b876897239d87afa3516"
+     ],
+     "requested_elements": [
+      {
+       "element": "three (3) examples where their firm has delivered services of comparable scale, scope, or relevance",
+       "coverage": "ADDRESSED",
+       "evidence_ids": [
+        "EV-955e405ad6b16d2bde7a",
+        "EV-936ccd7463849c762832",
+        "EV-e5d0ee368615f24adcca"
+       ]
+      }
+     ]
+    },
+    {
+     "object_id": "REQ-41",
+     "status": "PARTIALLY_ADDRESSED",
+     "evidence_ids": [
+      "EV-955e405ad6b16d2bde7a",
+      "EV-d5c8564ad0279b1706b5",
+      "EV-d216f73c19e90dd391ff",
+      "EV-c59ec5bfafeadda8b81d",
+      "EV-936ccd7463849c762832",
+      "EV-5ec2d6cb762189e5d0f6",
+      "EV-94b7543e939ec55cd3a4",
+      "EV-7e3c2e33ddc8f7148136",
+      "EV-e5d0ee368615f24adcca",
+      "EV-6353e1f2f70c6d29a2b8",
+      "EV-b876897239d87afa3516",
+      "EV-5e87eb1e114801f89407"
+     ],
+     "requested_elements": [
+      {
+       "element": "three (3) examples from the past five (5) years (other than The City)",
+       "coverage": "PARTIAL",
+       "evidence_ids": [
+        "EV-d5c8564ad0279b1706b5",
+        "EV-5ec2d6cb762189e5d0f6",
+        "EV-6353e1f2f70c6d29a2b8"
+       ]
+      },
+      {
+       "element": "Strong emphasis on Cohort learning design",
+       "coverage": "ABSENT",
+       "evidence_ids": []
+      },
+      {
+       "element": "An overview of the services provided, including program objectives, content areas, delivery methods, duration, and level of customization",
+       "coverage": "PARTIAL",
+       "evidence_ids": [
+        "EV-d216f73c19e90dd391ff",
+        "EV-94b7543e939ec55cd3a4",
+        "EV-b876897239d87afa3516"
+       ]
+      },
+      {
+       "element": "monetary value, program scale",
+       "coverage": "ADDRESSED",
+       "evidence_ids": [
+        "EV-c59ec5bfafeadda8b81d",
+        "EV-7e3c2e33ddc8f7148136",
+        "EV-5e87eb1e114801f89407"
+       ]
+      },
+      {
+       "element": "Key outcomes, results, or demonstrated benefits achieved for the client",
+       "coverage": "ABSENT",
+       "evidence_ids": []
+      },
+      {
+       "element": "Challenges or issues that arose during design/delivery and how they were mitigated",
+       "coverage": "ABSENT",
+       "evidence_ids": []
+      }
+     ]
+    }
+   ]
+  },
+  "B3": {
+   "objects": [
+    "REQ-42",
+    "REQ-43"
+   ],
+   "adjudications": [
+    {
+     "object_id": "REQ-42",
+     "status": "PARTIALLY_ADDRESSED",
+     "evidence_ids": [
+      "EV-90bd14b1ba2ed59e6aff",
+      "EV-e2cade4f72e323a41636",
+      "EV-7607fe7ed574151a6cd3"
+     ],
+     "requested_elements": [
+      {
+       "element": "Identify your firm's team member that will serve as the main point of contact",
+       "coverage": "ADDRESSED",
+       "evidence_ids": [
+        "EV-90bd14b1ba2ed59e6aff",
+        "EV-7607fe7ed574151a6cd3"
+       ]
+      },
+      {
+       "element": "Describe applicable skill sets",
+       "coverage": "ADDRESSED",
+       "evidence_ids": [
+        "EV-90bd14b1ba2ed59e6aff",
+        "EV-e2cade4f72e323a41636"
+       ]
+      },
+      {
+       "element": "time commitment and availability to meet",
+       "coverage": "ABSENT",
+       "evidence_ids": []
+      },
+      {
+       "element": "response times",
+       "coverage": "ABSENT",
+       "evidence_ids": []
+      },
+      {
+       "element": "credentials",
+       "coverage": "ADDRESSED",
+       "evidence_ids": [
+        "EV-90bd14b1ba2ed59e6aff"
+       ]
+      },
+      {
+       "element": "demonstrated experience and expertise in similar scopes of work",
+       "coverage": "PARTIAL",
+       "evidence_ids": [
+        "EV-90bd14b1ba2ed59e6aff",
+        "EV-e2cade4f72e323a41636"
+       ]
+      }
+     ]
+    },
+    {
+     "object_id": "REQ-43",
+     "status": "PARTIALLY_ADDRESSED",
+     "evidence_ids": [
+      "EV-90bd14b1ba2ed59e6aff",
+      "EV-e1cc55620d3ac5c2af08",
+      "EV-901bb3eb31c7eec3c83e",
+      "EV-a3097835e902a1620770",
+      "EV-7c3958fbf43254bff55d",
+      "EV-9d7c62a94da8b44676f9",
+      "EV-c2bddfedc13504a68d26",
+      "EV-d51ef50334fe320067a4",
+      "EV-7ecbdcf1756e069dbc6c",
+      "EV-0937fd198c86b7a6f2ab",
+      "EV-0a988148caab3403ca3e",
+      "EV-914bd1843c10fa3649c2",
+      "EV-8073e182009c670c6095",
+      "EV-bb74c0e76b36eac3fc14",
+      "EV-d2c6bc7334a51cbd9b98",
+      "EV-d716a64712f01d7982dc",
+      "EV-7607fe7ed574151a6cd3",
+      "EV-f3625c054b789f668fcd"
+     ],
+     "requested_elements": [
+      {
+       "element": "Provide an organizational chart of the team members that will be available to provide services to The City",
+       "coverage": "ABSENT",
+       "evidence_ids": []
+      },
+      {
+       "element": "Roles and responsibilities of the team as it relates to the RFP scope of work",
+       "coverage": "PARTIAL",
+       "evidence_ids": [
+        "EV-f3625c054b789f668fcd"
+       ]
+      },
+      {
+       "element": "Outline team members involved (if possible) in specific projects for examples provided",
+       "coverage": "ABSENT",
+       "evidence_ids": []
+      },
+      {
+       "element": "Bios/resumes for each team member including relevant credentials and experience related to scope of work iterated in this RFP",
+       "coverage": "ADDRESSED",
+       "evidence_ids": [
+        "EV-90bd14b1ba2ed59e6aff",
+        "EV-e1cc55620d3ac5c2af08",
+        "EV-901bb3eb31c7eec3c83e",
+        "EV-a3097835e902a1620770",
+        "EV-7c3958fbf43254bff55d",
+        "EV-9d7c62a94da8b44676f9",
+        "EV-c2bddfedc13504a68d26",
+        "EV-d51ef50334fe320067a4",
+        "EV-7ecbdcf1756e069dbc6c",
+        "EV-0937fd198c86b7a6f2ab",
+        "EV-0a988148caab3403ca3e",
+        "EV-914bd1843c10fa3649c2",
+        "EV-8073e182009c670c6095",
+        "EV-bb74c0e76b36eac3fc14",
+        "EV-d2c6bc7334a51cbd9b98",
+        "EV-d716a64712f01d7982dc"
+       ]
+      },
+      {
+       "element": "How team members will be organized and deployed to complete service requests that arise",
+       "coverage": "PARTIAL",
+       "evidence_ids": [
+        "EV-7607fe7ed574151a6cd3",
+        "EV-f3625c054b789f668fcd"
+       ]
+      },
+      {
+       "element": "with reference to applicable skill sets, credentials, and demonstrated experience",
+       "coverage": "ADDRESSED",
+       "evidence_ids": [
+        "EV-90bd14b1ba2ed59e6aff",
+        "EV-e1cc55620d3ac5c2af08",
+        "EV-901bb3eb31c7eec3c83e",
+        "EV-a3097835e902a1620770",
+        "EV-7c3958fbf43254bff55d",
+        "EV-9d7c62a94da8b44676f9",
+        "EV-c2bddfedc13504a68d26",
+        "EV-d51ef50334fe320067a4",
+        "EV-7ecbdcf1756e069dbc6c",
+        "EV-0937fd198c86b7a6f2ab",
+        "EV-0a988148caab3403ca3e",
+        "EV-914bd1843c10fa3649c2",
+        "EV-8073e182009c670c6095",
+        "EV-bb74c0e76b36eac3fc14",
+        "EV-d2c6bc7334a51cbd9b98",
+        "EV-d716a64712f01d7982dc"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "B4": {
+   "objects": [
+    "REQ-44"
+   ],
+   "adjudications": [
+    {
+     "object_id": "REQ-44",
+     "status": "ADDRESSED",
+     "evidence_ids": [
+      "EV-31ec8a38b372fc468415",
+      "EV-562348efdf0d401adc93",
+      "EV-48ca1d4e443aeb3cbc5c",
+      "EV-1f190424d392fd27d77e",
+      "EV-b06efc5000455053b982",
+      "EV-27052b3fb87b2c3665f2",
+      "EV-65947fbf434cee23fc8f",
+      "EV-9bc718f21c3af42fe93e",
+      "EV-9930b7b6a9515a807983",
+      "EV-be87f84f9f43ff8f893c",
+      "EV-4a2e250cb7b608a5ec2d",
+      "EV-b15945632cb4ed54a232",
+      "EV-9c9f4e97693c60d9f959",
+      "EV-862a4c8a83331060ab2f",
+      "EV-06240ac328248d7f0f56",
+      "EV-7607fe7ed574151a6cd3",
+      "EV-f41fcf015c4298eeac0e",
+      "EV-b688fd391f4cc445ed79",
+      "EV-a163baa1ea28136da059",
+      "EV-f3625c054b789f668fcd",
+      "EV-0937fd198c86b7a6f2ab",
+      "EV-0a988148caab3403ca3e",
+      "EV-9d7c62a94da8b44676f9",
+      "EV-d716a64712f01d7982dc",
+      "EV-e2cade4f72e323a41636",
+      "EV-7c3958fbf43254bff55d",
+      "EV-8073e182009c670c6095"
+     ],
+     "requested_elements": [
+      {
+       "element": "Methods and approach to delivering design services",
+       "coverage": "ADDRESSED",
+       "evidence_ids": [
+        "EV-31ec8a38b372fc468415",
+        "EV-562348efdf0d401adc93",
+        "EV-48ca1d4e443aeb3cbc5c",
+        "EV-1f190424d392fd27d77e",
+        "EV-b06efc5000455053b982"
+       ]
+      },
+      {
+       "element": "Process to handle a City request once received",
+       "coverage": "ADDRESSED",
+       "evidence_ids": [
+        "EV-7607fe7ed574151a6cd3",
+        "EV-f41fcf015c4298eeac0e"
+       ]
+      },
+      {
+       "element": "Consultation/collaborative approaches used to meet the request",
+       "coverage": "ADDRESSED",
+       "evidence_ids": [
+        "EV-48ca1d4e443aeb3cbc5c",
+        "EV-f3625c054b789f668fcd"
+       ]
+      },
+      {
+       "element": "Delivery modes and methods",
+       "coverage": "ADDRESSED",
+       "evidence_ids": [
+        "EV-9c9f4e97693c60d9f959",
+        "EV-862a4c8a83331060ab2f",
+        "EV-06240ac328248d7f0f56"
+       ]
+      },
+      {
+       "element": "Goals and objectives – ability to show program mandate - what does success look like",
+       "coverage": "ADDRESSED",
+       "evidence_ids": [
+        "EV-27052b3fb87b2c3665f2",
+        "EV-65947fbf434cee23fc8f",
+        "EV-9bc718f21c3af42fe93e",
+        "EV-9930b7b6a9515a807983",
+        "EV-be87f84f9f43ff8f893c",
+        "EV-4a2e250cb7b608a5ec2d",
+        "EV-b15945632cb4ed54a232"
+       ]
+      },
+      {
+       "element": "Issues resolution/escalation measures",
+       "coverage": "ADDRESSED",
+       "evidence_ids": [
+        "EV-7607fe7ed574151a6cd3"
+       ]
+      },
+      {
+       "element": "quality assurance process",
+       "coverage": "ADDRESSED",
+       "evidence_ids": [
+        "EV-f41fcf015c4298eeac0e",
+        "EV-b688fd391f4cc445ed79",
+        "EV-a163baa1ea28136da059"
+       ]
+      },
+      {
+       "element": "response times to City requests for urgent matters",
+       "coverage": "PARTIAL",
+       "evidence_ids": [
+        "EV-7607fe7ed574151a6cd3"
+       ]
+      },
+      {
+       "element": "Ability to deliver services/provide coverage if principal is not available or on demand",
+       "coverage": "PARTIAL",
+       "evidence_ids": [
+        "EV-0937fd198c86b7a6f2ab",
+        "EV-0a988148caab3403ca3e",
+        "EV-9d7c62a94da8b44676f9",
+        "EV-d716a64712f01d7982dc",
+        "EV-e2cade4f72e323a41636",
+        "EV-7c3958fbf43254bff55d",
+        "EV-8073e182009c670c6095"
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "final": {
+  "REQ-0": {
+   "status": "NOT_APPLICABLE",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "BUYER_PROCESS"
+  },
+  "REQ-1": {
+   "status": "NOT_APPLICABLE",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "BUYER_PROCESS"
+  },
+  "REQ-2": {
+   "status": "NOT_VERIFIABLE_FROM_FILES",
+   "evidence_ids": [
+    "EV-fbc856a0b128fafcbe09",
+    "EV-927065d3291493c8e941",
+    "EV-ff8bec2052ffc5f12678"
+   ],
+   "method": "DETERMINISTIC",
+   "scope": "SUBMISSION_EVIDENCE_REQUIRED"
+  },
+  "REQ-3": {
+   "status": "NOT_VERIFIABLE_FROM_FILES",
+   "evidence_ids": [],
+   "method": "DETERMINISTIC",
+   "scope": "SUBMISSION_RESPONSE_REQUIRED"
+  },
+  "REQ-4": {
+   "status": "ADDRESSED",
+   "evidence_ids": [
+    "EV-fbc856a0b128fafcbe09",
+    "EV-927065d3291493c8e941",
+    "EV-ff8bec2052ffc5f12678",
+    "EV-73e80bb97201399fdc2d",
+    "EV-e26c86f348f614868131",
+    "EV-06fe219aaa0a6fe1599d"
+   ],
+   "method": "DETERMINISTIC",
+   "scope": "SUBMISSION_EVIDENCE_REQUIRED"
+  },
+  "REQ-5": {
+   "status": "HUMAN_REVIEW_REQUIRED",
+   "evidence_ids": [
+    "EV-73e80bb97201399fdc2d",
+    "EV-bc817103b9c14d2d31f4",
+    "EV-8a6ab2d81c830015f540",
+    "EV-fbc856a0b128fafcbe09",
+    "EV-e26c86f348f614868131",
+    "EV-406143318b3d03214385",
+    "EV-4a65ec1a7aa12e3e612f",
+    "EV-927065d3291493c8e941",
+    "EV-06fe219aaa0a6fe1599d",
+    "EV-a1ddbac9492e09ee305f",
+    "EV-60934c559c6f95b92716",
+    "EV-ff8bec2052ffc5f12678"
+   ],
+   "method": "MODEL",
+   "scope": "SUBMISSION_EVIDENCE_REQUIRED"
+  },
+  "REQ-6": {
+   "status": "ADDRESSED",
+   "evidence_ids": [
+    "EV-fbc856a0b128fafcbe09",
+    "EV-927065d3291493c8e941",
+    "EV-ff8bec2052ffc5f12678",
+    "EV-06fe219aaa0a6fe1599d"
+   ],
+   "method": "DETERMINISTIC",
+   "scope": "SUBMISSION_EVIDENCE_REQUIRED"
+  },
+  "REQ-7": {
+   "status": "NOT_APPLICABLE",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "BUYER_PROCESS"
+  },
+  "REQ-8": {
+   "status": "ADDRESSED",
+   "evidence_ids": [
+    "EV-e071c7e9ec705bd04da9"
+   ],
+   "method": "DETERMINISTIC",
+   "scope": "SUBMISSION_RESPONSE_REQUIRED"
+  },
+  "REQ-9": {
+   "status": "NOT_APPLICABLE",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "BUYER_PROCESS"
+  },
+  "REQ-10": {
+   "status": "ADDRESSED",
+   "evidence_ids": [
+    "EV-e071c7e9ec705bd04da9",
+    "EV-fbc856a0b128fafcbe09",
+    "EV-927065d3291493c8e941",
+    "EV-ff8bec2052ffc5f12678"
+   ],
+   "method": "DETERMINISTIC",
+   "scope": "SUBMISSION_EVIDENCE_REQUIRED"
+  },
+  "REQ-11": {
+   "status": "NOT_APPLICABLE",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "POST_AWARD_OBLIGATION"
+  },
+  "REQ-12": {
+   "status": "NOT_APPLICABLE",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "BUYER_PROCESS"
+  },
+  "REQ-13": {
+   "status": "NOT_APPLICABLE",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "BUYER_PROCESS"
+  },
+  "REQ-14": {
+   "status": "ADDRESSED",
+   "evidence_ids": [
+    "EV-955e405ad6b16d2bde7a",
+    "EV-936ccd7463849c762832",
+    "EV-e5d0ee368615f24adcca",
+    "EV-d216f73c19e90dd391ff",
+    "EV-94b7543e939ec55cd3a4",
+    "EV-b876897239d87afa3516"
+   ],
+   "method": "MODEL",
+   "scope": "SUBMISSION_RESPONSE_REQUIRED"
+  },
+  "REQ-15": {
+   "status": "NOT_APPLICABLE",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "POST_AWARD_OBLIGATION"
+  },
+  "REQ-16": {
+   "status": "HUMAN_REVIEW_REQUIRED",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "HUMAN_REVIEW_REQUIRED"
+  },
+  "REQ-17": {
+   "status": "ADDRESSED",
+   "evidence_ids": [
+    "EV-fbc856a0b128fafcbe09",
+    "EV-927065d3291493c8e941",
+    "EV-ff8bec2052ffc5f12678"
+   ],
+   "method": "DETERMINISTIC",
+   "scope": "SUBMISSION_EVIDENCE_REQUIRED"
+  },
+  "REQ-18": {
+   "status": "ADDRESSED",
+   "evidence_ids": [
+    "EV-e071c7e9ec705bd04da9"
+   ],
+   "method": "DETERMINISTIC",
+   "scope": "SUBMISSION_RESPONSE_REQUIRED"
+  },
+  "REQ-19": {
+   "status": "NOT_APPLICABLE",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "INFORMATIONAL"
+  },
+  "REQ-20": {
+   "status": "NOT_APPLICABLE",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "POST_AWARD_OBLIGATION"
+  },
+  "REQ-21": {
+   "status": "NOT_APPLICABLE",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "POST_AWARD_OBLIGATION"
+  },
+  "REQ-22": {
+   "status": "ADDRESSED",
+   "evidence_ids": [
+    "EV-fbc856a0b128fafcbe09",
+    "EV-927065d3291493c8e941",
+    "EV-ff8bec2052ffc5f12678"
+   ],
+   "method": "MODEL",
+   "scope": "SUBMISSION_EVIDENCE_REQUIRED"
+  },
+  "REQ-23": {
+   "status": "NOT_APPLICABLE",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "INFORMATIONAL"
+  },
+  "REQ-24": {
+   "status": "NOT_APPLICABLE",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "INFORMATIONAL"
+  },
+  "REQ-25": {
+   "status": "ADDRESSED",
+   "evidence_ids": [
+    "EV-73e80bb97201399fdc2d",
+    "EV-bc817103b9c14d2d31f4",
+    "EV-8a6ab2d81c830015f540",
+    "EV-fbc856a0b128fafcbe09",
+    "EV-e26c86f348f614868131",
+    "EV-406143318b3d03214385",
+    "EV-4a65ec1a7aa12e3e612f",
+    "EV-927065d3291493c8e941",
+    "EV-06fe219aaa0a6fe1599d",
+    "EV-a1ddbac9492e09ee305f",
+    "EV-60934c559c6f95b92716",
+    "EV-ff8bec2052ffc5f12678"
+   ],
+   "method": "MODEL",
+   "scope": "SUBMISSION_EVIDENCE_REQUIRED"
+  },
+  "REQ-26": {
+   "status": "NOT_APPLICABLE",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "BUYER_PROCESS"
+  },
+  "REQ-27": {
+   "status": "NOT_VERIFIABLE_FROM_FILES",
+   "evidence_ids": [
+    "EV-fbc856a0b128fafcbe09",
+    "EV-927065d3291493c8e941",
+    "EV-ff8bec2052ffc5f12678"
+   ],
+   "method": "DETERMINISTIC",
+   "scope": "SUBMISSION_EVIDENCE_REQUIRED"
+  },
+  "REQ-28": {
+   "status": "NOT_APPLICABLE",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "BUYER_PROCESS"
+  },
+  "REQ-29": {
+   "status": "NOT_APPLICABLE",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "DEEMED_BY_SUBMISSION"
+  },
+  "REQ-30": {
+   "status": "NOT_APPLICABLE",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "DEEMED_BY_SUBMISSION"
+  },
+  "REQ-31": {
+   "status": "NOT_APPLICABLE",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "DEEMED_BY_SUBMISSION"
+  },
+  "REQ-32": {
+   "status": "NOT_APPLICABLE",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "DEEMED_BY_SUBMISSION"
+  },
+  "REQ-33": {
+   "status": "ADDRESSED",
+   "evidence_ids": [
+    "EV-032b865b450755423fc1",
+    "EV-be4be27eeb1c1a705f10"
+   ],
+   "method": "DETERMINISTIC",
+   "scope": "SUBMISSION_EVIDENCE_REQUIRED"
+  },
+  "REQ-34": {
+   "status": "NOT_APPLICABLE",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "DEEMED_BY_SUBMISSION"
+  },
+  "REQ-35": {
+   "status": "NOT_APPLICABLE",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "DEEMED_BY_SUBMISSION"
+  },
+  "REQ-36": {
+   "status": "NOT_APPLICABLE",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "DEEMED_BY_SUBMISSION"
+  },
+  "REQ-37": {
+   "status": "ADDRESSED",
+   "evidence_ids": [
+    "EV-46489323a83c9723c96c",
+    "EV-942b1e8785e197e9826f"
+   ],
+   "method": "DETERMINISTIC",
+   "scope": "SUBMISSION_EVIDENCE_REQUIRED"
+  },
+  "REQ-38": {
+   "status": "NOT_VERIFIABLE_FROM_FILES",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "PORTAL_NATIVE"
+  },
+  "REQ-39": {
+   "status": "NOT_APPLICABLE",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "POST_AWARD_OBLIGATION"
+  },
+  "REQ-40": {
+   "status": "ADDRESSED",
+   "evidence_ids": [
+    "EV-fbc856a0b128fafcbe09",
+    "EV-927065d3291493c8e941",
+    "EV-ff8bec2052ffc5f12678"
+   ],
+   "method": "MODEL",
+   "scope": "SUBMISSION_EVIDENCE_REQUIRED"
+  },
+  "REQ-41": {
+   "status": "PARTIALLY_ADDRESSED",
+   "evidence_ids": [
+    "EV-955e405ad6b16d2bde7a",
+    "EV-d5c8564ad0279b1706b5",
+    "EV-d216f73c19e90dd391ff",
+    "EV-c59ec5bfafeadda8b81d",
+    "EV-936ccd7463849c762832",
+    "EV-5ec2d6cb762189e5d0f6",
+    "EV-94b7543e939ec55cd3a4",
+    "EV-7e3c2e33ddc8f7148136",
+    "EV-e5d0ee368615f24adcca",
+    "EV-6353e1f2f70c6d29a2b8",
+    "EV-b876897239d87afa3516",
+    "EV-5e87eb1e114801f89407"
+   ],
+   "method": "MODEL",
+   "scope": "EVALUATION_RESPONSE"
+  },
+  "REQ-42": {
+   "status": "PARTIALLY_ADDRESSED",
+   "evidence_ids": [
+    "EV-90bd14b1ba2ed59e6aff",
+    "EV-e2cade4f72e323a41636",
+    "EV-7607fe7ed574151a6cd3"
+   ],
+   "method": "MODEL",
+   "scope": "EVALUATION_RESPONSE"
+  },
+  "REQ-43": {
+   "status": "PARTIALLY_ADDRESSED",
+   "evidence_ids": [
+    "EV-90bd14b1ba2ed59e6aff",
+    "EV-e1cc55620d3ac5c2af08",
+    "EV-901bb3eb31c7eec3c83e",
+    "EV-a3097835e902a1620770",
+    "EV-7c3958fbf43254bff55d",
+    "EV-9d7c62a94da8b44676f9",
+    "EV-c2bddfedc13504a68d26",
+    "EV-d51ef50334fe320067a4",
+    "EV-7ecbdcf1756e069dbc6c",
+    "EV-0937fd198c86b7a6f2ab",
+    "EV-0a988148caab3403ca3e",
+    "EV-914bd1843c10fa3649c2",
+    "EV-8073e182009c670c6095",
+    "EV-bb74c0e76b36eac3fc14",
+    "EV-d2c6bc7334a51cbd9b98",
+    "EV-d716a64712f01d7982dc",
+    "EV-7607fe7ed574151a6cd3",
+    "EV-f3625c054b789f668fcd"
+   ],
+   "method": "MODEL",
+   "scope": "EVALUATION_RESPONSE"
+  },
+  "REQ-44": {
+   "status": "PARTIALLY_ADDRESSED",
+   "evidence_ids": [
+    "EV-31ec8a38b372fc468415",
+    "EV-562348efdf0d401adc93",
+    "EV-48ca1d4e443aeb3cbc5c",
+    "EV-1f190424d392fd27d77e",
+    "EV-b06efc5000455053b982",
+    "EV-27052b3fb87b2c3665f2",
+    "EV-65947fbf434cee23fc8f",
+    "EV-9bc718f21c3af42fe93e",
+    "EV-9930b7b6a9515a807983",
+    "EV-be87f84f9f43ff8f893c",
+    "EV-4a2e250cb7b608a5ec2d",
+    "EV-b15945632cb4ed54a232",
+    "EV-9c9f4e97693c60d9f959",
+    "EV-862a4c8a83331060ab2f",
+    "EV-06240ac328248d7f0f56",
+    "EV-7607fe7ed574151a6cd3",
+    "EV-f41fcf015c4298eeac0e",
+    "EV-b688fd391f4cc445ed79",
+    "EV-a163baa1ea28136da059",
+    "EV-f3625c054b789f668fcd",
+    "EV-0937fd198c86b7a6f2ab",
+    "EV-0a988148caab3403ca3e",
+    "EV-9d7c62a94da8b44676f9",
+    "EV-d716a64712f01d7982dc",
+    "EV-e2cade4f72e323a41636",
+    "EV-7c3958fbf43254bff55d",
+    "EV-8073e182009c670c6095"
+   ],
+   "method": "MODEL",
+   "scope": "EVALUATION_RESPONSE"
+  },
+  "REQ-45": {
+   "status": "NOT_VERIFIABLE_FROM_FILES",
+   "evidence_ids": [],
+   "method": "SCOPE_GATE",
+   "scope": "PORTAL_NATIVE"
+  },
+  "REQ-46": {
+   "status": "ADDRESSED",
+   "evidence_ids": [
+    "EV-cf0148765d4cae107439",
+    "EV-fbff9d236882a684b46b",
+    "EV-d11ab526e4cff682f0e3",
+    "EV-152be61e71a4352f2e2e",
+    "EV-e58fdcc55ae68fe3d92c",
+    "EV-a7c2390ff7e584886be1",
+    "EV-ce48ccc294f8c94795c5"
+   ],
+   "method": "DETERMINISTIC",
+   "scope": "SUBMISSION_EVIDENCE_REQUIRED"
+  },
+  "CRIT-evaluation-criteria-2-team-experience-and-qualifications-subsection-2-2-": {
+   "status": "PARTIALLY_ADDRESSED",
+   "evidence_ids": [
+    "EV-90bd14b1ba2ed59e6aff",
+    "EV-e1cc55620d3ac5c2af08",
+    "EV-901bb3eb31c7eec3c83e",
+    "EV-a3097835e902a1620770",
+    "EV-7c3958fbf43254bff55d",
+    "EV-9d7c62a94da8b44676f9",
+    "EV-c2bddfedc13504a68d26",
+    "EV-d51ef50334fe320067a4",
+    "EV-7ecbdcf1756e069dbc6c",
+    "EV-0937fd198c86b7a6f2ab",
+    "EV-0a988148caab3403ca3e",
+    "EV-914bd1843c10fa3649c2",
+    "EV-8073e182009c670c6095",
+    "EV-bb74c0e76b36eac3fc14",
+    "EV-d2c6bc7334a51cbd9b98",
+    "EV-d716a64712f01d7982dc",
+    "EV-7607fe7ed574151a6cd3",
+    "EV-f3625c054b789f668fcd"
+   ],
+   "method": "DERIVED_FROM_LINKED_REQUIREMENTS",
+   "scope": "EVALUATION_RESPONSE"
+  },
+  "CRIT-firm-experience": {
+   "status": "PARTIALLY_ADDRESSED",
+   "evidence_ids": [
+    "EV-955e405ad6b16d2bde7a",
+    "EV-936ccd7463849c762832",
+    "EV-e5d0ee368615f24adcca",
+    "EV-d216f73c19e90dd391ff",
+    "EV-94b7543e939ec55cd3a4",
+    "EV-b876897239d87afa3516",
+    "EV-d5c8564ad0279b1706b5",
+    "EV-c59ec5bfafeadda8b81d",
+    "EV-5ec2d6cb762189e5d0f6",
+    "EV-7e3c2e33ddc8f7148136",
+    "EV-6353e1f2f70c6d29a2b8",
+    "EV-5e87eb1e114801f89407"
+   ],
+   "method": "DERIVED_FROM_LINKED_REQUIREMENTS",
+   "scope": "EVALUATION_RESPONSE"
+  },
+  "CRIT-item-1-cohort-program-development-design-and-program-delivery-25-people-": {
+   "status": "ADDRESSED",
+   "evidence_ids": [
+    "EV-73e80bb97201399fdc2d",
+    "EV-fbc856a0b128fafcbe09"
+   ],
+   "method": "DETERMINISTIC",
+   "scope": "EVALUATION_RESPONSE"
+  },
+  "CRIT-item-2-cohort-program-development-design-and-program-delivery-25-people-": {
+   "status": "ADDRESSED",
+   "evidence_ids": [
+    "EV-e26c86f348f614868131",
+    "EV-927065d3291493c8e941"
+   ],
+   "method": "DETERMINISTIC",
+   "scope": "EVALUATION_RESPONSE"
+  },
+  "CRIT-item-3-travel-expenses": {
+   "status": "ADDRESSED",
+   "evidence_ids": [
+    "EV-06fe219aaa0a6fe1599d",
+    "EV-ff8bec2052ffc5f12678"
+   ],
+   "method": "DETERMINISTIC",
+   "scope": "EVALUATION_RESPONSE"
+  },
+  "CRIT-key-personnel-main-point-of-contact": {
+   "status": "PARTIALLY_ADDRESSED",
+   "evidence_ids": [
+    "EV-90bd14b1ba2ed59e6aff",
+    "EV-e2cade4f72e323a41636",
+    "EV-7607fe7ed574151a6cd3"
+   ],
+   "method": "DERIVED_FROM_LINKED_REQUIREMENTS",
+   "scope": "EVALUATION_RESPONSE"
+  },
+  "CRIT-other-personnel": {
+   "status": "PARTIALLY_ADDRESSED",
+   "evidence_ids": [
+    "EV-90bd14b1ba2ed59e6aff",
+    "EV-e1cc55620d3ac5c2af08",
+    "EV-901bb3eb31c7eec3c83e",
+    "EV-a3097835e902a1620770",
+    "EV-7c3958fbf43254bff55d",
+    "EV-9d7c62a94da8b44676f9",
+    "EV-c2bddfedc13504a68d26",
+    "EV-d51ef50334fe320067a4",
+    "EV-7ecbdcf1756e069dbc6c",
+    "EV-0937fd198c86b7a6f2ab",
+    "EV-0a988148caab3403ca3e",
+    "EV-914bd1843c10fa3649c2",
+    "EV-8073e182009c670c6095",
+    "EV-bb74c0e76b36eac3fc14",
+    "EV-d2c6bc7334a51cbd9b98",
+    "EV-d716a64712f01d7982dc",
+    "EV-7607fe7ed574151a6cd3",
+    "EV-f3625c054b789f668fcd"
+   ],
+   "method": "DERIVED_FROM_LINKED_REQUIREMENTS",
+   "scope": "EVALUATION_RESPONSE"
+  },
+  "CRIT-price": {
+   "status": "ADDRESSED",
+   "evidence_ids": [
+    "EV-fbc856a0b128fafcbe09",
+    "EV-927065d3291493c8e941",
+    "EV-ff8bec2052ffc5f12678"
+   ],
+   "method": "DETERMINISTIC",
+   "scope": "EVALUATION_RESPONSE"
+  },
+  "CRIT-pricing": {
+   "status": "ADDRESSED",
+   "evidence_ids": [
+    "EV-fbc856a0b128fafcbe09",
+    "EV-927065d3291493c8e941",
+    "EV-ff8bec2052ffc5f12678"
+   ],
+   "method": "DETERMINISTIC",
+   "scope": "EVALUATION_RESPONSE"
+  },
+  "CRIT-service-delivery": {
+   "status": "PARTIALLY_ADDRESSED",
+   "evidence_ids": [
+    "EV-31ec8a38b372fc468415",
+    "EV-562348efdf0d401adc93",
+    "EV-48ca1d4e443aeb3cbc5c",
+    "EV-1f190424d392fd27d77e",
+    "EV-b06efc5000455053b982",
+    "EV-27052b3fb87b2c3665f2",
+    "EV-65947fbf434cee23fc8f",
+    "EV-9bc718f21c3af42fe93e",
+    "EV-9930b7b6a9515a807983",
+    "EV-be87f84f9f43ff8f893c",
+    "EV-4a2e250cb7b608a5ec2d",
+    "EV-b15945632cb4ed54a232",
+    "EV-9c9f4e97693c60d9f959",
+    "EV-862a4c8a83331060ab2f",
+    "EV-06240ac328248d7f0f56",
+    "EV-7607fe7ed574151a6cd3",
+    "EV-f41fcf015c4298eeac0e",
+    "EV-b688fd391f4cc445ed79",
+    "EV-a163baa1ea28136da059",
+    "EV-f3625c054b789f668fcd",
+    "EV-0937fd198c86b7a6f2ab",
+    "EV-0a988148caab3403ca3e",
+    "EV-9d7c62a94da8b44676f9",
+    "EV-d716a64712f01d7982dc",
+    "EV-e2cade4f72e323a41636",
+    "EV-7c3958fbf43254bff55d",
+    "EV-8073e182009c670c6095"
+   ],
+   "method": "DERIVED_FROM_LINKED_REQUIREMENTS",
+   "scope": "EVALUATION_RESPONSE"
+  },
+  "CRIT-social-procurement": {
+   "status": "NOT_VERIFIABLE_FROM_FILES",
+   "evidence_ids": [],
+   "method": "DERIVED_FROM_LINKED_REQUIREMENTS",
+   "scope": "PORTAL_NATIVE"
+  },
+  "CRIT-team-experience-and-qualifications": {
+   "status": "PARTIALLY_ADDRESSED",
+   "evidence_ids": [
+    "EV-90bd14b1ba2ed59e6aff",
+    "EV-e2cade4f72e323a41636",
+    "EV-7607fe7ed574151a6cd3",
+    "EV-e1cc55620d3ac5c2af08",
+    "EV-901bb3eb31c7eec3c83e",
+    "EV-a3097835e902a1620770",
+    "EV-7c3958fbf43254bff55d",
+    "EV-9d7c62a94da8b44676f9",
+    "EV-c2bddfedc13504a68d26",
+    "EV-d51ef50334fe320067a4",
+    "EV-7ecbdcf1756e069dbc6c",
+    "EV-0937fd198c86b7a6f2ab",
+    "EV-0a988148caab3403ca3e",
+    "EV-914bd1843c10fa3649c2",
+    "EV-8073e182009c670c6095",
+    "EV-bb74c0e76b36eac3fc14",
+    "EV-d2c6bc7334a51cbd9b98",
+    "EV-d716a64712f01d7982dc",
+    "EV-f3625c054b789f668fcd"
+   ],
+   "method": "DERIVED_FROM_LINKED_REQUIREMENTS",
+   "scope": "EVALUATION_RESPONSE"
+  },
+  "CRIT-understanding-of-the-services": {
+   "status": "PARTIALLY_ADDRESSED",
+   "evidence_ids": [
+    "EV-31ec8a38b372fc468415",
+    "EV-562348efdf0d401adc93",
+    "EV-48ca1d4e443aeb3cbc5c",
+    "EV-1f190424d392fd27d77e",
+    "EV-b06efc5000455053b982",
+    "EV-27052b3fb87b2c3665f2",
+    "EV-65947fbf434cee23fc8f",
+    "EV-9bc718f21c3af42fe93e",
+    "EV-9930b7b6a9515a807983",
+    "EV-be87f84f9f43ff8f893c",
+    "EV-4a2e250cb7b608a5ec2d",
+    "EV-b15945632cb4ed54a232",
+    "EV-9c9f4e97693c60d9f959",
+    "EV-862a4c8a83331060ab2f",
+    "EV-06240ac328248d7f0f56",
+    "EV-7607fe7ed574151a6cd3",
+    "EV-f41fcf015c4298eeac0e",
+    "EV-b688fd391f4cc445ed79",
+    "EV-a163baa1ea28136da059",
+    "EV-f3625c054b789f668fcd",
+    "EV-0937fd198c86b7a6f2ab",
+    "EV-0a988148caab3403ca3e",
+    "EV-9d7c62a94da8b44676f9",
+    "EV-d716a64712f01d7982dc",
+    "EV-e2cade4f72e323a41636",
+    "EV-7c3958fbf43254bff55d",
+    "EV-8073e182009c670c6095"
+   ],
+   "method": "DERIVED_FROM_LINKED_REQUIREMENTS",
+   "scope": "EVALUATION_RESPONSE"
+  }
+ },
+ "final_recomputed_by_replay": true
+}

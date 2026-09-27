@@ -2479,6 +2479,114 @@ and after; still the bid's only analysis run). No CHECK-2 work.
   requirements from `build_full_analysis_package(run_id)` (documents
   included), not the raw snapshot's `requirements` list.
 
+**CHECK-1 is COMPLETE and FROZEN** (CHECK-1 / 1.1 / 1.2 / 1.3 above).
+`submission_package.py`, the migration-021 registry and the buyer-side
+CHECK-1.x closures were NOT modified by CHECK-2A; reopen them only for a
+concrete correctness defect, reported explicitly.
+
+**CHECK-2A (Requirement & Evaluation Coverage Adjudication) -- 2026-09-27.**
+The first CHECK adjudication layer: `check_coverage.py` (pure core, no
+Streamlit, no DB/Storage I/O; the only side effect is the injected /
+MA-1-shared bounded model call). Compute-and-return only -- nothing is
+persisted, no migration 022 (durable CHECK runs are deferred to CHECK-2B).
+No UI / report / PDF, no claim assurance, no score, no win probability, no
+predicted evaluator marks, no strengths/weaknesses/recommendations.
+
+- **Buyer truth**: `buyer_objects_from_canonical_package` -- every REQ-* and
+  CRIT-* of `full_analysis.CanonicalPackage` (`build_canonical_package` with
+  the buyer documents, i.e. incl. REQ-46), carried VERBATIM (the full
+  unclipped Fast Analysis description is used only when the canonical clip
+  provably came from it; raw `category` recovered the same way). Criteria keep
+  label, `weight`, all `weight_variants`, `minimum_score` and source refs.
+- **Scope gate** (`classify_assurance_scope`, deterministic, buyer-agnostic):
+  SUBMISSION_RESPONSE_REQUIRED / SUBMISSION_EVIDENCE_REQUIRED /
+  EVALUATION_RESPONSE are the only checkable scopes; PORTAL_NATIVE ->
+  NOT_VERIFIABLE_FROM_FILES; POST_AWARD_OBLIGATION / BUYER_PROCESS /
+  INFORMATIONAL / DEEMED_BY_SUBMISSION -> NOT_APPLICABLE (never a proposal
+  gap); empty buyer wording -> HUMAN_REVIEW_REQUIRED. DEEMED_BY_SUBMISSION is
+  established only from the buyer's OWN document ("By submitting a proposal
+  ..., we (the proponent) acknowledge ...") with the requirement's source
+  excerpt located after that sentence; an artifact-anchored instruction from
+  the same document stays checkable.
+- **Candidate retrieval** (`object_evidence`): the whole material-role
+  artifact (pricing workbook / submission form / multi-party form) when the
+  role is material; the heading-matched proposal section (`anchor_section`,
+  hints = labels of the criteria that link to the requirement + its own
+  heading); exact buyer-phrase matches (`phrase_matches`, IDF-weighted
+  bigrams); then CHECK-1 `map_requirement_to_submission` candidates. Page
+  furniture / derived restatements / content duplicates dropped; bounded
+  (70 per object, 110 per batch) -- never the registry, never the package.
+- **Deterministic adjudication** (`deterministic_adjudication`, sentence by
+  sentence; any unhandled sentence -> model): required named form present +
+  completed + parties identified + one completed signatory section per party
+  (multi-party); pricing workbook input cells completed + lump-sum / travel /
+  per-item rows; named submission-form table with an explicit value
+  ("Not Applicable"); page limit vs parsed page count; portal sentences ->
+  unverifiable element; prescribed pricing assumptions ("For the purposes of
+  the Pricing Form, pricing shall be based on ...") and legal-status
+  eligibility without a proof request -> NOT_VERIFIABLE; post-award /
+  illustrative / arithmetic sentences -> non-obligation. Pricing evaluation
+  criteria (label or buyer pricing-row excerpt) are adjudicated against the
+  real workbook (item row -> price cell); price level is never judged.
+- **Criteria**: `link_criterion_to_requirements` (label / >=2-word label
+  segment in the requirement, criterion number heading the requirement's
+  numbering, or >=60% buyer-excerpt containment) ->
+  `derived_criterion_adjudication`: an independent record per criterion
+  (own weight / variants / threshold) derived from the linked requirements'
+  element-level results, missing elements tagged with `source_object_id`,
+  evidence shared (not duplicated). A criterion with its own prompt goes to
+  the model.
+- **Model adjudication**: `plan_model_batches` groups by coherent domain
+  (material artifact domain, else the mapped proposal section); target
+  `MODEL_CALL_TARGET`=10, `MODEL_CALL_HARD_CEILING`=12 raises
+  `BatchPlanningError` BEFORE any call. One call per batch via
+  `full_analysis._call_model` (haiku-4-5, same helper/parse/telemetry),
+  zero retries; the prompt carries only the batch's buyer objects (verbatim),
+  the package file list and PE#-aliased evidence.
+- **Evidence assurance** (`reconcile_batch_response`, fail closed): ids
+  resolved through `section_drafting.evidence_id_registry` (PE# bidder /
+  CE# buyer) + `reconcile_structured_result` + `reconcile_material_claims`,
+  then `SubmissionEvidenceRegistry.filter_valid` (bid-bound) and the
+  material-role gate; rejections recorded (NOT_ISSUED / BUYER_SOURCE /
+  CROSS_BID / WRONG_ARTIFACT_ROLE). A requested element must be verbatim buyer
+  wording; ADDRESSED/PARTIAL need surviving evidence; ADDRESSED with an
+  absent element -> PARTIAL; NOT_ADDRESSED needs a checkable scope, no
+  cited support, a CHECK-1 artifact status permitting absence and survival of
+  `screen_absence_claim`; wording deleted by a buyer AMENDMENT
+  (`amendment_supersessions`) and price properties a completed price cannot
+  show are reclassified, never counted missing; an omitted object ->
+  HUMAN_REVIEW_REQUIRED. `artifact_blind_regression_screen` re-checks the
+  final output.
+- **Real Calgary acceptance (bid 1360 / run 34 / snapshot 9)**,
+  `scripts/commission_check2a_calgary.py` (reads only; every DB write fn and
+  model_usage_events recording poisoned; run 34 snapshot sha256 `45543c0a...`
+  unchanged): 60 buyer objects (47 requirements + 13 criteria); 23 excluded
+  (5 post-award, 8 buyer-process, 3 informational, 7 deemed-by-submission),
+  3 portal-native, 1 empty requirement (REQ-16); 26 scope-gate, 17
+  deterministic, 9 model, 8 derived. Live provider calls: run 1 = 5 (its
+  manual inspection found REQ-42's point-of-contact passage not retrieved,
+  REQ-40 judged against wording Addendum One deleted, and pricing-assumption
+  / eligibility sentences sent to the model -- logic fixed), final run 2 = 4
+  (batches: pricing 4 objects / firm experience 2 / personnel 2 / service
+  delivery 1; 36,004 input + 5,704 output tokens); 9 in total. The last
+  post-validation rule (price properties) was applied to run 2's recorded
+  output by deterministic replay (`... replay`, zero calls). Final status
+  counts: ADDRESSED 18, PARTIALLY_ADDRESSED 11, NOT_ADDRESSED 0,
+  NOT_APPLICABLE 23, NOT_VERIFIABLE_FROM_FILES 6, HUMAN_REVIEW_REQUIRED 2.
+  REQ-46 ADDRESSED deterministically from the real B2 (Phoenix Consulting
+  Canada + Inquisitive Talent, signatory blocks in both party sections);
+  Price / Pricing / Items 1-3 ADDRESSED from the real Appendix D cells;
+  REQ-33 / REQ-37 ADDRESSED from Appendix E's explicit "Not Applicable"
+  tables; no artifact-blind false-missing finding. Known residual: one
+  model element-level misjudgment (REQ-41 "three examples from the past five
+  years" marked PARTIAL although all three are dated 2024-2026) that no
+  evidence-id rule can catch -- REQ-41's overall PARTIAL is correct on other
+  elements.
+- Tests: `tests/test_check2a_coverage_adjudication.py` (49; synthetic,
+  zero provider calls; the REAL Calgary section replays the content-free live
+  record `tests/fixtures/calgary_26_1603_check2a_replay.json` against the
+  real ZIPs, skipped when absent). Full suite: 3496 passed, 2 skipped.
+
 Absent an explicit task instruction otherwise, still do not: apply
 migration 013, alter/reapply migration 015, 016, 017, 018, or 019,
 activate the compact-wire prototype, change chunk sizes/max_tokens/model

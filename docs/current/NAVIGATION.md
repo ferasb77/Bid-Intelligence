@@ -452,6 +452,31 @@ Where to look, not what everything means. Read
   fixture `tests/fixtures/calgary_26_1603_run34_raw_snapshot.json`
   (byte-identical run 34 raw snapshot, buyer-side only).
 
+CHECK-1 (1.0-1.3) is COMPLETE and FROZEN -- build on it, do not reopen it.
+
+**CHECK-2A: Requirement & Evaluation Coverage Adjudication (2026-09-27)**
+- `check_coverage.py` (pure core, compute-and-return, nothing persisted):
+  `buyer_objects_from_canonical_package` (buyer truth, verbatim) ->
+  `classify_assurance_scope` (scope gate) -> `deterministic_adjudication` /
+  `pricing_criterion_adjudication` -> `link_criterion_to_requirements` +
+  `derived_criterion_adjudication` -> `object_evidence` / `anchor_section` /
+  `phrase_matches` (bounded retrieval) -> `plan_model_batches` (<= 10 target,
+  12 hard ceiling, raises before spending) -> `build_batch_ledger` /
+  `build_batch_prompt` -> `reconcile_batch_response` (fail-closed evidence
+  assurance, reusing `section_drafting.evidence_id_registry` /
+  `reconcile_structured_result` / `reconcile_material_claims`) ->
+  `CheckCoverageResult`. Entry points: `plan_check_coverage` (zero calls),
+  `run_check_coverage(adjudicate_fn=... | client=...)`,
+  `artifact_blind_regression_screen`.
+- Inputs: `full_analysis.build_canonical_package(result, documents=...)`
+  (buyer; keep the documents -- the scope gate reads the buyer's own deeming
+  statements) + a CHECK-1 `SubmissionPackage` (e.g. `tenancy.load_submission_
+  evidence_package_for_organization`).
+- Live acceptance (one-off): `scripts/commission_check2a_calgary.py plan|run|
+  replay <out_dir>` (bid 1360, run 34, snapshot 9; DB writes poisoned).
+- Tests: `tests/test_check2a_coverage_adjudication.py`; content-free live
+  record `tests/fixtures/calgary_26_1603_check2a_replay.json`.
+
 **Proposal Intelligence (PI-1, hardened in PI-1.1/PI-1.2, deepened in
 PI-2A/PI-2A.1, extended in PI-2B1)** — durable persistence for CHECK's
 Proposal Alignment output. PI-2A added structured proposal/procurement
