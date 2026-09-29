@@ -60,6 +60,21 @@ needs that history).
   minimum-score thresholds, qualification mechanisms, tie-break ranks, and
   deterministic service-scope/Response-Guideline parses be regenerated into
   a report with zero further LLM calls.
+
+### Fast Analysis v4 Calgary remediation (2026-09-29)
+
+The authorized remediation pass added deterministic, provenance-preserving
+capture for explicit budget, annual/session volume, objective bullets, and
+timetable rows, and made Appendix C criterion prompts complete (the historical
+1,500-character threshold is now informational only; the full passage is
+retained). Deterministic fixtures pass. Run 45 remains immutable. The single
+authorized real follow-up is run 47 over the exact same five-document corpus;
+its snapshot contains the budget/volume/timetable facts and complete Firm and
+Service Delivery prompts, but fails closed because the split-line
+“Team Experience and Qualifications –” / “Weight (10 %)” heading was not
+recognized in that run. A local parser repair covers that boundary, but no
+second real provider run is authorized, so the Calgary remediation is not
+commissioned as PASS and no report/export re-render was performed.
 - **Buyer Intelligence** — external, advisory context attached to a
   `FastAnalysisResult`, always kept visibly separate from procurement
   requirement facts in every consumer.

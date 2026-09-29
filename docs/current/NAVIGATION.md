@@ -51,6 +51,12 @@ Where to look, not what everything means. Read
   column.
 - Tests: `tests/test_fast_analysis_raw_snapshot.py`,
   `tests/test_phoenix_procurement_taxonomy.py`, `tests/test_analysis_service.py`.
+- Calgary v4 remediation fixtures: `tests/test_fast_analysis_v4_calgarian_fixtures.py`.
+  The complete-prompt boundary and deterministic source-fact capture are
+  implemented locally; run 47 is the one authorized real commissioning
+  attempt and is recorded as failed closed because its split-line Team
+  criterion heading remained absent from the persisted snapshot. Do not spend
+  another provider run without explicit authorization.
 - **Telemetry call taxonomy** (`fast_analysis.classify_telemetry_entry`/
   `_is_provider_call`/`_telemetry_audit_summary`, reused by
   `analysis_service._telemetry_summary`) — the precise measurement

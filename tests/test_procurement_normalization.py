@@ -68,7 +68,11 @@ class TestExtractCriterionResponsePrompts:
         text = f"Corporate Profile\n{long_body}"
         prompts = pn.extract_criterion_response_prompts(text, ["Corporate Profile"])
         assert prompts["Corporate Profile"]["truncated"] is True
-        assert len(prompts["Corporate Profile"]["response_prompt"]) <= pn.MAX_RESPONSE_PROMPT_CHARS
+        # V4 keeps the complete governed passage; ``truncated`` is retained
+        # only as a compatibility signal that the historical threshold would
+        # have been exceeded.
+        assert len(prompts["Corporate Profile"]["response_prompt"]) > pn.MAX_RESPONSE_PROMPT_CHARS
+        assert prompts["Corporate Profile"]["complete"] is True
 
     def test_source_marker_lines_never_pollute_captured_text(self):
         text = "Corporate Profile\n[[SOURCE: x.docx | PAGE: 1]]\nDescribe your firm.\n"
