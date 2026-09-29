@@ -21,6 +21,25 @@ Where to look, not what everything means. Read
 
 ## By subsystem
 
+**UNDERSTAND Bid Intelligence Brief** (primary customer export)
+- `understand_brief.py` -- pure, deterministic selection model over a
+  completed `FastAnalysisResult`: identity gate, bounded scope/evaluation/
+  submission/commercial/priorities/clarifications selection, timing-aware
+  submission filter and model digest. It has no database, Streamlit, PDF or
+  provider dependency.
+- `understand_brief_report.py` -- the ReportLab Letter renderer, reusing the
+  repository's brand fonts and restrained print-report stack. It renders a
+  concise customer Brief, never the historical long report.
+- `analysis_service.generate_bid_intelligence_brief_from_raw_snapshot` and
+  `tenancy.export_bid_intelligence_brief_for_organization` -- completed-run,
+  ownership-checked, read-only export path. It deserializes the durable raw
+  snapshot and makes zero provider calls or writes.
+- `pages/stage_understand.py` -- “Download Bid Intelligence Brief” is the
+  primary Fast Analysis export; the prior stored report is available as the
+  secondary “Full Intelligence Appendix”.
+- Tests: `tests/test_understand_brief.py` plus the Fast Analysis adapter and
+  report-adapter regression suites.
+
 **Fast Analysis** (procurement extraction)
 - `fast_analysis.py` — the engine itself (routing, extraction, LLM calls,
   `FastAnalysisResult`, `serialize_fast_analysis_result`/`deserialize_fast_analysis_result`).

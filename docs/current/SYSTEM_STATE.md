@@ -8,6 +8,37 @@ to read either of those when a task actually requires them.
 
 `UNDERSTAND → DECIDE → BUILD → CHECK → SUBMIT`
 
+## UNDERSTAND customer export
+
+**Bid Intelligence Brief** is the primary customer-facing UNDERSTAND export.
+It is a concise, normally 6-8-page (preferred maximum 10) selection over a
+completed Fast Analysis raw snapshot, not a new analysis mode: rendering is
+deterministic and requires zero provider/model calls. The historical long
+Fast Analysis PDF remains available as the secondary **Full Intelligence
+Appendix**.
+
+The Brief has a strict presentation boundary: `understand_brief.py` is pure
+selection/reconciliation and `understand_brief_report.py` is ReportLab-only
+presentation. It never changes canonical procurement truth, Fast Analysis
+prompts, provider architecture, an existing run, or database schema. The
+model fails before export when a real opportunity title is not available;
+appendix/form/proponent-acknowledgement titles are not accepted as the tender
+identity. Scope appears only from positive source-supported scope items;
+ordinary response verbs cannot become customer-facing service categories.
+Submission mechanics exclude post-award invoice/payment noise, while material
+contract terms can remain commercial watch-outs. Priorities are bounded and
+fact-led rather than severity-score-led; source ambiguities remain
+clarification questions.
+
+The attached City of Calgary 26-1610 revised Brief is the authoritative
+customer-facing structure and visual benchmark: restrained black/warm-gold
+Letter presentation, source fact distinct from interpretation, and the six
+sections (snapshot, scope, evaluation, submission, commercial, priorities).
+It is a semantic benchmark, not a Calgary-specific code path. Acceptance of a
+real 26-1610 durable run and a second real procurement still requires the
+respective completed raw snapshots to be available; no synthetic fixture is
+treated as that commissioning evidence.
+
 One Streamlit page per stage under `pages/stage_*.py`. This lifecycle is
 implemented, not aspirational — it replaced an earlier flat, fragmented
 navigation (see `docs/BID_INTELLIGENCE_STREAMLINING_AUDIT.md` if the task

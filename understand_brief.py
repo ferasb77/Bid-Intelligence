@@ -1,0 +1,299 @@
+"""Deterministic, customer-safe UNDERSTAND Brief selection model.
+
+This module deliberately sits after Fast Analysis.  It consumes a completed
+``FastAnalysisResult`` only; it neither reads a database nor invokes a model.
+The PDF renderer is consequently an interchangeable presentation concern, and
+re-exporting a durable run is zero-call.
+"""
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field
+import hashlib
+import json
+import re
+from collections import Counter
+from typing import Iterable
+
+from fast_analysis import FastAnalysisResult, carry_forward_category_scope
+from scripts.fast_analysis_report_adapter import (
+    _clarification_deadline_text, _contract_term, _merged_doc_metadata,
+    _presentation_dates, _submission_channel, _submission_deadline_text,
+    _shorten_to_sentence, build_fast_report_content,
+)
+
+BRIEF_CONTRACT_VERSION = "1.0"
+MAX_ATTENTION_ITEMS = 7
+_NOISE = ("not stated in extracted data", "crit-", "obl-", "ident", "doc-",
+          "max_tokens", "migration", "product-feedback", "provider", "benchmark")
+_FORM_TITLES = ("appendix", "acknowledgement", "acknowledgment", "submission form",
+                "price form", "proponent", "general conditions", "terms and conditions",
+                "form of agreement", "addendum", "question and answer", "qa log")
+_SUBMISSION_WORDS = ("submit", "submission", "proposal", "appendix", "form", "portal",
+                     "ariba", "page limit", "font", "language", "rectif", "deadline")
+_POST_AWARD_WORDS = ("invoice", "payment", "payable", "billing")
+_COMMERCIAL_WORDS = ("insurance", "liability", "indemn", "intellectual property", "ip ",
+                     "subcontract", "assignment", "term", "renew", "price", "rate", "volume",
+                     "exclusiv", "privacy", "security", "termination", "registration")
+
+
+@dataclass(frozen=True)
+class BriefCriterion:
+    name: str
+    weight: str
+    minimum: str | None
+    response_expectation: str | None
+
+
+@dataclass(frozen=True)
+class BriefPriority:
+    title: str
+    action: str
+
+
+@dataclass(frozen=True)
+class BidIntelligenceBrief:
+    contract_version: str
+    buyer: str
+    solicitation: str
+    opportunity: str
+    source_documents: tuple[str, ...]
+    partial_sections: tuple[str, ...]
+    snapshot: tuple[tuple[str, str], ...]
+    immediate_matter: str | None
+    buyer_intent: tuple[str, ...]
+    scope_intro: str | None
+    service_scope: tuple[str, ...]
+    success_profile: str | None
+    criteria: tuple[BriefCriterion, ...]
+    evaluation_implication: str | None
+    submission: tuple[tuple[str, str, str | None], ...]
+    key_dates: tuple[str, ...]
+    submission_distinction: str | None
+    commercial: tuple[tuple[str, str], ...]
+    commercial_implication: str | None
+    priorities: tuple[BriefPriority, ...]
+    clarifications: tuple[str, ...]
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+class BriefModelError(ValueError):
+    """Raised before rendering when customer-facing identity is unsafe."""
+
+
+def _clean(value: object, limit: int = 420) -> str | None:
+    if not isinstance(value, str):
+        return None
+    value = re.sub(r"\s+", " ", value).strip()
+    if not value or any(n in value.lower() for n in _NOISE):
+        return None
+    return _shorten_to_sentence(value, limit=limit)
+
+
+def _title(result: FastAnalysisResult, meta: dict) -> str:
+    # A merged metadata record is useful for dates but can be last-document
+    # wins.  Identity must be selected from all source-document candidates so
+    # a general-conditions file can never displace the actual opportunity.
+    candidates = []
+    for filename, metadata in result.doc_metadata_by_doc.items():
+        if not isinstance(metadata, dict):
+            continue
+        cleaned = _clean(metadata.get("title"), 260)
+        context = f"{filename or ''} {cleaned or ''}".lower()
+        if cleaned and not any(x in context for x in _FORM_TITLES):
+            candidates.append(cleaned)
+    if not candidates:
+        cleaned = _clean(meta.get("title"), 260)
+        if cleaned and not any(x in cleaned.lower() for x in _FORM_TITLES):
+            candidates.append(cleaned)
+    if candidates:
+        # Repetition across main RFP, amendments and Q&A is stronger evidence
+        # than a title appearing in one supporting document; ties preserve the
+        # source package's deterministic metadata order.
+        counts = Counter(x.lower() for x in candidates)
+        return max(candidates, key=lambda x: counts[x.lower()])
+    raise BriefModelError("A customer-safe procurement opportunity title is unavailable.")
+
+
+def _source_documents(result: FastAnalysisResult) -> tuple[str, ...]:
+    names = []
+    for group in (result.documents_by_route or {}).values():
+        names.extend(n for n in group if isinstance(n, str))
+    names.extend(n for n in result.doc_metadata_by_doc if isinstance(n, str))
+    return tuple(dict.fromkeys(names))
+
+
+def _expectation(result: FastAnalysisResult, occ: dict) -> str | None:
+    label = occ.get("criterion_label") or ""
+    scoped = getattr(result, "scoped_criterion_response_prompts", {}) or {}
+    # Scoped lookup is preferred, but raw snapshots predating it remain usable.
+    for key, entry in scoped.items():
+        if key.endswith("|" + label.lower()) and isinstance(entry, dict):
+            text = _clean(entry.get("response_prompt"), 320)
+            if text:
+                return text
+    entry = (getattr(result, "deterministic_criterion_response_prompts", {}) or {}).get(label) or {}
+    text = _clean(entry.get("response_prompt"), 320)
+    if text:
+        return text
+    matches = [r.get("description") for r in result.requirements
+               if isinstance(r, dict) and label.lower() in (r.get("description") or "").lower()]
+    return _clean(" ".join(matches[:2]), 320)
+
+
+def _minimums(result: FastAnalysisResult) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for guide in getattr(result, "deterministic_response_guidelines", []) or []:
+        if not isinstance(guide, dict):
+            continue
+        label, minimum = guide.get("criterion_label") or guide.get("label"), guide.get("minimum_score")
+        if label and minimum not in (None, ""):
+            values[str(label).lower()] = str(minimum)
+    for occ in result.evaluation_occurrences:
+        if isinstance(occ, dict) and occ.get("criterion_label") and occ.get("minimum_score") not in (None, ""):
+            values[str(occ["criterion_label"]).lower()] = str(occ["minimum_score"])
+    return values
+
+
+def _criteria(result: FastAnalysisResult) -> tuple[BriefCriterion, ...]:
+    seen, rows, minimums = set(), [], _minimums(result)
+    for occ in carry_forward_category_scope(result.evaluation_occurrences):
+        if not isinstance(occ, dict):
+            continue
+        name, weight = _clean(occ.get("criterion_label"), 120), _clean(occ.get("weight"), 40)
+        if not name or not weight or name.lower() in seen or name.lower() in ("total", "total points"):
+            continue
+        seen.add(name.lower())
+        rows.append(BriefCriterion(name, weight, minimums.get(name.lower()), _expectation(result, occ)))
+    return tuple(rows)
+
+
+def _scope(result: FastAnalysisResult) -> tuple[str, ...]:
+    # Only positive, source-extracted scope is eligible.  A response instruction
+    # and an ordinary verb can never become a made-up service category.
+    items: list[str] = []
+    for values in (getattr(result, "category_scope_items", {}) or {}).values():
+        for value in values or []:
+            if isinstance(value, dict):
+                value = value.get("text") or value.get("description")
+            cleaned = _clean(value, 250)
+            if cleaned and not re.match(r"^(provide|proponents? (must|are|shall)|describe|submit|complete|respond|[0-9]+\.)\b", cleaned, re.I) and cleaned not in items:
+                items.append(cleaned)
+    det = getattr(result, "deterministic_service_scope", None) or {}
+    for value in det.get("items", []) if isinstance(det, dict) else []:
+        cleaned = _clean(value if isinstance(value, str) else value.get("text"), 250)
+        if cleaned and not re.match(r"^(provide|proponents? (must|are|shall)|describe|submit|complete|respond|[0-9]+\.)\b", cleaned, re.I) and cleaned not in items:
+            items.append(cleaned)
+    # Do not fall back to generic requirements.  Historical snapshots can
+    # label a response prompt ``SCOPE_ITEM``; without the dedicated positive
+    # scope field, omitting this section is more truthful than converting a
+    # bidder instruction into a buyer service category.
+    return tuple(items[:8])
+
+
+def _submission(result: FastAnalysisResult) -> tuple[tuple[str, str, str | None], ...]:
+    content = build_fast_report_content(result)
+    rows = []
+    for item, requirement, note in content.RESPONSE_CHECKLIST:
+        text = " ".join(str(x or "") for x in (item, requirement, note)).lower()
+        if any(x in text for x in _POST_AWARD_WORDS) or not any(x in text for x in _SUBMISSION_WORDS):
+            continue
+        rows.append((_clean(item, 80) or "Submission requirement", _clean(requirement, 280) or "", _clean(note, 180)))
+    return tuple(rows[:10])
+
+
+def _commercial(result: FastAnalysisResult) -> tuple[tuple[str, str], ...]:
+    content = build_fast_report_content(result)
+    rows = []
+    for topic, detail in content.COMMERCIAL_POINTS:
+        combined = f"{topic} {detail}".lower()
+        if any(word in combined for word in _COMMERCIAL_WORDS):
+            clean = _clean(detail, 300)
+            if clean:
+                rows.append((_clean(topic, 70) or "Commercial term", clean))
+    # The frozen long-report adapter intentionally compresses some clauses
+    # away.  They remain durable Fast Analysis output, so include a bounded
+    # material-only fallback here rather than claiming their absence.
+    known = {topic.lower() for topic, _ in rows}
+    for clause in result.commercial_clauses:
+        if not isinstance(clause, dict):
+            continue
+        topic = _clean(clause.get("topic") or clause.get("clause_kind"), 70)
+        detail = _clean(clause.get("source_fact"), 300)
+        combined = f"{topic or ''} {detail or ''}".lower()
+        if topic and detail and topic.lower() not in known and any(word in combined for word in _COMMERCIAL_WORDS):
+            rows.append((topic, detail)); known.add(topic.lower())
+    return tuple(rows[:9])
+
+
+def _priorities(criteria: tuple[BriefCriterion, ...], submission, commercial) -> tuple[BriefPriority, ...]:
+    priorities: list[BriefPriority] = []
+    gates = [c for c in criteria if c.minimum]
+    if gates:
+        c = gates[0]
+        priorities.append(BriefPriority(f"Protect the {c.minimum} gate", f"Make the evidence for {c.name} explicit before submission."))
+    for c in criteria[:3]:
+        if len(priorities) >= 5:
+            break
+        priorities.append(BriefPriority(f"Answer {c.name}", c.response_expectation or "Use the buyer's stated criterion as the response structure."))
+    if submission and len(priorities) < MAX_ATTENTION_ITEMS:
+        priorities.append(BriefPriority("Control submission mechanics", "Assign ownership for mandatory forms, format checks and portal submission before the deadline."))
+    if commercial and len(priorities) < MAX_ATTENTION_ITEMS:
+        priorities.append(BriefPriority("Model material commercial exposure", "Confirm pricing, delivery and contractual commitments before making them in the proposal."))
+    return tuple(priorities[:MAX_ATTENTION_ITEMS])
+
+
+def _safe_submission_channel(result: FastAnalysisResult) -> str | None:
+    value = _clean(_submission_channel(result), 160)
+    if value and any(token in value.lower() for token in ("ariba", "portal", "electronic", "online", "website")):
+        return value
+    return None
+
+
+def build_bid_intelligence_brief(result: FastAnalysisResult, *, analysis_partial: bool = False) -> BidIntelligenceBrief:
+    """Build a deterministic concise Brief or fail before any misleading PDF.
+
+    The same raw snapshot always produces the same model.  The function does
+    not mutate ``result`` and has no provider, database, filesystem or UI I/O.
+    """
+    meta = _merged_doc_metadata(result)
+    buyer = _clean(meta.get("client"), 120) or "Buyer not identified"
+    solicitation = _clean(meta.get("file_number"), 80) or "Solicitation reference not identified"
+    opportunity = _title(result, meta)
+    content = build_fast_report_content(result)
+    criteria = _criteria(result)
+    snapshot = [("Buyer", buyer), ("Opportunity", opportunity), ("Solicitation", solicitation)]
+    for label, value in (("Budget", meta.get("budget") or meta.get("value_cad")),
+                         ("Term", _contract_term(result.typed_observations)),
+                         ("Submission deadline", _submission_deadline_text(meta)),
+                         ("Questions deadline", _clarification_deadline_text(meta, result.typed_observations)),
+                         ("Submission channel", _safe_submission_channel(result))):
+        value = _clean(value, 240)
+        if value and "not confidently extracted" not in value.lower():
+            snapshot.append((label, value))
+    immediate = None
+    for c in criteria:
+        if c.minimum:
+            immediate = f"{c.name} has a stated minimum threshold of {c.minimum}."
+            break
+    scope = _scope(result)
+    dates = tuple(f"{label}: {value}" for value, label in _presentation_dates(result.typed_observations)[:6])
+    clarification_list = []
+    for ambiguity in content.AMBIGUITIES or []:
+        question = _clean(ambiguity.get("question"), 380) if isinstance(ambiguity, dict) else None
+        if question and question not in clarification_list:
+            clarification_list.append(question)
+    clarifications = tuple(clarification_list[:4])
+    partial = ("Interpretive priority sections",) if analysis_partial else ()
+    return BidIntelligenceBrief(
+        BRIEF_CONTRACT_VERSION, buyer, solicitation, opportunity, _source_documents(result), partial,
+        tuple(snapshot), immediate, (), None, scope, None, criteria,
+        ("Prioritize the highest-weighted criteria and any stated threshold." if criteria else None),
+        _submission(result), dates, None, _commercial(result), None,
+        _priorities(criteria, _submission(result), _commercial(result)), clarifications,
+    )
+
+
+def model_digest(model: BidIntelligenceBrief) -> str:
+    return hashlib.sha256(json.dumps(model.to_dict(), sort_keys=True, separators=(",", ":")).encode()).hexdigest()

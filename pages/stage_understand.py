@@ -286,11 +286,22 @@ def _render_fast_analysis_panel(bid_id: int, rfp_docs: list, procurement_state: 
             unsafe_allow_html=True)
         _render_fast_analysis_governance_note(run, procurement_state)
         c1, c2 = st.columns(2)
+        try:
+            # Primary customer export: deterministic selection and rendering
+            # over this completed run's raw snapshot; no model call or write.
+            brief_bytes = tenancy.export_bid_intelligence_brief_for_organization(
+                bid_id, run["id"], _current_access_token_and_org()[1])
+            c1.download_button("⬇ Download Bid Intelligence Brief", data=brief_bytes,
+                               file_name=f"bid_intelligence_brief_{bid_id}.pdf",
+                               mime="application/pdf", key=f"dl_brief_{bid_id}",
+                               use_container_width=True)
+        except (ValueError, tenancy.AccessDeniedError) as exc:
+            c1.caption(f"Brief export is unavailable: {exc}")
         if run.get("report_storage_path"):
-            pdf_bytes = _download_stored_file(run["report_storage_path"])
-            if pdf_bytes:
-                c1.download_button("⬇ Download Report PDF", data=pdf_bytes,
-                                   file_name=f"bid_intelligence_preview_{bid_id}.pdf",
+            appendix_bytes = _download_stored_file(run["report_storage_path"])
+            if appendix_bytes:
+                c1.download_button("Download Full Intelligence Appendix", data=appendix_bytes,
+                                   file_name=f"full_intelligence_appendix_{bid_id}.pdf",
                                    mime="application/pdf", key=f"dl_analysis_{bid_id}",
                                    use_container_width=True)
         if c2.button("🔁 Re-run Fast Analysis", key=f"rerun_analysis_{bid_id}", use_container_width=True):

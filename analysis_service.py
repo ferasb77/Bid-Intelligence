@@ -680,6 +680,22 @@ def regenerate_report_from_raw_snapshot(run_id: int, buyer_intelligence: dict | 
     return _render_pdf_bytes(content)
 
 
+def generate_bid_intelligence_brief_from_raw_snapshot(run_id: int) -> bytes:
+    """Render the primary concise UNDERSTAND export from a durable FAST
+    snapshot.  This is intentionally separate from the historical long-form
+    report renderer: no extraction, provider call, persistence write or run
+    mutation occurs on this path."""
+    run = db.get_analysis_run(run_id)
+    if not run or run.get("status") != "COMPLETE":
+        raise ValueError(f"analysis run {run_id} is not COMPLETE; cannot export a Brief")
+    result = load_raw_fast_analysis_result(run_id)
+    if isinstance(result, str):
+        raise ValueError(f"analysis run {run_id} has no durable raw snapshot ({result})")
+    from understand_brief import build_bid_intelligence_brief
+    from understand_brief_report import render_report
+    return render_report(build_bid_intelligence_brief(result))
+
+
 # ---------------------------------------------------------------------------
 # MA-1: Full Analysis (bounded specialist multi-agent analysis).
 #

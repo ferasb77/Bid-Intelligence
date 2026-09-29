@@ -487,6 +487,20 @@ def get_raw_snapshot_report_for_organization(
     return analysis_service.regenerate_report_from_raw_snapshot(run_id, buyer_intelligence=buyer_intelligence)
 
 
+def export_bid_intelligence_brief_for_organization(
+    bid_id: int, run_id: int, organization_id: str,
+) -> bytes:
+    """Read-only, organization-scoped export of the primary UNDERSTAND
+    customer Brief.  The raw snapshot is loaded only after ownership and
+    bid/run association are proven; export never re-runs Fast Analysis."""
+    require_bid_access(bid_id, organization_id)
+    run = db.get_analysis_run(run_id)
+    if not run or int(run.get("bid_id")) != int(bid_id):
+        raise AccessDeniedError(f"run {run_id} does not belong to bid {bid_id}")
+    import analysis_service
+    return analysis_service.generate_bid_intelligence_brief_from_raw_snapshot(run_id)
+
+
 def analyze_section_for_organization(
     bid_id: int, section_id: int, section_text: str, mapped_requirement_ids: list[int],
     organization_id: str, user_id: str | None = None,
