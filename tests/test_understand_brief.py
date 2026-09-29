@@ -68,6 +68,28 @@ def test_ordinary_verbs_do_not_become_service_categories():
     assert build_bid_intelligence_brief(r).service_scope == ()
 
 
+def test_explicit_source_scope_requirement_is_available_to_older_snapshots():
+    r = _result()
+    r.category_scope_items = {}
+    r.deterministic_service_scope = None
+    r.requirements = [{
+        "category": "Mandatory",
+        "semantic_type": "CONTRACTUAL_OBLIGATION",
+        "description": "Service scope includes confidential executive coaching and impact measurement.",
+    }]
+    assert build_bid_intelligence_brief(r).service_scope == (
+        "Service scope includes confidential executive coaching and impact measurement.",
+    )
+
+
+def test_customer_language_containing_ident_is_not_internal_noise():
+    r = _result()
+    r.category_scope_items = {"coaching": [{"text": "Confidential coaching for senior leaders."}]}
+    assert build_bid_intelligence_brief(r).service_scope == (
+        "Confidential coaching for senior leaders.",
+    )
+
+
 def test_form_title_is_rejected_as_procurement_identity():
     r = _result()
     for metadata in r.doc_metadata_by_doc.values():

@@ -23,7 +23,7 @@ from scripts.fast_analysis_report_adapter import (
 
 BRIEF_CONTRACT_VERSION = "1.0"
 MAX_ATTENTION_ITEMS = 7
-_NOISE = ("not stated in extracted data", "crit-", "obl-", "ident", "doc-",
+_NOISE = ("not stated in extracted data", "crit-", "obl-", "ident-", "doc-",
           "max_tokens", "migration", "product-feedback", "provider", "benchmark")
 _FORM_TITLES = ("appendix", "acknowledgement", "acknowledgment", "submission form",
                 "price form", "proponent", "general conditions", "terms and conditions",
@@ -131,15 +131,20 @@ def _expectation(result: FastAnalysisResult, occ: dict) -> str | None:
     for key, entry in scoped.items():
         if key.endswith("|" + label.lower()) and isinstance(entry, dict):
             text = _clean(entry.get("response_prompt"), 320)
-            if text:
+            if text and not _looks_like_table_residue(text):
                 return text
     entry = (getattr(result, "deterministic_criterion_response_prompts", {}) or {}).get(label) or {}
     text = _clean(entry.get("response_prompt"), 320)
-    if text:
+    if text and not _looks_like_table_residue(text):
         return text
     matches = [r.get("description") for r in result.requirements
                if isinstance(r, dict) and label.lower() in (r.get("description") or "").lower()]
     return _clean(" ".join(matches[:2]), 320)
+
+
+def _looks_like_table_residue(text: str) -> bool:
+    """Reject a response prompt that starts with flattened scoring-table cells."""
+    return bool(re.match(r"^(?:\d+%\s|\d+\s+(?:N/A|\d+%|Grand Total)\b)", text, re.I))
 
 
 def _minimums(result: FastAnalysisResult) -> dict[str, str]:
@@ -185,6 +190,18 @@ def _scope(result: FastAnalysisResult) -> tuple[str, ...]:
         cleaned = _clean(value if isinstance(value, str) else value.get("text"), 250)
         if cleaned and not re.match(r"^(provide|proponents? (must|are|shall)|describe|submit|complete|respond|[0-9]+\.)\b", cleaned, re.I) and cleaned not in items:
             items.append(cleaned)
+    # Some durable snapshots predate the dedicated scope projection but retain
+    # an explicit, source-derived service-scope requirement.  It is safe to
+    # surface only that labelled fact; generic requirements and response
+    # prompts remain ineligible, so an instruction can never be relabelled as
+    # buyer scope.
+    for requirement in result.requirements:
+        if not isinstance(requirement, dict):
+            continue
+        description = _clean(requirement.get("description"), 250)
+        if (description and re.match(r"^service scope includes\b", description, re.I)
+                and description not in items):
+            items.append(description)
     # Do not fall back to generic requirements.  Historical snapshots can
     # label a response prompt ``SCOPE_ITEM``; without the dedicated positive
     # scope field, omitting this section is more truthful than converting a
