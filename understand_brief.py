@@ -198,49 +198,148 @@ def _scope(result: FastAnalysisResult) -> tuple[str, ...]:
     for requirement in result.requirements:
         if not isinstance(requirement, dict):
             continue
-        description = _clean(requirement.get("description"), 250)
+        raw_description = re.sub(r"\s+", " ", str(requirement.get("description") or "")).strip()
+        description = _clean(raw_description, 250)
         if (description and re.match(r"^service scope includes\b", description, re.I)
                 and description not in items):
             items.append(description)
+        refs = requirement.get("source_refs") or []
+        section_text = " ".join(str(ref.get("section") or "") for ref in refs if isinstance(ref, dict)).lower()
+        if (raw_description and ("deliverables" in section_text or "scope" in section_text)
+                and not re.search(r"\b(?:credential|certif|ethical|confidentiality practices|professional boundaries)\b", raw_description, re.I)):
+            # Preserve the source's own sentence/list boundaries; do not
+            # manufacture categories from arbitrary response verbs.
+            for part in re.split(r"(?<=[.!?])\s+", raw_description):
+                clean = _clean(part, 250)
+                if (clean and len(clean.split()) >= 5
+                        and not re.match(r"^(proponents?|submit|complete|provide the form)\b", clean, re.I)
+                        and clean not in items):
+                    items.append(clean)
     # Do not fall back to generic requirements.  Historical snapshots can
     # label a response prompt ``SCOPE_ITEM``; without the dedicated positive
     # scope field, omitting this section is more truthful than converting a
     # bidder instruction into a buyer service category.
+    items = [item for item in items if not re.search(
+        r"\b(?:credential\w*|certif\w*|ethical|confidentiality practices|professional boundaries|anticipates a total volume|session duration)\b",
+        item, re.I)]
     return tuple(items[:8])
+
+
+def _buyer_intent(deterministic: Iterable[object]) -> tuple[str, ...]:
+    """Restore sentence-level objectives from line-wrapped fact fragments."""
+    complete, pending = [], []
+    for fact in deterministic:
+        if not isinstance(fact, dict) or fact.get("family") != "OBJECTIVE":
+            continue
+        fragment = _clean(fact.get("value"), 220)
+        if not fragment:
+            continue
+        pending.append(fragment)
+        if re.search(r"[.!?]$", fragment):
+            complete.append(" ".join(pending))
+            pending = []
+    if pending:
+        complete.append(" ".join(pending))
+    return tuple(dict.fromkeys(complete))[:6]
+
+
+def _fact_dates(deterministic: Iterable[object]) -> tuple[str, ...]:
+    labels = {
+        "RFP_ISSUE_DATE": "RFP issue date",
+        "QUESTION_DEADLINE": "Questions deadline",
+        "ADDENDA_DEADLINE": "Addenda deadline",
+        "SUBMISSION_DEADLINE": "Submission deadline",
+        "RECTIFICATION_PERIOD": "Rectification period",
+    }
+    found = {}
+    for fact in deterministic:
+        if isinstance(fact, dict) and fact.get("semantic_kind") in labels:
+            value = _clean(fact.get("value"), 180)
+            if value:
+                found[fact["semantic_kind"]] = value
+    return tuple(f"{label}: {found[kind]}" for kind, label in labels.items() if kind in found)
+
+
+def _submission_distinction(result: FastAnalysisResult, deterministic: Iterable[object]) -> str | None:
+    rectification = next((
+        _clean(fact.get("value"), 160)
+        for fact in deterministic
+        if isinstance(fact, dict) and fact.get("semantic_kind") == "RECTIFICATION_PERIOD"
+    ), None)
+    if rectification:
+        return (f"The stated rectification period is {rectification}. It is a limited procurement mechanic; "
+                "the proposal must still address the rated response requirements at submission.")
+    return None
 
 
 def _submission(result: FastAnalysisResult) -> tuple[tuple[str, str, str | None], ...]:
     content = build_fast_report_content(result)
     rows = []
-    for item, requirement, note in content.RESPONSE_CHECKLIST:
+    seen_labels = set()
+    categories = (
+        ("Submission Form", ("submission form", "appendix e")),
+        ("Technical Response", ("rated criteria", "appendix c", "technical")),
+        ("Pricing Form", ("price form", "pricing form", "appendix d", "pricing")),
+        ("ICF Evidence", ("international coaching federation", "icf")),
+        ("Portal", ("sap ariba", "portal", "registered supplier")),
+        ("Language", ("in english", "english")),
+        ("Formatting", ("single-spaced", "point font", "sequentially numbered")),
+        ("Page Limit", ("maximum of twenty", "page limit", "20 pages")),
+        ("Rectification", ("rectification",)),
+    )
+    source_rows = list(content.RESPONSE_CHECKLIST)
+    source_rows.extend(
+        ("Source requirement", r.get("description") or "", r.get("source_doc"))
+        for r in result.requirements if isinstance(r, dict)
+    )
+    for item, requirement, note in source_rows:
         text = " ".join(str(x or "") for x in (item, requirement, note)).lower()
         if any(x in text for x in _POST_AWARD_WORDS) or not any(x in text for x in _SUBMISSION_WORDS):
             continue
-        rows.append((_clean(item, 80) or "Submission requirement", _clean(requirement, 280) or "", _clean(note, 180)))
+        labels = [name for name, words in categories if any(word in text for word in words)]
+        if not labels:
+            # Do not expose opaque adapter numbering in the customer Brief.
+            continue
+        for label in labels:
+            if label in seen_labels:
+                continue
+            seen_labels.add(label)
+            rows.append((label, _clean(requirement, 280) or "", _clean(note, 180) or ""))
     return tuple(rows[:10])
 
 
 def _commercial(result: FastAnalysisResult) -> tuple[tuple[str, str], ...]:
-    content = build_fast_report_content(result)
-    rows = []
-    for topic, detail in content.COMMERCIAL_POINTS:
-        combined = f"{topic} {detail}".lower()
-        if any(word in combined for word in _COMMERCIAL_WORDS):
-            clean = _clean(detail, 300)
-            if clean:
-                rows.append((_clean(topic, 70) or "Commercial term", clean))
-    # The frozen long-report adapter intentionally compresses some clauses
-    # away.  They remain durable Fast Analysis output, so include a bounded
-    # material-only fallback here rather than claiming their absence.
-    known = {topic.lower() for topic, _ in rows}
+    raw = []
     for clause in result.commercial_clauses:
         if not isinstance(clause, dict):
             continue
         topic = _clean(clause.get("topic") or clause.get("clause_kind"), 70)
         detail = _clean(clause.get("source_fact"), 300)
         combined = f"{topic or ''} {detail or ''}".lower()
-        if topic and detail and topic.lower() not in known and any(word in combined for word in _COMMERCIAL_WORDS):
-            rows.append((topic, detail)); known.add(topic.lower())
+        if topic and detail and any(word in combined for word in _COMMERCIAL_WORDS):
+            raw.append((topic, detail, combined))
+    # Concise, generic commercial curation.  Category selection makes the
+    # brief usable while retaining every raw clause in the immutable snapshot.
+    categories = (
+        ("Business registration", ("business registration", "registration")),
+        ("Performance management", ("performance evaluation", "performance improvement", "kpi")),
+        ("Assignment and subcontracting", ("assign", "subcontract", "geographic restriction")),
+        ("Pricing and rate commitments", ("price", "rate", "escalat")),
+        ("Insurance", ("insurance", "liability", "indemn")),
+        ("Intellectual property", ("intellectual property",)),
+        ("Privacy and security", ("privacy", "security")),
+        ("Governing law", ("governing law", "jurisdiction")),
+    )
+    rows = []
+    used = set()
+    for label, terms in categories:
+        # Headings (rather than incidental clause prose) determine the brief
+        # category: e.g. a governing-law clause's "exclusive jurisdiction"
+        # is not a volume/exclusivity commitment.
+        match = next((detail for topic, detail, _ in raw
+                      if any(term in topic.lower() for term in terms) and detail not in used), None)
+        if match:
+            rows.append((label, match)); used.add(match)
     return tuple(rows[:9])
 
 
@@ -281,7 +380,21 @@ def build_bid_intelligence_brief(result: FastAnalysisResult, *, analysis_partial
     content = build_fast_report_content(result)
     criteria = _criteria(result)
     snapshot = [("Buyer", buyer), ("Opportunity", opportunity), ("Solicitation", solicitation)]
-    for label, value in (("Budget", meta.get("budget") or meta.get("value_cad")),
+    deterministic = getattr(result, "deterministic_procurement_facts", []) or []
+    fact_by_kind = {f.get("semantic_kind"): f.get("value") for f in deterministic if isinstance(f, dict)}
+    budget = fact_by_kind.get("ESTIMATED_BUDGET")
+    budget_text = None
+    if isinstance(budget, dict) and budget.get("minimum") is not None and budget.get("maximum") is not None:
+        budget_text = f"CAD {budget['minimum']:,}–{budget['maximum']:,} per {budget.get('period', 'year')}"
+    annual_volume = fact_by_kind.get("ANNUAL_SESSION_VOLUME")
+    volume_text = None
+    if isinstance(annual_volume, dict):
+        volume_text = f"Approximately {annual_volume.get('minimum')}–{annual_volume.get('maximum')} {annual_volume.get('unit', 'sessions')} per year"
+    session_range = fact_by_kind.get("SESSION_VOLUME_RANGE")
+    if isinstance(session_range, dict):
+        volume_text = (volume_text + "; separate engagement wording: " if volume_text else "") + f"{session_range.get('minimum')}–{session_range.get('maximum')} {session_range.get('unit', 'sessions')}"
+    for label, value in (("Budget", budget_text or meta.get("budget") or meta.get("value_cad")),
+                         ("Volume", volume_text),
                          ("Term", _contract_term(result.typed_observations)),
                          ("Submission deadline", _submission_deadline_text(meta)),
                          ("Questions deadline", _clarification_deadline_text(meta, result.typed_observations)),
@@ -295,19 +408,28 @@ def build_bid_intelligence_brief(result: FastAnalysisResult, *, analysis_partial
             immediate = f"{c.name} has a stated minimum threshold of {c.minimum}."
             break
     scope = _scope(result)
-    dates = tuple(f"{label}: {value}" for value, label in _presentation_dates(result.typed_observations)[:6])
+    buyer_intent = _buyer_intent(deterministic)
+    dates = _fact_dates(deterministic) or tuple(
+        f"{label}: {value}" for value, label in _presentation_dates(result.typed_observations)[:6]
+    )
     clarification_list = []
     for ambiguity in content.AMBIGUITIES or []:
         question = _clean(ambiguity.get("question"), 380) if isinstance(ambiguity, dict) else None
         if question and question not in clarification_list:
             clarification_list.append(question)
+    if fact_by_kind.get("ANNUAL_SESSION_VOLUME") and fact_by_kind.get("SESSION_VOLUME_RANGE"):
+        clarification_list.append("Confirm how the stated annual session volume relates to the separate per-engagement session range.")
+    service_prompt = next((c.response_expectation or "" for c in criteria
+                           if c.name.lower() == "service delivery"), "")
+    if service_prompt and not re.search(r"response time|sla|service level", service_prompt, re.I):
+        clarification_list.append("Confirm whether any explicit response-time or service-level targets apply beyond the stated delivery requirements.")
     clarifications = tuple(clarification_list[:4])
     partial = ("Interpretive priority sections",) if analysis_partial else ()
     return BidIntelligenceBrief(
         BRIEF_CONTRACT_VERSION, buyer, solicitation, opportunity, _source_documents(result), partial,
-        tuple(snapshot), immediate, (), None, scope, None, criteria,
+        tuple(snapshot), immediate, buyer_intent, None, scope, None, criteria,
         ("Prioritize the highest-weighted criteria and any stated threshold." if criteria else None),
-        _submission(result), dates, None, _commercial(result), None,
+        _submission(result), dates, _submission_distinction(result, deterministic), _commercial(result), None,
         _priorities(criteria, _submission(result), _commercial(result)), clarifications,
     )
 

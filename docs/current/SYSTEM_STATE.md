@@ -67,14 +67,20 @@ The authorized remediation pass added deterministic, provenance-preserving
 capture for explicit budget, annual/session volume, objective bullets, and
 timetable rows, and made Appendix C criterion prompts complete (the historical
 1,500-character threshold is now informational only; the full passage is
-retained). Deterministic fixtures pass. Run 45 remains immutable. The single
-authorized real follow-up is run 47 over the exact same five-document corpus;
-its snapshot contains the budget/volume/timetable facts and complete Firm and
-Service Delivery prompts, but fails closed because the split-line
-“Team Experience and Qualifications –” / “Weight (10 %)” heading was not
-recognized in that run. A local parser repair covers that boundary, but no
-second real provider run is authorized, so the Calgary remediation is not
-commissioned as PASS and no report/export re-render was performed.
+retained). Deterministic fixtures pass. Run 45 and run 47 remain immutable.
+Run 47 failed closed because the split-line “Team Experience and
+Qualifications –” / “Weight (10 %)” heading was absent from its persisted
+snapshot. The subsequently authorized and only second real follow-up, **run
+48**, completed over the exact same five-document corpus: all five criteria
+(Firm 30% / 70% minimum, Team 10%, Service Delivery 30%, Social Procurement
+10%, Price 20%) were durably captured with non-truncated criterion prompts;
+budget, annual/session volume, objectives, and the full timetable were also
+captured. The production Brief re-export from run 48 was zero-provider-call
+and visually reviewed. It is not accepted as semantically equivalent to the
+attached revised benchmark: the durable snapshot retains only two
+source-scoped service statements and lacks the benchmark's additional scope
+dimensions and volume/non-exclusivity commercial statement. Those facts were
+not imported from the benchmark or otherwise fabricated.
 - **Buyer Intelligence** — external, advisory context attached to a
   `FastAnalysisResult`, always kept visibly separate from procurement
   requirement facts in every consumer.

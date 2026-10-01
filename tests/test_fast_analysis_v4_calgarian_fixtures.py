@@ -53,6 +53,22 @@ Describe the delivery method.
     assert "availability" in prompts["||team experience and qualifications"]["response_prompt"]
 
 
+def test_summary_table_criterion_does_not_bleed_into_detail_heading():
+    text = """Firm Experience & Capabilities
+30% 70% 2 Team Experience and Qualifications 10% N/A
+B. EVALUATION OF RATED CRITERIA
+1. Firm Experience & Capabilities (30%)
+Provide three comparable project examples.
+2. Team Experience and Qualifications –
+Weight (10 %)
+Identify the relationship manager and team deployment.
+"""
+    prompts = procurement_normalization.extract_scoped_criterion_response_prompts(
+        text, ["Firm Experience & Capabilities", "Team Experience and Qualifications"])
+    assert "Team Experience" not in prompts["||firm experience & capabilities"]["response_prompt"]
+    assert "deployment" in prompts["||team experience and qualifications"]["response_prompt"]
+
+
 def test_explicit_budget_volume_and_mst_timetable_are_separate_facts():
     excerpt = """ESTIMATED BUDGET FOR CONSULTING/PROFESSIONAL FEES
 $ 150,000 - $ 200,000 per year
@@ -60,6 +76,10 @@ The City anticipates a total volume of approximately 65-100 coaching sessions pe
 Session duration typically consists of Five (5) – ten (10) 1-hour sessions.
 RFP issue date
 2026 September 25
+Deadline for Proponent
+Questions
+Prior to 16:00:59 (MST) on
+2026 October 19
 Deadline for Issuing Addenda
 2026 October 20
 Submission Deadline
@@ -78,5 +98,7 @@ Three (3) Business Days
                f["value"]["minimum"] == 5 and f["value"]["maximum"] == 10
                for f in facts)
     assert by_kind["RFP_ISSUE_DATE"]["value"] == "2026 September 25"
+    assert "QUESTION_DEADLINE" in by_kind
+    assert "2026 October 19" in by_kind["QUESTION_DEADLINE"]["value"]
     assert "MST" in by_kind["SUBMISSION_DEADLINE"]["value"]
     assert by_kind["RECTIFICATION_PERIOD"]["value"] == "Three (3) Business Days"

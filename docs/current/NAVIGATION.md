@@ -53,10 +53,12 @@ Where to look, not what everything means. Read
   `tests/test_phoenix_procurement_taxonomy.py`, `tests/test_analysis_service.py`.
 - Calgary v4 remediation fixtures: `tests/test_fast_analysis_v4_calgarian_fixtures.py`.
   The complete-prompt boundary and deterministic source-fact capture are
-  implemented locally; run 47 is the one authorized real commissioning
-  attempt and is recorded as failed closed because its split-line Team
-  criterion heading remained absent from the persisted snapshot. Do not spend
-  another provider run without explicit authorization.
+  implemented locally. Historical run 47 remains failed closed because its
+  split-line Team criterion heading was absent. The explicitly authorized
+  single follow-up, run 48, is COMPLETE with all five Calgary 26-1610
+  criteria durably captured. Do not spend another provider run without
+  explicit authorization; the production Brief's remaining semantic gap is a
+  snapshot-capture limitation, not permission to import benchmark prose.
 - **Telemetry call taxonomy** (`fast_analysis.classify_telemetry_entry`/
   `_is_provider_call`/`_telemetry_audit_summary`, reused by
   `analysis_service._telemetry_summary`) — the precise measurement

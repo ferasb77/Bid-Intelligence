@@ -242,19 +242,25 @@ def extract_deterministic_procurement_facts(doc_text: str, source_doc: str = "")
     timetable = {"RFP issue date": "RFP_ISSUE_DATE", "Deadline for Proponent Questions": "QUESTION_DEADLINE", "Deadline for Issuing Addenda": "ADDENDA_DEADLINE", "Submission Deadline": "SUBMISSION_DEADLINE", "Rectification Period": "RECTIFICATION_PERIOD"}
     for i, line in enumerate(lines):
         for label, kind in timetable.items():
-            if re.sub(r'\s+', ' ', line.strip()).lower() == label.lower():
+            normalized_line = re.sub(r'\s+', ' ', line.strip()).lower()
+            label_lines = [normalized_line]
+            if i + 1 < len(lines):
+                label_lines.append((normalized_line + ' ' + re.sub(r'\s+', ' ', lines[i + 1].strip())).strip().lower())
+            matched = next((offset for offset, candidate in enumerate(label_lines)
+                            if candidate == label.lower()), None)
+            if matched is not None:
+                value_start = i + (2 if matched == 1 else 1)
                 values = []
-                for candidate in lines[i + 1:i + 6]:
+                for candidate in lines[value_start:value_start + 6]:
                     x = candidate.strip()
                     if not x or re.match(r'^\[\[SOURCE:', x):
                         continue
-                    if values and re.search(r'\b20\d{2}\b', x):
+                    if values and re.search(r'\b20\d{2}\b', x) and any(re.search(r'\b20\d{2}\b', prior) for prior in values):
                         break
                     if re.search(r'\b20\d{2}\b', x) or re.search(r'\b(?:business|MST|time)\b', x, re.I):
                         values.append(x)
-                    if values and (re.search(r'\b20\d{2}\b', x) or re.search(r'\bbusiness\b', x, re.I)):
-                        # A second line is retained only when it is the
-                        # submission clock/time-zone continuation.
+                    if values and (re.search(r'\b20\d{2}\b', x) or
+                                   re.search(r'\b(?:business|MST|time)\b', x, re.I)):
                         continue
                     if values:
                         break

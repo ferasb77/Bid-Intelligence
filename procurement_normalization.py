@@ -146,7 +146,11 @@ def extract_criterion_response_prompts(doc_text: str, known_criterion_labels: li
             continue
         if label and (rated_section or not explicit_section or re.match(r'^\s*\d+[.)]\s*', stripped)):
             current_label = label
-            found.setdefault(current_label, [])
+            # A summary table can mention the same criterion before the
+            # detailed Appendix C heading.  The detailed heading is a new
+            # structural boundary, so never let the summary row's body bleed
+            # into the real response passage.
+            found[current_label] = []
             continue
         if current_label is not None and stripped:
             found[current_label].append(stripped)
@@ -370,8 +374,8 @@ def extract_scoped_criterion_response_prompts(
         if label and (rated_section or not explicit_section or re.match(r'^\s*\d+[.)]\s*', stripped)):
             current_key = (current_category, label)
             if current_key not in found:
-                found[current_key] = []
                 order.append(current_key)
+            found[current_key] = []
             continue
         if current_key is not None and stripped:
             found[current_key].append(stripped)

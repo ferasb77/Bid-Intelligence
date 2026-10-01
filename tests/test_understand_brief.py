@@ -90,6 +90,20 @@ def test_customer_language_containing_ident_is_not_internal_noise():
     )
 
 
+def test_objective_fragments_and_timetable_facts_are_customer_readable():
+    r = _result()
+    r.deterministic_procurement_facts = [
+        {"family": "OBJECTIVE", "value": "Support leaders in aligning personal purpose with"},
+        {"family": "OBJECTIVE", "value": "organizational goals."},
+        {"semantic_kind": "RFP_ISSUE_DATE", "value": "2026 September 25"},
+        {"semantic_kind": "RECTIFICATION_PERIOD", "value": "Three (3) Business Days"},
+    ]
+    brief = build_bid_intelligence_brief(r)
+    assert brief.buyer_intent == ("Support leaders in aligning personal purpose with organizational goals.",)
+    assert "RFP issue date: 2026 September 25" in brief.key_dates
+    assert brief.submission_distinction and "Three (3) Business Days" in brief.submission_distinction
+
+
 def test_form_title_is_rejected_as_procurement_identity():
     r = _result()
     for metadata in r.doc_metadata_by_doc.values():
