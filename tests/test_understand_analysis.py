@@ -25,10 +25,6 @@ class TestUnderstandAnalysisLenses(unittest.TestCase):
             self.assertIn(lid, ua.LENS_CODE)
             self.assertIn(lid, ua.LENS_DESC)
 
-    def test_reconciliation_token_limit_is_4096(self):
-        import full_analysis as fa
-        self.assertEqual(fa.RECONCILIATION_MAX_OUTPUT_TOKENS, 4096)
-
 
 class TestStartOpportunityAnalysis(unittest.TestCase):
     @patch("understand_analysis.db.list_analysis_runs", return_value=[])

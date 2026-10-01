@@ -682,42 +682,9 @@ def regenerate_report_from_raw_snapshot(run_id: int, buyer_intelligence: dict | 
 
 def generate_bid_intelligence_brief_from_raw_snapshot(run_id: int) -> bytes:
     """Render the primary concise UNDERSTAND export from a durable snapshot.
-    Supports both FAST foundation and FULL multi-agent runs. Zero model calls,
-    zero extraction, no run mutation occurs on this path."""
-    run = db.get_analysis_run(run_id)
-    if not run or run.get("status") not in ("COMPLETE", "PARTIAL"):
-        raise ValueError(f"analysis run {run_id} is not usable; cannot export a Brief")
+    Zero model calls, zero extraction, no run mutation occurs on this path."""
+    return _render_brief_snapshot_impl(run_id)
 
-    is_partial = run.get("status") == "PARTIAL"
-    mode = run.get("analysis_mode", "FAST")
-    bid_id = run.get("bid_id")
-    full_result = None
-
-    if mode == "FULL":
-        source_run_id = run.get("source_analysis_run_id")
-        result = load_raw_fast_analysis_result(source_run_id)
-        if isinstance(result, str):
-            raise ValueError(f"analysis run {run_id} source {source_run_id} has no durable snapshot ({result})")
-        res_row = db.get_analysis_result(run_id)
-        full_result = (res_row.get("full_analysis_result") if res_row else None) or {}
-    else:
-        result = load_raw_fast_analysis_result(run_id)
-        if isinstance(result, str):
-            raise ValueError(f"analysis run {run_id} has no durable raw snapshot ({result})")
-        # Check if this bid has a completed FULL run to enrich the brief
-        if bid_id:
-            try:
-                all_runs = db.list_analysis_runs(bid_id)
-                full_run = next((r for r in all_runs if r.get("analysis_mode") == "FULL" and r.get("status") in ("COMPLETE", "PARTIAL")), None)
-                if full_run:
-                    res_row = db.get_analysis_result(int(full_run["id"]))
-                    full_result = (res_row.get("full_analysis_result") if res_row else None) or {}
-            except Exception:
-                full_result = None
-
-    from understand_brief import build_bid_intelligence_brief
-    from understand_brief_report import render_report
-    return render_report(build_bid_intelligence_brief(result, full_result=full_result, analysis_partial=is_partial))
 
 
 # ---------------------------------------------------------------------------
@@ -745,6 +712,42 @@ FULL_ANALYSIS_PERSISTENCE_GAP = (
     "'FULL', migrations/020_full_analysis_runs.sql -- written, NOT yet applied "
     "live). This compute-and-return entry point is kept for one-off smokes."
 )
+
+
+def _render_brief_snapshot_impl(run_id: int) -> bytes:
+    run = db.get_analysis_run(run_id)
+    if not run or run.get("status") not in ("COMPLETE", "PARTIAL"):
+        raise ValueError(f"analysis run {run_id} is not usable; cannot export a Brief")
+
+    is_partial = run.get("status") == "PARTIAL"
+    mode = run.get("analysis_mode", "FAST")
+    bid_id = run.get("bid_id")
+    full_result = None
+
+    if mode == "FULL":
+        source_run_id = run.get("source_analysis_run_id")
+        result = load_raw_fast_analysis_result(source_run_id)
+        if isinstance(result, str):
+            raise ValueError(f"analysis run {run_id} source {source_run_id} has no durable snapshot ({result})")
+        res_row = db.get_analysis_result(run_id)
+        full_result = (res_row.get("full_analysis_result") if res_row else None) or {}
+    else:
+        result = load_raw_fast_analysis_result(run_id)
+        if isinstance(result, str):
+            raise ValueError(f"analysis run {run_id} has no durable raw snapshot ({result})")
+        if bid_id:
+            try:
+                all_runs = db.list_analysis_runs(bid_id)
+                full_run = next((r for r in all_runs if r.get("analysis_mode") == "FULL" and r.get("status") in ("COMPLETE", "PARTIAL")), None)
+                if full_run:
+                    res_row = db.get_analysis_result(int(full_run["id"]))
+                    full_result = (res_row.get("full_analysis_result") if res_row else None) or {}
+            except Exception:
+                full_result = None
+
+    from understand_brief import build_bid_intelligence_brief
+    from understand_brief_report import render_report
+    return render_report(build_bid_intelligence_brief(result, full_result=full_result, analysis_partial=is_partial))
 
 
 def run_full_analysis_for_run(run_id: int, api_key: str, *, include_documents: bool = True):

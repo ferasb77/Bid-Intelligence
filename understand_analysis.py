@@ -44,9 +44,6 @@ from config import api_key_configured, get_api_key
 
 logger = logging.getLogger(__name__)
 
-# Ensure reconciliation has sufficient tokens to complete without truncation
-fa.RECONCILIATION_MAX_OUTPUT_TOKENS = 4096
-
 # Lens definitions matching the 6 specialist domains + cross-domain reconciliation
 LENSES = (
     ("PROCUREMENT_STRUCTURE", "Procurement Structure", "PS", "Verifying document hierarchy and packaging rules"),
@@ -92,10 +89,7 @@ def start_opportunity_analysis(
             logger.info("Bid %s has %d duplicate document(s) detected and clustered",
                         bid_id, len(dup_report["duplicates"]))
 
-    # 2. Ensure reconciliation has 4096 tokens
-    fa.RECONCILIATION_MAX_OUTPUT_TOKENS = 4096
-
-    # 3. Check for existing FULL analysis status
+    # 2. Check for existing FULL analysis status
     status = tenancy.get_full_analysis_status_for_organization(bid_id, organization_id)
     if status and not retry:
         run_status = status.get("status")
