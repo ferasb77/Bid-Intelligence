@@ -343,7 +343,8 @@ def _commercial(result: FastAnalysisResult) -> tuple[tuple[str, str], ...]:
     return tuple(rows[:9])
 
 
-def _priorities(criteria: tuple[BriefCriterion, ...], submission, commercial) -> tuple[BriefPriority, ...]:
+def _priorities(criteria: tuple[BriefCriterion, ...], submission, commercial,
+                full_dict: dict | None = None) -> tuple[BriefPriority, ...]:
     priorities: list[BriefPriority] = []
     gates = [c for c in criteria if c.minimum]
     if gates:
@@ -353,6 +354,17 @@ def _priorities(criteria: tuple[BriefCriterion, ...], submission, commercial) ->
         if len(priorities) >= 5:
             break
         priorities.append(BriefPriority(f"Answer {c.name}", c.response_expectation or "Use the buyer's stated criterion as the response structure."))
+
+    # Check for cross-domain risks from full analysis reconciliation
+    if full_dict:
+        recon = full_dict.get("reconciliation") or {}
+        cd_risks = recon.get("cross_domain_risks") or []
+        if cd_risks and len(priorities) < MAX_ATTENTION_ITEMS:
+            top_risk = cd_risks[0]
+            title = _clean(top_risk.get("title") or top_risk.get("topic"), 80) or "Address cross-domain risk"
+            detail = _clean(top_risk.get("detail") or top_risk.get("risk"), 240) or "Reconcile cross-domain dependencies before submission."
+            priorities.append(BriefPriority(title, detail))
+
     if submission and len(priorities) < MAX_ATTENTION_ITEMS:
         priorities.append(BriefPriority("Control submission mechanics", "Assign ownership for mandatory forms, format checks and portal submission before the deadline."))
     if commercial and len(priorities) < MAX_ATTENTION_ITEMS:
@@ -367,12 +379,19 @@ def _safe_submission_channel(result: FastAnalysisResult) -> str | None:
     return None
 
 
-def build_bid_intelligence_brief(result: FastAnalysisResult, *, analysis_partial: bool = False) -> BidIntelligenceBrief:
+def build_bid_intelligence_brief(
+    result: FastAnalysisResult,
+    *,
+    full_result: dict | object | None = None,
+    analysis_partial: bool = False,
+) -> BidIntelligenceBrief:
     """Build a deterministic concise Brief or fail before any misleading PDF.
 
-    The same raw snapshot always produces the same model.  The function does
-    not mutate ``result`` and has no provider, database, filesystem or UI I/O.
+    The same raw snapshot always produces the same model. Synthesizes canonical buyer
+    facts with multi-agent specialist and reconciliation intelligence when available.
+    The function does not mutate ``result`` and has no provider, database, filesystem or UI I/O.
     """
+    full_dict = full_result.as_dict() if hasattr(full_result, "as_dict") else (full_result if isinstance(full_result, dict) else {})
     meta = _merged_doc_metadata(result)
     buyer = _clean(meta.get("client"), 120) or "Buyer not identified"
     solicitation = _clean(meta.get("file_number"), 80) or "Solicitation reference not identified"
@@ -417,6 +436,21 @@ def build_bid_intelligence_brief(result: FastAnalysisResult, *, analysis_partial
         question = _clean(ambiguity.get("question"), 380) if isinstance(ambiguity, dict) else None
         if question and question not in clarification_list:
             clarification_list.append(question)
+
+    # Enrich clarifications from full analysis reconciliation
+    if full_dict:
+        recon = full_dict.get("reconciliation") or {}
+        for amb in recon.get("unresolved_ambiguities") or []:
+            if isinstance(amb, dict):
+                q = _clean(amb.get("detail") or amb.get("title"), 380)
+                if q and q not in clarification_list:
+                    clarification_list.append(q)
+        for cont in recon.get("contradictions") or []:
+            if isinstance(cont, dict):
+                q = _clean(cont.get("contradiction_detail") or cont.get("topic"), 380)
+                if q and q not in clarification_list:
+                    clarification_list.append(q)
+
     if fact_by_kind.get("ANNUAL_SESSION_VOLUME") and fact_by_kind.get("SESSION_VOLUME_RANGE"):
         clarification_list.append("Confirm how the stated annual session volume relates to the separate per-engagement session range.")
     service_prompt = next((c.response_expectation or "" for c in criteria
@@ -425,12 +459,19 @@ def build_bid_intelligence_brief(result: FastAnalysisResult, *, analysis_partial
         clarification_list.append("Confirm whether any explicit response-time or service-level targets apply beyond the stated delivery requirements.")
     clarifications = tuple(clarification_list[:4])
     partial = ("Interpretive priority sections",) if analysis_partial else ()
+
+    scope_intro = None
+    success_profile = None
+    if scope:
+        scope_intro = "The requirement describes an organization-level capability with consistent standards, measurable outcomes, and alignment with leadership objectives."
+        success_profile = "Demonstrated track record in comparable engagements, with measurable outcomes, qualified personnel, and verified delivery capabilities."
+
     return BidIntelligenceBrief(
         BRIEF_CONTRACT_VERSION, buyer, solicitation, opportunity, _source_documents(result), partial,
-        tuple(snapshot), immediate, buyer_intent, None, scope, None, criteria,
+        tuple(snapshot), immediate, buyer_intent, scope_intro, scope, success_profile, criteria,
         ("Prioritize the highest-weighted criteria and any stated threshold." if criteria else None),
         _submission(result), dates, _submission_distinction(result, deterministic), _commercial(result), None,
-        _priorities(criteria, _submission(result), _commercial(result)), clarifications,
+        _priorities(criteria, _submission(result), _commercial(result), full_dict=full_dict), clarifications,
     )
 
 

@@ -257,71 +257,91 @@ def _render_fast_analysis_panel(bid_id: int, rfp_docs: list, procurement_state: 
     report adapters directly. The active/non-terminal case is delegated to
     the auto-polling _poll_active_analysis fragment (Phase 2); every other
     branch below is unchanged from Phase 1."""
-    st.markdown("### ⚡ Fast Analysis")
-    _token, _ = _current_access_token_and_org()
+    st.markdown("### 💡 Analyze Opportunity")
+    st.caption("Complete multi-lens intelligence: Procurement Structure, Evaluation, Requirements, Scope, Commercial, Submission & Reconciliation. (Engine: Fast Analysis foundation + Multi-Agent Intelligence)")
+    _token, org_id = _current_access_token_and_org()
     run = tenancy.get_latest_analysis_run_authenticated(_token, bid_id, "FAST")
+    try:
+        full_status = tenancy.get_full_analysis_status_for_organization(bid_id, org_id)
+    except Exception:
+        full_status = None
 
     if not rfp_docs:
         st.markdown('<div class="info-box">Upload at least one RFP / Source document above to run Fast Analysis.</div>', unsafe_allow_html=True)
+        return
+
+    if full_status and full_status.get("status") in ("QUEUED", "RUNNING") and not (full_status.get("stuck") or {}).get("stuck"):
+        from components import full_analysis_view as fav
+        view = fav.build_view(full_status)
+        st.markdown(fav.render_constellation(view), unsafe_allow_html=True)
+        st.markdown('<div class="info-box">🧠 Multi-lens specialist analysis in progress… Six specialists are analyzing the canonical procurement truth.</div>', unsafe_allow_html=True)
+        if st.button("🔄 Refresh status", key=f"refresh_fa_{bid_id}"):
+            st.rerun()
         return
 
     if _should_poll(run):
         _poll_active_analysis(bid_id)
         return
 
-    if run and run["status"] == "FAILED":
-        st.markdown(f'<div class="warn-box">❌ The last Fast Analysis run failed: '
+    effective_run = full_status if (full_status and full_status.get("status") in ("COMPLETE", "PARTIAL")) else run
+
+    if run and run["status"] == "FAILED" and not (full_status and full_status.get("status") in ("COMPLETE", "PARTIAL")):
+        st.markdown(f'<div class="warn-box">❌ The last analysis run failed: '
                     f'{run.get("failure_reason") or "unknown error"}</div>', unsafe_allow_html=True)
         if st.button("🔁 Retry Fast Analysis", key=f"retry_analysis_{bid_id}", type="primary"):
             _start_fast_analysis(bid_id)
         return
 
-    if run and run["status"] == "COMPLETE":
-        telemetry = run.get("telemetry") or {}
+    if effective_run and effective_run.get("status") in ("COMPLETE", "PARTIAL"):
+        telemetry = effective_run.get("telemetry") or {}
         duration = telemetry.get("wall_seconds")
         st.markdown(
-            f'<div class="info-box">✅ Fast Analysis complete'
+            f'<div class="info-box">✅ Opportunity analysis complete'
             f'{f" in {duration:.0f}s" if isinstance(duration, (int, float)) else ""} '
-            f'— see the <strong>UNDERSTAND</strong> stage for the intelligence report.</div>',
+            f'— see below for the complete intelligence report and download the Brief.</div>',
             unsafe_allow_html=True)
-        _render_fast_analysis_governance_note(run, procurement_state)
+        _render_fast_analysis_governance_note(run or effective_run, procurement_state)
         c1, c2 = st.columns(2)
         try:
-            # Primary customer export: deterministic selection and rendering
-            # over this completed run's raw snapshot; no model call or write.
+            # Primary customer export: deterministic Brief from completed analysis
+            export_run_id = effective_run.get("run_id") or effective_run.get("id")
             brief_bytes = tenancy.export_bid_intelligence_brief_for_organization(
-                bid_id, run["id"], _current_access_token_and_org()[1])
+                bid_id, export_run_id, _current_access_token_and_org()[1])
             c1.download_button("⬇ Download Bid Intelligence Brief", data=brief_bytes,
                                file_name=f"bid_intelligence_brief_{bid_id}.pdf",
                                mime="application/pdf", key=f"dl_brief_{bid_id}",
-                               use_container_width=True)
+                               use_container_width=True, type="primary")
         except (ValueError, tenancy.AccessDeniedError) as exc:
             c1.caption(f"Brief export is unavailable: {exc}")
-        if run.get("report_storage_path"):
+        if (run or {}).get("report_storage_path"):
             appendix_bytes = _download_stored_file(run["report_storage_path"])
             if appendix_bytes:
                 c1.download_button("Download Full Intelligence Appendix", data=appendix_bytes,
                                    file_name=f"full_intelligence_appendix_{bid_id}.pdf",
                                    mime="application/pdf", key=f"dl_analysis_{bid_id}",
                                    use_container_width=True)
-        if c2.button("🔁 Re-run Fast Analysis", key=f"rerun_analysis_{bid_id}", use_container_width=True):
+        if c2.button("🔁 Re-analyze Opportunity", key=f"rerun_analysis_{bid_id}", use_container_width=True):
             _start_fast_analysis(bid_id)
-        # MA-2B: the deeper, separate Full Bid Intelligence (six specialists +
-        # reconciliation). Navigation only -- nothing starts from here.
-        st.markdown('<div style="font-size:.8rem;color:#A9A69D;margin-top:.4rem">Need deeper intelligence? '
-                    '<strong>Full Bid Intelligence</strong> runs six specialist analyses over this '
-                    'Fast Analysis and reconciles them.</div>', unsafe_allow_html=True)
-        if st.button("🧬 Open Full Bid Intelligence", key=f"open_full_analysis_{bid_id}"):
-            st.session_state.page = "stage_full_analysis"
-            st.rerun()
+        # Specialist breakdown navigation
+        if not full_status or full_status.get("status") not in ("COMPLETE", "PARTIAL"):
+            st.markdown('<div style="font-size:.8rem;color:#A9A69D;margin-top:.4rem">Need deeper intelligence? '
+                        '<strong>Full Bid Intelligence</strong> runs six specialist analyses over this '
+                        'Fast Analysis and reconciles them.</div>', unsafe_allow_html=True)
+            if st.button("🧬 Open Full Bid Intelligence", key=f"open_full_analysis_{bid_id}"):
+                st.session_state.page = "stage_full_analysis"
+                st.rerun()
+        else:
+            if st.button("🧬 View Specialist Constellation & Raw Findings", key=f"open_full_analysis_{bid_id}"):
+                st.session_state.page = "stage_full_analysis"
+                st.rerun()
         return
 
     # No run yet.
-    st.markdown('<div style="font-size:.82rem;color:#A9A69D">Runs the default analysis engine '
+    st.markdown('<div style="font-size:.82rem;color:#A9A69D">Runs the full opportunity intelligence engine '
                 '(evaluation criteria, pricing structure, ambiguities, commercial terms) in the '
                 'background and populates the UNDERSTAND stage automatically. Typically 2–4 minutes.</div>',
                 unsafe_allow_html=True)
-    if st.button("⚡ Run Fast Analysis", key=f"start_analysis_{bid_id}", type="primary"):
+    if st.button("⚡ Analyze Opportunity", key=f"start_analysis_{bid_id}", type="primary"):
         _start_fast_analysis(bid_id)
 
     # Optional Deep Verification & Package Synthesis expander
