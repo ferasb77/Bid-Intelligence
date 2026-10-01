@@ -4,8 +4,7 @@ These tests never call a provider and do not use benchmark prose as product
 input; they lock the structural boundaries that the production corpus exposed.
 """
 
-import fast_analysis
-import procurement_normalization
+import procurement_intelligence as pi
 
 
 APPENDIX_C = """B. EVALUATION OF RATED CRITERIA
@@ -27,7 +26,7 @@ Pricing will be scored by a relative pricing formula.
 def test_appendix_c_keeps_each_criterion_and_never_keys_summary_price():
     labels = ["Firm Experience & Capabilities", "Team Experience and Qualifications",
               "Service Delivery", "Social Procurement", "Price"]
-    prompts = procurement_normalization.extract_scoped_criterion_response_prompts(
+    prompts = pi.extract_scoped_criterion_response_prompts(
         APPENDIX_C, labels)
     assert set(prompts) == {
         "||firm experience & capabilities", "||team experience and qualifications",
@@ -47,7 +46,7 @@ Identify the lead personnel and their availability.
 3. Service Delivery – Weight (30%)
 Describe the delivery method.
 """
-    prompts = procurement_normalization.extract_scoped_criterion_response_prompts(
+    prompts = pi.extract_scoped_criterion_response_prompts(
         text, ["Team Experience and Qualifications", "Service Delivery"])
     assert "||team experience and qualifications" in prompts
     assert "availability" in prompts["||team experience and qualifications"]["response_prompt"]
@@ -63,7 +62,7 @@ Provide three comparable project examples.
 Weight (10 %)
 Identify the relationship manager and team deployment.
 """
-    prompts = procurement_normalization.extract_scoped_criterion_response_prompts(
+    prompts = pi.extract_scoped_criterion_response_prompts(
         text, ["Firm Experience & Capabilities", "Team Experience and Qualifications"])
     assert "Team Experience" not in prompts["||firm experience & capabilities"]["response_prompt"]
     assert "deployment" in prompts["||team experience and qualifications"]["response_prompt"]
@@ -88,7 +87,7 @@ Submission Deadline
 Rectification Period
 Three (3) Business Days
 """
-    facts = fast_analysis.extract_deterministic_procurement_facts(excerpt, "RFP.pdf")
+    facts = pi.extract_deterministic_procurement_facts(excerpt, "RFP.pdf")
     by_kind = {fact["semantic_kind"]: fact for fact in facts}
     assert by_kind["ESTIMATED_BUDGET"]["value"] == {
         "currency": "CAD", "minimum": 150000, "maximum": 200000, "period": "year"}

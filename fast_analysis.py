@@ -160,115 +160,6 @@ _PAGE_LIMIT_RE = re.compile(
     re.IGNORECASE,
 )
 
-_BUDGET_RE = re.compile(r'(?is)(?:estimated\s+budget[\s\S]{0,180}?)(?:\$|CAD\s*)\s*([\d,]+)\s*[-\u2013]\s*(?:\$|CAD\s*)?\s*([\d,]+)\s+per\s+(year|month|quarter)')
-_RANGE_DASH = r'[-\u2013\u2014\ufffd]'
-_SESSION_RANGE_RE = re.compile(r'(?is)(\d+)\s*(?:' + _RANGE_DASH + r'|to)\s*(\d+)\s+(?:[a-z -]{0,30}?)sessions?')
-_WORD_SESSION_RANGE_RE = re.compile(r'(?is)(one|two|three|four|five|six|seven|eight|nine|ten)\s*\([^)]*\)\s*(?:' + _RANGE_DASH + r'|to)\s*(\d+)\s+(?:[a-z0-9 -]{0,20}?)sessions?')
-_WORD_WORD_SESSION_RANGE_RE = re.compile(r'(?is)(one|two|three|four|five|six|seven|eight|nine|ten)\s*\([^)]*\)\s*(?:' + _RANGE_DASH + r'|to)\s*(one|two|three|four|five|six|seven|eight|nine|ten)\s*\([^)]*\)\s+(?:[a-z0-9 -]{0,20}?)sessions?')
-_WORD_NUMBERS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
-                 "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
-_SINGLE_SESSION_RE = re.compile(r'(?is)(?:up\s+to\s+)?(\d+)\s+(?:one[- ]?hour\s+)?sessions?')
-
-
-def _source_page_for_line(lines: list[str], line_no: int) -> int | None:
-    for i in range(min(line_no, len(lines) - 1), -1, -1):
-        m = re.search(r'\[\[SOURCE:[^\]]*PAGE:\s*(\d+)', lines[i])
-        if m:
-            return int(m.group(1))
-    return None
-
-
-def extract_deterministic_procurement_facts(doc_text: str, source_doc: str = "") -> list[dict]:
-    """Capture explicit budget, volume, objectives and timetable facts."""
-    if not doc_text:
-        return []
-    lines = doc_text.splitlines()
-    facts = []
-
-    def add(family, kind, value, excerpt, line_no):
-        page = _source_page_for_line(lines, line_no)
-        facts.append({"family": family, "semantic_kind": kind, "value": value,
-                      "text": excerpt.strip(), "source_doc": source_doc,
-                      "source_refs": ([f"page:{page}"] if page else [])})
-
-    m = _BUDGET_RE.search(doc_text)
-    if m:
-        add("MONETARY", "ESTIMATED_BUDGET", {"currency": "CAD",
-            "minimum": int(m.group(1).replace(',', '')), "maximum": int(m.group(2).replace(',', '')),
-            "period": m.group(3).lower()}, m.group(0), doc_text[:m.start()].count('\n'))
-    for i, line in enumerate(lines):
-        sm = _SESSION_RANGE_RE.search(line)
-        if not sm:
-            wm = _WORD_SESSION_RANGE_RE.search(line)
-            if wm:
-                sm = (int(_WORD_NUMBERS[wm.group(1).lower()]), int(wm.group(2)))
-        if not sm:
-            ww = _WORD_WORD_SESSION_RANGE_RE.search(line)
-            if ww:
-                sm = (int(_WORD_NUMBERS[ww.group(1).lower()]), int(_WORD_NUMBERS[ww.group(2).lower()]))
-        if sm:
-            annual = bool(re.search(r'\bper\s+year\b|\bannually\b', line, re.I))
-            lo, hi = sm if isinstance(sm, tuple) else (int(sm.group(1)), int(sm.group(2)))
-            add("VOLUME", "ANNUAL_SESSION_VOLUME" if annual else "SESSION_VOLUME_RANGE", {"minimum": lo, "maximum": hi, "unit": "sessions", **({"period": "annual"} if annual else {})}, line, i)
-        elif re.search(r'\bsessions?\b', line, re.I):
-            sm = _SINGLE_SESSION_RE.search(line)
-            if sm:
-                add("VOLUME", "SESSION_VOLUME", {"quantity": int(sm.group(1)), "unit": "sessions"}, line, i)
-    in_objectives = False
-    objective_start_seen = False
-    objective_page = None
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if (not objective_start_seen and re.search(
-                r'\b(?:primary\s+)?(?:coaching\s+)?objectives?\b\s*(?:will\s+achieve|include|are\s+as\s+follows|:|$)',
-                stripped, re.I)):
-            in_objectives = True
-            objective_start_seen = True
-            continue
-        if in_objectives:
-            pm = re.search(r'\[\[SOURCE:[^\]]*PAGE:\s*(\d+)', stripped)
-            if pm:
-                objective_page = int(pm.group(1)) if objective_page is None else objective_page
-                continue
-            if re.match(r'^(?:the agreement term|information table|rfp timetable|appendix)\b', stripped, re.I):
-                in_objectives = False
-                continue
-            bullet = re.sub(r'^[•\-]\s*', '', stripped).strip()
-            if bullet and len(bullet) > 12:
-                if re.match(r'^(?:the agreement term|appendix|section)\b', bullet, re.I):
-                    in_objectives = False
-                else:
-                    add("OBJECTIVE", "PROCUREMENT_OBJECTIVE", bullet, stripped, i)
-    timetable = {"RFP issue date": "RFP_ISSUE_DATE", "Deadline for Proponent Questions": "QUESTION_DEADLINE", "Deadline for Issuing Addenda": "ADDENDA_DEADLINE", "Submission Deadline": "SUBMISSION_DEADLINE", "Rectification Period": "RECTIFICATION_PERIOD"}
-    for i, line in enumerate(lines):
-        for label, kind in timetable.items():
-            normalized_line = re.sub(r'\s+', ' ', line.strip()).lower()
-            label_lines = [normalized_line]
-            if i + 1 < len(lines):
-                label_lines.append((normalized_line + ' ' + re.sub(r'\s+', ' ', lines[i + 1].strip())).strip().lower())
-            matched = next((offset for offset, candidate in enumerate(label_lines)
-                            if candidate == label.lower()), None)
-            if matched is not None:
-                value_start = i + (2 if matched == 1 else 1)
-                values = []
-                for candidate in lines[value_start:value_start + 6]:
-                    x = candidate.strip()
-                    if not x or re.match(r'^\[\[SOURCE:', x):
-                        continue
-                    if values and re.search(r'\b20\d{2}\b', x) and any(re.search(r'\b20\d{2}\b', prior) for prior in values):
-                        break
-                    if re.search(r'\b20\d{2}\b', x) or re.search(r'\b(?:business|MST|time)\b', x, re.I):
-                        values.append(x)
-                    if values and (re.search(r'\b20\d{2}\b', x) or
-                                   re.search(r'\b(?:business|MST|time)\b', x, re.I)):
-                        continue
-                    if values:
-                        break
-                if values:
-                    add("MILESTONE", kind, " ".join(values[:2]), " ".join(values[:2]), i)
-                break
-    return facts
-
 
 def extract_page_limit_deterministic(doc_text: str) -> int | None:
     """Return the stated page limit from a rated-criteria response form's
@@ -1623,7 +1514,6 @@ class FastAnalysisResult:
     #   Section 8: bounded package-completeness assessment (see
     #   document_provenance.assess_package_completeness).
     package_completeness: dict | None = None
-    deterministic_procurement_facts: list = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -1937,9 +1827,6 @@ def run_fast_analysis_corpus(documents: list[tuple[str, str]], api_key: str,
 
     # 1. Deterministic page-limit extraction -- no LLM, negligible time.
     det_start = time.monotonic()
-    for name, doc_text in documents:
-        result.deterministic_procurement_facts.extend(
-            extract_deterministic_procurement_facts(doc_text, name))
     for name, doc_text in documents:
         if name in PAGE_LIMIT_DOCUMENTS:
             limit = extract_page_limit_deterministic(doc_text)

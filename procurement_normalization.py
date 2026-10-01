@@ -38,45 +38,11 @@ _is_near_duplicate = _fast_report_adapter._is_near_duplicate
 # ═══════════════════════════════════════════════════════════════════════════
 
 _SOURCE_MARKER_LINE_RE = re.compile(r'^\[\[SOURCE:.*\]\]\s*$')
-# Kept as a compatibility symbol for callers that imported the old limit.
-# Fast Analysis v4 no longer applies a destructive character cap: a criterion
-# response is a governed source passage and must remain complete.  Structured
-# evidence facets are derived from the complete passage below.
 MAX_RESPONSE_PROMPT_CHARS = 1500
 
 
 def _normalize_heading(text: str) -> str:
     return re.sub(r'\s+', ' ', text.strip().rstrip(':')).strip().lower()
-
-
-def _criterion_heading_label(line: str, label_by_normalized: dict[str, str]) -> str | None:
-    """Return a known criterion when *line* is its structural heading.
-
-    RFP PDFs commonly flatten a table heading into lines such as ``1. Firm
-    Experience & Capabilities (30%)`` or ``2. Team ... – Weight (10 %)``.
-    Matching only an exact line therefore misses the real boundaries and lets
-    the preceding ``Price`` table row absorb Appendix C.  This normalises
-    numbering and score/weight decorations, but never fuzzy-matches prose.
-    """
-    raw = re.sub(r'\s+', ' ', (line or '').strip()).strip(':')
-    if not raw or len(raw) > 240:
-        return None
-    candidates = [raw]
-    # Top-level criterion numbering: 1., 2), etc.  Nested 1.1 prompts are
-    # intentionally not treated as a new criterion boundary.
-    candidates.append(re.sub(r'^\s*\d+[.)]\s*', '', raw))
-    # Buyer templates append a weight or minimum threshold to the heading.
-    for value in list(candidates):
-        value = re.sub(r'\s*[\u2010-\u2015-]\s*weight\s*\([^)]*\)\s*$', '', value, flags=re.I)
-        value = re.sub(r'\s*\([^)]*%[^)]*\)\s*$', '', value)
-        value = re.sub(r'\s+weight\s*[:\-]?\s*\([^)]*\)\s*$', '', value, flags=re.I)
-        value = re.sub(r'\s*[\u2010-\u2015-]\s*$', '', value)
-        candidates.append(value.strip())
-    for candidate in candidates:
-        hit = label_by_normalized.get(_normalize_heading(candidate))
-        if hit:
-            return hit
-    return None
 
 
 def extract_criterion_response_prompts(doc_text: str, known_criterion_labels: list[str]) -> dict[str, dict]:
@@ -116,41 +82,14 @@ def extract_criterion_response_prompts(doc_text: str, known_criterion_labels: li
     lines = doc_text.splitlines()
     found: dict[str, list[str]] = {}
     current_label = None
-    rated_section = False
-    explicit_section = False
     for line in lines:
         stripped = line.strip()
         if _SOURCE_MARKER_LINE_RE.match(stripped):
             continue
-        upper = _normalize_heading(stripped).upper()
-        if re.match(r'^[A-Z][.)]\s+EVALUATION OF RATED CRITERIA', stripped, re.I):
-            rated_section = True
-            explicit_section = True
-            current_label = None
-            continue
-        if re.match(r'^[A-Z][.)]\s+EVALUATION OF PRICING', stripped, re.I):
-            rated_section = False
-            explicit_section = True
-            current_label = None
-            continue
-        if _normalize_heading(stripped) in {"c.", "c"}:
-            rated_section = False
-            current_label = None
-            continue
-        label = _criterion_heading_label(stripped, label_by_normalized)
-        # In a document with an explicit Appendix C section, an unnumbered
-        # summary-table row (notably ``Price``) is not a response heading.
-        if label and label.lower() == "price" and not re.match(r'^\s*\d+[.)]\s*', stripped):
-            # An unnumbered Price row in Appendix C's summary table is a
-            # scoring row, not a response-content heading.
-            continue
-        if label and (rated_section or not explicit_section or re.match(r'^\s*\d+[.)]\s*', stripped)):
-            current_label = label
-            # A summary table can mention the same criterion before the
-            # detailed Appendix C heading.  The detailed heading is a new
-            # structural boundary, so never let the summary row's body bleed
-            # into the real response passage.
-            found[current_label] = []
+        normalized = _normalize_heading(stripped)
+        if normalized in label_by_normalized:
+            current_label = label_by_normalized[normalized]
+            found.setdefault(current_label, [])
             continue
         if current_label is not None and stripped:
             found[current_label].append(stripped)
@@ -160,12 +99,10 @@ def extract_criterion_response_prompts(doc_text: str, known_criterion_labels: li
         text = " ".join(body_lines).strip()
         if not text:
             continue
+        truncated = len(text) > MAX_RESPONSE_PROMPT_CHARS
         result[label] = {
-            "response_prompt": text,
-            # Compatibility indicator: the old threshold would have been
-            # exceeded, but the complete passage is retained in full.
-            "truncated": len(text) > 1500,
-            "complete": True,
+            "response_prompt": text[:MAX_RESPONSE_PROMPT_CHARS].strip(),
+            "truncated": truncated,
         }
     return result
 
@@ -341,8 +278,6 @@ def extract_scoped_criterion_response_prompts(
     # category_for_document_name).
     current_category = default_category or ""
     current_key: tuple | None = None
-    rated_section = False
-    explicit_section = False
     for line in doc_text.splitlines():
         stripped = line.strip()
         if _SOURCE_MARKER_LINE_RE.match(stripped):
@@ -354,28 +289,12 @@ def extract_scoped_criterion_response_prompts(
             current_category = category
             current_key = None
             continue
-        if re.match(r'^[A-Z][.)]\s+EVALUATION OF RATED CRITERIA', stripped, re.I):
-            rated_section = True
-            explicit_section = True
-            current_key = None
-            continue
-        if re.match(r'^[A-Z][.)]\s+EVALUATION OF PRICING', stripped, re.I):
-            rated_section = False
-            explicit_section = True
-            current_key = None
-            continue
-        if _normalize_heading(stripped) in {"c.", "c"}:
-            rated_section = False
-            current_key = None
-            continue
-        label = _criterion_heading_label(stripped, label_by_normalized)
-        if label and label.lower() == "price" and not re.match(r'^\s*\d+[.)]\s*', stripped):
-            continue
-        if label and (rated_section or not explicit_section or re.match(r'^\s*\d+[.)]\s*', stripped)):
-            current_key = (current_category, label)
+        normalized = _normalize_heading(stripped)
+        if normalized in label_by_normalized:
+            current_key = (current_category, label_by_normalized[normalized])
             if current_key not in found:
+                found[current_key] = []
                 order.append(current_key)
-            found[current_key] = []
             continue
         if current_key is not None and stripped:
             found[current_key].append(stripped)
@@ -392,9 +311,8 @@ def extract_scoped_criterion_response_prompts(
         result[_canon.scoped_criterion_map_key(category, label)] = {
             "category": category,
             "criterion": label,
-            "response_prompt": text,
-            "truncated": len(text) > 1500,
-            "complete": True,
+            "response_prompt": text[:MAX_RESPONSE_PROMPT_CHARS].strip(),
+            "truncated": len(text) > MAX_RESPONSE_PROMPT_CHARS,
         }
     return result
 
@@ -565,7 +483,7 @@ def build_scoped_criterion_records(
             continue
         prompt_text = entry.get("response_prompt") or ""
         record["response_prompt"] = prompt_text or None
-        record["response_prompt_truncated"] = bool(entry.get("truncated")) and not bool(entry.get("complete"))
+        record["response_prompt_truncated"] = bool(entry.get("truncated"))
         record["semantic_type"] = _canon.classify_semantic_type(prompt_text)
         record.update(_canon.extract_requested_evidence_elements(prompt_text))
     return records
