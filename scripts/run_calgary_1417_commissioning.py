@@ -40,6 +40,7 @@ def main():
     import full_analysis as fa
     import full_analysis_service as fas
     import tenancy
+    import understand_analysis as ua
     import understand_brief as ub
     import understand_brief_report as ubr
 
@@ -49,23 +50,23 @@ def main():
         sys.exit(1)
 
     logger.info("Starting commissioning run for City of Calgary Bid %s (org: %s)...", BID_ID, ORG_ID)
-    
-    # Raise reconciliation max output tokens transiently for commissioning (module default is 3000,
-    # guarded by test; 8192 gives headroom for 58+ findings + contradictions + cross-domain risks)
-    original_recon_tokens = fa.RECONCILIATION_MAX_OUTPUT_TOKENS
-    fa.RECONCILIATION_MAX_OUTPUT_TOKENS = 8192
-    
+
+    # Use the SAME production reconciliation budget as the customer-facing
+    # Analyze Opportunity path. No script-only advantage: if the production
+    # constant changes, this run automatically uses the updated value.
+    logger.info(
+        "Reconciliation output budget (from ua.PRODUCTION_RECONCILIATION_MAX_OUTPUT_TOKENS): %d",
+        ua.PRODUCTION_RECONCILIATION_MAX_OUTPUT_TOKENS,
+    )
     start_time = time.monotonic()
-    try:
+    with ua._production_recon_budget():
         response = fas.start_full_analysis(
             bid_id=BID_ID,
             api_key=api_key,
-            source_run_id=48, # Use latest complete fast analysis run 48
+            source_run_id=48,  # Use latest complete fast analysis run 48
             retry=True,
             execution="inline",
         )
-    finally:
-        fa.RECONCILIATION_MAX_OUTPUT_TOKENS = original_recon_tokens
 
     wall_seconds = round(time.monotonic() - start_time, 2)
     logger.info("Execution finished in %s seconds. Response outcome: %s", wall_seconds, response.get("outcome"))

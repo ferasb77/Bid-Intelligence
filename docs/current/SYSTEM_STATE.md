@@ -8,7 +8,55 @@ to read either of those when a task actually requires them.
 
 `UNDERSTAND → DECIDE → BUILD → CHECK → SUBMIT`
 
+## UNDERSTAND — Analyze Opportunity (production-ready, 2026-10)
+
+**Product decision:** Every new procurement receives the complete multi-agent
+Bid Intelligence analysis. There is no customer choice between Fast and Full
+Analysis. The one customer-facing action is **Analyze Opportunity**.
+
+### Production execution path
+
+`pages/stage_understand.py`
+→ `understand_analysis.start_opportunity_analysis()`
+→ `_production_recon_budget()` context manager [applies 8192-token ceiling, restores on exit]
+→ `tenancy.start_full_analysis_for_organization()`
+→ `full_analysis_service.start_full_analysis()`
+→ `full_analysis.run_full_analysis()` [6 parallel specialists + cross-domain reconciliation]
+
+### Production reconciliation ceiling
+
+`understand_analysis.PRODUCTION_RECONCILIATION_MAX_OUTPUT_TOKENS = 8192`
+
+Single authoritative value in the non-frozen orchestrator. Applied by
+`_production_recon_budget()` around every service call. The `full_analysis`
+module-level default (`RECONCILIATION_MAX_OUTPUT_TOKENS = 3000`) is a
+test-safety floor asserted by `test_prompts_carry_explicit_output_bounds` — it is
+never the production value. Truncation remains fail-closed: if output exceeds even
+8192 tokens the run is `PARTIAL`, not `COMPLETE`.
+
+Commissioning scripts must import and use the same constant — no script-local
+override. This is enforced by `TestProductionReconBudget` in
+`tests/test_understand_analysis.py`.
+
+### Calgary 26-1610 proof (Bid 1417)
+
+| Run | Type | Status | Notes |
+|---|---|---|---|
+| 48 | FAST | COMPLETE | Foundation — all 5 criteria, budget, volume, timetable |
+| 49 | FULL | PARTIAL | Reconciliation truncated at 4096 tokens |
+| 50 | FULL | COMPLETE | Commissioning proof: 57 findings · 5 contradictions · 8 cross-domain risks · end_turn |
+| prod-path | FULL | REUSED_COMPLETE | Production-path acceptance: `ua.start_opportunity_analysis()` invoked; budget context manager applied + restored; idempotent fingerprint returned run 50 |
+
+Run 50 telemetry: 7 provider calls · 52,668 in · 13,238 out tokens · 106s
+
+Zero-call gates (production-path run):
+- UNDERSTAND reopen: **0 provider calls** ✓
+- Brief export: **0 provider calls**, 47,322 bytes, SHA-256 `08a5c0f09155be3a...` ✓
+- Brief re-export: **0 provider calls** ✓
+- Protected runs 45/47/48/49/50: all present, unmodified ✓
+
 ## UNDERSTAND customer export
+
 
 **Bid Intelligence Brief** is the primary customer-facing UNDERSTAND export.
 It is a concise, normally 6-8-page (preferred maximum 10) selection over a

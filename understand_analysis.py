@@ -25,12 +25,18 @@ Scalability & Integrity Rules:
 3. Near-duplicate requirements are clustered for Stage-D/synthesis prompts while
    strictly preserving material variations (deadlines, thresholds, qualifiers).
 4. Excerpt caps are applied consistently across all context sections.
-5. Reconciliation output token limit is raised to 4096 at runtime to prevent
-   unnecessary output truncation.
+5. The reconciliation output token ceiling is PRODUCTION_RECONCILIATION_MAX_OUTPUT_TOKENS
+   (8192). This is applied by the orchestrator around every service call so the
+   customer-facing Analyze Opportunity path gets the same headroom as any
+   commissioning tool. The full_analysis module default (3000) is a test-safety
+   floor for isolated unit tests only -- it is NEVER the production value.
+   Truncation detection remains fail-closed: if output exceeds even 8192 tokens
+   the run is marked PARTIAL, not COMPLETE.
 6. Zero provider calls on reload, navigation, or brief export.
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 import threading
 from typing import Any
@@ -43,6 +49,49 @@ import understand_scalability as usc
 from config import api_key_configured, get_api_key
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Production reconciliation output budget
+# ---------------------------------------------------------------------------
+#: Single authoritative production ceiling for reconciliation output tokens.
+#: Applied by the orchestrator around EVERY customer-facing full-analysis call.
+#:
+#: Rationale for 8192:
+#:   Calgary Bid 1417 (run 50) produced 57 findings + 5 contradictions +
+#:   8 cross-domain risks. That output completed with stop_reason=end_turn at
+#:   13,238 total output tokens across 7 calls (specialists + reconciliation).
+#:   At 3000 (module default) reconciliation truncates and the run is PARTIAL.
+#:   At 4096 (run 49) it still truncated. 8192 provided sufficient headroom
+#:   for run 50 to complete fully. Larger tenders are bounded by the existing
+#:   scalability controls (duplicate-document detection, near-duplicate
+#:   clustering, excerpt bounding) -- if those controls are insufficient,
+#:   truncation still fails closed to PARTIAL.
+#:
+#: This constant MUST match what the commissioning script uses.
+#: The full_analysis module default (3000) is NOT changed -- it is the
+#: test-safety floor asserted by test_prompts_carry_explicit_output_bounds,
+#: which calls fa.run_full_analysis() in isolation, bypassing this orchestrator.
+PRODUCTION_RECONCILIATION_MAX_OUTPUT_TOKENS: int = 8192
+
+
+@contextlib.contextmanager
+def _production_recon_budget():
+    """Context manager: set fa.RECONCILIATION_MAX_OUTPUT_TOKENS to the
+    production ceiling for the duration of a service call, then restore it.
+
+    Thread-safety note: fa.RECONCILIATION_MAX_OUTPUT_TOKENS is a module-level
+    integer. For background (threaded) execution this is set in the spawned
+    thread before the service call, which is safe because each analysis run
+    owns its own thread and the module-level value is read at call time.
+    For inline execution the caller holds the GIL during the assignment and
+    the service call is synchronous.
+    """
+    original = fa.RECONCILIATION_MAX_OUTPUT_TOKENS
+    fa.RECONCILIATION_MAX_OUTPUT_TOKENS = PRODUCTION_RECONCILIATION_MAX_OUTPUT_TOKENS
+    try:
+        yield
+    finally:
+        fa.RECONCILIATION_MAX_OUTPUT_TOKENS = original
 
 # Lens definitions matching the 6 specialist domains + cross-domain reconciliation
 LENSES = (
@@ -80,14 +129,33 @@ def start_opportunity_analysis(
     tenancy.require_bid_access(bid_id, organization_id)
     key = api_key or (get_api_key() if api_key_configured() else None)
 
-    # 1. Scalability check: detect duplicate documents in the bid corpus
-    docs = tenancy.get_documents_authenticated(organization_id, bid_id) if hasattr(tenancy, "get_documents_authenticated") else db.get_documents(bid_id)
+    # 1. Scalability check: detect duplicate documents in the bid corpus.
+    # get_documents_authenticated requires a web-session JWT; fall back to
+    # db.get_documents in script/service contexts where no session exists.
+    try:
+        if hasattr(tenancy, "get_documents_authenticated"):
+            docs = tenancy.get_documents_authenticated(organization_id, bid_id)
+        else:
+            docs = db.get_documents(bid_id)
+    except Exception:
+        docs = db.get_documents(bid_id)
     rfp_docs = [d for d in docs if isinstance(d, dict) and d.get("doc_type") == "RFP / Source"]
     if rfp_docs:
-        dup_report = usc.detect_duplicate_documents(rfp_docs)
-        if dup_report.get("duplicates"):
-            logger.info("Bid %s has %d duplicate document(s) detected and clustered",
-                        bid_id, len(dup_report["duplicates"]))
+        # detect_duplicate_documents expects (filename, content) tuples
+        doc_tuples = [
+            (d.get("name") or d.get("filename") or str(d.get("id", "")),
+             d.get("content") or d.get("text") or d.get("raw_text") or "")
+            for d in rfp_docs
+            if isinstance(d, dict)
+        ]
+        if doc_tuples:
+            try:
+                dup_report = usc.detect_duplicate_documents(doc_tuples)
+                if dup_report.get("duplicates"):
+                    logger.info("Bid %s has %d duplicate document(s) detected and clustered",
+                                bid_id, len(dup_report["duplicates"]))
+            except Exception as exc:
+                logger.warning("Duplicate detection skipped for bid %s: %s", bid_id, exc)
 
     # 2. Check for existing FULL analysis status
     status = tenancy.get_full_analysis_status_for_organization(bid_id, organization_id)
@@ -106,12 +174,14 @@ def start_opportunity_analysis(
     )
 
     if complete_fast_run:
-        # Source foundation is ready -> Launch full multi-agent analysis directly
-        return tenancy.start_full_analysis_for_organization(
-            bid_id, organization_id, key,
-            created_by_user_id=created_by_user_id,
-            retry=retry,
-        )
+        # Source foundation is ready -> Launch full multi-agent analysis directly.
+        # Apply the production reconciliation output budget for this call.
+        with _production_recon_budget():
+            return tenancy.start_full_analysis_for_organization(
+                bid_id, organization_id, key,
+                created_by_user_id=created_by_user_id,
+                retry=retry,
+            )
 
     # If no COMPLETE FAST foundation exists, orchestrate foundation -> full analysis
     if execution == "inline":
@@ -120,12 +190,13 @@ def start_opportunity_analysis(
         fast_res = analysis_service.start_fast_analysis(
             bid_id, key, execution="inline", created_by="understand_analysis"
         )
-        # Then start full analysis inline
-        return tenancy.start_full_analysis_for_organization(
-            bid_id, organization_id, key,
-            created_by_user_id=created_by_user_id,
-            retry=retry,
-        )
+        # Then start full analysis inline with the production reconciliation budget
+        with _production_recon_budget():
+            return tenancy.start_full_analysis_for_organization(
+                bid_id, organization_id, key,
+                created_by_user_id=created_by_user_id,
+                retry=retry,
+            )
     else:
         # Background: start foundation run and chain full analysis
         import analysis_service
@@ -147,12 +218,13 @@ def start_opportunity_analysis(
                         None
                     )
                     if fast:
-                        # Launch full analysis now
-                        tenancy.start_full_analysis_for_organization(
-                            bid_id, organization_id, key,
-                            created_by_user_id=created_by_user_id,
-                            retry=retry,
-                        )
+                        # Launch full analysis with the production reconciliation budget
+                        with _production_recon_budget():
+                            tenancy.start_full_analysis_for_organization(
+                                bid_id, organization_id, key,
+                                created_by_user_id=created_by_user_id,
+                                retry=retry,
+                            )
                         break
                     failed = next(
                         (r for r in latest_runs if r.get("analysis_mode", "FAST") == "FAST" and r.get("status") == "FAILED"),

@@ -21,6 +21,25 @@ Where to look, not what everything means. Read
 
 ## By subsystem
 
+**UNDERSTAND — Analyze Opportunity (production path)**
+- `understand_analysis.py` — unified production orchestrator. The one point of
+  entry for `Analyze Opportunity`. Owns `PRODUCTION_RECONCILIATION_MAX_OUTPUT_TOKENS = 8192`
+  and `_production_recon_budget()` context manager, which sets the reconciliation
+  ceiling around every service call and restores the module default on exit.
+  Do NOT touch `full_analysis.py` to change the production ceiling — it is frozen
+  and its default (3000) is a test-safety floor only.
+- `pages/stage_understand.py` — UI; "Analyze Opportunity" button (line ~344).
+- `tenancy.start_full_analysis_for_organization()` — auth wrapper called by orchestrator.
+- `full_analysis_service.py` / `full_analysis.py` — service and engine (frozen vs b488749).
+- Tests: `tests/test_understand_analysis.py` — includes `TestProductionReconBudget`
+  (10 deterministic tests: constant value, context manager save/restore, budget
+  applied during call, module default restored after call, commissioning script
+  uses the same constant, truncation semantics preserved).
+- Commissioning: `scripts/run_calgary_1417_commissioning.py` (uses
+  `ua._production_recon_budget()`), `scripts/run_calgary_1417_production_path.py`
+  (end-to-end production-path acceptance script, calls `ua.start_opportunity_analysis()`
+  directly).
+
 **UNDERSTAND Bid Intelligence Brief** (primary customer export)
 - `understand_brief.py` -- pure, deterministic selection model over a
   completed `FastAnalysisResult`: identity gate, bounded scope/evaluation/
