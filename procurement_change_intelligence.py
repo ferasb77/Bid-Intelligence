@@ -147,10 +147,10 @@ class ImmutableRevisionError(PCIEngineError):
 # 3. Document Classification & Chronology Extraction (Sections 5 & 7)
 # ═══════════════════════════════════════════════════════════════════════════
 
-_ADDENDUM_NUM_RE = re.compile(r'\b(?:addend(?:um|a)|bulletin)\s*#?\s*0*(\d+)\b', re.IGNORECASE)
-_AMENDMENT_NUM_RE = re.compile(r'\b(?:amendment|amend)\s*#?\s*0*(\d+)\b', re.IGNORECASE)
-_QA_NUM_RE = re.compile(r'\b(?:clarifications?|q\s*&?\s*a|round)\s*#?\s*0*(\d+)\b', re.IGNORECASE)
-_VERSION_NUM_RE = re.compile(r'[_\-\s](?:v|rev|version)\s*0*(\d+)\b', re.IGNORECASE)
+_ADDENDUM_NUM_RE = re.compile(r'(?:addend(?:um|a)|bulletin)[_\s]*#?[_\s]*0*(\d+)\b', re.IGNORECASE)
+_AMENDMENT_NUM_RE = re.compile(r'(?:amendment|amend)[_\s]*#?[_\s]*0*(\d+)\b', re.IGNORECASE)
+_QA_NUM_RE = re.compile(r'(?:clarifications?|q\s*&?\s*a|round)[_\s]*#?[_\s]*0*(\d+)\b', re.IGNORECASE)
+_VERSION_NUM_RE = re.compile(r'[_\-\s](?:v|rev|version)[_\s]*0*(\d+)\b', re.IGNORECASE)
 _QA_RE = re.compile(r'\b(?:q\s*&?\s*a|questions?\s+(?:and|&)\s+answers?)\b', re.IGNORECASE)
 _CLARIFICATION_RE = re.compile(r'\bclarifications?\b', re.IGNORECASE)
 _REPLACEMENT_RE = re.compile(r'\b(?:replacement|replaces?|supersed(?:es?|ing))\b', re.IGNORECASE)
@@ -573,29 +573,38 @@ def derive_current_authoritative_state(
     current_rev_fp = ""
 
     for rev in ordered_revs:
-        current_rev_num = rev.revision_number
-        current_rev_fp = rev.fingerprint
-        history_chain.append(rev.revision_number)
+        # All-or-nothing check: if this revision is unapplied (pending review or chronology unresolved),
+        # none of its changes can mutate canonical truth.
+        rev_has_pending = rev.chronology_unresolved or any(
+            c.change_type == CHANGE_CONFLICTS_WITH
+            or c.review_status in (REVIEW_STATUS_HUMAN_REVIEW_REQUIRED, REVIEW_STATUS_PENDING)
+            for c in rev.change_set.changes
+        )
 
-        for change in rev.change_set.changes:
-            # 1. Ambiguous precedence / conflict / unresolved chronology requiring review (Section 10)
-            if (
-                change.change_type == CHANGE_CONFLICTS_WITH
-                or change.review_status == REVIEW_STATUS_HUMAN_REVIEW_REQUIRED
-                or rev.chronology_unresolved
-            ):
-                if rev.chronology_unresolved:
+        if rev_has_pending:
+            for change in rev.change_set.changes:
+                if (
+                    change.change_type == CHANGE_CONFLICTS_WITH
+                    or change.review_status in (REVIEW_STATUS_HUMAN_REVIEW_REQUIRED, REVIEW_STATUS_PENDING)
+                    or rev.chronology_unresolved
+                ):
                     meta = copy.deepcopy(change.metadata) if change.metadata else {}
-                    meta["chronology_unresolved"] = True
+                    if rev.chronology_unresolved:
+                        meta["chronology_unresolved"] = True
                     conflict_change = replace(
                         change,
                         review_status=REVIEW_STATUS_HUMAN_REVIEW_REQUIRED,
                         metadata=meta,
                     )
-                else:
-                    conflict_change = change
-                pending_conflicts.append(conflict_change)
-                # Keep active fact intact -- do not auto-resolve or silently rewrite!
+                    pending_conflicts.append(conflict_change)
+            continue
+
+        current_rev_num = rev.revision_number
+        current_rev_fp = rev.fingerprint
+        history_chain.append(rev.revision_number)
+
+        for change in rev.change_set.changes:
+            if change.review_status == REVIEW_STATUS_REJECTED:
                 continue
 
             # 2. Artifact Replacement (Section 11)
@@ -816,12 +825,13 @@ class InMemoryPCIStorage(PCIBaseStorage):
     def load_revisions(self, bid_id: int, organization_id: str) -> list[ProcurementRevision]:
         self.verify_tenancy(bid_id, organization_id)
         with self._lock:
-            reviews = [r for r in self.reviews.get(bid_id, []) if r.get("status") == "applied"]
+            reviews = [r for r in self.reviews.get(bid_id, []) if r.get("status") in ("applied", "ready_for_review", "reviewed")]
 
             revisions = []
+            applied_rev_ids = set()
             for r in reviews:
                 rid = r["id"]
-                rev_num = r.get("resulting_procurement_revision", 0)
+                rev_num = r.get("resulting_procurement_revision") if r.get("resulting_procurement_revision") is not None else (r.get("base_procurement_revision", 0) + 1 if r.get("review_kind") != "baseline" else 0)
                 base_rev = r.get("base_procurement_revision", 0)
 
                 # Documents
@@ -866,8 +876,10 @@ class InMemoryPCIStorage(PCIBaseStorage):
                 for c in change_rows:
                     nv = c.get("new_value") or {}
                     fact_review_status = nv.get("review_status") or c.get("review_decision") or REVIEW_STATUS_APPROVED
-                    if chronology_unresolved:
+                    if chronology_unresolved or c.get("review_decision") == "pending":
                         fact_review_status = REVIEW_STATUS_HUMAN_REVIEW_REQUIRED
+                    elif c.get("review_decision") == "rejected":
+                        fact_review_status = REVIEW_STATUS_REJECTED
 
                     fact_changes.append(
                         FactChange(
@@ -896,10 +908,14 @@ class InMemoryPCIStorage(PCIBaseStorage):
                 )
 
                 parent_id = f"bid-{bid_id}-rev-{base_rev}" if rev_num > 0 else None
+                rev_id = r.get("idempotency_key") or f"bid-{bid_id}-rev-{rid}"
+                if r.get("status") == "applied":
+                    applied_rev_ids.add(rev_id)
+
                 revisions.append(
                     ProcurementRevision(
                         revision_number=rev_num,
-                        revision_id=r.get("idempotency_key") or f"bid-{bid_id}-rev-{rid}",
+                        revision_id=rev_id,
                         parent_revision_id=parent_id,
                         buyer_chronology_index=chrono_idx,
                         buyer_issued_date=r.get("buyer_issued_date"),
@@ -914,8 +930,9 @@ class InMemoryPCIStorage(PCIBaseStorage):
 
             # Replay strictly in buyer chronology order, then revision number
             revisions.sort(key=lambda rev: (rev.buyer_chronology_index, rev.revision_number))
-            if revisions:
-                revisions[-1].is_current = True
+            applied_revs = [rev for rev in revisions if rev.revision_id in applied_rev_ids]
+            if applied_revs:
+                applied_revs[-1].is_current = True
             return revisions
 
     def persist_revision(
@@ -998,7 +1015,18 @@ class InMemoryPCIStorage(PCIBaseStorage):
             # Stage Changes
             change_rows = []
             canonical_change_count = 0
+            doc_map = {d["document_id"]: d.get("content_hash") for d in revision.trigger_documents}
             for c in revision.change_set.changes:
+                if c.source_document_id is None or c.source_document_id not in doc_map:
+                    raise ValueError(
+                        f"Missing or invalid source_document_id '{c.source_document_id}' for fact '{c.entity_id}'."
+                    )
+                if doc_map.get(c.source_document_id) and c.source_hash != doc_map[c.source_document_id]:
+                    raise ValueError(
+                        f"Mismatched source_hash for fact '{c.entity_id}': fact has '{c.source_hash}', "
+                        f"but source document {c.source_document_id} has content_hash '{doc_map[c.source_document_id]}'."
+                    )
+
                 cid = self._next_change_id
                 self._next_change_id += 1
 
@@ -1020,15 +1048,25 @@ class InMemoryPCIStorage(PCIBaseStorage):
                 if canon_effect == "canonical_change":
                     canonical_change_count += 1
 
+                # Decision mapping (Section 8 & 10)
+                if revision.chronology_unresolved or c.change_type == CHANGE_CONFLICTS_WITH:
+                    decision = "pending"
+                elif c.review_status == REVIEW_STATUS_APPROVED:
+                    decision = "approved"
+                elif c.review_status == REVIEW_STATUS_REJECTED:
+                    decision = "rejected"
+                else:
+                    decision = "pending"
+
                 change_rows.append({
                     "id": cid,
                     "review_id": rid,
                     "bid_id": bid_id,
                     "organization_id": organization_id,
-                    "review_decision": "approved",
+                    "review_decision": decision,
                     "applied_at": None,
                     "procurement_revision": None,
-                    "source_document_id": c.source_document_id or revision.trigger_documents[0]["document_id"],
+                    "source_document_id": c.source_document_id,
                     "source_document_hash": c.source_hash,
                     "physical_source_ref": c.source_document,
                     "entity_type": c.fact_type.lower() if c.fact_type.lower() in ("requirement", "bid_brief_field", "deliverable", "outline_section") else "other",
@@ -1047,12 +1085,43 @@ class InMemoryPCIStorage(PCIBaseStorage):
                 })
             self.changes[rid] = change_rows
 
+            # Governed Apply Gate (all-or-nothing): check if any unapproved/pending or chronology unresolved
+            has_unapproved = any(
+                ch["review_decision"] in ("pending", "rejected") for ch in change_rows
+            ) or any(
+                c.review_status != REVIEW_STATUS_APPROVED for c in revision.change_set.changes
+            )
+            if has_unapproved or revision.chronology_unresolved:
+                review_row = {
+                    "id": rid,
+                    "bid_id": bid_id,
+                    "organization_id": organization_id,
+                    "review_kind": review_kind,
+                    "buyer_update_type": revision.trigger_documents[0].get("document_change_type", "Addendum") if revision.trigger_documents else "Other",
+                    "buyer_issued_date": revision.buyer_issued_date,
+                    "status": "ready_for_review",
+                    "base_procurement_revision": current_rev,
+                    "resulting_procurement_revision": None,
+                    "document_set_digest": revision.fingerprint,
+                    "idempotency_key": revision.revision_id,
+                    "no_canonical_change": False,
+                    "review_note": note_val,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "applied_at": None,
+                }
+                self.reviews.setdefault(bid_id, []).append(review_row)
+                return
+
             # Atomic Apply
             applied_time = datetime.now(timezone.utc).isoformat()
+            approved_canonical_count = sum(
+                1 for ch in change_rows
+                if ch["review_decision"] == "approved" and ch["canonical_effect"] == "canonical_change"
+            )
             if review_kind == "baseline":
                 new_rev = revision.revision_number
                 no_canonical = False
-            elif canonical_change_count > 0:
+            elif approved_canonical_count > 0:
                 new_rev = current_rev + 1
                 no_canonical = False
             else:
@@ -1063,8 +1132,9 @@ class InMemoryPCIStorage(PCIBaseStorage):
             bid["procurement_truth_status"] = "governed"
 
             for ch in change_rows:
-                ch["applied_at"] = applied_time
-                ch["procurement_revision"] = new_rev
+                if ch["review_decision"] == "approved":
+                    ch["applied_at"] = applied_time
+                    ch["procurement_revision"] = new_rev
 
             review_row = {
                 "id": rid,
@@ -1148,12 +1218,13 @@ class PCIDatabaseStorage(PCIBaseStorage):
         if not reviews:
             import database
             reviews = database.get_procurement_update_reviews(bid_id)
-        applied_reviews = [r for r in reviews if r.get("status") == "applied"]
+        applied_reviews = [r for r in reviews if r.get("status") in ("applied", "ready_for_review", "reviewed")]
 
         revisions = []
+        applied_rev_ids = set()
         for r in applied_reviews:
             rid = r["id"]
-            rev_num = r.get("resulting_procurement_revision", 0)
+            rev_num = r.get("resulting_procurement_revision") if r.get("resulting_procurement_revision") is not None else (r.get("base_procurement_revision", 0) + 1 if r.get("review_kind") != "baseline" else 0)
             base_rev = r.get("base_procurement_revision", 0)
 
             # Load review docs
@@ -1217,8 +1288,10 @@ class PCIDatabaseStorage(PCIBaseStorage):
             for c in change_rows:
                 nv = c.get("new_value") or {}
                 fact_review_status = nv.get("review_status") or c.get("review_decision") or REVIEW_STATUS_APPROVED
-                if chronology_unresolved:
+                if chronology_unresolved or c.get("review_decision") == "pending":
                     fact_review_status = REVIEW_STATUS_HUMAN_REVIEW_REQUIRED
+                elif c.get("review_decision") == "rejected":
+                    fact_review_status = REVIEW_STATUS_REJECTED
 
                 fact_changes.append(
                     FactChange(
@@ -1246,10 +1319,14 @@ class PCIDatabaseStorage(PCIBaseStorage):
             )
 
             parent_id = f"bid-{bid_id}-rev-{base_rev}" if rev_num > 0 else None
+            rev_id = r.get("idempotency_key") or f"bid-{bid_id}-rev-{rid}"
+            if r.get("status") == "applied":
+                applied_rev_ids.add(rev_id)
+
             revisions.append(
                 ProcurementRevision(
                     revision_number=rev_num,
-                    revision_id=r.get("idempotency_key") or f"bid-{bid_id}-rev-{rid}",
+                    revision_id=rev_id,
                     parent_revision_id=parent_id,
                     buyer_chronology_index=chrono_idx,
                     buyer_issued_date=r.get("buyer_issued_date"),
@@ -1264,8 +1341,9 @@ class PCIDatabaseStorage(PCIBaseStorage):
 
         # Sort revisions strictly by buyer chronology index, then revision number
         revisions.sort(key=lambda rev: (rev.buyer_chronology_index, rev.revision_number))
-        if revisions:
-            revisions[-1].is_current = True
+        applied_revs = [rev for rev in revisions if rev.revision_id in applied_rev_ids]
+        if applied_revs:
+            applied_revs[-1].is_current = True
         return revisions
 
     def persist_revision(
@@ -1351,8 +1429,19 @@ class PCIDatabaseStorage(PCIBaseStorage):
                 return
 
         # 3. Governed Lifecycle Step 2: stage proposed changes (pending, not applied)
+        doc_map = {d["document_id"]: d.get("content_hash") for d in revision.trigger_documents}
         change_rows = []
         for c in revision.change_set.changes:
+            if c.source_document_id is None or c.source_document_id not in doc_ids:
+                raise ValueError(
+                    f"Missing or invalid source_document_id '{c.source_document_id}' for fact '{c.entity_id}'."
+                )
+            if doc_map.get(c.source_document_id) and c.source_hash != doc_map[c.source_document_id]:
+                raise ValueError(
+                    f"Mismatched source_hash for fact '{c.entity_id}': fact has '{c.source_hash}', "
+                    f"but source document {c.source_document_id} has content_hash '{doc_map[c.source_document_id]}'."
+                )
+
             db_change_type = c.change_type
             if c.change_type in (CHANGE_REPLACES, CHANGE_CORRECTS, CHANGE_NARROWS, CHANGE_EXPANDS, CHANGE_CONFLICTS_WITH):
                 db_change_type = "MODIFIED"
@@ -1370,7 +1459,7 @@ class PCIDatabaseStorage(PCIBaseStorage):
             canon_effect = "evidence_only" if db_change_type == "UNCHANGED" else "canonical_change"
             entity_type = c.fact_type.lower() if c.fact_type.lower() in ("requirement", "bid_brief_field", "deliverable", "outline_section") else "other"
 
-            doc_id_for_change = c.source_document_id or doc_ids[0]
+            doc_id_for_change = c.source_document_id
 
             change_rows.append({
                 "review_id": review_id,
@@ -1407,17 +1496,49 @@ class PCIDatabaseStorage(PCIBaseStorage):
         }).eq("id", review_id).execute()
 
         # 5. Governed Lifecycle Step 4: record change review decisions
-        staged_changes = sb.table("procurement_changes").select("id,review_decision").eq("review_id", review_id).execute().data or []
+        staged_changes = sb.table("procurement_changes").select("id,entity_id,change_type,new_value,review_decision").eq("review_id", review_id).execute().data or []
         for sc in staged_changes:
             if sc.get("review_decision") == "pending":
-                sb.rpc("record_change_review_decision", {
-                    "p_change_id": sc["id"],
-                    "p_decision": "approved",
-                    "p_actor_user_id": None,
-                    "p_review_note": None,
-                }).execute()
+                nv = sc.get("new_value") or {}
+                fact_rev_status = nv.get("review_status")
+                pci_change_type = nv.get("pci_change_type")
 
-        # 6. Governed Lifecycle Step 5: atomic apply via apply_procurement_update_review RPC
+                # If chronology is unresolved or fact conflicts, it cannot be auto-approved
+                if revision.chronology_unresolved or pci_change_type == CHANGE_CONFLICTS_WITH:
+                    continue
+
+                if fact_rev_status == REVIEW_STATUS_APPROVED:
+                    sb.rpc("record_change_review_decision", {
+                        "p_change_id": sc["id"],
+                        "p_decision": "approved",
+                        "p_actor_user_id": None,
+                        "p_review_note": None,
+                    }).execute()
+                elif fact_rev_status == REVIEW_STATUS_REJECTED:
+                    sb.rpc("record_change_review_decision", {
+                        "p_change_id": sc["id"],
+                        "p_decision": "rejected",
+                        "p_actor_user_id": None,
+                        "p_review_note": None,
+                    }).execute()
+
+        # 6. Governed Lifecycle Step 5: check apply gate (all-or-nothing)
+        cur_changes = sb.table("procurement_changes").select("review_decision").eq("review_id", review_id).execute().data or []
+        has_unapproved = any(
+            c.get("review_decision") in ("pending", "rejected") for c in cur_changes
+        ) or any(
+            c.review_status != REVIEW_STATUS_APPROVED for c in revision.change_set.changes
+        )
+
+        if has_unapproved or revision.chronology_unresolved:
+            logger.info(
+                "Review %s has pending/rejected changes or unresolved chronology. "
+                "Review remains in 'ready_for_review' pending human adjudication.",
+                review_id,
+            )
+            return
+
+        # 7. Governed Lifecycle Step 6: atomic apply via apply_procurement_update_review RPC
         base_rev = expected_base_revision if expected_base_revision is not None else 0
         try:
             sb.rpc("apply_procurement_update_review", {
@@ -1553,12 +1674,30 @@ class ProcurementRevisionManager:
             if [d["role"] for d in src_docs].count("primary") != 1:
                 raise ValueError("Baseline requires exactly one primary document.")
 
-            # Require real source_hash on all initial facts
+            # Build doc_map
+            doc_map = {d["document_id"]: d["content_hash"] for d in src_docs}
+
+            # Require real source_document_id and matching source_hash on all initial facts
             for c in initial_facts:
+                if c.source_document_id is None or not isinstance(c.source_document_id, int):
+                    raise ValueError(
+                        f"Missing required integer source_document_id for fact '{c.entity_id}'. "
+                        "Every fact change must cite an explicit source_document_id matching a trigger document."
+                    )
+                if c.source_document_id not in doc_map:
+                    raise ValueError(
+                        f"Unknown source_document_id {c.source_document_id} for fact '{c.entity_id}'. "
+                        f"Must match one of the trigger documents: {list(doc_map.keys())}."
+                    )
                 if not c.source_hash or not str(c.source_hash).strip():
                     raise ValueError(
                         f"Missing required source_hash for fact '{c.entity_id}'. "
                         "Every fact change must cite a verified source document hash."
+                    )
+                if c.source_hash != doc_map[c.source_document_id]:
+                    raise ValueError(
+                        f"Mismatched source_hash for fact '{c.entity_id}': fact has '{c.source_hash}', "
+                        f"but source document {c.source_document_id} has content_hash '{doc_map[c.source_document_id]}'."
                     )
 
             # Build ChangeSet for Revision 0
@@ -1571,7 +1710,7 @@ class ProcurementRevisionManager:
                     after_value=c.after_value,
                     source_document=c.source_document,
                     source_hash=c.source_hash,
-                    source_document_id=c.source_document_id or src_docs[0]["document_id"],
+                    source_document_id=c.source_document_id,
                     authority_status=AUTHORITY_CURRENT,
                     review_status=REVIEW_STATUS_APPROVED,
                     metadata=c.metadata,
@@ -1738,21 +1877,56 @@ class ProcurementRevisionManager:
             if [d["role"] for d in src_docs].count("primary") != 1:
                 raise ValueError("Buyer update requires exactly one primary document.")
 
-            # If chronology is unresolved, mark changes with HUMAN_REVIEW_REQUIRED
+            doc_map = {d["document_id"]: d["content_hash"] for d in src_docs}
+
+            # Require real source_document_id and matching source_hash on all fact changes
+            for c in changes:
+                if c.source_document_id is None or not isinstance(c.source_document_id, int):
+                    raise ValueError(
+                        f"Missing required integer source_document_id for fact '{c.entity_id}'. "
+                        "Every fact change must cite an explicit source_document_id matching a trigger document."
+                    )
+                if c.source_document_id not in doc_map:
+                    raise ValueError(
+                        f"Unknown source_document_id {c.source_document_id} for fact '{c.entity_id}'. "
+                        f"Must match one of the trigger documents: {list(doc_map.keys())}."
+                    )
+                if not c.source_hash or not str(c.source_hash).strip():
+                    raise ValueError(
+                        f"Missing required source_hash for fact '{c.entity_id}'. "
+                        "Every fact change must cite a verified source document hash."
+                    )
+                if c.source_hash != doc_map[c.source_document_id]:
+                    raise ValueError(
+                        f"Mismatched source_hash for fact '{c.entity_id}': fact has '{c.source_hash}', "
+                        f"but source document {c.source_document_id} has content_hash '{doc_map[c.source_document_id]}'."
+                    )
+
+            # If chronology is unresolved or change is CONFLICTS_WITH, mark changes with HUMAN_REVIEW_REQUIRED
             prepared_changes = []
             for c in changes:
                 meta = copy.deepcopy(c.metadata) if c.metadata else {}
                 rev_status = c.review_status
-                if chronology_unresolved:
+                if chronology_unresolved or c.change_type == CHANGE_CONFLICTS_WITH:
                     rev_status = REVIEW_STATUS_HUMAN_REVIEW_REQUIRED
-                    meta["chronology_unresolved"] = True
+                    if chronology_unresolved:
+                        meta["chronology_unresolved"] = True
                 c_prepared = replace(
                     c,
-                    source_document_id=c.source_document_id or src_docs[0]["document_id"],
+                    source_document_id=c.source_document_id,
                     review_status=rev_status,
                     metadata=meta,
                 )
                 prepared_changes.append(c_prepared)
+
+            is_pending_review = bool(
+                chronology_unresolved
+                or any(
+                    c.review_status != REVIEW_STATUS_APPROVED
+                    or c.change_type == CHANGE_CONFLICTS_WITH
+                    for c in prepared_changes
+                )
+            )
 
             # Build ChangeSet
             changeset_fp = compute_changeset_fingerprint(
@@ -1781,7 +1955,7 @@ class ProcurementRevisionManager:
                 trigger_documents=src_docs,
                 change_set=changeset,
                 fingerprint=rev_fp,
-                is_current=True,
+                is_current=(not is_pending_review),
                 chronology_unresolved=chronology_unresolved,
                 no_canonical_change=(not has_semantic_changes),
             )
@@ -1791,12 +1965,13 @@ class ProcurementRevisionManager:
                 self.bid_id, self.organization_id, new_revision, expected_base_revision=persisted_rev
             )
 
-            # Immutability: Prior revisions remain immutable; un-mark is_current
-            for i, r in enumerate(self._all_revisions):
-                if r.is_current:
-                    unmarked_rev = replace(r, is_current=False)
-                    self._all_revisions[i] = unmarked_rev
-                    self._revisions[r.revision_number] = unmarked_rev
+            # Immutability: Prior revisions remain immutable; un-mark is_current ONLY if this revision was applied
+            if not is_pending_review:
+                for i, r in enumerate(self._all_revisions):
+                    if r.is_current:
+                        unmarked_rev = replace(r, is_current=False)
+                        self._all_revisions[i] = unmarked_rev
+                        self._revisions[r.revision_number] = unmarked_rev
 
             self._all_revisions.append(new_revision)
             self._revisions[next_rev_num] = new_revision
@@ -1806,9 +1981,10 @@ class ProcurementRevisionManager:
             return {
                 "outcome": outcome,
                 "revision": new_revision,
-                "current_revision": next_rev_num,
+                "current_revision": current_rev if is_pending_review else next_rev_num,
                 "has_semantic_changes": has_semantic_changes,
                 "chronology_unresolved": chronology_unresolved,
+                "review_status": "ready_for_review" if is_pending_review else "applied",
             }
 
     def get_fact_history(self, entity_id: str) -> list[dict[str, Any]]:

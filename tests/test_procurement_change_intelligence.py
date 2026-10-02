@@ -60,6 +60,7 @@ class TestPCIFixturesAndInvariants(unittest.TestCase):
                 after_value="2026-10-22T16:00:00",
                 source_document="City_of_Calgary_RFP_26_1610.pdf",
                 source_hash="hash_rfp_main",
+                source_document_id=100,
             ),
             pci.FactChange(
                 change_type=pci.CHANGE_ADDS,
@@ -69,6 +70,7 @@ class TestPCIFixturesAndInvariants(unittest.TestCase):
                 after_value=30,
                 source_document="City_of_Calgary_RFP_26_1610.pdf",
                 source_hash="hash_rfp_main",
+                source_document_id=100,
             ),
             pci.FactChange(
                 change_type=pci.CHANGE_ADDS,
@@ -78,6 +80,7 @@ class TestPCIFixturesAndInvariants(unittest.TestCase):
                 after_value="5,000,000 CAD",
                 source_document="City_of_Calgary_RFP_26_1610.pdf",
                 source_hash="hash_rfp_main",
+                source_document_id=100,
             ),
             pci.FactChange(
                 change_type=pci.CHANGE_ADDS,
@@ -87,6 +90,7 @@ class TestPCIFixturesAndInvariants(unittest.TestCase):
                 after_value="Hybrid delivery permitted",
                 source_document="City_of_Calgary_RFP_26_1610.pdf",
                 source_hash="hash_rfp_main",
+                source_document_id=100,
             ),
             pci.FactChange(
                 change_type=pci.CHANGE_ADDS,
@@ -96,6 +100,7 @@ class TestPCIFixturesAndInvariants(unittest.TestCase):
                 after_value={"name": "Appendix D - Pricing Form.xlsx", "content_hash": "hash_pricing_v1"},
                 source_document="City_of_Calgary_RFP_26_1610.pdf",
                 source_hash="hash_rfp_main",
+                source_document_id=100,
             ),
         ]
         rev0 = self.manager.create_baseline_revision(rfp_docs, baseline_facts, buyer_issued_date="2026-10-01")
@@ -126,6 +131,7 @@ class TestPCIFixturesAndInvariants(unittest.TestCase):
                 after_value="2026-10-29T16:00:00",
                 source_document="Addendum 1.pdf",
                 source_hash="hash_addendum_1",
+                source_document_id=101,
             )
         ]
         res = self.manager.add_buyer_update_revision(addendum_doc, changes, buyer_issued_date="2026-10-05")
@@ -159,6 +165,7 @@ class TestPCIFixturesAndInvariants(unittest.TestCase):
                 after_value=35,
                 source_document="Addendum 1 - Criteria Update.pdf",
                 source_hash="hash_addendum_criteria",
+                source_document_id=102,
             )
         ]
         res = self.manager.add_buyer_update_revision(addendum_doc, changes, buyer_issued_date="2026-10-06")
@@ -184,6 +191,7 @@ class TestPCIFixturesAndInvariants(unittest.TestCase):
                 after_value="Hybrid delivery permitted with minimum 25% on-site presence",
                 source_document="Clarification Q&A #1.pdf",
                 source_hash="hash_qa_1",
+                source_document_id=103,
             )
         ]
         res = self.manager.add_buyer_update_revision(qa_doc, changes, buyer_issued_date="2026-10-07")
@@ -210,6 +218,7 @@ class TestPCIFixturesAndInvariants(unittest.TestCase):
                 after_value={"name": "Appendix D - Pricing Form (Rev 1).xlsx", "content_hash": "hash_pricing_v2"},
                 source_document="Addendum 2 - Replacement Appendix D.xlsx",
                 source_hash="hash_pricing_v2",
+                source_document_id=104,
             )
         ]
         res = self.manager.add_buyer_update_revision(replace_doc, changes, buyer_issued_date="2026-10-08")
@@ -245,6 +254,7 @@ class TestPCIFixturesAndInvariants(unittest.TestCase):
                 after_value="2026-10-29T16:00:00",
                 source_document="Addendum 1.pdf",
                 source_hash="hash_addendum_1",
+                source_document_id=101,
             )
         ]
         # First upload
@@ -277,6 +287,7 @@ class TestPCIFixturesAndInvariants(unittest.TestCase):
                 after_value="2026-11-10T16:00:00",
                 source_document="Addendum 3.pdf",
                 source_hash="hash_add_3",
+                source_document_id=107,
             )
         ]
         res3 = self.manager.add_buyer_update_revision(
@@ -295,6 +306,7 @@ class TestPCIFixturesAndInvariants(unittest.TestCase):
                 after_value="2026-11-03T16:00:00",
                 source_document="Addendum 2.pdf",
                 source_hash="hash_add_2",
+                source_document_id=106,
             )
         ]
         res2 = self.manager.add_buyer_update_revision(
@@ -324,6 +336,7 @@ class TestPCIFixturesAndInvariants(unittest.TestCase):
                 after_value="ISO 27001 required within 30 days of award",
                 source_document="Addendum 1.pdf",
                 source_hash="hash_add1",
+                source_document_id=108,
             )
         ]
         self.manager.add_buyer_update_revision(doc1, c1, buyer_issued_date="2026-10-05")
@@ -339,6 +352,7 @@ class TestPCIFixturesAndInvariants(unittest.TestCase):
                 after_value="Correction: SOC 2 Type II required at bid submission time",
                 source_document="Addendum 2.pdf",
                 source_hash="hash_add2",
+                source_document_id=109,
             )
         ]
         self.manager.add_buyer_update_revision(doc2, c2, buyer_issued_date="2026-10-08")
@@ -371,6 +385,7 @@ class TestPCIFixturesAndInvariants(unittest.TestCase):
                 after_value="Closing date might be extended to Nov 5 per verbal discussion",
                 source_document="Informal Q&A Notice.pdf",
                 source_hash="hash_informal_qa",
+                source_document_id=110,
                 authority_status=pci.AUTHORITY_AMBIGUOUS,
                 review_status=pci.REVIEW_STATUS_HUMAN_REVIEW_REQUIRED,
             )
@@ -403,6 +418,7 @@ class TestPCIFixturesAndInvariants(unittest.TestCase):
                 after_value="2026-10-31T12:00:00",
                 source_document="Addendum 1 - Schedule Only.pdf",
                 source_hash="hash_sched_only",
+                source_document_id=111,
             )
         ]
         self.manager.add_buyer_update_revision(doc, changes, buyer_issued_date="2026-10-06")
@@ -442,6 +458,7 @@ class TestPCIFixturesAndInvariants(unittest.TestCase):
                 after_value="2026-11-01T00:00:00",
                 source_document="Addendum 1.pdf",
                 source_hash="hash_add_x",
+                source_document_id=112,
             )
         ]
         self.manager.add_buyer_update_revision(doc, c)
@@ -478,6 +495,7 @@ class TestPCIFixturesAndInvariants(unittest.TestCase):
                 after_value="2026-10-25T00:00:00",
                 source_document="Addendum 1.pdf",
                 source_hash="hash_concur_1",
+                source_document_id=113,
             )
         ]
 
@@ -496,6 +514,7 @@ class TestPCIFixturesAndInvariants(unittest.TestCase):
                 after_value="2026-10-30T00:00:00",
                 source_document="Addendum 2.pdf",
                 source_hash="hash_concur_2",
+                source_document_id=114,
             )
         ]
         with self.assertRaises(pci.StaleRevisionError):
@@ -557,6 +576,7 @@ class TestMultithreadedConcurrency(unittest.TestCase):
                 after_value="2026-10-22",
                 source_document="RFP.pdf",
                 source_hash="hash_rfp",
+                source_document_id=200,
             )
         ]
         manager.create_baseline_revision(rfp_docs, baseline_facts)
@@ -575,6 +595,7 @@ class TestMultithreadedConcurrency(unittest.TestCase):
                     after_value=f"2026-10-2{thread_id}",
                     source_document=f"Addendum_{thread_id}.pdf",
                     source_hash=f"hash_worker_{thread_id}",
+                    source_document_id=200 + thread_id,
                 )
             ]
             try:
@@ -609,6 +630,7 @@ class TestSchemaMappingContract(unittest.TestCase):
             after_value="2026-10-29",
             source_document="Addendum 1.pdf",
             source_hash="hash_123",
+            source_document_id=123,
             authority_status=pci.AUTHORITY_CURRENT,
             review_status=pci.REVIEW_STATUS_APPROVED,
         )
@@ -641,6 +663,7 @@ class TestPCIDurabilityAndInvariants(unittest.TestCase):
                 after_value="2026-11-01T17:00:00",
                 source_document="RFP_Main.pdf",
                 source_hash="hash_rfp_main_001",
+                source_document_id=300,
             ),
             pci.FactChange(
                 change_type=pci.CHANGE_ADDS,
@@ -650,6 +673,7 @@ class TestPCIDurabilityAndInvariants(unittest.TestCase):
                 after_value="2,000,000 CAD",
                 source_document="RFP_Main.pdf",
                 source_hash="hash_rfp_main_001",
+                source_document_id=300,
             ),
             pci.FactChange(
                 change_type=pci.CHANGE_ADDS,
@@ -659,6 +683,7 @@ class TestPCIDurabilityAndInvariants(unittest.TestCase):
                 after_value={"name": "Pricing_Form_v1.xlsx", "content_hash": "hash_pricing_v1"},
                 source_document="RFP_Main.pdf",
                 source_hash="hash_rfp_main_001",
+                source_document_id=300,
             ),
         ]
         return mgr.create_baseline_revision(docs, facts, buyer_issued_date="2026-10-01")
@@ -692,6 +717,7 @@ class TestPCIDurabilityAndInvariants(unittest.TestCase):
                 after_value="2026-11-15T17:00:00",
                 source_document="Addendum 1.pdf",
                 source_hash="hash_add_001",
+                source_document_id=301,
             )
         ]
         mgr1.add_buyer_update_revision(doc1, c1, buyer_issued_date="2026-10-10")
@@ -719,6 +745,7 @@ class TestPCIDurabilityAndInvariants(unittest.TestCase):
                 after_value="2026-11-15T17:00:00",
                 source_document="Addendum 1.pdf",
                 source_hash="hash_add_001",
+                source_document_id=301,
             )
         ]
         mgr1.add_buyer_update_revision(doc1, c1, buyer_issued_date="2026-10-10")
@@ -733,6 +760,7 @@ class TestPCIDurabilityAndInvariants(unittest.TestCase):
                 after_value="5,000,000 CAD",
                 source_document="Addendum 2.pdf",
                 source_hash="hash_add_002",
+                source_document_id=302,
             )
         ]
         mgr1.add_buyer_update_revision(doc2, c2, buyer_issued_date="2026-10-15")
@@ -762,6 +790,7 @@ class TestPCIDurabilityAndInvariants(unittest.TestCase):
                 after_value="2026-11-20T17:00:00",
                 source_document="Addendum 1.pdf",
                 source_hash="hash_dup_check_001",
+                source_document_id=303,
             )
         ]
         res1 = mgr1.add_buyer_update_revision(doc1, c1)
@@ -789,6 +818,7 @@ class TestPCIDurabilityAndInvariants(unittest.TestCase):
                 after_value="2026-11-20T17:00:00",
                 source_document="Addendum 1.pdf",
                 source_hash="hash_add_001",
+                source_document_id=301,
             )
         ]
         mgr1.add_buyer_update_revision(doc1, c1)
@@ -816,6 +846,7 @@ class TestPCIDurabilityAndInvariants(unittest.TestCase):
                 after_value="Oral statement indicates Nov 30 deadline",
                 source_document="Ambiguous Notice.pdf",
                 source_hash="hash_ambig_001",
+                source_document_id=305,
                 authority_status=pci.AUTHORITY_AMBIGUOUS,
                 review_status=pci.REVIEW_STATUS_HUMAN_REVIEW_REQUIRED,
             )
@@ -844,6 +875,7 @@ class TestPCIDurabilityAndInvariants(unittest.TestCase):
                 after_value={"name": "Pricing_Form_v2.xlsx", "content_hash": "hash_pricing_v2"},
                 source_document="Pricing_Form_v2.xlsx",
                 source_hash="hash_pricing_v2",
+                source_document_id=306,
             )
         ]
         mgr1.add_buyer_update_revision(doc1, c1)
@@ -872,6 +904,7 @@ class TestPCIDurabilityAndInvariants(unittest.TestCase):
                 after_value="2026-11-30T17:00:00",
                 source_document="Addendum 3.pdf",
                 source_hash="hash_add_003",
+                source_document_id=308,
             )
         ]
         mgr1.add_buyer_update_revision(doc3, c3, force_chronology_index=3)
@@ -887,6 +920,7 @@ class TestPCIDurabilityAndInvariants(unittest.TestCase):
                 after_value="2026-11-20T17:00:00",
                 source_document="Addendum 2.pdf",
                 source_hash="hash_add_002",
+                source_document_id=302,
             )
         ]
         mgr1.add_buyer_update_revision(doc2, c2, force_chronology_index=2)
@@ -920,6 +954,7 @@ class TestPCIDurabilityAndInvariants(unittest.TestCase):
                 after_value="2026-11-01T17:00:00",
                 source_document="Notice to Bidders.pdf",
                 source_hash="hash_notice_001",
+                source_document_id=309,
             )
         ]
         res = mgr.add_buyer_update_revision(doc_info, c_info)
@@ -948,6 +983,7 @@ class TestPCIDurabilityAndInvariants(unittest.TestCase):
                 after_value="2026-11-01T17:00:00",
                 source_document="Notice to Bidders.pdf",
                 source_hash="hash_notice_001",
+                source_document_id=309,
             )
         ]
         mgr.add_buyer_update_revision(doc_info, c_info)
@@ -972,6 +1008,7 @@ class TestPCIDurabilityAndInvariants(unittest.TestCase):
                 after_value="2026-11-01",
                 source_document="Missing_Hash.pdf",
                 source_hash="valid_hash",
+                source_document_id=311,
             )
         ]
         with self.assertRaises(ValueError):
@@ -987,6 +1024,7 @@ class TestPCIDurabilityAndInvariants(unittest.TestCase):
                 after_value="2026-11-01",
                 source_document="Missing_Hash.pdf",
                 source_hash="",
+                source_document_id=311,
             )
         ]
         good_docs = [{"name": "Good.pdf", "content_hash": "good_hash", "document_id": 311}]
@@ -1017,7 +1055,7 @@ class TestPCIDurabilityAndInvariants(unittest.TestCase):
         instance_a = pci.ProcurementRevisionManager(self.bid_id, self.org_id, storage=self.storage)
         instance_b = pci.ProcurementRevisionManager(self.bid_id, self.org_id, storage=self.storage)
 
-        doc_a = [{"name": "Addendum A.pdf", "content_hash": "hash_a", "document_id": 312}]
+        doc_a = [{"name": "Addendum 1.pdf", "content_hash": "hash_a", "document_id": 312}]
         c_a = [
             pci.FactChange(
                 change_type=pci.CHANGE_SUPERSEDES,
@@ -1025,15 +1063,16 @@ class TestPCIDurabilityAndInvariants(unittest.TestCase):
                 entity_id="deadline.submission",
                 before_value="2026-11-01T17:00:00",
                 after_value="2026-11-20T17:00:00",
-                source_document="Addendum A.pdf",
+                source_document="Addendum 1.pdf",
                 source_hash="hash_a",
+                source_document_id=312,
             )
         ]
         # Instance A commits revision 1 expecting base 0
         instance_a.add_buyer_update_revision(doc_a, c_a, expected_base_revision=0)
 
         # Instance B attempts to commit revision expecting base 0
-        doc_b = [{"name": "Addendum B.pdf", "content_hash": "hash_b", "document_id": 313}]
+        doc_b = [{"name": "Addendum 2.pdf", "content_hash": "hash_b", "document_id": 313}]
         c_b = [
             pci.FactChange(
                 change_type=pci.CHANGE_SUPERSEDES,
@@ -1041,8 +1080,9 @@ class TestPCIDurabilityAndInvariants(unittest.TestCase):
                 entity_id="deadline.submission",
                 before_value="2026-11-01T17:00:00",
                 after_value="2026-11-25T17:00:00",
-                source_document="Addendum B.pdf",
+                source_document="Addendum 2.pdf",
                 source_hash="hash_b",
+                source_document_id=313,
             )
         ]
         with self.assertRaises(pci.StaleRevisionError):
@@ -1068,6 +1108,7 @@ class TestStorageConcurrency(unittest.TestCase):
                 after_value="2026-10-22",
                 source_document="RFP.pdf",
                 source_hash="hash_rfp_c",
+                source_document_id=320,
             )
         ]
         init_mgr.create_baseline_revision(rfp_docs, baseline_facts)
@@ -1087,6 +1128,7 @@ class TestStorageConcurrency(unittest.TestCase):
                     after_value=f"2026-10-2{worker_id}",
                     source_document=f"Addendum_{worker_id}.pdf",
                     source_hash=f"hash_worker_{worker_id}",
+                    source_document_id=320 + worker_id,
                 )
             ]
             try:
@@ -1126,6 +1168,7 @@ class TestMigration010StorageMapping(unittest.TestCase):
                 after_value="2026-10-22",
                 source_document="RFP.pdf",
                 source_hash="hash_m010_rfp",
+                source_document_id=400,
             )
         ]
         mgr.create_baseline_revision(rfp_docs, baseline_facts, buyer_issued_date="2026-10-01")
@@ -1471,7 +1514,10 @@ class MockPostgresDatabaseClient:
                 raise Exception("incomplete_review_decisions")
 
             canonical_count = sum(1 for c in self.changes if c.get("review_id") == review_id and c.get("review_decision") == "approved" and c.get("canonical_effect") == "canonical_change")
-            if canonical_count > 0:
+            if review.get("review_kind") == "baseline":
+                new_rev = 0
+                no_canonical = False
+            elif canonical_count > 0:
                 new_rev = current_rev + 1
                 no_canonical = False
             else:
@@ -1615,6 +1661,7 @@ class TestPCIA2GovernedApplyAndDurableChronology(unittest.TestCase):
             after_value="2026-10-22",
             source_document="RFP.pdf",
             source_hash="hash_rfp",
+            source_document_id=123,
         )]
         with self.assertRaises(ValueError) as ctx:
             mgr.create_baseline_revision(missing_id_docs, facts)
@@ -1780,20 +1827,462 @@ class TestPCIA2GovernedApplyAndDurableChronology(unittest.TestCase):
         )]
         res = mgr.add_buyer_update_revision(misc_doc, c_ambig)
         self.assertTrue(res["chronology_unresolved"])
+        self.assertEqual(res["review_status"], "ready_for_review")
+        self.assertEqual(res["current_revision"], 0)
 
-        # Rehydrate and verify human review routing
-        rehydrated_mgr = pci.ProcurementRevisionManager(903, "org-ambig", storage=storage)
-        revs = rehydrated_mgr.get_all_revisions()
-        self.assertTrue(revs[-1].chronology_unresolved)
+        # Invariant: Review was NOT applied in database, stays ready_for_review
+        rev_records = mock_db.reviews
+        self.assertEqual(len(rev_records), 2)
+        ambig_rev = rev_records[1]
+        self.assertEqual(ambig_rev["status"], "ready_for_review")
+        self.assertEqual(mock_db.bids[903]["procurement_revision"], 0)
 
-        state = rehydrated_mgr.get_current_state()
-        # Original authoritative fact remains active
+        # In the active manager before restart, pending conflict is visible
+        state = mgr.get_current_state()
         self.assertEqual(state.authoritative_facts["deadline.submission"].after_value, "2026-10-22")
-        # Unresolved change routed to pending_conflicts with HUMAN_REVIEW_REQUIRED
         self.assertEqual(len(state.pending_conflicts), 1)
         conflict = state.pending_conflicts[0]
         self.assertEqual(conflict.entity_id, "deadline.submission")
         self.assertEqual(conflict.review_status, pci.REVIEW_STATUS_HUMAN_REVIEW_REQUIRED)
+
+        # Rehydrate in a fresh manager: preserves unapplied review with chronology_unresolved
+        rehydrated_mgr = pci.ProcurementRevisionManager(903, "org-ambig", storage=storage)
+        revs = rehydrated_mgr.get_all_revisions()
+        self.assertEqual(len(revs), 2)
+        self.assertTrue(revs[-1].chronology_unresolved)
+        self.assertFalse(revs[-1].is_current)
+        self.assertEqual(rehydrated_mgr.current_revision_number, 0)
+        rehydrated_state = rehydrated_mgr.get_current_state()
+        self.assertEqual(rehydrated_state.authoritative_facts["deadline.submission"].after_value, "2026-10-22")
+        self.assertEqual(len(rehydrated_state.pending_conflicts), 1)
+        self.assertEqual(rehydrated_state.pending_conflicts[0].entity_id, "deadline.submission")
+        self.assertEqual(rehydrated_state.pending_conflicts[0].review_status, pci.REVIEW_STATUS_HUMAN_REVIEW_REQUIRED)
+
+
+class TestPCIA21HumanReviewGateAndProvenance(unittest.TestCase):
+    """PCI-A.2.1 Tests verifying human-review gate, all-or-nothing apply, and source provenance."""
+
+    def test_chronology_unresolved_persists_ready_for_review_canonical_unchanged(self):
+        """A. Unresolved chronology persists review as 'ready_for_review', apply RPC not called, canonical revision 0."""
+        mock_db = MockPostgresDatabaseClient(
+            initial_bids={1001: {"id": 1001, "organization_id": "org-pcia21", "procurement_revision": 0, "procurement_truth_status": "ungoverned"}},
+            initial_documents=[
+                {"id": 10, "name": "RFP.pdf", "content_hash": "hash_rfp"},
+                {"id": 11, "name": "Unnumbered_Bulletin.pdf", "content_hash": "hash_bull"},
+            ]
+        )
+        storage = pci.PCIDatabaseStorage(client=mock_db)
+        mgr = pci.ProcurementRevisionManager(1001, "org-pcia21", storage=storage)
+
+        # Baseline
+        mgr.create_baseline_revision(
+            [{"document_id": 10, "name": "RFP.pdf", "content_hash": "hash_rfp"}],
+            [pci.FactChange(
+                change_type=pci.CHANGE_ADDS,
+                fact_type="DEADLINE",
+                entity_id="deadline.submission",
+                before_value=None,
+                after_value="2026-10-20",
+                source_document="RFP.pdf",
+                source_hash="hash_rfp",
+                source_document_id=10,
+            )]
+        )
+        self.assertEqual(mock_db.bids[1001]["procurement_revision"], 0)
+
+        # Ambiguous update
+        update_doc = [{"document_id": 11, "name": "Unnumbered_Bulletin.pdf", "content_hash": "hash_bull"}]
+        update_changes = [pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="DEADLINE",
+            entity_id="deadline.submission",
+            before_value="2026-10-20",
+            after_value="2026-10-28",
+            source_document="Unnumbered_Bulletin.pdf",
+            source_hash="hash_bull",
+            source_document_id=11,
+        )]
+
+        res = mgr.add_buyer_update_revision(update_doc, update_changes)
+        self.assertTrue(res["chronology_unresolved"])
+        self.assertEqual(res["review_status"], "ready_for_review")
+        self.assertEqual(res["current_revision"], 0)
+
+        # Review in DB is ready_for_review, NOT applied
+        reviews = mock_db.reviews
+        self.assertEqual(len(reviews), 2)
+        bulletin_review = reviews[1]
+        self.assertEqual(bulletin_review["status"], "ready_for_review")
+        self.assertEqual(mock_db.bids[1001]["procurement_revision"], 0)
+
+        # Active facts still reflect baseline
+        state = mgr.get_current_state()
+        self.assertEqual(state.authoritative_facts["deadline.submission"].after_value, "2026-10-20")
+
+    def test_change_conflicts_with_not_auto_approved_canonical_truth_unchanged(self):
+        """B. Fact with CHANGE_CONFLICTS_WITH is staged as pending, not auto-approved; canonical truth unchanged."""
+        mock_db = MockPostgresDatabaseClient(
+            initial_bids={1002: {"id": 1002, "organization_id": "org-pcia21", "procurement_revision": 0, "procurement_truth_status": "ungoverned"}},
+            initial_documents=[
+                {"id": 20, "name": "RFP.pdf", "content_hash": "hash_rfp_20"},
+                {"id": 21, "name": "Addendum 01.pdf", "content_hash": "hash_add_21"},
+            ]
+        )
+        storage = pci.PCIDatabaseStorage(client=mock_db)
+        mgr = pci.ProcurementRevisionManager(1002, "org-pcia21", storage=storage)
+
+        mgr.create_baseline_revision(
+            [{"document_id": 20, "name": "RFP.pdf", "content_hash": "hash_rfp_20"}],
+            [pci.FactChange(
+                change_type=pci.CHANGE_ADDS,
+                fact_type="DEADLINE",
+                entity_id="deadline.submission",
+                before_value=None,
+                after_value="2026-10-20",
+                source_document="RFP.pdf",
+                source_hash="hash_rfp_20",
+                source_document_id=20,
+            )]
+        )
+
+        # Addendum 01 has clear chronology but conflicting statement
+        update_doc = [{"document_id": 21, "name": "Addendum 01.pdf", "content_hash": "hash_add_21"}]
+        conflict_changes = [pci.FactChange(
+            change_type=pci.CHANGE_CONFLICTS_WITH,
+            fact_type="DEADLINE",
+            entity_id="deadline.submission",
+            before_value="2026-10-20",
+            after_value="Verbal discussion suggested Oct 30",
+            source_document="Addendum 01.pdf",
+            source_hash="hash_add_21",
+            source_document_id=21,
+            authority_status=pci.AUTHORITY_AMBIGUOUS,
+            review_status=pci.REVIEW_STATUS_HUMAN_REVIEW_REQUIRED,
+        )]
+
+        res = mgr.add_buyer_update_revision(update_doc, conflict_changes)
+        self.assertEqual(res["review_status"], "ready_for_review")
+        self.assertEqual(res["current_revision"], 0)
+
+        # Check change record in DB is pending, not approved
+        review_id = mock_db.reviews[1]["id"]
+        chg_rows = [c for c in mock_db.changes if c["review_id"] == review_id]
+        self.assertEqual(len(chg_rows), 1)
+        self.assertEqual(chg_rows[0]["review_decision"], "pending")
+        self.assertIsNone(chg_rows[0].get("applied_at"))
+
+        # Review remains ready_for_review, bids.procurement_revision remains 0
+        self.assertEqual(mock_db.reviews[1]["status"], "ready_for_review")
+        self.assertEqual(mock_db.bids[1002]["procurement_revision"], 0)
+
+        # Canonical truth untouched
+        state = mgr.get_current_state()
+        self.assertEqual(state.authoritative_facts["deadline.submission"].after_value, "2026-10-20")
+
+    def test_approved_change_normal_atomic_apply(self):
+        """C. Valid update with clear addendum and standard supersedes applies cleanly and increments revision."""
+        mock_db = MockPostgresDatabaseClient(
+            initial_bids={1003: {"id": 1003, "organization_id": "org-pcia21", "procurement_revision": 0, "procurement_truth_status": "ungoverned"}},
+            initial_documents=[
+                {"id": 30, "name": "RFP.pdf", "content_hash": "hash_rfp_30"},
+                {"id": 31, "name": "Addendum 01.pdf", "content_hash": "hash_add_31"},
+            ]
+        )
+        storage = pci.PCIDatabaseStorage(client=mock_db)
+        mgr = pci.ProcurementRevisionManager(1003, "org-pcia21", storage=storage)
+
+        mgr.create_baseline_revision(
+            [{"document_id": 30, "name": "RFP.pdf", "content_hash": "hash_rfp_30"}],
+            [pci.FactChange(
+                change_type=pci.CHANGE_ADDS,
+                fact_type="DEADLINE",
+                entity_id="deadline.submission",
+                before_value=None,
+                after_value="2026-10-20",
+                source_document="RFP.pdf",
+                source_hash="hash_rfp_30",
+                source_document_id=30,
+            )]
+        )
+
+        update_doc = [{"document_id": 31, "name": "Addendum 01.pdf", "content_hash": "hash_add_31"}]
+        approved_changes = [pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="DEADLINE",
+            entity_id="deadline.submission",
+            before_value="2026-10-20",
+            after_value="2026-11-05",
+            source_document="Addendum 01.pdf",
+            source_hash="hash_add_31",
+            source_document_id=31,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )]
+
+        res = mgr.add_buyer_update_revision(update_doc, approved_changes)
+        self.assertEqual(res["review_status"], "applied")
+        self.assertEqual(res["current_revision"], 1)
+
+        # In DB: review applied, bid revision advanced to 1
+        self.assertEqual(mock_db.reviews[1]["status"], "applied")
+        self.assertEqual(mock_db.bids[1003]["procurement_revision"], 1)
+
+        # Canonical truth reflects Nov 5
+        state = mgr.get_current_state()
+        self.assertEqual(state.authoritative_facts["deadline.submission"].after_value, "2026-11-05")
+
+    def test_rejected_change_never_applied(self):
+        """D. Revision with a rejected change records decision 'rejected', review is not applied, canonical truth unchanged."""
+        mock_db = MockPostgresDatabaseClient(
+            initial_bids={1004: {"id": 1004, "organization_id": "org-pcia21", "procurement_revision": 0, "procurement_truth_status": "ungoverned"}},
+            initial_documents=[
+                {"id": 40, "name": "RFP.pdf", "content_hash": "hash_rfp_40"},
+                {"id": 41, "name": "Addendum 01.pdf", "content_hash": "hash_add_41"},
+            ]
+        )
+        storage = pci.PCIDatabaseStorage(client=mock_db)
+        mgr = pci.ProcurementRevisionManager(1004, "org-pcia21", storage=storage)
+
+        mgr.create_baseline_revision(
+            [{"document_id": 40, "name": "RFP.pdf", "content_hash": "hash_rfp_40"}],
+            [pci.FactChange(
+                change_type=pci.CHANGE_ADDS,
+                fact_type="DEADLINE",
+                entity_id="deadline.submission",
+                before_value=None,
+                after_value="2026-10-20",
+                source_document="RFP.pdf",
+                source_hash="hash_rfp_40",
+                source_document_id=40,
+            )]
+        )
+
+        update_doc = [{"document_id": 41, "name": "Addendum 01.pdf", "content_hash": "hash_add_41"}]
+        rejected_changes = [pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="DEADLINE",
+            entity_id="deadline.submission",
+            before_value="2026-10-20",
+            after_value="2026-11-05",
+            source_document="Addendum 01.pdf",
+            source_hash="hash_add_41",
+            source_document_id=41,
+            review_status=pci.REVIEW_STATUS_REJECTED,
+        )]
+
+        res = mgr.add_buyer_update_revision(update_doc, rejected_changes)
+        # Because change was rejected, review is not applied
+        self.assertEqual(res["review_status"], "ready_for_review")
+        self.assertEqual(res["current_revision"], 0)
+
+        # In DB: change was recorded as rejected
+        review_id = mock_db.reviews[1]["id"]
+        chg_rows = [c for c in mock_db.changes if c["review_id"] == review_id]
+        self.assertEqual(chg_rows[0]["review_decision"], "rejected")
+
+        # Review was NOT applied, bids.procurement_revision remains 0
+        self.assertEqual(mock_db.reviews[1]["status"], "ready_for_review")
+        self.assertEqual(mock_db.bids[1004]["procurement_revision"], 0)
+        self.assertEqual(mgr.get_current_state().authoritative_facts["deadline.submission"].after_value, "2026-10-20")
+
+    def test_mixed_review_all_or_nothing_no_partial_apply(self):
+        """E. Mixed review with one approved change and one pending change: neither is applied (all-or-nothing)."""
+        mock_db = MockPostgresDatabaseClient(
+            initial_bids={1005: {"id": 1005, "organization_id": "org-pcia21", "procurement_revision": 0, "procurement_truth_status": "ungoverned"}},
+            initial_documents=[
+                {"id": 50, "name": "RFP.pdf", "content_hash": "hash_rfp_50"},
+                {"id": 51, "name": "Addendum 01.pdf", "content_hash": "hash_add_51"},
+            ]
+        )
+        storage = pci.PCIDatabaseStorage(client=mock_db)
+        mgr = pci.ProcurementRevisionManager(1005, "org-pcia21", storage=storage)
+
+        mgr.create_baseline_revision(
+            [{"document_id": 50, "name": "RFP.pdf", "content_hash": "hash_rfp_50"}],
+            [
+                pci.FactChange(
+                    change_type=pci.CHANGE_ADDS,
+                    fact_type="DEADLINE",
+                    entity_id="deadline.submission",
+                    before_value=None,
+                    after_value="2026-10-20",
+                    source_document="RFP.pdf",
+                    source_hash="hash_rfp_50",
+                    source_document_id=50,
+                ),
+                pci.FactChange(
+                    change_type=pci.CHANGE_ADDS,
+                    fact_type="COMMERCIAL",
+                    entity_id="insurance.general_liability",
+                    before_value=None,
+                    after_value="2,000,000 CAD",
+                    source_document="RFP.pdf",
+                    source_hash="hash_rfp_50",
+                    source_document_id=50,
+                ),
+            ]
+        )
+
+        update_doc = [{"document_id": 51, "name": "Addendum 01.pdf", "content_hash": "hash_add_51"}]
+        mixed_changes = [
+            pci.FactChange(
+                change_type=pci.CHANGE_SUPERSEDES,
+                fact_type="COMMERCIAL",
+                entity_id="insurance.general_liability",
+                before_value="2,000,000 CAD",
+                after_value="5,000,000 CAD",
+                source_document="Addendum 01.pdf",
+                source_hash="hash_add_51",
+                source_document_id=51,
+                review_status=pci.REVIEW_STATUS_APPROVED,
+            ),
+            pci.FactChange(
+                change_type=pci.CHANGE_CONFLICTS_WITH,
+                fact_type="DEADLINE",
+                entity_id="deadline.submission",
+                before_value="2026-10-20",
+                after_value="Ambiguous oral extension",
+                source_document="Addendum 01.pdf",
+                source_hash="hash_add_51",
+                source_document_id=51,
+                authority_status=pci.AUTHORITY_AMBIGUOUS,
+                review_status=pci.REVIEW_STATUS_HUMAN_REVIEW_REQUIRED,
+            ),
+        ]
+
+        res = mgr.add_buyer_update_revision(update_doc, mixed_changes)
+        self.assertEqual(res["review_status"], "ready_for_review")
+        self.assertEqual(res["current_revision"], 0)
+
+        # Review is ready_for_review, NOT applied
+        self.assertEqual(mock_db.reviews[1]["status"], "ready_for_review")
+        self.assertEqual(mock_db.bids[1005]["procurement_revision"], 0)
+
+        # Invariant: Neither change mutated canonical active facts!
+        state = mgr.get_current_state()
+        self.assertEqual(state.authoritative_facts["insurance.general_liability"].after_value, "2,000,000 CAD")
+        self.assertEqual(state.authoritative_facts["deadline.submission"].after_value, "2026-10-20")
+
+    def test_multi_document_provenance_distinct_ids_no_fallback(self):
+        """F. Multi-document update requires distinct source_document_ids matching trigger docs without fallback."""
+        mock_db = MockPostgresDatabaseClient(
+            initial_bids={1006: {"id": 1006, "organization_id": "org-pcia21", "procurement_revision": 0, "procurement_truth_status": "ungoverned"}},
+            initial_documents=[
+                {"id": 60, "name": "RFP.pdf", "content_hash": "hash_rfp_60"},
+                {"id": 61, "name": "Addendum 01.pdf", "content_hash": "hash_add_61"},
+                {"id": 62, "name": "Pricing_Schedule.xlsx", "content_hash": "hash_pricing_62"},
+            ]
+        )
+        storage = pci.PCIDatabaseStorage(client=mock_db)
+        mgr = pci.ProcurementRevisionManager(1006, "org-pcia21", storage=storage)
+
+        mgr.create_baseline_revision(
+            [{"document_id": 60, "name": "RFP.pdf", "content_hash": "hash_rfp_60"}],
+            [pci.FactChange(
+                change_type=pci.CHANGE_ADDS,
+                fact_type="DEADLINE",
+                entity_id="deadline.submission",
+                before_value=None,
+                after_value="2026-10-20",
+                source_document="RFP.pdf",
+                source_hash="hash_rfp_60",
+                source_document_id=60,
+            )]
+        )
+
+        multi_docs = [
+            {"document_id": 61, "name": "Addendum 01.pdf", "content_hash": "hash_add_61", "role": "primary"},
+            {"document_id": 62, "name": "Pricing_Schedule.xlsx", "content_hash": "hash_pricing_62", "role": "supporting"},
+        ]
+
+        # Case 1: Fact 2 missing source_document_id fails closed immediately
+        bad_changes = [
+            pci.FactChange(
+                change_type=pci.CHANGE_SUPERSEDES,
+                fact_type="DEADLINE",
+                entity_id="deadline.submission",
+                before_value="2026-10-20",
+                after_value="2026-10-28",
+                source_document="Addendum 01.pdf",
+                source_hash="hash_add_61",
+                source_document_id=61,
+            ),
+            pci.FactChange(
+                change_type=pci.CHANGE_ADDS,
+                fact_type="COMMERCIAL",
+                entity_id="pricing.total_fee",
+                before_value=None,
+                after_value="100,000 CAD",
+                source_document="Pricing_Schedule.xlsx",
+                source_hash="hash_pricing_62",
+                source_document_id=None,  # Missing!
+            ),
+        ]
+        with self.assertRaises(ValueError) as ctx:
+            mgr.add_buyer_update_revision(multi_docs, bad_changes)
+        self.assertIn("Missing required integer source_document_id", str(ctx.exception))
+
+        # Case 2: Fact 2 with mismatched hash fails closed immediately
+        bad_hash_changes = [
+            pci.FactChange(
+                change_type=pci.CHANGE_SUPERSEDES,
+                fact_type="DEADLINE",
+                entity_id="deadline.submission",
+                before_value="2026-10-20",
+                after_value="2026-10-28",
+                source_document="Addendum 01.pdf",
+                source_hash="hash_add_61",
+                source_document_id=61,
+            ),
+            pci.FactChange(
+                change_type=pci.CHANGE_ADDS,
+                fact_type="COMMERCIAL",
+                entity_id="pricing.total_fee",
+                before_value=None,
+                after_value="100,000 CAD",
+                source_document="Pricing_Schedule.xlsx",
+                source_hash="wrong_hash_val",
+                source_document_id=62,
+            ),
+        ]
+        with self.assertRaises(ValueError) as ctx:
+            mgr.add_buyer_update_revision(multi_docs, bad_hash_changes)
+        self.assertIn("Mismatched source_hash", str(ctx.exception))
+
+        # Case 3: Valid distinct provenance persists each fact with its exact source_document_id
+        valid_changes = [
+            pci.FactChange(
+                change_type=pci.CHANGE_SUPERSEDES,
+                fact_type="DEADLINE",
+                entity_id="deadline.submission",
+                before_value="2026-10-20",
+                after_value="2026-10-28",
+                source_document="Addendum 01.pdf",
+                source_hash="hash_add_61",
+                source_document_id=61,
+                review_status=pci.REVIEW_STATUS_APPROVED,
+            ),
+            pci.FactChange(
+                change_type=pci.CHANGE_ADDS,
+                fact_type="COMMERCIAL",
+                entity_id="pricing.total_fee",
+                before_value=None,
+                after_value="100,000 CAD",
+                source_document="Pricing_Schedule.xlsx",
+                source_hash="hash_pricing_62",
+                source_document_id=62,
+                review_status=pci.REVIEW_STATUS_APPROVED,
+            ),
+        ]
+        res = mgr.add_buyer_update_revision(multi_docs, valid_changes)
+        self.assertEqual(res["review_status"], "applied")
+
+        # In DB: change 1 has source_document_id 61, change 2 has source_document_id 62 (NOT fallback to 61)
+        review_id = mock_db.reviews[1]["id"]
+        chgs = [c for c in mock_db.changes if c["review_id"] == review_id]
+        self.assertEqual(len(chgs), 2)
+        chg_map = {c["entity_id"]: c["source_document_id"] for c in chgs}
+        self.assertEqual(chg_map["deadline.submission"], 61)
+        self.assertEqual(chg_map["pricing.total_fee"], 62)
 
 
 if __name__ == "__main__":
