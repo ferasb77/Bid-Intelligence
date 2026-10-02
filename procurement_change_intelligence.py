@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import copy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -149,6 +149,8 @@ class ImmutableRevisionError(PCIEngineError):
 
 _ADDENDUM_NUM_RE = re.compile(r'\b(?:addend(?:um|a)|bulletin)\s*#?\s*0*(\d+)\b', re.IGNORECASE)
 _AMENDMENT_NUM_RE = re.compile(r'\b(?:amendment|amend)\s*#?\s*0*(\d+)\b', re.IGNORECASE)
+_QA_NUM_RE = re.compile(r'\b(?:clarifications?|q\s*&?\s*a|round)\s*#?\s*0*(\d+)\b', re.IGNORECASE)
+_VERSION_NUM_RE = re.compile(r'[_\-\s](?:v|rev|version)\s*0*(\d+)\b', re.IGNORECASE)
 _QA_RE = re.compile(r'\b(?:q\s*&?\s*a|questions?\s+(?:and|&)\s+answers?)\b', re.IGNORECASE)
 _CLARIFICATION_RE = re.compile(r'\bclarifications?\b', re.IGNORECASE)
 _REPLACEMENT_RE = re.compile(r'\b(?:replacement|replaces?|supersed(?:es?|ing))\b', re.IGNORECASE)
@@ -226,6 +228,14 @@ def extract_chronology_metadata(
         amend_match = _AMENDMENT_NUM_RE.search(name)
         if amend_match:
             seq = int(amend_match.group(1))
+        else:
+            qa_match = _QA_NUM_RE.search(name)
+            if qa_match:
+                seq = int(qa_match.group(1))
+            else:
+                ver_match = _VERSION_NUM_RE.search(name)
+                if ver_match:
+                    seq = int(ver_match.group(1))
 
     # Parse date: priority to explicit buyer_issued_date, then content/filename
     parsed_date = buyer_issued_date
@@ -379,6 +389,7 @@ class FactChange:
     after_value: Any
     source_document: str
     source_hash: str
+    source_document_id: int | None = None
     authority_status: str = AUTHORITY_CURRENT
     review_status: str = REVIEW_STATUS_APPROVED
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -392,6 +403,7 @@ class FactChange:
             "after_value": self.after_value,
             "source_document": self.source_document,
             "source_hash": self.source_hash,
+            "source_document_id": self.source_document_id,
             "authority_status": self.authority_status,
             "review_status": self.review_status,
             "metadata": copy.deepcopy(self.metadata),
@@ -407,6 +419,7 @@ class FactChange:
             after_value=data.get("after_value"),
             source_document=data.get("source_document", ""),
             source_hash=data.get("source_hash", ""),
+            source_document_id=data.get("source_document_id"),
             authority_status=data.get("authority_status", AUTHORITY_CURRENT),
             review_status=data.get("review_status", REVIEW_STATUS_APPROVED),
             metadata=data.get("metadata", {}),
@@ -478,6 +491,8 @@ class ProcurementRevision:
     change_set: ProcurementChangeSet
     fingerprint: str
     is_current: bool = False
+    chronology_unresolved: bool = False
+    no_canonical_change: bool = False
 
     @property
     def revision_fingerprint(self) -> str:
@@ -494,6 +509,8 @@ class ProcurementRevision:
             "change_set": self.change_set.to_dict(),
             "fingerprint": self.fingerprint,
             "is_current": self.is_current,
+            "chronology_unresolved": self.chronology_unresolved,
+            "no_canonical_change": self.no_canonical_change,
         }
 
 
@@ -561,12 +578,23 @@ def derive_current_authoritative_state(
         history_chain.append(rev.revision_number)
 
         for change in rev.change_set.changes:
-            # 1. Ambiguous precedence / conflict requiring review (Section 10)
+            # 1. Ambiguous precedence / conflict / unresolved chronology requiring review (Section 10)
             if (
                 change.change_type == CHANGE_CONFLICTS_WITH
                 or change.review_status == REVIEW_STATUS_HUMAN_REVIEW_REQUIRED
+                or rev.chronology_unresolved
             ):
-                pending_conflicts.append(change)
+                if rev.chronology_unresolved:
+                    meta = copy.deepcopy(change.metadata) if change.metadata else {}
+                    meta["chronology_unresolved"] = True
+                    conflict_change = replace(
+                        change,
+                        review_status=REVIEW_STATUS_HUMAN_REVIEW_REQUIRED,
+                        metadata=meta,
+                    )
+                else:
+                    conflict_change = change
+                pending_conflicts.append(conflict_change)
                 # Keep active fact intact -- do not auto-resolve or silently rewrite!
                 continue
 
@@ -789,32 +817,58 @@ class InMemoryPCIStorage(PCIBaseStorage):
         self.verify_tenancy(bid_id, organization_id)
         with self._lock:
             reviews = [r for r in self.reviews.get(bid_id, []) if r.get("status") == "applied"]
-            # Order by resulting_procurement_revision ascending
-            reviews.sort(key=lambda r: r.get("resulting_procurement_revision", 0))
 
             revisions = []
             for r in reviews:
                 rid = r["id"]
-                rev_num = r["resulting_procurement_revision"]
-                base_rev = r["base_procurement_revision"]
+                rev_num = r.get("resulting_procurement_revision", 0)
+                base_rev = r.get("base_procurement_revision", 0)
 
                 # Documents
                 doc_rows = self.review_documents.get(rid, [])
                 trigger_docs = [
                     {
+                        "document_id": d.get("document_id"),
                         "name": d.get("name", "Document"),
                         "content_hash": d.get("document_hash"),
                         "doc_type": d.get("role", "Addendum"),
                         "document_change_type": r.get("buyer_update_type", DOC_CHANGE_ADDENDUM),
+                        "role": d.get("role", "primary"),
                     }
                     for d in doc_rows
                 ]
+
+                # Reconstruct chronology from document metadata (Gap 5)
+                review_kind = r.get("review_kind", "buyer_update")
+                chronology_unresolved = False
+                if review_kind == "baseline":
+                    chrono_idx = 0
+                else:
+                    primary_doc = next((d for d in doc_rows if d.get("role") == "primary"), doc_rows[0] if doc_rows else {})
+                    doc_name = primary_doc.get("name", "")
+                    chrono = extract_chronology_metadata(doc_name, r.get("buyer_issued_date"))
+                    if chrono.get("sequence_number") is not None:
+                        chrono_idx = chrono["sequence_number"]
+                    elif r.get("review_note") and "force_chronology_index" in r.get("review_note", ""):
+                        try:
+                            note_data = json.loads(r["review_note"])
+                            chrono_idx = note_data.get("force_chronology_index", 999999)
+                        except Exception:
+                            chrono_idx = 999999
+                            chronology_unresolved = True
+                    else:
+                        chrono_idx = 999999
+                        chronology_unresolved = True
 
                 # Changes
                 change_rows = self.changes.get(rid, [])
                 fact_changes = []
                 for c in change_rows:
                     nv = c.get("new_value") or {}
+                    fact_review_status = nv.get("review_status") or c.get("review_decision") or REVIEW_STATUS_APPROVED
+                    if chronology_unresolved:
+                        fact_review_status = REVIEW_STATUS_HUMAN_REVIEW_REQUIRED
+
                     fact_changes.append(
                         FactChange(
                             change_type=nv.get("pci_change_type") or c.get("change_type"),
@@ -824,8 +878,9 @@ class InMemoryPCIStorage(PCIBaseStorage):
                             after_value=nv.get("value") if isinstance(nv, dict) and "value" in nv else nv,
                             source_document=c.get("physical_source_ref", ""),
                             source_hash=c.get("source_document_hash", ""),
+                            source_document_id=c.get("source_document_id"),
                             authority_status=nv.get("authority_status", AUTHORITY_CURRENT) if isinstance(nv, dict) else AUTHORITY_CURRENT,
-                            review_status=nv.get("review_status") or c.get("review_decision") or REVIEW_STATUS_APPROVED,
+                            review_status=fact_review_status,
                             metadata=nv.get("metadata", {}) if isinstance(nv, dict) else {},
                         )
                     )
@@ -844,17 +899,21 @@ class InMemoryPCIStorage(PCIBaseStorage):
                 revisions.append(
                     ProcurementRevision(
                         revision_number=rev_num,
-                        revision_id=r.get("idempotency_key") or f"bid-{bid_id}-rev-{rev_num}",
+                        revision_id=r.get("idempotency_key") or f"bid-{bid_id}-rev-{rid}",
                         parent_revision_id=parent_id,
-                        buyer_chronology_index=r.get("buyer_chronology_index", rev_num),
+                        buyer_chronology_index=chrono_idx,
                         buyer_issued_date=r.get("buyer_issued_date"),
                         trigger_documents=trigger_docs,
                         change_set=changeset,
                         fingerprint=r.get("document_set_digest", ""),
                         is_current=False,
+                        chronology_unresolved=chronology_unresolved,
+                        no_canonical_change=bool(r.get("no_canonical_change", False)),
                     )
                 )
 
+            # Replay strictly in buyer chronology order, then revision number
+            revisions.sort(key=lambda rev: (rev.buyer_chronology_index, rev.revision_number))
             if revisions:
                 revisions[-1].is_current = True
             return revisions
@@ -870,57 +929,79 @@ class InMemoryPCIStorage(PCIBaseStorage):
         with self._lock:
             bid = self.bids[bid_id]
             current_rev = bid.get("procurement_revision", 0)
+            truth_status = bid.get("procurement_truth_status", "ungoverned")
 
-            # Optimistic concurrency check against persisted revision counter (Section 9)
+            review_kind = "baseline" if revision.parent_revision_id is None else "buyer_update"
+            if review_kind == "baseline" and truth_status == "governed":
+                raise PCIEngineError(f"Baseline already governed on bid {bid_id}.")
+            if review_kind == "buyer_update" and truth_status != "governed":
+                raise PCIEngineError(f"Baseline not governed on bid {bid_id}.")
+
+            # Concurrency check against persisted revision counter (Section 9)
             if expected_base_revision is not None and expected_base_revision != current_rev:
                 raise StaleRevisionError(
                     f"Stale revision: persisted DB revision is {current_rev}, "
                     f"expected {expected_base_revision}."
                 )
 
-            # Insert procurement_update_reviews row
+            # Validate real document identity (Section 7)
+            doc_roles = []
+            for idx, d in enumerate(revision.trigger_documents):
+                did = d.get("document_id")
+                if did is None or not isinstance(did, int):
+                    raise ValueError(
+                        f"Missing required integer document_id for document '{d.get('name', 'unnamed')}'. "
+                        "Real document identity is required for procurement change tracking."
+                    )
+                chash = d.get("content_hash")
+                if not chash or not str(chash).strip():
+                    raise ValueError(
+                        f"Missing required content_hash for document '{d.get('name', 'unnamed')}'. "
+                        "Real content identity is required for procurement change tracking."
+                    )
+                role = d.get("role")
+                if not role:
+                    if d.get("document_change_type") == DOC_CHANGE_REPLACEMENT_DOCUMENT:
+                        role = "replacement"
+                    elif idx == 0:
+                        role = "primary"
+                    else:
+                        role = "supporting"
+                doc_roles.append(role)
+
+            if doc_roles.count("primary") != 1:
+                raise ValueError(
+                    f"Review requires exactly one primary document, but found {doc_roles.count('primary')}."
+                )
+
+            # Stage Review
             rid = self._next_review_id
             self._next_review_id += 1
 
-            review_kind = "baseline" if revision.revision_number == 0 else "buyer_update"
-            review_row = {
-                "id": rid,
-                "bid_id": bid_id,
-                "organization_id": organization_id,
-                "review_kind": review_kind,
-                "buyer_update_type": revision.trigger_documents[0].get("document_change_type", "Addendum") if revision.trigger_documents else "Other",
-                "buyer_issued_date": revision.buyer_issued_date,
-                "buyer_chronology_index": revision.buyer_chronology_index,
-                "status": "applied",
-                "base_procurement_revision": revision.change_set.previous_revision or 0,
-                "resulting_procurement_revision": revision.revision_number,
-                "document_set_digest": revision.fingerprint,
-                "idempotency_key": revision.revision_id,
-                "no_canonical_change": (len(revision.change_set.changes) == 0),
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            }
-            self.reviews.setdefault(bid_id, []).append(review_row)
+            note_val = None
+            if revision.buyer_chronology_index is not None and revision.buyer_chronology_index != 999999:
+                note_val = json.dumps({"force_chronology_index": revision.buyer_chronology_index})
 
-            # Insert procurement_update_review_documents rows
+            # Stage Review Documents
             doc_rows = []
-            for d in revision.trigger_documents:
+            for d, role in zip(revision.trigger_documents, doc_roles):
                 doc_rows.append({
                     "review_id": rid,
-                    "document_id": d.get("document_id", 1),
+                    "document_id": d["document_id"],
                     "organization_id": organization_id,
                     "name": d.get("name", "Document"),
                     "document_hash": d.get("content_hash"),
-                    "role": "primary" if d.get("document_change_type") != DOC_CHANGE_REPLACEMENT_DOCUMENT else "replacement",
+                    "role": role,
                 })
             self.review_documents[rid] = doc_rows
 
-            # Insert procurement_changes rows
+            # Stage Changes
             change_rows = []
+            canonical_change_count = 0
             for c in revision.change_set.changes:
                 cid = self._next_change_id
                 self._next_change_id += 1
 
-                # Map PCI change_type to migration 010 enum
                 db_change_type = c.change_type
                 if c.change_type in (CHANGE_REPLACES, CHANGE_CORRECTS, CHANGE_NARROWS, CHANGE_EXPANDS, CHANGE_CONFLICTS_WITH):
                     db_change_type = "MODIFIED"
@@ -935,20 +1016,25 @@ class InMemoryPCIStorage(PCIBaseStorage):
                 elif c.change_type == CHANGE_UNCHANGED:
                     db_change_type = "UNCHANGED"
 
-                change_row = {
+                canon_effect = "evidence_only" if db_change_type == "UNCHANGED" else "canonical_change"
+                if canon_effect == "canonical_change":
+                    canonical_change_count += 1
+
+                change_rows.append({
                     "id": cid,
                     "review_id": rid,
                     "bid_id": bid_id,
                     "organization_id": organization_id,
-                    "review_decision": c.review_status or "approved",
-                    "applied_at": datetime.now(timezone.utc).isoformat(),
-                    "procurement_revision": revision.revision_number,
+                    "review_decision": "approved",
+                    "applied_at": None,
+                    "procurement_revision": None,
+                    "source_document_id": c.source_document_id or revision.trigger_documents[0]["document_id"],
                     "source_document_hash": c.source_hash,
                     "physical_source_ref": c.source_document,
-                    "entity_type": c.fact_type,
+                    "entity_type": c.fact_type.lower() if c.fact_type.lower() in ("requirement", "bid_brief_field", "deliverable", "outline_section") else "other",
                     "entity_id": c.entity_id,
                     "change_type": db_change_type,
-                    "canonical_effect": "evidence_only" if db_change_type == "UNCHANGED" else "canonical_change",
+                    "canonical_effect": canon_effect,
                     "previous_value": {"value": c.before_value},
                     "new_value": {
                         "value": c.after_value,
@@ -958,13 +1044,46 @@ class InMemoryPCIStorage(PCIBaseStorage):
                         "review_status": c.review_status,
                         "metadata": c.metadata,
                     },
-                }
-                change_rows.append(change_row)
+                })
             self.changes[rid] = change_rows
 
-            # Update bids table
-            bid["procurement_revision"] = revision.revision_number
+            # Atomic Apply
+            applied_time = datetime.now(timezone.utc).isoformat()
+            if review_kind == "baseline":
+                new_rev = revision.revision_number
+                no_canonical = False
+            elif canonical_change_count > 0:
+                new_rev = current_rev + 1
+                no_canonical = False
+            else:
+                new_rev = current_rev
+                no_canonical = True
+
+            bid["procurement_revision"] = new_rev
             bid["procurement_truth_status"] = "governed"
+
+            for ch in change_rows:
+                ch["applied_at"] = applied_time
+                ch["procurement_revision"] = new_rev
+
+            review_row = {
+                "id": rid,
+                "bid_id": bid_id,
+                "organization_id": organization_id,
+                "review_kind": review_kind,
+                "buyer_update_type": revision.trigger_documents[0].get("document_change_type", "Addendum") if revision.trigger_documents else "Other",
+                "buyer_issued_date": revision.buyer_issued_date,
+                "status": "applied",
+                "base_procurement_revision": current_rev,
+                "resulting_procurement_revision": new_rev,
+                "document_set_digest": revision.fingerprint,
+                "idempotency_key": revision.revision_id,
+                "no_canonical_change": no_canonical,
+                "review_note": note_val,
+                "created_at": applied_time,
+                "applied_at": applied_time,
+            }
+            self.reviews.setdefault(bid_id, []).append(review_row)
 
 
 class PCIDatabaseStorage(PCIBaseStorage):
@@ -1030,7 +1149,6 @@ class PCIDatabaseStorage(PCIBaseStorage):
             import database
             reviews = database.get_procurement_update_reviews(bid_id)
         applied_reviews = [r for r in reviews if r.get("status") == "applied"]
-        applied_reviews.sort(key=lambda r: r.get("resulting_procurement_revision", 0))
 
         revisions = []
         for r in applied_reviews:
@@ -1044,15 +1162,50 @@ class PCIDatabaseStorage(PCIBaseStorage):
             if not doc_rows:
                 import database
                 doc_rows = database.get_procurement_update_review_documents(rid)
-            trigger_docs = [
-                {
-                    "name": d.get("name", "Document"),
-                    "content_hash": d.get("document_hash"),
+
+            doc_ids = [d["document_id"] for d in doc_rows if d.get("document_id")]
+            docs_map = {}
+            if doc_ids:
+                try:
+                    docs_res = sb.table("documents").select("id,name,content_hash").in_("id", doc_ids).execute()
+                    docs_map = {doc["id"]: doc for doc in (docs_res.data or [])}
+                except Exception:
+                    docs_map = {}
+
+            trigger_docs = []
+            for d in doc_rows:
+                did = d.get("document_id")
+                doc_meta = docs_map.get(did, {})
+                trigger_docs.append({
+                    "document_id": did,
+                    "name": doc_meta.get("name") or d.get("name", "Document"),
+                    "content_hash": d.get("document_hash") or doc_meta.get("content_hash"),
                     "doc_type": d.get("role", "Addendum"),
                     "document_change_type": r.get("buyer_update_type", DOC_CHANGE_ADDENDUM),
-                }
-                for d in doc_rows
-            ]
+                    "role": d.get("role", "primary"),
+                })
+
+            # Reconstruct buyer chronology from document metadata (Gap 5)
+            review_kind = r.get("review_kind", "buyer_update")
+            chronology_unresolved = False
+            if review_kind == "baseline":
+                chrono_idx = 0
+            else:
+                primary_doc = next((d for d in trigger_docs if d.get("role") == "primary"), trigger_docs[0] if trigger_docs else {})
+                doc_name = primary_doc.get("name", "")
+                chrono = extract_chronology_metadata(doc_name, r.get("buyer_issued_date"))
+                if chrono.get("sequence_number") is not None:
+                    chrono_idx = chrono["sequence_number"]
+                elif r.get("review_note") and "force_chronology_index" in r.get("review_note", ""):
+                    try:
+                        note_data = json.loads(r["review_note"])
+                        chrono_idx = note_data.get("force_chronology_index", 999999)
+                    except Exception:
+                        chrono_idx = 999999
+                        chronology_unresolved = True
+                else:
+                    chrono_idx = 999999
+                    chronology_unresolved = True
 
             # Load changes
             chg_res = sb.table("procurement_changes").select("*").eq("review_id", rid).execute()
@@ -1063,6 +1216,10 @@ class PCIDatabaseStorage(PCIBaseStorage):
             fact_changes = []
             for c in change_rows:
                 nv = c.get("new_value") or {}
+                fact_review_status = nv.get("review_status") or c.get("review_decision") or REVIEW_STATUS_APPROVED
+                if chronology_unresolved:
+                    fact_review_status = REVIEW_STATUS_HUMAN_REVIEW_REQUIRED
+
                 fact_changes.append(
                     FactChange(
                         change_type=nv.get("pci_change_type") or c.get("change_type"),
@@ -1072,8 +1229,9 @@ class PCIDatabaseStorage(PCIBaseStorage):
                         after_value=nv.get("value") if isinstance(nv, dict) and "value" in nv else nv,
                         source_document=c.get("physical_source_ref", ""),
                         source_hash=c.get("source_document_hash", ""),
+                        source_document_id=c.get("source_document_id"),
                         authority_status=nv.get("authority_status", AUTHORITY_CURRENT) if isinstance(nv, dict) else AUTHORITY_CURRENT,
-                        review_status=nv.get("review_status") or c.get("review_decision") or REVIEW_STATUS_APPROVED,
+                        review_status=fact_review_status,
                         metadata=nv.get("metadata", {}) if isinstance(nv, dict) else {},
                     )
                 )
@@ -1088,14 +1246,10 @@ class PCIDatabaseStorage(PCIBaseStorage):
             )
 
             parent_id = f"bid-{bid_id}-rev-{base_rev}" if rev_num > 0 else None
-            chrono_idx = r.get("buyer_chronology_index")
-            if chrono_idx is None:
-                chrono_idx = rev_num
-
             revisions.append(
                 ProcurementRevision(
                     revision_number=rev_num,
-                    revision_id=r.get("idempotency_key") or f"bid-{bid_id}-rev-{rev_num}",
+                    revision_id=r.get("idempotency_key") or f"bid-{bid_id}-rev-{rid}",
                     parent_revision_id=parent_id,
                     buyer_chronology_index=chrono_idx,
                     buyer_issued_date=r.get("buyer_issued_date"),
@@ -1103,9 +1257,13 @@ class PCIDatabaseStorage(PCIBaseStorage):
                     change_set=changeset,
                     fingerprint=r.get("document_set_digest", ""),
                     is_current=False,
+                    chronology_unresolved=chronology_unresolved,
+                    no_canonical_change=bool(r.get("no_canonical_change", False)),
                 )
             )
 
+        # Sort revisions strictly by buyer chronology index, then revision number
+        revisions.sort(key=lambda rev: (rev.buyer_chronology_index, rev.revision_number))
         if revisions:
             revisions[-1].is_current = True
         return revisions
@@ -1120,65 +1278,80 @@ class PCIDatabaseStorage(PCIBaseStorage):
         self.verify_tenancy(bid_id, organization_id)
         sb = self._get_client()
 
-        # Database atomic optimistic concurrency check via conditional update (Section 9)
-        # Atomically executes:
-        # UPDATE public.bids SET procurement_revision = revision.revision_number, procurement_truth_status = 'governed'
-        # WHERE id = bid_id AND procurement_revision = expected_base_revision RETURNING *
-        # This guarantees row-level serialization at the database layer (PostgreSQL).
-        # Two workers racing with expected_base_revision = N cannot both succeed;
-        # exactly one will match the row and update it, while the second matches 0 rows and fails.
-        bids_query = sb.table("bids").update({
-            "procurement_revision": revision.revision_number,
-            "procurement_truth_status": "governed",
-        }).eq("id", bid_id)
-
-        if expected_base_revision is not None:
-            bids_query = bids_query.eq("procurement_revision", expected_base_revision)
-        elif revision.revision_number == 0:
-            bids_query = bids_query.eq("procurement_truth_status", "ungoverned")
-
-        bids_res = bids_query.execute()
-        if not bids_res.data or len(bids_res.data) == 0:
-            if expected_base_revision is not None:
-                raise StaleRevisionError(
-                    f"Atomic database concurrency failure on bid {bid_id}: "
-                    f"expected base revision {expected_base_revision}, but database row was concurrently modified."
+        # 1. Real document identity validation (Section 7)
+        doc_ids = []
+        doc_roles = []
+        for idx, d in enumerate(revision.trigger_documents):
+            did = d.get("document_id")
+            if did is None or not isinstance(did, int):
+                raise ValueError(
+                    f"Missing required integer document_id for document '{d.get('name', 'unnamed')}'. "
+                    "Real document identity is required for procurement change tracking."
                 )
-            elif revision.revision_number == 0:
-                raise PCIEngineError(
-                    f"Atomic database concurrency failure on bid {bid_id}: "
-                    "Revision 0 (baseline) already exists or bid is already governed."
+            chash = d.get("content_hash")
+            if not chash or not str(chash).strip():
+                raise ValueError(
+                    f"Missing required content_hash for document '{d.get('name', 'unnamed')}'. "
+                    "Real content identity is required for procurement change tracking."
                 )
+            doc_ids.append(did)
+            role = d.get("role")
+            if not role:
+                if d.get("document_change_type") == DOC_CHANGE_REPLACEMENT_DOCUMENT:
+                    role = "replacement"
+                elif idx == 0:
+                    role = "primary"
+                else:
+                    role = "supporting"
+            doc_roles.append(role)
 
-        review_kind = "baseline" if revision.revision_number == 0 else "buyer_update"
-        review_data = {
-            "bid_id": bid_id,
-            "organization_id": organization_id,
-            "review_kind": review_kind,
-            "buyer_update_type": "Addendum" if review_kind == "buyer_update" else "Original RFP",
-            "buyer_issued_date": revision.buyer_issued_date,
-            "status": "applied",
-            "base_procurement_revision": revision.change_set.previous_revision or 0,
-            "resulting_procurement_revision": revision.revision_number,
-            "document_set_digest": revision.fingerprint,
-            "idempotency_key": revision.revision_id,
-            "no_canonical_change": (len(revision.change_set.changes) == 0),
+        if doc_roles.count("primary") != 1:
+            raise ValueError(
+                f"Review requires exactly one primary document, but found {doc_roles.count('primary')}."
+            )
+
+        review_kind = "baseline" if revision.parent_revision_id is None else "buyer_update"
+
+        doc_type_val = revision.trigger_documents[0].get("document_change_type")
+        if review_kind == "baseline":
+            buyer_update_type = "Original RFP"
+        elif doc_type_val == DOC_CHANGE_AMENDMENT:
+            buyer_update_type = "Amendment"
+        elif doc_type_val == DOC_CHANGE_CLARIFICATION:
+            buyer_update_type = "Clarification/Q&A"
+        elif doc_type_val == DOC_CHANGE_REPLACEMENT_DOCUMENT:
+            buyer_update_type = "Revised Pricing Form"
+        elif doc_type_val == DOC_CHANGE_BUYER_NOTICE:
+            buyer_update_type = "Bulletin"
+        else:
+            buyer_update_type = "Addendum"
+
+        # 2. Governed Lifecycle Step 1: create_procurement_update_review RPC
+        review_params = {
+            "p_bid_id": bid_id,
+            "p_organization_id": organization_id,
+            "p_review_kind": review_kind,
+            "p_buyer_update_type": buyer_update_type,
+            "p_buyer_issued_date": revision.buyer_issued_date,
+            "p_document_ids": doc_ids,
+            "p_document_roles": doc_roles,
+            "p_conflict_id": None,
+            "p_idempotency_key": revision.revision_id,
         }
-        review_res = sb.table("procurement_update_reviews").insert(review_data).execute()
-        review_id = review_res.data[0]["id"]
+        res = sb.rpc("create_procurement_update_review", review_params).execute()
+        rows = res.data or []
+        if not rows:
+            raise PCIEngineError(f"Failed to create procurement update review for bid {bid_id}.")
+        review_id = rows[0]["review_id"]
+        is_new = rows[0].get("is_new", True)
+        if not is_new:
+            rev_res = sb.table("procurement_update_reviews").select("status").eq("id", review_id).execute()
+            if rev_res.data and rev_res.data[0].get("status") == "applied":
+                logger.info("Review %s already applied (idempotent).", review_id)
+                return
 
-        # Insert review documents
-        for d in revision.trigger_documents:
-            doc_data = {
-                "review_id": review_id,
-                "document_id": d.get("document_id", 1),
-                "organization_id": organization_id,
-                "document_hash": d.get("content_hash"),
-                "role": "primary" if d.get("document_change_type") != DOC_CHANGE_REPLACEMENT_DOCUMENT else "replacement",
-            }
-            sb.table("procurement_update_review_documents").insert(doc_data).execute()
-
-        # Insert changes
+        # 3. Governed Lifecycle Step 2: stage proposed changes (pending, not applied)
+        change_rows = []
         for c in revision.change_set.changes:
             db_change_type = c.change_type
             if c.change_type in (CHANGE_REPLACES, CHANGE_CORRECTS, CHANGE_NARROWS, CHANGE_EXPANDS, CHANGE_CONFLICTS_WITH):
@@ -1194,19 +1367,25 @@ class PCIDatabaseStorage(PCIBaseStorage):
             elif c.change_type == CHANGE_UNCHANGED:
                 db_change_type = "UNCHANGED"
 
-            change_data = {
+            canon_effect = "evidence_only" if db_change_type == "UNCHANGED" else "canonical_change"
+            entity_type = c.fact_type.lower() if c.fact_type.lower() in ("requirement", "bid_brief_field", "deliverable", "outline_section") else "other"
+
+            doc_id_for_change = c.source_document_id or doc_ids[0]
+
+            change_rows.append({
                 "review_id": review_id,
                 "bid_id": bid_id,
                 "organization_id": organization_id,
-                "review_decision": c.review_status or "approved",
-                "applied_at": datetime.now(timezone.utc).isoformat(),
-                "procurement_revision": revision.revision_number,
+                "review_decision": "pending",
+                "applied_at": None,
+                "procurement_revision": None,
+                "source_document_id": doc_id_for_change,
                 "source_document_hash": c.source_hash,
                 "physical_source_ref": c.source_document,
-                "entity_type": c.fact_type,
+                "entity_type": entity_type,
                 "entity_id": c.entity_id,
                 "change_type": db_change_type,
-                "canonical_effect": "evidence_only" if db_change_type == "UNCHANGED" else "canonical_change",
+                "canonical_effect": canon_effect,
                 "previous_value": {"value": c.before_value},
                 "new_value": {
                     "value": c.after_value,
@@ -1216,8 +1395,51 @@ class PCIDatabaseStorage(PCIBaseStorage):
                     "review_status": c.review_status,
                     "metadata": c.metadata,
                 },
-            }
-            sb.table("procurement_changes").insert(change_data).execute()
+            })
+
+        if change_rows:
+            sb.table("procurement_changes").insert(change_rows).execute()
+
+        # 4. Governed Lifecycle Step 3: transition status to ready_for_review
+        sb.table("procurement_update_reviews").update({
+            "status": "ready_for_review",
+            "analyzed_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", review_id).execute()
+
+        # 5. Governed Lifecycle Step 4: record change review decisions
+        staged_changes = sb.table("procurement_changes").select("id,review_decision").eq("review_id", review_id).execute().data or []
+        for sc in staged_changes:
+            if sc.get("review_decision") == "pending":
+                sb.rpc("record_change_review_decision", {
+                    "p_change_id": sc["id"],
+                    "p_decision": "approved",
+                    "p_actor_user_id": None,
+                    "p_review_note": None,
+                }).execute()
+
+        # 6. Governed Lifecycle Step 5: atomic apply via apply_procurement_update_review RPC
+        base_rev = expected_base_revision if expected_base_revision is not None else 0
+        try:
+            sb.rpc("apply_procurement_update_review", {
+                "p_review_id": review_id,
+                "p_expected_base_revision": base_rev,
+                "p_actor_user_id": None,
+            }).execute()
+        except Exception as exc:
+            err_msg = str(exc)
+            if "stale_revision" in err_msg:
+                raise StaleRevisionError(
+                    f"Atomic database concurrency failure on bid {bid_id}: "
+                    f"expected base revision {base_rev}, but persisted state was concurrently modified."
+                ) from exc
+            elif "baseline_already_governed" in err_msg:
+                raise PCIEngineError(
+                    f"Atomic database concurrency failure on bid {bid_id}: "
+                    "Revision 0 (baseline) already exists or bid is already governed."
+                ) from exc
+            raise PCIEngineError(
+                f"Governed apply failed for review {review_id} on bid {bid_id}: {err_msg}"
+            ) from exc
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1249,8 +1471,10 @@ class ProcurementRevisionManager:
         self.storage.verify_tenancy(self.bid_id, self.organization_id)
 
         # Rehydrate existing revisions from storage (Sections 4, 5, 15)
+        self._all_revisions: list[ProcurementRevision] = []
         self._revisions: dict[int, ProcurementRevision] = {}
         for rev in self.storage.load_revisions(self.bid_id, self.organization_id):
+            self._all_revisions.append(rev)
             self._revisions[rev.revision_number] = rev
 
     @classmethod
@@ -1270,13 +1494,14 @@ class ProcurementRevisionManager:
 
     @property
     def current_revision_number(self) -> int:
-        return max(self._revisions.keys(), default=-1)
+        proc_state = self.storage.get_procurement_state(self.bid_id)
+        return proc_state.get("procurement_revision", max(self._revisions.keys(), default=-1))
 
     def get_revision(self, revision_number: int) -> ProcurementRevision | None:
         return self._revisions.get(revision_number)
 
     def get_all_revisions(self) -> list[ProcurementRevision]:
-        return [self._revisions[k] for k in sorted(self._revisions.keys())]
+        return sorted(self._all_revisions, key=lambda r: (r.buyer_chronology_index, r.revision_number))
 
     def get_current_state(self) -> AuthoritativeProcurementState:
         return derive_current_authoritative_state(
@@ -1290,29 +1515,43 @@ class ProcurementRevisionManager:
         buyer_issued_date: str | None = None,
     ) -> ProcurementRevision:
         """Establishes Revision 0 (original authoritative procurement state).
-        Fails closed if baseline already exists or if content_hash is missing."""
+        Fails closed if baseline already exists or if content_hash or document_id is missing."""
         lock = self._get_bid_lock(self.bid_id)
         with lock:
-            if 0 in self._revisions:
+            if 0 in self._revisions or any(r.revision_number == 0 for r in self._all_revisions):
                 raise PCIEngineError("Revision 0 (baseline) already exists for this procurement.")
 
-            # Require real content_hash (Section 7)
+            # Require real document_id and content_hash (Section 7)
             src_docs = []
             src_hashes = []
-            for d in documents:
+            for idx, d in enumerate(documents):
+                did = d.get("document_id")
+                if did is None or not isinstance(did, int):
+                    raise ValueError(
+                        f"Missing required integer document_id for document '{d.get('name', 'unnamed')}'. "
+                        "Real document identity is required for procurement change tracking."
+                    )
                 chash = d.get("content_hash")
                 if not chash or not str(chash).strip():
                     raise ValueError(
                         f"Missing required content_hash for document '{d.get('name', 'unnamed')}'. "
                         "Real content identity is required for procurement change tracking."
                     )
+                role = d.get("role")
+                if not role:
+                    role = "primary" if idx == 0 else "supporting"
                 src_docs.append({
+                    "document_id": did,
                     "name": d.get("name", "RFP"),
                     "content_hash": chash,
                     "doc_type": d.get("doc_type", "RFP / Source"),
                     "document_change_type": DOC_CHANGE_ORIGINAL_RFP,
+                    "role": role,
                 })
                 src_hashes.append(chash)
+
+            if [d["role"] for d in src_docs].count("primary") != 1:
+                raise ValueError("Baseline requires exactly one primary document.")
 
             # Require real source_hash on all initial facts
             for c in initial_facts:
@@ -1332,6 +1571,7 @@ class ProcurementRevisionManager:
                     after_value=c.after_value,
                     source_document=c.source_document,
                     source_hash=c.source_hash,
+                    source_document_id=c.source_document_id or src_docs[0]["document_id"],
                     authority_status=AUTHORITY_CURRENT,
                     review_status=REVIEW_STATUS_APPROVED,
                     metadata=c.metadata,
@@ -1360,6 +1600,8 @@ class ProcurementRevisionManager:
                 change_set=changeset,
                 fingerprint=rev_fp,
                 is_current=True,
+                chronology_unresolved=False,
+                no_canonical_change=False,
             )
 
             # Persist to durable storage (Section 4)
@@ -1367,6 +1609,7 @@ class ProcurementRevisionManager:
                 self.bid_id, self.organization_id, rev_0, expected_base_revision=None
             )
 
+            self._all_revisions.append(rev_0)
             self._revisions[0] = rev_0
             logger.info("Created durable Revision 0 for bid %s (fingerprint: %s...)", self.bid_id, rev_fp[:12])
             return rev_0
@@ -1382,11 +1625,12 @@ class ProcurementRevisionManager:
         """Adds an additive buyer revision (Rev 1, 2, ...).
         Enforces idempotency across process restarts (Section 6),
         optimistic database concurrency (Section 9),
-        and separate buyer chronology vs system revision (Section 8)."""
+        two distinct sequences: Buyer Update Event vs Canonical Procurement Revision (Section 8),
+        and separate buyer chronology vs system revision (Section 5 & 8)."""
         lock = self._get_bid_lock(self.bid_id)
         with lock:
             current_rev = self.current_revision_number
-            if current_rev < 0:
+            if current_rev < 0 and not self._all_revisions:
                 raise PCIEngineError("Cannot add buyer update revision: Revision 0 does not exist.")
 
             # Concurrency check against persisted revision counter (Section 9)
@@ -1398,9 +1642,15 @@ class ProcurementRevisionManager:
                     f"but persisted current revision is {persisted_rev}."
                 )
 
-            # Require real content_hash (Section 7)
+            # Require real document_id and content_hash (Section 7)
             incoming_hashes = []
             for d in documents:
+                did = d.get("document_id")
+                if did is None or not isinstance(did, int):
+                    raise ValueError(
+                        f"Missing required integer document_id for document '{d.get('name', 'unnamed')}'. "
+                        "Real document identity is required for procurement change tracking."
+                    )
                 chash = d.get("content_hash")
                 if not chash or not str(chash).strip():
                     raise ValueError(
@@ -1433,30 +1683,19 @@ class ProcurementRevisionManager:
             chrono = extract_chronology_metadata(fname, buyer_issued_date)
             doc_change_type = chrono.get("document_change_type") or DOC_CHANGE_ADDENDUM
 
-            next_rev_num = current_rev + 1
-            parent_rev = self._revisions[current_rev]
-
-            # Build source document metadata
-            src_docs = []
-            for d, chash in zip(documents, incoming_hashes):
-                src_docs.append({
-                    "name": d.get("name", "Buyer Update"),
-                    "content_hash": chash,
-                    "doc_type": d.get("doc_type", "Addendum"),
-                    "document_change_type": doc_change_type,
-                    "sequence_number": chrono.get("sequence_number"),
-                    "issued_date": chrono.get("issued_date"),
-                })
-
-            # Chronology index (Buyer sequence vs System sequence)
+            chronology_unresolved = False
             if force_chronology_index is not None:
                 chronology_index = force_chronology_index
             elif chrono.get("sequence_number") is not None:
                 chronology_index = chrono["sequence_number"]
             else:
-                chronology_index = next_rev_num
+                # Ambiguous or missing sequence number -- flag unresolved!
+                # Never silently fall back to procurement_revision counter!
+                chronology_index = 999999
+                chronology_unresolved = True
 
-            # Check if this revision has semantic fact changes or is informational/no-op (Section 13)
+            # Two distinct sequences (Gap 4):
+            # Check if this revision has semantic fact changes or is informational/no-op
             has_semantic_changes = any(
                 c.change_type != CHANGE_UNCHANGED for c in changes
             )
@@ -1466,15 +1705,64 @@ class ProcurementRevisionManager:
                 else OUTCOME_NEW_REVISION_NO_SEMANTIC_CHANGE
             )
 
+            # Canonical revision increments ONLY if there are approved canonical changes!
+            if has_semantic_changes:
+                next_rev_num = current_rev + 1
+            else:
+                next_rev_num = current_rev
+
+            parent_rev = self._revisions.get(current_rev) or self._all_revisions[-1]
+
+            # Build source document metadata
+            src_docs = []
+            for idx, (d, chash) in enumerate(zip(documents, incoming_hashes)):
+                role = d.get("role")
+                if not role:
+                    if d.get("document_change_type") == DOC_CHANGE_REPLACEMENT_DOCUMENT:
+                        role = "replacement"
+                    elif idx == 0:
+                        role = "primary"
+                    else:
+                        role = "supporting"
+                src_docs.append({
+                    "document_id": d["document_id"],
+                    "name": d.get("name", "Buyer Update"),
+                    "content_hash": chash,
+                    "doc_type": d.get("doc_type", "Addendum"),
+                    "document_change_type": d.get("document_change_type") or doc_change_type,
+                    "role": role,
+                    "sequence_number": chrono.get("sequence_number"),
+                    "issued_date": chrono.get("issued_date"),
+                })
+
+            if [d["role"] for d in src_docs].count("primary") != 1:
+                raise ValueError("Buyer update requires exactly one primary document.")
+
+            # If chronology is unresolved, mark changes with HUMAN_REVIEW_REQUIRED
+            prepared_changes = []
+            for c in changes:
+                meta = copy.deepcopy(c.metadata) if c.metadata else {}
+                rev_status = c.review_status
+                if chronology_unresolved:
+                    rev_status = REVIEW_STATUS_HUMAN_REVIEW_REQUIRED
+                    meta["chronology_unresolved"] = True
+                c_prepared = replace(
+                    c,
+                    source_document_id=c.source_document_id or src_docs[0]["document_id"],
+                    review_status=rev_status,
+                    metadata=meta,
+                )
+                prepared_changes.append(c_prepared)
+
             # Build ChangeSet
             changeset_fp = compute_changeset_fingerprint(
-                next_rev_num, current_rev, changes, incoming_hashes
+                next_rev_num, current_rev, prepared_changes, incoming_hashes
             )
             changeset = ProcurementChangeSet(
                 revision=next_rev_num,
                 previous_revision=current_rev,
                 source_documents=src_docs,
-                changes=list(changes),
+                changes=prepared_changes,
                 buyer_issued_date=chrono.get("issued_date") or buyer_issued_date,
                 fingerprint=changeset_fp,
             )
@@ -1486,7 +1774,7 @@ class ProcurementRevisionManager:
 
             new_revision = ProcurementRevision(
                 revision_number=next_rev_num,
-                revision_id=f"bid-{self.bid_id}-rev-{next_rev_num}",
+                revision_id=f"bid-{self.bid_id}-rev-{next_rev_num}-{len(self._all_revisions)}",
                 parent_revision_id=parent_rev.revision_id,
                 buyer_chronology_index=chronology_index,
                 buyer_issued_date=chrono.get("issued_date") or buyer_issued_date,
@@ -1494,6 +1782,8 @@ class ProcurementRevisionManager:
                 change_set=changeset,
                 fingerprint=rev_fp,
                 is_current=True,
+                chronology_unresolved=chronology_unresolved,
+                no_canonical_change=(not has_semantic_changes),
             )
 
             # Persist to durable storage (Section 5)
@@ -1502,18 +1792,13 @@ class ProcurementRevisionManager:
             )
 
             # Immutability: Prior revisions remain immutable; un-mark is_current
-            self._revisions[current_rev] = ProcurementRevision(
-                revision_number=parent_rev.revision_number,
-                revision_id=parent_rev.revision_id,
-                parent_revision_id=parent_rev.parent_revision_id,
-                buyer_chronology_index=parent_rev.buyer_chronology_index,
-                buyer_issued_date=parent_rev.buyer_issued_date,
-                trigger_documents=parent_rev.trigger_documents,
-                change_set=parent_rev.change_set,
-                fingerprint=parent_rev.fingerprint,
-                is_current=False,
-            )
+            for i, r in enumerate(self._all_revisions):
+                if r.is_current:
+                    unmarked_rev = replace(r, is_current=False)
+                    self._all_revisions[i] = unmarked_rev
+                    self._revisions[r.revision_number] = unmarked_rev
 
+            self._all_revisions.append(new_revision)
             self._revisions[next_rev_num] = new_revision
             logger.info("Created durable Revision %d for bid %s (fingerprint: %s...)",
                         next_rev_num, self.bid_id, rev_fp[:12])
@@ -1523,12 +1808,13 @@ class ProcurementRevisionManager:
                 "revision": new_revision,
                 "current_revision": next_rev_num,
                 "has_semantic_changes": has_semantic_changes,
+                "chronology_unresolved": chronology_unresolved,
             }
 
     def get_fact_history(self, entity_id: str) -> list[dict[str, Any]]:
         """Returns the full chronological evolution of a specific fact across all revisions."""
         history = []
-        ordered_revs = sorted(self._revisions.values(), key=lambda r: (r.buyer_chronology_index, r.revision_number))
+        ordered_revs = sorted(self._all_revisions, key=lambda r: (r.buyer_chronology_index, r.revision_number))
         for rev in ordered_revs:
             for c in rev.change_set.changes:
                 if c.entity_id == entity_id:
@@ -1540,6 +1826,7 @@ class ProcurementRevisionManager:
                         "before_value": c.before_value,
                         "after_value": c.after_value,
                         "source_document": c.source_document,
+                        "source_document_id": c.source_document_id,
                         "authority_status": c.authority_status,
                         "review_status": c.review_status,
                     })
