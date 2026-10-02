@@ -1,14 +1,19 @@
 """
-procurement_change_intelligence.py -- PCI-A: Procurement Revision Foundation &
-Deterministic Change Model.
+procurement_change_intelligence.py -- PCI-A.1: Procurement Revision Foundation &
+Deterministic Change Model (Durable & Invariant-Closed).
 
 PHASE 1 ONLY:
 - Revision Foundation (Revision 0 baseline + additive buyer revisions)
+- System Revision (monotonic applied counter) vs Buyer Chronology (buyer sequence)
 - Deterministic Change Model (bounded change taxonomy, field-level precedence)
 - Replay & Authoritative Current State derivation
-- Out-of-order and duplicate upload resilience (idempotency)
-- Stable semantic fingerprinting (no timestamps / DB IDs)
-- Tenancy & optimistic concurrency safety
+- Out-of-order and duplicate upload resilience (idempotency across restarts)
+- Stable semantic fingerprinting (excludes timestamps, DB row IDs, revision numbers)
+- Durable persistence adapter over existing migration 010 schema (bids, procurement_update_reviews,
+  procurement_update_review_documents, procurement_changes, procurement_conflicts)
+- Real content hash required (fail closed on missing content_hash)
+- Tenancy verification against persisted ownership
+- Optimistic database-level concurrency (expected_base_revision)
 
 Pure, deterministic, fail-closed. No model calls.
 Does NOT modify prompts, UI, brief generation, or CHECK.
@@ -16,6 +21,7 @@ Reuses existing database schema (migration 010 governance precedent) without DDL
 """
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 import copy
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -109,6 +115,7 @@ REVIEW_STATUSES = (
 # Outcome constants
 OUTCOME_REVISION_CREATED = "REVISION_CREATED"
 OUTCOME_NO_NEW_REVISION = "NO_NEW_REVISION"
+OUTCOME_NEW_REVISION_NO_SEMANTIC_CHANGE = "NEW_REVISION_NO_SEMANTIC_CHANGE"
 OUTCOME_ORDERING_REVIEW_REQUIRED = "ORDERING_REVIEW_REQUIRED"
 
 
@@ -255,7 +262,7 @@ def compute_chronology_sort_key(meta: dict[str, Any], filename: str) -> tuple:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 4. Fingerprinting (Section 15)
+# 4. Fingerprinting (Section 12 & 15)
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _canonical_json_hash(payload: Any) -> str:
@@ -310,6 +317,8 @@ def compute_revision_fingerprint(
     source_hashes: Sequence[str],
     changeset_fp: str,
 ) -> str:
+    """REVISION FINGERPRINT: Represents the exact node in the revision graph.
+    Includes revision counter, parent fingerprint, source hashes, and changeset fingerprint."""
     payload = {
         "revision": revision,
         "parent_fp": parent_fp or "",
@@ -321,35 +330,35 @@ def compute_revision_fingerprint(
 
 def compute_state_fingerprint(
     bid_id: int,
-    current_revision: int,
     authoritative_facts: dict[str, FactChange],
     active_artifacts: dict[str, ArtifactRecord],
+    current_revision: int | None = None,  # accepted for backwards-compatibility, excluded from payload
 ) -> str:
-    """Stable fingerprint of the current authoritative procurement state.
-    Changes ONLY when semantic facts change."""
+    """AUTHORITATIVE STATE FINGERPRINT (Section 12): Represents semantic current truth only.
+    Strictly excludes revision numbers, artifact revision numbers, row IDs, and timestamps.
+    Changes ONLY when semantic authoritative facts or active artifact identities change."""
     facts_payload = [
         {
             "entity_id": k,
             "fact_type": v.fact_type,
             "value": v.after_value,
-            "source_hash": v.source_hash,
             "authority_status": v.authority_status,
         }
         for k, v in sorted(authoritative_facts.items())
+        if v.authority_status != AUTHORITY_REMOVED
     ]
     artifacts_payload = [
         {
             "artifact_id": k,
             "name": a.name,
             "content_hash": a.content_hash,
-            "revision": a.revision,
             "status": a.status,
         }
         for k, a in sorted(active_artifacts.items())
+        if a.status == AUTHORITY_CURRENT
     ]
     payload = {
         "bid_id": bid_id,
-        "current_revision": current_revision,
         "facts": facts_payload,
         "artifacts": artifacts_payload,
     }
@@ -357,7 +366,7 @@ def compute_state_fingerprint(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 5. Core Data Structures (Sections 4, 11, 13, 14)
+# 5. Core Data Structures (Sections 4, 8, 11, 13, 14)
 # ═══════════════════════════════════════════════════════════════════════════
 
 @dataclass(frozen=True)
@@ -457,16 +466,22 @@ class ProcurementChangeSet:
 
 @dataclass
 class ProcurementRevision:
-    """Immutable record of one procurement revision in the chronological chain."""
-    revision_number: int
+    """Immutable record of one procurement revision in the chronological chain.
+    Separates System Procurement Revision (monotonic applied counter) from
+    Buyer Chronology (buyer sequence / addendum number)."""
+    revision_number: int  # SYSTEM PROCUREMENT REVISION
     revision_id: str
     parent_revision_id: str | None
-    buyer_chronology_index: int
+    buyer_chronology_index: int  # BUYER CHRONOLOGY
     buyer_issued_date: str | None
     trigger_documents: list[dict[str, Any]]
     change_set: ProcurementChangeSet
     fingerprint: str
     is_current: bool = False
+
+    @property
+    def revision_fingerprint(self) -> str:
+        return self.fingerprint
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -522,6 +537,8 @@ def derive_current_authoritative_state(
     revisions: Sequence[ProcurementRevision],
 ) -> AuthoritativeProcurementState:
     """Deterministically replay revision history from Revision 0 to the latest revision.
+    Replays strictly in BUYER CHRONOLOGY order (buyer_chronology_index),
+    never by upload timestamp or system arrival order (Section 5 & 8).
     Excludes superseded facts from authoritative_facts while retaining them in superseded_facts.
     Unrelated facts survive unchanged (Section 9).
     Ambiguous or conflicting facts are routed to pending_conflicts without auto-resolving (Section 10)."""
@@ -544,7 +561,7 @@ def derive_current_authoritative_state(
         history_chain.append(rev.revision_number)
 
         for change in rev.change_set.changes:
-            # 1. Ambiguous precedence / conflict requiring review
+            # 1. Ambiguous precedence / conflict requiring review (Section 10)
             if (
                 change.change_type == CHANGE_CONFLICTS_WITH
                 or change.review_status == REVIEW_STATUS_HUMAN_REVIEW_REQUIRED
@@ -665,7 +682,8 @@ def derive_current_authoritative_state(
                 else:
                     active_facts[change.entity_id] = change
 
-    state_fp = compute_state_fingerprint(bid_id, current_rev_num, active_facts, active_artifacts)
+    # State fingerprint excludes revision number (Section 12)
+    state_fp = compute_state_fingerprint(bid_id, active_facts, active_artifacts)
 
     return AuthoritativeProcurementState(
         bid_id=bid_id,
@@ -682,24 +700,558 @@ def derive_current_authoritative_state(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 7. Procurement Revision Manager (Sections 4, 5, 6, 16, 17, 18)
+# 7. Persistence Storage Adapter Layer (Sections 1, 2, 3, 4, 5, 9, 10, 11)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class PCIBaseStorage(ABC):
+    """Abstract interface for durable procurement revision and change persistence."""
+
+    @abstractmethod
+    def verify_tenancy(self, bid_id: int, organization_id: str) -> None:
+        """Verifies that the bid belongs to the organization against persisted ownership."""
+
+    @abstractmethod
+    def get_procurement_state(self, bid_id: int) -> dict[str, Any]:
+        """Returns {'procurement_revision': int, 'procurement_truth_status': str}."""
+
+    @abstractmethod
+    def get_known_document_hashes(self, bid_id: int) -> set[str]:
+        """Returns set of all document content_hashes recorded in applied revisions."""
+
+    @abstractmethod
+    def load_revisions(self, bid_id: int, organization_id: str) -> list[ProcurementRevision]:
+        """Rehydrates the complete revision history from persistent storage."""
+
+    @abstractmethod
+    def persist_revision(
+        self,
+        bid_id: int,
+        organization_id: str,
+        revision: ProcurementRevision,
+        expected_base_revision: int | None,
+    ) -> None:
+        """Persists a new revision with optimistic concurrency check against expected_base_revision."""
+
+
+class InMemoryPCIStorage(PCIBaseStorage):
+    """Durable-in-memory storage implementing the exact schema and constraints of
+    Migration 010 (bids, procurement_update_reviews, procurement_update_review_documents,
+    procurement_changes, procurement_conflicts).
+    Allows rigorous unit testing of process-restart, concurrency, and tenancy without network calls."""
+
+    def __init__(self, initial_bids: dict[int, dict[str, Any]] | None = None):
+        self._lock = threading.Lock()
+        self.bids: dict[int, dict[str, Any]] = initial_bids.copy() if initial_bids else {}
+        self.reviews: dict[int, list[dict[str, Any]]] = {}  # bid_id -> list of review dicts
+        self.review_documents: dict[int, list[dict[str, Any]]] = {}  # review_id -> list of doc dicts
+        self.changes: dict[int, list[dict[str, Any]]] = {}  # review_id -> list of change dicts
+        self._next_review_id = 1
+        self._next_change_id = 1
+
+    def verify_tenancy(self, bid_id: int, organization_id: str) -> None:
+        with self._lock:
+            bid = self.bids.get(bid_id)
+            if not bid:
+                # Register bid if empty and not known
+                self.bids[bid_id] = {
+                    "id": bid_id,
+                    "organization_id": str(organization_id),
+                    "procurement_revision": 0,
+                    "procurement_truth_status": "ungoverned",
+                }
+                return
+            if str(bid.get("organization_id")) != str(organization_id):
+                raise TenancyViolationError(
+                    f"Access denied: organization '{organization_id}' does not own bid {bid_id}."
+                )
+
+    def get_procurement_state(self, bid_id: int) -> dict[str, Any]:
+        with self._lock:
+            bid = self.bids.get(bid_id, {})
+            return {
+                "procurement_revision": bid.get("procurement_revision", 0),
+                "procurement_truth_status": bid.get("procurement_truth_status", "ungoverned"),
+            }
+
+    def get_known_document_hashes(self, bid_id: int) -> set[str]:
+        with self._lock:
+            hashes = set()
+            reviews = self.reviews.get(bid_id, [])
+            for r in reviews:
+                if r.get("status") == "applied":
+                    rid = r["id"]
+                    for doc in self.review_documents.get(rid, []):
+                        if h := doc.get("document_hash"):
+                            hashes.add(h)
+            return hashes
+
+    def load_revisions(self, bid_id: int, organization_id: str) -> list[ProcurementRevision]:
+        self.verify_tenancy(bid_id, organization_id)
+        with self._lock:
+            reviews = [r for r in self.reviews.get(bid_id, []) if r.get("status") == "applied"]
+            # Order by resulting_procurement_revision ascending
+            reviews.sort(key=lambda r: r.get("resulting_procurement_revision", 0))
+
+            revisions = []
+            for r in reviews:
+                rid = r["id"]
+                rev_num = r["resulting_procurement_revision"]
+                base_rev = r["base_procurement_revision"]
+
+                # Documents
+                doc_rows = self.review_documents.get(rid, [])
+                trigger_docs = [
+                    {
+                        "name": d.get("name", "Document"),
+                        "content_hash": d.get("document_hash"),
+                        "doc_type": d.get("role", "Addendum"),
+                        "document_change_type": r.get("buyer_update_type", DOC_CHANGE_ADDENDUM),
+                    }
+                    for d in doc_rows
+                ]
+
+                # Changes
+                change_rows = self.changes.get(rid, [])
+                fact_changes = []
+                for c in change_rows:
+                    nv = c.get("new_value") or {}
+                    fact_changes.append(
+                        FactChange(
+                            change_type=nv.get("pci_change_type") or c.get("change_type"),
+                            fact_type=nv.get("fact_type") or c.get("entity_type", "OTHER"),
+                            entity_id=c.get("entity_id", ""),
+                            before_value=c.get("previous_value", {}).get("value") if isinstance(c.get("previous_value"), dict) else c.get("previous_value"),
+                            after_value=nv.get("value") if isinstance(nv, dict) and "value" in nv else nv,
+                            source_document=c.get("physical_source_ref", ""),
+                            source_hash=c.get("source_document_hash", ""),
+                            authority_status=nv.get("authority_status", AUTHORITY_CURRENT) if isinstance(nv, dict) else AUTHORITY_CURRENT,
+                            review_status=nv.get("review_status") or c.get("review_decision") or REVIEW_STATUS_APPROVED,
+                            metadata=nv.get("metadata", {}) if isinstance(nv, dict) else {},
+                        )
+                    )
+
+                src_hashes = [d.get("document_hash") for d in doc_rows if d.get("document_hash")]
+                changeset = ProcurementChangeSet(
+                    revision=rev_num,
+                    previous_revision=base_rev if rev_num > 0 else None,
+                    source_documents=trigger_docs,
+                    changes=fact_changes,
+                    buyer_issued_date=r.get("buyer_issued_date"),
+                    fingerprint=r.get("document_set_digest", ""),
+                )
+
+                parent_id = f"bid-{bid_id}-rev-{base_rev}" if rev_num > 0 else None
+                revisions.append(
+                    ProcurementRevision(
+                        revision_number=rev_num,
+                        revision_id=r.get("idempotency_key") or f"bid-{bid_id}-rev-{rev_num}",
+                        parent_revision_id=parent_id,
+                        buyer_chronology_index=r.get("buyer_chronology_index", rev_num),
+                        buyer_issued_date=r.get("buyer_issued_date"),
+                        trigger_documents=trigger_docs,
+                        change_set=changeset,
+                        fingerprint=r.get("document_set_digest", ""),
+                        is_current=False,
+                    )
+                )
+
+            if revisions:
+                revisions[-1].is_current = True
+            return revisions
+
+    def persist_revision(
+        self,
+        bid_id: int,
+        organization_id: str,
+        revision: ProcurementRevision,
+        expected_base_revision: int | None,
+    ) -> None:
+        self.verify_tenancy(bid_id, organization_id)
+        with self._lock:
+            bid = self.bids[bid_id]
+            current_rev = bid.get("procurement_revision", 0)
+
+            # Optimistic concurrency check against persisted revision counter (Section 9)
+            if expected_base_revision is not None and expected_base_revision != current_rev:
+                raise StaleRevisionError(
+                    f"Stale revision: persisted DB revision is {current_rev}, "
+                    f"expected {expected_base_revision}."
+                )
+
+            # Insert procurement_update_reviews row
+            rid = self._next_review_id
+            self._next_review_id += 1
+
+            review_kind = "baseline" if revision.revision_number == 0 else "buyer_update"
+            review_row = {
+                "id": rid,
+                "bid_id": bid_id,
+                "organization_id": organization_id,
+                "review_kind": review_kind,
+                "buyer_update_type": revision.trigger_documents[0].get("document_change_type", "Addendum") if revision.trigger_documents else "Other",
+                "buyer_issued_date": revision.buyer_issued_date,
+                "buyer_chronology_index": revision.buyer_chronology_index,
+                "status": "applied",
+                "base_procurement_revision": revision.change_set.previous_revision or 0,
+                "resulting_procurement_revision": revision.revision_number,
+                "document_set_digest": revision.fingerprint,
+                "idempotency_key": revision.revision_id,
+                "no_canonical_change": (len(revision.change_set.changes) == 0),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            self.reviews.setdefault(bid_id, []).append(review_row)
+
+            # Insert procurement_update_review_documents rows
+            doc_rows = []
+            for d in revision.trigger_documents:
+                doc_rows.append({
+                    "review_id": rid,
+                    "document_id": d.get("document_id", 1),
+                    "organization_id": organization_id,
+                    "name": d.get("name", "Document"),
+                    "document_hash": d.get("content_hash"),
+                    "role": "primary" if d.get("document_change_type") != DOC_CHANGE_REPLACEMENT_DOCUMENT else "replacement",
+                })
+            self.review_documents[rid] = doc_rows
+
+            # Insert procurement_changes rows
+            change_rows = []
+            for c in revision.change_set.changes:
+                cid = self._next_change_id
+                self._next_change_id += 1
+
+                # Map PCI change_type to migration 010 enum
+                db_change_type = c.change_type
+                if c.change_type in (CHANGE_REPLACES, CHANGE_CORRECTS, CHANGE_NARROWS, CHANGE_EXPANDS, CHANGE_CONFLICTS_WITH):
+                    db_change_type = "MODIFIED"
+                elif c.change_type == CHANGE_ADDS:
+                    db_change_type = "ADDED"
+                elif c.change_type == CHANGE_REMOVES:
+                    db_change_type = "REMOVED"
+                elif c.change_type == CHANGE_SUPERSEDES:
+                    db_change_type = "SUPERSEDED"
+                elif c.change_type == CHANGE_CLARIFIES:
+                    db_change_type = "CLARIFIED"
+                elif c.change_type == CHANGE_UNCHANGED:
+                    db_change_type = "UNCHANGED"
+
+                change_row = {
+                    "id": cid,
+                    "review_id": rid,
+                    "bid_id": bid_id,
+                    "organization_id": organization_id,
+                    "review_decision": c.review_status or "approved",
+                    "applied_at": datetime.now(timezone.utc).isoformat(),
+                    "procurement_revision": revision.revision_number,
+                    "source_document_hash": c.source_hash,
+                    "physical_source_ref": c.source_document,
+                    "entity_type": c.fact_type,
+                    "entity_id": c.entity_id,
+                    "change_type": db_change_type,
+                    "canonical_effect": "evidence_only" if db_change_type == "UNCHANGED" else "canonical_change",
+                    "previous_value": {"value": c.before_value},
+                    "new_value": {
+                        "value": c.after_value,
+                        "pci_change_type": c.change_type,
+                        "fact_type": c.fact_type,
+                        "authority_status": c.authority_status,
+                        "review_status": c.review_status,
+                        "metadata": c.metadata,
+                    },
+                }
+                change_rows.append(change_row)
+            self.changes[rid] = change_rows
+
+            # Update bids table
+            bid["procurement_revision"] = revision.revision_number
+            bid["procurement_truth_status"] = "governed"
+
+
+class PCIDatabaseStorage(PCIBaseStorage):
+    """Production database storage adapter interfacing with Supabase via database.py.
+    Maps domain models 1:1 to public.procurement_update_reviews,
+    procurement_update_review_documents, and procurement_changes."""
+
+    def __init__(self, client=None):
+        self._client = client
+
+    def _get_client(self):
+        if self._client:
+            return self._client
+        import database
+        return database.get_client()
+
+    def verify_tenancy(self, bid_id: int, organization_id: str) -> None:
+        sb = self._get_client()
+        res = sb.table("bids").select("organization_id").eq("id", bid_id).execute()
+        bid = res.data[0] if (res and res.data) else None
+        if not bid:
+            import database
+            bid = database.get_bid(bid_id)
+        if not bid or str(bid.get("organization_id")) != str(organization_id):
+            raise TenancyViolationError(
+                f"Access denied: organization '{organization_id}' does not have access to bid {bid_id}."
+            )
+
+    def get_procurement_state(self, bid_id: int) -> dict[str, Any]:
+        sb = self._get_client()
+        res = sb.table("bids").select("procurement_revision,procurement_truth_status").eq("id", bid_id).execute()
+        if res and res.data:
+            return res.data[0]
+        import database
+        return database.get_bid_procurement_state(bid_id)
+
+    def get_known_document_hashes(self, bid_id: int) -> set[str]:
+        sb = self._get_client()
+        reviews = (
+            sb.table("procurement_update_reviews")
+            .select("id")
+            .eq("bid_id", bid_id)
+            .eq("status", "applied")
+            .execute()
+        ).data or []
+        review_ids = [r["id"] for r in reviews]
+        if not review_ids:
+            return set()
+        docs = (
+            sb.table("procurement_update_review_documents")
+            .select("document_hash")
+            .in_("review_id", review_ids)
+            .execute()
+        ).data or []
+        return {d["document_hash"] for d in docs if d.get("document_hash")}
+
+    def load_revisions(self, bid_id: int, organization_id: str) -> list[ProcurementRevision]:
+        self.verify_tenancy(bid_id, organization_id)
+        sb = self._get_client()
+        res = sb.table("procurement_update_reviews").select("*").eq("bid_id", bid_id).execute()
+        reviews = res.data or []
+        if not reviews:
+            import database
+            reviews = database.get_procurement_update_reviews(bid_id)
+        applied_reviews = [r for r in reviews if r.get("status") == "applied"]
+        applied_reviews.sort(key=lambda r: r.get("resulting_procurement_revision", 0))
+
+        revisions = []
+        for r in applied_reviews:
+            rid = r["id"]
+            rev_num = r.get("resulting_procurement_revision", 0)
+            base_rev = r.get("base_procurement_revision", 0)
+
+            # Load review docs
+            doc_res = sb.table("procurement_update_review_documents").select("*").eq("review_id", rid).execute()
+            doc_rows = doc_res.data or []
+            if not doc_rows:
+                import database
+                doc_rows = database.get_procurement_update_review_documents(rid)
+            trigger_docs = [
+                {
+                    "name": d.get("name", "Document"),
+                    "content_hash": d.get("document_hash"),
+                    "doc_type": d.get("role", "Addendum"),
+                    "document_change_type": r.get("buyer_update_type", DOC_CHANGE_ADDENDUM),
+                }
+                for d in doc_rows
+            ]
+
+            # Load changes
+            chg_res = sb.table("procurement_changes").select("*").eq("review_id", rid).execute()
+            change_rows = chg_res.data or []
+            if not change_rows:
+                import database
+                change_rows = database.get_procurement_changes(rid)
+            fact_changes = []
+            for c in change_rows:
+                nv = c.get("new_value") or {}
+                fact_changes.append(
+                    FactChange(
+                        change_type=nv.get("pci_change_type") or c.get("change_type"),
+                        fact_type=nv.get("fact_type") or c.get("entity_type", "OTHER"),
+                        entity_id=c.get("entity_id", ""),
+                        before_value=c.get("previous_value", {}).get("value") if isinstance(c.get("previous_value"), dict) else c.get("previous_value"),
+                        after_value=nv.get("value") if isinstance(nv, dict) and "value" in nv else nv,
+                        source_document=c.get("physical_source_ref", ""),
+                        source_hash=c.get("source_document_hash", ""),
+                        authority_status=nv.get("authority_status", AUTHORITY_CURRENT) if isinstance(nv, dict) else AUTHORITY_CURRENT,
+                        review_status=nv.get("review_status") or c.get("review_decision") or REVIEW_STATUS_APPROVED,
+                        metadata=nv.get("metadata", {}) if isinstance(nv, dict) else {},
+                    )
+                )
+
+            changeset = ProcurementChangeSet(
+                revision=rev_num,
+                previous_revision=base_rev if rev_num > 0 else None,
+                source_documents=trigger_docs,
+                changes=fact_changes,
+                buyer_issued_date=r.get("buyer_issued_date"),
+                fingerprint=r.get("document_set_digest", ""),
+            )
+
+            parent_id = f"bid-{bid_id}-rev-{base_rev}" if rev_num > 0 else None
+            chrono_idx = r.get("buyer_chronology_index")
+            if chrono_idx is None:
+                chrono_idx = rev_num
+
+            revisions.append(
+                ProcurementRevision(
+                    revision_number=rev_num,
+                    revision_id=r.get("idempotency_key") or f"bid-{bid_id}-rev-{rev_num}",
+                    parent_revision_id=parent_id,
+                    buyer_chronology_index=chrono_idx,
+                    buyer_issued_date=r.get("buyer_issued_date"),
+                    trigger_documents=trigger_docs,
+                    change_set=changeset,
+                    fingerprint=r.get("document_set_digest", ""),
+                    is_current=False,
+                )
+            )
+
+        if revisions:
+            revisions[-1].is_current = True
+        return revisions
+
+    def persist_revision(
+        self,
+        bid_id: int,
+        organization_id: str,
+        revision: ProcurementRevision,
+        expected_base_revision: int | None,
+    ) -> None:
+        self.verify_tenancy(bid_id, organization_id)
+        sb = self._get_client()
+
+        # Database atomic optimistic concurrency check via conditional update (Section 9)
+        # Atomically executes:
+        # UPDATE public.bids SET procurement_revision = revision.revision_number, procurement_truth_status = 'governed'
+        # WHERE id = bid_id AND procurement_revision = expected_base_revision RETURNING *
+        # This guarantees row-level serialization at the database layer (PostgreSQL).
+        # Two workers racing with expected_base_revision = N cannot both succeed;
+        # exactly one will match the row and update it, while the second matches 0 rows and fails.
+        bids_query = sb.table("bids").update({
+            "procurement_revision": revision.revision_number,
+            "procurement_truth_status": "governed",
+        }).eq("id", bid_id)
+
+        if expected_base_revision is not None:
+            bids_query = bids_query.eq("procurement_revision", expected_base_revision)
+        elif revision.revision_number == 0:
+            bids_query = bids_query.eq("procurement_truth_status", "ungoverned")
+
+        bids_res = bids_query.execute()
+        if not bids_res.data or len(bids_res.data) == 0:
+            if expected_base_revision is not None:
+                raise StaleRevisionError(
+                    f"Atomic database concurrency failure on bid {bid_id}: "
+                    f"expected base revision {expected_base_revision}, but database row was concurrently modified."
+                )
+            elif revision.revision_number == 0:
+                raise PCIEngineError(
+                    f"Atomic database concurrency failure on bid {bid_id}: "
+                    "Revision 0 (baseline) already exists or bid is already governed."
+                )
+
+        review_kind = "baseline" if revision.revision_number == 0 else "buyer_update"
+        review_data = {
+            "bid_id": bid_id,
+            "organization_id": organization_id,
+            "review_kind": review_kind,
+            "buyer_update_type": "Addendum" if review_kind == "buyer_update" else "Original RFP",
+            "buyer_issued_date": revision.buyer_issued_date,
+            "status": "applied",
+            "base_procurement_revision": revision.change_set.previous_revision or 0,
+            "resulting_procurement_revision": revision.revision_number,
+            "document_set_digest": revision.fingerprint,
+            "idempotency_key": revision.revision_id,
+            "no_canonical_change": (len(revision.change_set.changes) == 0),
+        }
+        review_res = sb.table("procurement_update_reviews").insert(review_data).execute()
+        review_id = review_res.data[0]["id"]
+
+        # Insert review documents
+        for d in revision.trigger_documents:
+            doc_data = {
+                "review_id": review_id,
+                "document_id": d.get("document_id", 1),
+                "organization_id": organization_id,
+                "document_hash": d.get("content_hash"),
+                "role": "primary" if d.get("document_change_type") != DOC_CHANGE_REPLACEMENT_DOCUMENT else "replacement",
+            }
+            sb.table("procurement_update_review_documents").insert(doc_data).execute()
+
+        # Insert changes
+        for c in revision.change_set.changes:
+            db_change_type = c.change_type
+            if c.change_type in (CHANGE_REPLACES, CHANGE_CORRECTS, CHANGE_NARROWS, CHANGE_EXPANDS, CHANGE_CONFLICTS_WITH):
+                db_change_type = "MODIFIED"
+            elif c.change_type == CHANGE_ADDS:
+                db_change_type = "ADDED"
+            elif c.change_type == CHANGE_REMOVES:
+                db_change_type = "REMOVED"
+            elif c.change_type == CHANGE_SUPERSEDES:
+                db_change_type = "SUPERSEDED"
+            elif c.change_type == CHANGE_CLARIFIES:
+                db_change_type = "CLARIFIED"
+            elif c.change_type == CHANGE_UNCHANGED:
+                db_change_type = "UNCHANGED"
+
+            change_data = {
+                "review_id": review_id,
+                "bid_id": bid_id,
+                "organization_id": organization_id,
+                "review_decision": c.review_status or "approved",
+                "applied_at": datetime.now(timezone.utc).isoformat(),
+                "procurement_revision": revision.revision_number,
+                "source_document_hash": c.source_hash,
+                "physical_source_ref": c.source_document,
+                "entity_type": c.fact_type,
+                "entity_id": c.entity_id,
+                "change_type": db_change_type,
+                "canonical_effect": "evidence_only" if db_change_type == "UNCHANGED" else "canonical_change",
+                "previous_value": {"value": c.before_value},
+                "new_value": {
+                    "value": c.after_value,
+                    "pci_change_type": c.change_type,
+                    "fact_type": c.fact_type,
+                    "authority_status": c.authority_status,
+                    "review_status": c.review_status,
+                    "metadata": c.metadata,
+                },
+            }
+            sb.table("procurement_changes").insert(change_data).execute()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 8. Procurement Revision Manager (Sections 4, 5, 6, 7, 8, 9, 10, 16)
 # ═══════════════════════════════════════════════════════════════════════════
 
 class ProcurementRevisionManager:
     """Manages the lifecycle, chronology, idempotency, and concurrency
     for a single procurement's revision history.
-    Enforces strict organization and bid tenancy boundaries."""
+    Durable across process restarts via PCIBaseStorage."""
 
     _locks: dict[int, threading.Lock] = {}
     _locks_guard = threading.Lock()
 
-    def __init__(self, bid_id: int, organization_id: str):
+    def __init__(
+        self,
+        bid_id: int,
+        organization_id: str,
+        storage: PCIBaseStorage | None = None,
+    ):
         if not bid_id or not organization_id:
             raise TenancyViolationError("Both bid_id and organization_id are required.")
         self.bid_id = bid_id
         self.organization_id = str(organization_id)
+
+        # Storage initialization & persisted tenancy verification (Section 10)
+        # Production execution strictly uses PCIDatabaseStorage; no implicit fallback to in-memory.
+        self.storage: PCIBaseStorage = storage if storage is not None else PCIDatabaseStorage()
+        self.storage.verify_tenancy(self.bid_id, self.organization_id)
+
+        # Rehydrate existing revisions from storage (Sections 4, 5, 15)
         self._revisions: dict[int, ProcurementRevision] = {}
-        self._known_document_hashes: set[str] = set()
+        for rev in self.storage.load_revisions(self.bid_id, self.organization_id):
+            self._revisions[rev.revision_number] = rev
 
     @classmethod
     def _get_bid_lock(cls, bid_id: int) -> threading.Lock:
@@ -714,6 +1266,7 @@ class ProcurementRevisionManager:
                 f"Tenancy mismatch: request for ({target_bid_id}, {target_org_id}) "
                 f"denied on manager for ({self.bid_id}, {self.organization_id})"
             )
+        self.storage.verify_tenancy(target_bid_id, target_org_id)
 
     @property
     def current_revision_number(self) -> int:
@@ -737,19 +1290,22 @@ class ProcurementRevisionManager:
         buyer_issued_date: str | None = None,
     ) -> ProcurementRevision:
         """Establishes Revision 0 (original authoritative procurement state).
-        Fails closed if baseline already exists."""
+        Fails closed if baseline already exists or if content_hash is missing."""
         lock = self._get_bid_lock(self.bid_id)
         with lock:
             if 0 in self._revisions:
                 raise PCIEngineError("Revision 0 (baseline) already exists for this procurement.")
 
-            # Record document hashes
+            # Require real content_hash (Section 7)
             src_docs = []
             src_hashes = []
             for d in documents:
-                chash = d.get("content_hash") or hashlib.sha256(
-                    d.get("name", "").encode("utf-8")
-                ).hexdigest()
+                chash = d.get("content_hash")
+                if not chash or not str(chash).strip():
+                    raise ValueError(
+                        f"Missing required content_hash for document '{d.get('name', 'unnamed')}'. "
+                        "Real content identity is required for procurement change tracking."
+                    )
                 src_docs.append({
                     "name": d.get("name", "RFP"),
                     "content_hash": chash,
@@ -757,7 +1313,14 @@ class ProcurementRevisionManager:
                     "document_change_type": DOC_CHANGE_ORIGINAL_RFP,
                 })
                 src_hashes.append(chash)
-                self._known_document_hashes.add(chash)
+
+            # Require real source_hash on all initial facts
+            for c in initial_facts:
+                if not c.source_hash or not str(c.source_hash).strip():
+                    raise ValueError(
+                        f"Missing required source_hash for fact '{c.entity_id}'. "
+                        "Every fact change must cite a verified source document hash."
+                    )
 
             # Build ChangeSet for Revision 0
             changes = [
@@ -768,7 +1331,7 @@ class ProcurementRevisionManager:
                     before_value=None,
                     after_value=c.after_value,
                     source_document=c.source_document,
-                    source_hash=c.source_hash or (src_hashes[0] if src_hashes else ""),
+                    source_hash=c.source_hash,
                     authority_status=AUTHORITY_CURRENT,
                     review_status=REVIEW_STATUS_APPROVED,
                     metadata=c.metadata,
@@ -799,8 +1362,13 @@ class ProcurementRevisionManager:
                 is_current=True,
             )
 
+            # Persist to durable storage (Section 4)
+            self.storage.persist_revision(
+                self.bid_id, self.organization_id, rev_0, expected_base_revision=None
+            )
+
             self._revisions[0] = rev_0
-            logger.info("Created Revision 0 for bid %s (fingerprint: %s...)", self.bid_id, rev_fp[:12])
+            logger.info("Created durable Revision 0 for bid %s (fingerprint: %s...)", self.bid_id, rev_fp[:12])
             return rev_0
 
     def add_buyer_update_revision(
@@ -812,27 +1380,46 @@ class ProcurementRevisionManager:
         force_chronology_index: int | None = None,
     ) -> dict[str, Any]:
         """Adds an additive buyer revision (Rev 1, 2, ...).
-        Enforces idempotency (Section 6), optimistic concurrency (Section 16),
-        and fail-closed failure semantics (Section 17)."""
+        Enforces idempotency across process restarts (Section 6),
+        optimistic database concurrency (Section 9),
+        and separate buyer chronology vs system revision (Section 8)."""
         lock = self._get_bid_lock(self.bid_id)
         with lock:
             current_rev = self.current_revision_number
             if current_rev < 0:
                 raise PCIEngineError("Cannot add buyer update revision: Revision 0 does not exist.")
 
-            # Concurrency check (Section 16)
-            if expected_base_revision is not None and expected_base_revision != current_rev:
+            # Concurrency check against persisted revision counter (Section 9)
+            proc_state = self.storage.get_procurement_state(self.bid_id)
+            persisted_rev = proc_state.get("procurement_revision", current_rev)
+            if expected_base_revision is not None and expected_base_revision != persisted_rev:
                 raise StaleRevisionError(
                     f"Stale revision: expected base revision {expected_base_revision}, "
-                    f"but current revision is {current_rev}."
+                    f"but persisted current revision is {persisted_rev}."
                 )
 
-            # Idempotency check (Section 6)
-            incoming_hashes = [
-                d.get("content_hash") or hashlib.sha256(d.get("name", "").encode("utf-8")).hexdigest()
-                for d in documents
-            ]
-            if incoming_hashes and all(h in self._known_document_hashes for h in incoming_hashes):
+            # Require real content_hash (Section 7)
+            incoming_hashes = []
+            for d in documents:
+                chash = d.get("content_hash")
+                if not chash or not str(chash).strip():
+                    raise ValueError(
+                        f"Missing required content_hash for document '{d.get('name', 'unnamed')}'. "
+                        "Real content identity is required for procurement change tracking."
+                    )
+                incoming_hashes.append(chash)
+
+            # Require real source_hash on all fact changes
+            for c in changes:
+                if not c.source_hash or not str(c.source_hash).strip():
+                    raise ValueError(
+                        f"Missing required source_hash for fact '{c.entity_id}'. "
+                        "Every fact change must cite a verified source document hash."
+                    )
+
+            # Durable Idempotency check against persisted known hashes (Section 6)
+            known_hashes = self.storage.get_known_document_hashes(self.bid_id)
+            if incoming_hashes and all(h in known_hashes for h in incoming_hashes):
                 logger.info("All incoming document hashes already registered. Outcome: NO_NEW_REVISION")
                 return {
                     "outcome": OUTCOME_NO_NEW_REVISION,
@@ -840,8 +1427,7 @@ class ProcurementRevisionManager:
                     "current_revision": current_rev,
                 }
 
-            # Chronology & Out-of-order analysis (Section 5)
-            # Inspect first document for chronological signals
+            # Chronology & Out-of-order analysis (Section 5 & 8)
             doc0 = documents[0] if documents else {}
             fname = doc0.get("name", "")
             chrono = extract_chronology_metadata(fname, buyer_issued_date)
@@ -861,15 +1447,24 @@ class ProcurementRevisionManager:
                     "sequence_number": chrono.get("sequence_number"),
                     "issued_date": chrono.get("issued_date"),
                 })
-                self._known_document_hashes.add(chash)
 
-            # Chronology index
+            # Chronology index (Buyer sequence vs System sequence)
             if force_chronology_index is not None:
                 chronology_index = force_chronology_index
             elif chrono.get("sequence_number") is not None:
                 chronology_index = chrono["sequence_number"]
             else:
                 chronology_index = next_rev_num
+
+            # Check if this revision has semantic fact changes or is informational/no-op (Section 13)
+            has_semantic_changes = any(
+                c.change_type != CHANGE_UNCHANGED for c in changes
+            )
+            outcome = (
+                OUTCOME_REVISION_CREATED
+                if has_semantic_changes
+                else OUTCOME_NEW_REVISION_NO_SEMANTIC_CHANGE
+            )
 
             # Build ChangeSet
             changeset_fp = compute_changeset_fingerprint(
@@ -901,6 +1496,11 @@ class ProcurementRevisionManager:
                 is_current=True,
             )
 
+            # Persist to durable storage (Section 5)
+            self.storage.persist_revision(
+                self.bid_id, self.organization_id, new_revision, expected_base_revision=persisted_rev
+            )
+
             # Immutability: Prior revisions remain immutable; un-mark is_current
             self._revisions[current_rev] = ProcurementRevision(
                 revision_number=parent_rev.revision_number,
@@ -915,13 +1515,14 @@ class ProcurementRevisionManager:
             )
 
             self._revisions[next_rev_num] = new_revision
-            logger.info("Created Revision %d for bid %s (fingerprint: %s...)",
+            logger.info("Created durable Revision %d for bid %s (fingerprint: %s...)",
                         next_rev_num, self.bid_id, rev_fp[:12])
 
             return {
-                "outcome": OUTCOME_REVISION_CREATED,
+                "outcome": outcome,
                 "revision": new_revision,
                 "current_revision": next_rev_num,
+                "has_semantic_changes": has_semantic_changes,
             }
 
     def get_fact_history(self, entity_id: str) -> list[dict[str, Any]]:
@@ -943,3 +1544,41 @@ class ProcurementRevisionManager:
                         "review_status": c.review_status,
                     })
         return history
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 9. Top-Level Production Entrypoint & Rehydration API (Section 15)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def get_pci_manager(
+    bid_id: int,
+    organization_id: str,
+    storage: PCIBaseStorage | None = None,
+) -> ProcurementRevisionManager:
+    """Canonical production entrypoint for ProcurementRevisionManager.
+    Defaults strictly to PCIDatabaseStorage, with no implicit fallback to InMemoryPCIStorage."""
+    return ProcurementRevisionManager(
+        bid_id=bid_id,
+        organization_id=organization_id,
+        storage=storage if storage is not None else PCIDatabaseStorage(),
+    )
+
+
+def load_revision_history(
+    bid_id: int,
+    organization_id: str,
+    storage: PCIBaseStorage | None = None,
+) -> list[ProcurementRevision]:
+    """Rehydrates the complete, immutable procurement revision history directly from storage."""
+    mgr = get_pci_manager(bid_id, organization_id, storage=storage)
+    return mgr.get_all_revisions()
+
+
+def load_current_authoritative_state(
+    bid_id: int,
+    organization_id: str,
+    storage: PCIBaseStorage | None = None,
+) -> AuthoritativeProcurementState:
+    """Rehydrates and deterministically derives current authoritative procurement state from storage."""
+    mgr = get_pci_manager(bid_id, organization_id, storage=storage)
+    return mgr.get_current_state()

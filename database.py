@@ -1104,6 +1104,11 @@ def get_procurement_changes(review_id: int) -> list[dict]:
                  .eq("review_id", review_id).order("id").execute())
 
 
+def get_procurement_update_review_documents(review_id: int) -> list[dict]:
+    return _rows(get_client().table("procurement_update_review_documents").select("*")
+                 .eq("review_id", review_id).execute())
+
+
 def insert_proposed_procurement_changes(rows: list[dict]) -> None:
     """Inserts LLM-proposed changes as review_decision='pending' rows --
     the only field this function writes beyond what the proposal function
