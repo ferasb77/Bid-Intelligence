@@ -385,8 +385,8 @@ class TestNewRFPPipelineArchitecture(unittest.TestCase):
         fn_end = self.app_source.index("def _render_extraction_review():", fn_start)
         body = self.app_source[fn_start:fn_end]
 
-        # Must have the primary button for Fast Analysis onboarding
-        self.assertIn("⚡ Create Bid & Start Fast Analysis →", body)
+        # Must have the primary button for opportunity analysis onboarding
+        self.assertIn("⚡ Create Opportunity & Analyze →", body)
 
         # Must NOT call extract_procurement_package in the onboarding button handler
         self.assertNotIn("extract_procurement_package(pkg_files", body)

@@ -254,5 +254,100 @@ class TestProductionReconBudget(unittest.TestCase):
                          f"Commissioning script must not hardcode 8192 outside the constant: {bare_8192_lines}")
 
 
+class TestResolveBaselineDocuments(unittest.TestCase):
+    def test_single_document_is_marked_primary(self):
+        docs = [{"id": 1, "name": "rfp.pdf", "doc_type": "RFP / Source"}]
+        doc_ids, doc_roles = ua.resolve_baseline_documents(docs)
+        self.assertEqual(doc_ids, [1])
+        self.assertEqual(doc_roles, ["primary"])
+
+    def test_multiple_documents_first_is_primary_rest_supporting(self):
+        docs = [
+            {"id": 1, "name": "main_rfp.pdf", "doc_type": "RFP / Source"},
+            {"id": 2, "name": "annex_a.pdf", "doc_type": "RFP / Source"},
+            {"id": 3, "name": "pricing_table.xlsx", "doc_type": "RFP / Source"},
+        ]
+        doc_ids, doc_roles = ua.resolve_baseline_documents(docs)
+        self.assertEqual(doc_ids, [1, 2, 3])
+        self.assertEqual(doc_roles, ["primary", "supporting", "supporting"])
+
+    def test_metadata_primary_preserved(self):
+        docs = [
+            {"id": 1, "name": "annex.pdf", "doc_type": "RFP / Source", "role": "supporting"},
+            {"id": 2, "name": "main.pdf", "doc_type": "RFP / Source", "role": "primary"},
+        ]
+        doc_ids, doc_roles = ua.resolve_baseline_documents(docs)
+        self.assertEqual(doc_ids, [1, 2])
+        self.assertEqual(doc_roles, ["supporting", "primary"])
+
+    def test_empty_docs_returns_empty(self):
+        doc_ids, doc_roles = ua.resolve_baseline_documents([])
+        self.assertEqual(doc_ids, [])
+        self.assertEqual(doc_roles, [])
+
+
+class TestBaselineGovernanceOrchestration(unittest.TestCase):
+    @patch("understand_analysis.start_opportunity_analysis")
+    @patch("understand_analysis.tenancy.apply_procurement_update_review_for_organization")
+    @patch("understand_analysis.tenancy.record_change_review_decision_for_organization")
+    @patch("understand_analysis.tenancy.get_procurement_changes_for_organization")
+    @patch("understand_analysis.tenancy.get_procurement_update_reviews_for_organization")
+    @patch("understand_analysis.tenancy.require_bid_access")
+    def test_apply_baseline_and_resume_approves_pending_and_resumes(
+        self, mock_access, mock_reviews, mock_changes, mock_record_decision, mock_apply, mock_start_opp
+    ):
+        mock_reviews.return_value = [
+            {"id": 10, "review_kind": "baseline", "status": "ready_for_review", "base_procurement_revision": 1}
+        ]
+        mock_changes.side_effect = [
+            [{"id": 101, "review_decision": "pending"}, {"id": 102, "review_decision": "approved"}],
+            [{"id": 101, "review_decision": "approved"}, {"id": 102, "review_decision": "approved"}],
+        ]
+        mock_apply.return_value = {"resulting_revision": 2, "applied_change_count": 2}
+        mock_start_opp.return_value = {"outcome": "CREATED", "step": ua.STEP_FULL_ANALYSIS_RUNNING}
+
+        res = ua.apply_baseline_and_resume_analysis(
+            1, "org-test", 10, user_id="user-1", approve_all_pending=True
+        )
+
+        mock_record_decision.assert_called_once_with(
+            1, "org-test", 101, "approved", "user-1"
+        )
+        mock_apply.assert_called_once_with(
+            1, "org-test", 10, expected_base_revision=1, applied_by_user_id="user-1"
+        )
+        mock_start_opp.assert_called_once()
+        self.assertEqual(res.get("step"), ua.STEP_FULL_ANALYSIS_RUNNING)
+
+    @patch("understand_analysis.tenancy.get_procurement_changes_for_organization")
+    @patch("understand_analysis.tenancy.get_procurement_update_reviews_for_organization")
+    @patch("understand_analysis.tenancy.require_bid_access")
+    def test_apply_baseline_fails_closed_if_pending_without_approve_all(
+        self, mock_access, mock_reviews, mock_changes
+    ):
+        mock_reviews.return_value = [
+            {"id": 10, "review_kind": "baseline", "status": "ready_for_review", "base_procurement_revision": 1}
+        ]
+        mock_changes.return_value = [
+            {"id": 101, "review_decision": "pending"},
+        ]
+
+        with self.assertRaises(ValueError) as ctx:
+            ua.apply_baseline_and_resume_analysis(
+                1, "org-test", 10, user_id="user-1", approve_all_pending=False
+            )
+        self.assertIn("still pending", str(ctx.exception))
+
+
+class TestCustomerFacingVocabulary(unittest.TestCase):
+    def test_unified_opportunity_analysis_panel_does_not_expose_fast_analysis_card(self):
+        import pages.stage_understand as stage_understand
+        import inspect
+        source = inspect.getsource(stage_understand._render_unified_opportunity_analysis_panel)
+        self.assertNotIn("### ⚡ Fast Analysis", source)
+        self.assertNotIn("### 🏛️ Establish Procurement Baseline", source)
+        self.assertIn("### 💡 Analyze Opportunity", source)
+
+
 if __name__ == "__main__":
     unittest.main()

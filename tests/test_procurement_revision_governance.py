@@ -1313,7 +1313,7 @@ class TestUnderstandGovernanceWorkflowRendering(unittest.TestCase):
 
     def test_ungoverned_bid_shows_establish_baseline_workflow(self):
         rendered = self._render("ungoverned", reviews=[])
-        self.assertIn("Establish Procurement Baseline", rendered)
+        self.assertIn("Analyze Opportunity", rendered)
         self.assertIn("not yet governed", rendered)
 
     def test_governed_bid_shows_documents_and_addenda_workflow(self):
