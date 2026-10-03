@@ -4453,5 +4453,892 @@ class TestPCIB2A1ContextIdentityAndBindingClosure(unittest.TestCase):
         self.assertEqual(obj["canonical_id"], "CRIT-1")
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# PCI-B2B: Incremental Specialist Execution & Delta Reconciliation Tests
+# ═══════════════════════════════════════════════════════════════════════
+
+import json
+import re
+from types import SimpleNamespace
+import database
+import full_analysis as fa
+import full_analysis_service as fas
+from tests.test_full_analysis_ma2a import FakeFullAnalysisDB
+
+
+class PCIB2BMockClient:
+    """Deterministic Mock Client for PCI-B2B Revision Specialists & Reconciliation.
+    Makes ZERO live provider calls.
+    Supports scripted responses, custom prompt handlers, and truncation testing.
+    """
+
+    def __init__(self, handler=None, stop_reason="end_turn"):
+        self.prompts: list[str] = []
+        self.handler = handler
+        self.stop_reason = stop_reason
+        self.messages = SimpleNamespace(create=self._create)
+
+    def _create(self, **kwargs):
+        prompt = kwargs["messages"][0]["content"][0]["text"]
+        self.prompts.append(prompt)
+        stop_reason = self.stop_reason
+        if self.handler:
+            res = self.handler(prompt)
+            if res is not None:
+                if isinstance(res, tuple):
+                    payload, stop_reason = res
+                else:
+                    payload = res
+                return SimpleNamespace(
+                    content=[SimpleNamespace(text=json.dumps(payload))],
+                    usage=SimpleNamespace(input_tokens=100, output_tokens=50),
+                    stop_reason=stop_reason,
+                )
+        if "RECONCILIATION" in prompt:
+            res = {
+                "cross_domain_risks": [],
+                "contradictions": [],
+                "unresolved_ambiguities": [],
+                "human_confirmation_required": [],
+                "completeness_note": "Reconciliation complete",
+            }
+        else:
+            stale_ids = []
+            m = re.search(r"STALE PRIOR FINDINGS[^\n]*\n(\[.*?\])\n\n", prompt, re.DOTALL)
+            if m:
+                try:
+                    parsed = json.loads(m.group(1))
+                    stale_ids = [f.get("finding_id") for f in parsed if isinstance(f, dict) and f.get("finding_id")]
+                except Exception:
+                    pass
+            actions = [{"prior_finding_id": pid, "action": "RETAIN", "reason": "Retained"} for pid in stale_ids]
+            res = {"stale_finding_actions": actions, "new_findings": []}
+        return SimpleNamespace(
+            content=[SimpleNamespace(text=json.dumps(res))],
+            usage=SimpleNamespace(input_tokens=100, output_tokens=50),
+            stop_reason=stop_reason,
+        )
+
+
+class TestPCIB2BIncrementalExecution(unittest.TestCase):
+    """PCI-B2B: Incremental Specialist Execution and Delta Reconciliation Tests.
+    Covers scenarios 33 through 49:
+    33. One domain affected (Schedule: 2 calls, 5 carried forward)
+    34. Two domains affected (Eval + Commercial: 3 calls, 4 carried forward)
+    35. New revision fact cited, validated, and survives reconciliation
+    36. Stale finding SUPERSEDE action with validated replacement and deterministic ID
+    37. Stale finding REMOVE action
+    38. Stale finding RETAIN action
+    39. New findings ADD action
+    40. Missing stale finding action leads to PARTIAL domain
+    41. Invalid citation in replacement rejected, domain PARTIAL
+    42. Provider truncation max_tokens leads to PARTIAL specialist and run
+    43. Non-executable context aborts BEFORE any provider calls
+    44. Zero-impact revision returns NO_INTELLIGENCE_REFRESH_REQUIRED with 0 calls
+    45. Idempotent reuse returns REUSED_COMPLETE with 0 additional calls
+    46. Self-contained persistence queryable via get_full_analysis_result
+    47. Prior run immutability (prior run rows unchanged)
+    48. Revision-aware reconciliation payload contains revised values
+    49. Carried-forward call accounting (carried domains record 0 calls)
+    """
+
+    def setUp(self):
+        self.bid_id = 1417
+        self.org_id = "4326b564-8cc5-4463-9304-9a589f08cc91"
+        self.pkg = _make_canonical_package()
+        self.fast_run_id = 10
+        self.prior_run_id = 20
+        self.fake_db = FakeFullAnalysisDB()
+        self.fake_db.add_fast_run(self.bid_id, self.fast_run_id, "COMPLETE")
+        self.storage = pci.InMemoryPCIStorage(
+            initial_bids={
+                self.bid_id: {
+                    "id": self.bid_id,
+                    "organization_id": self.org_id,
+                    "procurement_revision": 0,
+                    "procurement_truth_status": "governed",
+                }
+            }
+        )
+        self.manager = pci.ProcurementRevisionManager(self.bid_id, self.org_id, storage=self.storage)
+        self._seed_prior_full_run()
+
+        self._patches = []
+        for name in (
+            "get_analysis_run", "list_analysis_runs", "get_full_analysis_runs",
+            "get_full_analysis_events", "get_full_analysis_specialist_results",
+            "get_analysis_result", "start_full_analysis_run",
+            "record_full_analysis_event", "finalize_full_analysis_run",
+        ):
+            p = patch.object(database, name, getattr(self.fake_db, name))
+            p.start()
+            self._patches.append(p)
+
+        p_bid = patch.object(database, "get_bid", return_value={"id": self.bid_id, "organization_id": self.org_id})
+        p_bid.start()
+        self._patches.append(p_bid)
+
+        p_model = patch.object(database, "create_model_usage_event", return_value=None)
+        p_model.start()
+        self._patches.append(p_model)
+
+    def tearDown(self):
+        for p in reversed(self._patches):
+            p.stop()
+
+    def _seed_prior_full_run(self):
+        prior_run = {
+            "id": self.prior_run_id,
+            "bid_id": self.bid_id,
+            "analysis_mode": "FULL",
+            "engine_version": fas.FULL_ANALYSIS_ENGINE_VERSION,
+            "status": "COMPLETE",
+            "input_fingerprint": "prior_fp_base",
+            "source_analysis_run_id": self.fast_run_id,
+            "corpus_digest": "corpus-10",
+            "created_by_user_id": None,
+            "created_at": self.fake_db.now(),
+            "started_at": self.fake_db.now(),
+            "completed_at": self.fake_db.now(),
+            "failed_at": None,
+            "failure_reason": None,
+            "failure_detail": None,
+            "telemetry": None,
+            "last_progress_at": self.fake_db.now(),
+        }
+        self.fake_db.runs[self.prior_run_id] = prior_run
+
+        spec_cid_map = {
+            fa.SPECIALIST_PROCUREMENT_STRUCTURE: "IDENT",
+            fa.SPECIALIST_REQUIREMENTS_COMPLIANCE: self.pkg.requirements[0]["canonical_id"],
+            fa.SPECIALIST_EVALUATION_INTELLIGENCE: self.pkg.scoped_criteria[0]["canonical_id"],
+            fa.SPECIALIST_SCOPE_DELIVERABLES: self.pkg.category_scope_items[0]["canonical_id"],
+            fa.SPECIALIST_COMMERCIAL_CONTRACTUAL: self.pkg.commercial_obligations[0]["canonical_id"],
+            fa.SPECIALIST_SCHEDULE_SUBMISSION: "SUBMISSION",
+        }
+
+        self.prior_findings = []
+        for sid in fa.SPECIALIST_IDS:
+            cid = spec_cid_map[sid]
+            finding_dict = {
+                "finding_id": f"{sid}:0",
+                "finding_type": "FACT",
+                "title": f"Prior finding for {sid}",
+                "detail": f"Detail for {sid}",
+                "canonical_ids": [cid],
+                "category_scope": "",
+                "severity": "LOW",
+                "authority": "CANONICAL_DIRECT",
+                "produced_by": [sid],
+                "human_confirmation_required": False,
+            }
+            self.prior_findings.append(finding_dict)
+            spec_res = {
+                "specialist_id": sid,
+                "bid_id": self.bid_id,
+                "status": "COMPLETE",
+                "findings": [finding_dict],
+                "risks": [],
+                "gaps": [],
+                "ambiguities": [],
+                "attention_items": [],
+                "confidence": "HIGH",
+                "human_confirmation_required": False,
+                "source_refs": [cid],
+                "usage": {"calls": 1, "input_tokens": 100, "output_tokens": 50, "request_bytes": 500, "model": fa.FULL_ANALYSIS_MODEL},
+            }
+            self.fake_db.specialist_results.append({
+                "run_id": self.prior_run_id,
+                "bid_id": self.bid_id,
+                "specialist_id": sid,
+                "status": "COMPLETE",
+                "specialist_version": fa.SPECIALIST_VERSION,
+                "input_digest": f"prior_spec_{sid}_digest",
+                "result": spec_res,
+            })
+
+        self.fake_db.results[self.prior_run_id] = {
+            "run_id": self.prior_run_id,
+            "bid_id": self.bid_id,
+            "structured_intelligence": {"completeness_status": "COMPLETE"},
+            "full_analysis_result": {
+                "status": "COMPLETE",
+                "completeness_status": "COMPLETE",
+                "reconciled_findings": self.prior_findings,
+            },
+        }
+
+    def _make_schedule_revision(self, revision_id="bid-1417-rev-1", revision_number=1):
+        change = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="submission_deadline",
+            entity_id="sub:deadline",
+            before_value="2026-11-01",
+            after_value="2026-11-15",
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+            metadata={"canonical_id": "SUBMISSION"},
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=revision_number,
+            revision_id=revision_id,
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=revision_number,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=revision_number, previous_revision=0, source_documents=[], changes=[change]),
+            fingerprint=f"fp_{revision_id}",
+            review_status="applied",
+            is_current=True,
+        )
+        self.storage.persist_revision(self.bid_id, self.org_id, rev, expected_base_revision=0)
+        return rev
+
+    # ── Test 33: One domain (Schedule: 2 calls, 5 carried forward) ───────────
+    def test_33_one_domain_schedule_calls_and_carry_forward(self):
+        rev = self._make_schedule_revision()
+        client = PCIB2BMockClient()
+
+        out = fas.start_revision_full_analysis(
+            self.bid_id, rev, client=client, package_builder=lambda _: self.pkg,
+            pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+        )
+        self.assertEqual(out.get("outcome"), fas.OUTCOME_CREATED)
+        self.assertEqual(len(client.prompts), 2)  # 1 specialist + 1 reconciliation
+
+        new_run = out["run"]
+        finalized = self.fake_db.runs[new_run["id"]]
+        self.assertEqual(finalized["status"], fas.RUN_COMPLETE)
+
+        persisted_specs = self.fake_db.get_full_analysis_specialist_results(new_run["id"])
+        self.assertEqual(len(persisted_specs), 6)
+
+        res = self.fake_db.results[new_run["id"]]["full_analysis_result"]
+        rev_update = res.get("revision_update", {})
+        self.assertEqual(rev_update.get("affected_domains"), [fa.SPECIALIST_SCHEDULE_SUBMISSION])
+        self.assertEqual(len(rev_update.get("carried_forward_domains", [])), 5)
+        self.assertNotIn(fa.SPECIALIST_SCHEDULE_SUBMISSION, rev_update.get("carried_forward_domains", []))
+
+    # ── Test 34: Two domains (Eval + Commercial: 3 calls, 4 carried forward) ──
+    def test_34_two_domains_eval_commercial_calls_and_carry_forward(self):
+        c1 = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="weight",
+            entity_id="eval.firm_experience.weight",
+            before_value=30,
+            after_value=35,
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+            metadata={"canonical_id": self.pkg.scoped_criteria[0]["canonical_id"]},
+        )
+        c2 = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="commercial_clause",
+            entity_id="insurance.cgl",
+            before_value="2M",
+            after_value="5M",
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+            metadata={"canonical_id": self.pkg.commercial_obligations[0]["canonical_id"]},
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-two-domains",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[c1, c2]),
+            fingerprint="fp_two_domains",
+            review_status="applied",
+            is_current=True,
+        )
+        self.storage.persist_revision(self.bid_id, self.org_id, rev, expected_base_revision=0)
+        client = PCIB2BMockClient()
+
+        out = fas.start_revision_full_analysis(
+            self.bid_id, rev, client=client, package_builder=lambda _: self.pkg,
+            pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+        )
+        self.assertEqual(out.get("outcome"), fas.OUTCOME_CREATED)
+        self.assertEqual(len(client.prompts), 3)  # 2 specialists + 1 reconciliation
+
+        new_run = out["run"]
+        finalized = self.fake_db.runs[new_run["id"]]
+        self.assertEqual(finalized["status"], fas.RUN_COMPLETE)
+
+        res = self.fake_db.results[new_run["id"]]["full_analysis_result"]
+        rev_update = res.get("revision_update", {})
+        self.assertEqual(
+            sorted(rev_update.get("affected_domains", [])),
+            sorted([fa.SPECIALIST_COMMERCIAL_CONTRACTUAL, fa.SPECIALIST_EVALUATION_INTELLIGENCE])
+        )
+        self.assertEqual(len(rev_update.get("carried_forward_domains", [])), 4)
+
+    # ── Test 35: New Revision Fact (REV-FACT-* cited, validated, survives reconciliation) ──
+    def test_35_new_revision_fact_cited_validated_and_reconciled(self):
+        c_add = pci.FactChange(
+            change_type=pci.CHANGE_ADDS,
+            fact_type="requirement",
+            entity_id="req.bilingual",
+            before_value=None,
+            after_value="All deliverables must be provided in English and French.",
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-add-fact",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[c_add]),
+            fingerprint="fp_add_fact",
+            review_status="applied",
+            is_current=True,
+        )
+        self.storage.persist_revision(self.bid_id, self.org_id, rev, expected_base_revision=0)
+
+        def handler(prompt):
+            if "RECONCILIATION" in prompt:
+                return {
+                    "cross_domain_risks": [], "contradictions": [],
+                    "unresolved_ambiguities": [], "human_confirmation_required": [],
+                    "completeness_note": "Reconciliation complete with revision fact",
+                }
+            # Specialist generates finding citing REV-FACT-req-bilingual
+            return {
+                "stale_finding_actions": [],
+                "new_findings": [{
+                    "finding_type": "FACT",
+                    "title": "Bilingualism mandatory per Addendum 1",
+                    "detail": "Deliverables must be in official languages",
+                    "canonical_ids": ["REV-FACT-req-bilingual"],
+                    "category_scope": "",
+                    "severity": "HIGH",
+                    "authority": "CANONICAL_DIRECT",
+                    "human_confirmation_required": False,
+                }],
+            }
+
+        client = PCIB2BMockClient(handler=handler)
+        out = fas.start_revision_full_analysis(
+            self.bid_id, rev, client=client, package_builder=lambda _: self.pkg,
+            pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+        )
+        self.assertEqual(out.get("outcome"), fas.OUTCOME_CREATED)
+        new_run = out["run"]
+        res = self.fake_db.results[new_run["id"]]["full_analysis_result"]
+        reconciled = res.get("reconciled_findings", [])
+        matched = [f for f in reconciled if "REV-FACT-req-bilingual" in f.get("canonical_ids", [])]
+        self.assertTrue(len(matched) >= 1)
+        self.assertEqual(matched[0]["title"], "Bilingualism mandatory per Addendum 1")
+
+    # ── Test 36: Stale Finding Supersede ─────────────────────────────────────
+    def test_36_stale_finding_supersede_action(self):
+        rev = self._make_schedule_revision()
+        rep_finding = {
+            "finding_type": "FACT",
+            "title": "Updated submission deadline",
+            "detail": "Closing date extended to 15 November 2026",
+            "canonical_ids": ["SUBMISSION"],
+            "category_scope": "",
+            "severity": "LOW",
+        }
+
+        def handler(prompt):
+            if "RECONCILIATION" in prompt:
+                return None
+            return {
+                "stale_finding_actions": [{
+                    "prior_finding_id": f"{fa.SPECIALIST_SCHEDULE_SUBMISSION}:0",
+                    "action": "SUPERSEDE",
+                    "reason": "Deadline extended",
+                    "replacement_finding": rep_finding,
+                }],
+                "new_findings": [],
+            }
+
+        client = PCIB2BMockClient(handler=handler)
+        out = fas.start_revision_full_analysis(
+            self.bid_id, rev, client=client, package_builder=lambda _: self.pkg,
+            pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+        )
+        new_run = out["run"]
+        specs = self.fake_db.get_full_analysis_specialist_results(new_run["id"])
+        sched_row = next(s for s in specs if s["specialist_id"] == fa.SPECIALIST_SCHEDULE_SUBMISSION)
+        sched_res = sched_row["result"]
+        self.assertEqual(sched_res["status"], fa.STATUS_COMPLETE)
+
+        delta = sched_res.get("delta_audit", {})
+        prior_id = f"{fa.SPECIALIST_SCHEDULE_SUBMISSION}:0"
+        self.assertIn(prior_id, delta.get("superseded_findings", {}))
+        rep_id = delta["superseded_findings"][prior_id]
+        self.assertTrue(rep_id.startswith(f"{fa.SPECIALIST_SCHEDULE_SUBMISSION}:REV-{rev.revision_id}:"))
+        self.assertIn("-rep-", rep_id)
+
+        # Replacement finding is in current findings and carries supersedes_finding_id
+        rep_obj = next(f for f in sched_res["findings"] if f["finding_id"] == rep_id)
+        self.assertEqual(rep_obj.get("supersedes_finding_id"), prior_id)
+        # Prior finding is not in findings
+        self.assertFalse(any(f["finding_id"] == prior_id for f in sched_res["findings"]))
+
+    # ── Test 37: Stale Finding Remove ────────────────────────────────────────
+    def test_37_stale_finding_remove_action(self):
+        rev = self._make_schedule_revision()
+        prior_id = f"{fa.SPECIALIST_SCHEDULE_SUBMISSION}:0"
+
+        def handler(prompt):
+            if "RECONCILIATION" in prompt:
+                return None
+            return {
+                "stale_finding_actions": [{
+                    "prior_finding_id": prior_id,
+                    "action": "REMOVE",
+                    "reason": "Finding invalidated and removed",
+                }],
+                "new_findings": [],
+            }
+
+        client = PCIB2BMockClient(handler=handler)
+        out = fas.start_revision_full_analysis(
+            self.bid_id, rev, client=client, package_builder=lambda _: self.pkg,
+            pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+        )
+        new_run = out["run"]
+        specs = self.fake_db.get_full_analysis_specialist_results(new_run["id"])
+        sched_res = next(s for s in specs if s["specialist_id"] == fa.SPECIALIST_SCHEDULE_SUBMISSION)["result"]
+        self.assertEqual(sched_res["status"], fa.STATUS_COMPLETE)
+        delta = sched_res.get("delta_audit", {})
+        self.assertIn(prior_id, delta.get("removed_finding_ids", []))
+        self.assertFalse(any(f["finding_id"] == prior_id for f in sched_res["findings"]))
+
+    # ── Test 38: Stale Finding Retain ────────────────────────────────────────
+    def test_38_stale_finding_retain_action(self):
+        rev = self._make_schedule_revision()
+        prior_id = f"{fa.SPECIALIST_SCHEDULE_SUBMISSION}:0"
+
+        def handler(prompt):
+            if "RECONCILIATION" in prompt:
+                return None
+            return {
+                "stale_finding_actions": [{
+                    "prior_finding_id": prior_id,
+                    "action": "RETAIN",
+                    "reason": "Finding remains valid despite deadline extension",
+                }],
+                "new_findings": [],
+            }
+
+        client = PCIB2BMockClient(handler=handler)
+        out = fas.start_revision_full_analysis(
+            self.bid_id, rev, client=client, package_builder=lambda _: self.pkg,
+            pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+        )
+        new_run = out["run"]
+        specs = self.fake_db.get_full_analysis_specialist_results(new_run["id"])
+        sched_res = next(s for s in specs if s["specialist_id"] == fa.SPECIALIST_SCHEDULE_SUBMISSION)["result"]
+        self.assertEqual(sched_res["status"], fa.STATUS_COMPLETE)
+        delta = sched_res.get("delta_audit", {})
+        self.assertIn(prior_id, delta.get("retained_finding_ids", []))
+        # Retained finding keeps original ID and appears exactly once
+        matches = [f for f in sched_res["findings"] if f["finding_id"] == prior_id]
+        self.assertEqual(len(matches), 1)
+
+    # ── Test 39: Add (new_findings, new deterministic ID, no collision) ──────
+    def test_39_new_findings_add_action(self):
+        rev = self._make_schedule_revision()
+        prior_id = f"{fa.SPECIALIST_SCHEDULE_SUBMISSION}:0"
+
+        def handler(prompt):
+            if "RECONCILIATION" in prompt:
+                return None
+            return {
+                "stale_finding_actions": [{
+                    "prior_finding_id": prior_id,
+                    "action": "RETAIN",
+                    "reason": "Still valid",
+                }],
+                "new_findings": [{
+                    "finding_type": "FACT",
+                    "title": "Electronic submission protocol verified",
+                    "detail": "Submissions via electronic portal only",
+                    "canonical_ids": ["SUBMISSION"],
+                    "category_scope": "",
+                    "severity": "LOW",
+                }],
+            }
+
+        client = PCIB2BMockClient(handler=handler)
+        out = fas.start_revision_full_analysis(
+            self.bid_id, rev, client=client, package_builder=lambda _: self.pkg,
+            pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+        )
+        new_run = out["run"]
+        specs = self.fake_db.get_full_analysis_specialist_results(new_run["id"])
+        sched_res = next(s for s in specs if s["specialist_id"] == fa.SPECIALIST_SCHEDULE_SUBMISSION)["result"]
+        self.assertEqual(sched_res["status"], fa.STATUS_COMPLETE)
+        delta = sched_res.get("delta_audit", {})
+        self.assertEqual(len(delta.get("added_finding_ids", [])), 1)
+        new_id = delta["added_finding_ids"][0]
+        self.assertTrue(new_id.startswith(f"{fa.SPECIALIST_SCHEDULE_SUBMISSION}:REV-{rev.revision_id}:new-0-"))
+        self.assertNotEqual(new_id, prior_id)
+        self.assertEqual(len(sched_res["findings"]), 2)
+
+    # ── Test 40: Missing Stale Action (addresses only F1, F2 unresolved -> PARTIAL) ──
+    def test_40_missing_stale_finding_action_partial(self):
+        # Seed 2 findings for schedule specialist in prior run
+        sid = fa.SPECIALIST_SCHEDULE_SUBMISSION
+        f1 = {
+            "finding_id": f"{sid}:0", "finding_type": "FACT", "title": "F1",
+            "detail": "d1", "canonical_ids": ["SUBMISSION"], "category_scope": "",
+            "severity": "LOW", "produced_by": [sid], "human_confirmation_required": False,
+        }
+        f2 = {
+            "finding_id": f"{sid}:1", "finding_type": "RISK", "title": "F2",
+            "detail": "d2", "canonical_ids": ["SUBMISSION"], "category_scope": "",
+            "severity": "HIGH", "produced_by": [sid], "human_confirmation_required": False,
+        }
+        # Update prior specialist result in fake_db
+        for row in self.fake_db.specialist_results:
+            if row["run_id"] == self.prior_run_id and row["specialist_id"] == sid:
+                row["result"]["findings"] = [f1, f2]
+
+        rev = self._make_schedule_revision()
+
+        def handler(prompt):
+            if "RECONCILIATION" in prompt:
+                return None
+            # Only action F1, omit F2
+            return {
+                "stale_finding_actions": [{
+                    "prior_finding_id": f"{sid}:0",
+                    "action": "RETAIN",
+                    "reason": "F1 is retained",
+                }],
+                "new_findings": [],
+            }
+
+        client = PCIB2BMockClient(handler=handler)
+        out = fas.start_revision_full_analysis(
+            self.bid_id, rev, client=client, package_builder=lambda _: self.pkg,
+            pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+        )
+        new_run = out["run"]
+        finalized = self.fake_db.runs[new_run["id"]]
+        self.assertEqual(finalized["status"], fas.RUN_PARTIAL)
+
+        specs = self.fake_db.get_full_analysis_specialist_results(new_run["id"])
+        sched_res = next(s for s in specs if s["specialist_id"] == sid)["result"]
+        self.assertEqual(sched_res["status"], fa.STATUS_PARTIAL)
+        delta = sched_res.get("delta_audit", {})
+        self.assertIn(f"{sid}:1", delta.get("unresolved_stale_finding_ids", []))
+
+    # ── Test 41: Invalid Citation in replacement rejected, domain PARTIAL ────
+    def test_41_invalid_citation_rejected_partial(self):
+        rev = self._make_schedule_revision()
+        prior_id = f"{fa.SPECIALIST_SCHEDULE_SUBMISSION}:0"
+
+        def handler(prompt):
+            if "RECONCILIATION" in prompt:
+                return None
+            return {
+                "stale_finding_actions": [{
+                    "prior_finding_id": prior_id,
+                    "action": "SUPERSEDE",
+                    "reason": "Replacement citing invented ID",
+                    "replacement_finding": {
+                        "finding_type": "FACT",
+                        "title": "Invalid citation",
+                        "detail": "detail",
+                        "canonical_ids": ["NON-EXISTENT-ID-999"],
+                        "category_scope": "",
+                        "severity": "LOW",
+                    },
+                }],
+                "new_findings": [],
+            }
+
+        client = PCIB2BMockClient(handler=handler)
+        out = fas.start_revision_full_analysis(
+            self.bid_id, rev, client=client, package_builder=lambda _: self.pkg,
+            pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+        )
+        new_run = out["run"]
+        finalized = self.fake_db.runs[new_run["id"]]
+        self.assertEqual(finalized["status"], fas.RUN_PARTIAL)
+
+        specs = self.fake_db.get_full_analysis_specialist_results(new_run["id"])
+        sched_res = next(s for s in specs if s["specialist_id"] == fa.SPECIALIST_SCHEDULE_SUBMISSION)["result"]
+        self.assertEqual(sched_res["status"], fa.STATUS_PARTIAL)
+        delta = sched_res.get("delta_audit", {})
+        self.assertIn(prior_id, delta.get("unresolved_stale_finding_ids", []))
+
+    # ── Test 42: Provider Truncation (max_tokens -> specialist and run PARTIAL) ─
+    def test_42_provider_truncation_max_tokens_partial(self):
+        rev = self._make_schedule_revision()
+        client = PCIB2BMockClient(stop_reason="max_tokens")
+
+        out = fas.start_revision_full_analysis(
+            self.bid_id, rev, client=client, package_builder=lambda _: self.pkg,
+            pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+        )
+        new_run = out["run"]
+        finalized = self.fake_db.runs[new_run["id"]]
+        self.assertEqual(finalized["status"], fas.RUN_PARTIAL)
+
+        specs = self.fake_db.get_full_analysis_specialist_results(new_run["id"])
+        sched_res = next(s for s in specs if s["specialist_id"] == fa.SPECIALIST_SCHEDULE_SUBMISSION)["result"]
+        self.assertEqual(sched_res["status"], fa.STATUS_PARTIAL)
+        self.assertTrue(sched_res.get("output_truncated"))
+
+    # ── Test 43: Non-Executable Context aborts BEFORE any provider calls ─────
+    def test_43_non_executable_context_aborts_before_calls(self):
+        candidate_1 = {"canonical_id": "CRIT-1", "object_type": "SCOPED_EVALUATION_CRITERION", "criterion": "Firm Experience", "weight": 30}
+        candidate_2 = {"canonical_id": "CRIT-2", "object_type": "SCOPED_EVALUATION_CRITERION", "criterion": "Team Experience", "weight": 20}
+
+        pkg_mock = SimpleNamespace(
+            bid_id=self.bid_id, package_digest="pkg_digest_123",
+            objects_of_type=lambda ot: (candidate_1, candidate_2) if ot == "SCOPED_EVALUATION_CRITERION" else (),
+            scoped_criteria=(candidate_1, candidate_2),
+            identity={"fields": {}}, document_roles=(), document_relationships=(),
+            package_completeness={}, service_categories=(), requirements=(), category_scope_items=(),
+            commercial_obligations=(), milestones=(), submission_mechanics={},
+            canonical_ids=frozenset(["CRIT-1", "CRIT-2"])
+        )
+
+        change_ambiguous = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="weight",
+            entity_id="eval.experience.weight",
+            before_value=20,
+            after_value=25,
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-ambiguous",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[change_ambiguous]),
+            fingerprint="fp_ambig",
+            review_status="applied",
+            is_current=True,
+        )
+        self.storage.persist_revision(self.bid_id, self.org_id, rev, expected_base_revision=0)
+
+        client = PCIB2BMockClient()
+        with self.assertRaises(pci.PCIContextNotEligibleError) as cm:
+            fas.start_revision_full_analysis(
+                self.bid_id, rev, client=client, package_builder=lambda _: pkg_mock,
+                pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+            )
+
+        self.assertIn("AMBIGUOUS_CANONICAL_BINDING", str(cm.exception))
+        # Zero provider calls were made
+        self.assertEqual(len(client.prompts), 0)
+
+    # ── Test 44: Zero Impact (administrative notice -> NO_REFRESH, 0 calls) ──
+    def test_44_zero_impact_no_refresh_required(self):
+        c_notice = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="administrative_notice",
+            entity_id="buyer.office_address",
+            before_value="100 Old Street",
+            after_value="200 New Street",
+            source_document="Notice.pdf",
+            source_hash="h_notice",
+            source_document_id=3,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-notice",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 3, "name": "Notice.pdf", "content_hash": "h_notice"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[c_notice]),
+            fingerprint="fp_notice",
+            review_status="applied",
+            is_current=True,
+        )
+        self.storage.persist_revision(self.bid_id, self.org_id, rev, expected_base_revision=0)
+
+        client = PCIB2BMockClient()
+        out = fas.start_revision_full_analysis(
+            self.bid_id, rev, client=client, package_builder=lambda _: self.pkg,
+            pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+        )
+        self.assertEqual(out.get("outcome"), "NO_INTELLIGENCE_REFRESH_REQUIRED")
+        self.assertEqual(out.get("affected_domains"), [])
+        self.assertIsNone(out.get("run"))
+        self.assertEqual(len(client.prompts), 0)
+
+    # ── Test 45: Idempotent Reuse (first run N+1 calls, second run REUSED 0 calls) ──
+    def test_45_idempotent_reuse_zero_calls(self):
+        rev = self._make_schedule_revision()
+        client = PCIB2BMockClient()
+
+        # Run 1: created and executed
+        out1 = fas.start_revision_full_analysis(
+            self.bid_id, rev, client=client, package_builder=lambda _: self.pkg,
+            pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+        )
+        self.assertEqual(out1.get("outcome"), fas.OUTCOME_CREATED)
+        self.assertEqual(len(client.prompts), 2)
+
+        # Run 2: same input fingerprint reuses completed run with 0 additional calls
+        out2 = fas.start_revision_full_analysis(
+            self.bid_id, rev, client=client, package_builder=lambda _: self.pkg,
+            pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+        )
+        self.assertEqual(out2.get("outcome"), fas.OUTCOME_REUSED_COMPLETE)
+        self.assertEqual(out2["run"]["id"], out1["run"]["id"])
+        self.assertEqual(len(client.prompts), 2)  # Zero additional calls
+
+    # ── Test 46: Self-Contained Persistence ──────────────────────────────────
+    def test_46_self_contained_persistence_queryable(self):
+        rev = self._make_schedule_revision()
+        client = PCIB2BMockClient()
+
+        out = fas.start_revision_full_analysis(
+            self.bid_id, rev, client=client, package_builder=lambda _: self.pkg,
+            pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+        )
+        new_run_id = out["run"]["id"]
+        res_bundle = fas.get_full_analysis_result(self.bid_id, new_run_id)
+
+        self.assertIsNotNone(res_bundle)
+        self.assertTrue(res_bundle.get("is_complete"))
+        self.assertEqual(len(res_bundle.get("specialist_results", [])), 6)
+
+        result_payload = res_bundle.get("result", {})
+        self.assertIn("revision_update", result_payload)
+        rev_update = result_payload["revision_update"]
+        self.assertEqual(rev_update.get("revision_id"), rev.revision_id)
+        self.assertEqual(rev_update.get("prior_full_analysis_run_id"), self.prior_run_id)
+        self.assertEqual(len(result_payload.get("reconciled_findings", [])), 6)
+
+    # ── Test 47: Prior Run Immutability ──────────────────────────────────────
+    def test_47_prior_run_immutability(self):
+        prior_run_snapshot = copy.deepcopy(self.fake_db.runs[self.prior_run_id])
+        prior_specs_snapshot = copy.deepcopy(self.fake_db.get_full_analysis_specialist_results(self.prior_run_id))
+        prior_res_snapshot = copy.deepcopy(self.fake_db.results[self.prior_run_id])
+
+        rev = self._make_schedule_revision()
+        client = PCIB2BMockClient()
+
+        fas.start_revision_full_analysis(
+            self.bid_id, rev, client=client, package_builder=lambda _: self.pkg,
+            pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+        )
+
+        # Prior run rows must remain completely identical
+        self.assertEqual(self.fake_db.runs[self.prior_run_id], prior_run_snapshot)
+        self.assertEqual(
+            self.fake_db.get_full_analysis_specialist_results(self.prior_run_id),
+            prior_specs_snapshot
+        )
+        self.assertEqual(self.fake_db.results[self.prior_run_id], prior_res_snapshot)
+
+    # ── Test 48: Revision-Aware Reconciliation payload ───────────────────────
+    def test_48_revision_aware_reconciliation_payload(self):
+        c_weight = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="weight",
+            entity_id="eval.firm_experience.weight",
+            before_value=30,
+            after_value=35,
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+            metadata={"canonical_id": self.pkg.scoped_criteria[0]["canonical_id"]},
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-recon",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[c_weight]),
+            fingerprint="fp_recon",
+            review_status="applied",
+            is_current=True,
+        )
+        self.storage.persist_revision(self.bid_id, self.org_id, rev, expected_base_revision=0)
+
+        captured_recon_prompts = []
+
+        def handler(prompt):
+            if "RECONCILIATION" in prompt:
+                captured_recon_prompts.append(prompt)
+                return {
+                    "cross_domain_risks": [], "contradictions": [],
+                    "unresolved_ambiguities": [], "human_confirmation_required": [],
+                    "completeness_note": "Reconciliation verified",
+                }
+            return None
+
+        client = PCIB2BMockClient(handler=handler)
+        fas.start_revision_full_analysis(
+            self.bid_id, rev, client=client, package_builder=lambda _: self.pkg,
+            pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+        )
+        self.assertEqual(len(captured_recon_prompts), 1)
+        recon_prompt = captured_recon_prompts[0]
+        # In the reconciliation prompt, Firm Experience weight is 35
+        self.assertIn('"weight": 35', recon_prompt)
+        # Original weight 30 is absent from criterion_index
+        m = re.search(r'"criterion_index":\s*(\[.*?\])\s*,\s*"obligation_index"', recon_prompt, re.DOTALL)
+        self.assertTrue(m)
+        crit_index_json = m.group(1)
+        self.assertNotIn('"weight": "30"', crit_index_json)
+        self.assertNotIn('"weight": 30,', crit_index_json)
+
+    # ── Test 49: Carried-Forward Call Accounting (5 unaffected domains calls = 0) ──
+    def test_49_carried_forward_call_accounting(self):
+        rev = self._make_schedule_revision()
+        client = PCIB2BMockClient()
+
+        out = fas.start_revision_full_analysis(
+            self.bid_id, rev, client=client, package_builder=lambda _: self.pkg,
+            pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+        )
+        new_run_id = out["run"]["id"]
+        specs = self.fake_db.get_full_analysis_specialist_results(new_run_id)
+
+        # 5 unaffected domains carried forward
+        carried = [s for s in specs if s["specialist_id"] != fa.SPECIALIST_SCHEDULE_SUBMISSION]
+        self.assertEqual(len(carried), 5)
+        for s in carried:
+            usage = s["result"].get("usage", {})
+            self.assertEqual(usage.get("calls"), 0)
+
+        # 1 affected specialist has 1 call
+        affected = next(s for s in specs if s["specialist_id"] == fa.SPECIALIST_SCHEDULE_SUBMISSION)
+        self.assertEqual(affected["result"].get("usage", {}).get("calls"), 1)
+
+        # Overall analysis result usage has total_calls == 2 (1 affected specialist + 1 reconciliation)
+        res = self.fake_db.results[new_run_id]["full_analysis_result"]
+        total_calls = res.get("usage", {}).get("total_calls")
+        self.assertEqual(total_calls, 2)
+
 if __name__ == "__main__":
     unittest.main()

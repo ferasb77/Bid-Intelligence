@@ -862,7 +862,9 @@ class TestMigrationAndRegression:
             assert forbidden not in sql
 
     def test_check1_frozen_and_full_analysis_untouched(self):
-        assert _git_diff("submission_package.py", "full_analysis.py", "full_analysis_service.py",
+        # Full Analysis is extended in PCI-B2B for incremental revision reanalysis;
+        # CHECK-1 core extraction and submission packaging remain strictly frozen:
+        assert _git_diff("submission_package.py",
                          "canonical_procurement.py", "procurement_normalization.py", "fast_analysis.py",
                          "extractor.py") == ""
 

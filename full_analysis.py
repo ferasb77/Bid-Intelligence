@@ -1096,6 +1096,7 @@ class SpecialistResult:
     stop_reason: str | None = None
     parse_status: str | None = None
     output_truncated: bool = False
+    delta_audit: dict = field(default_factory=dict)
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -1188,6 +1189,323 @@ def run_specialist(package: CanonicalPackage, specialist_id: str, *, client,
         result.confidence = "NONE"
     result.duration_seconds = round(time.monotonic() - t0, 6)
     return result
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 8b. Revision Specialist Execution (PCI-B2B)
+# ═══════════════════════════════════════════════════════════════════════
+
+_REVISION_DELTA_RULES = """
+DELTA REVISION RULES (Incremental Domain Reanalysis):
+- You are performing an incremental re-analysis of your domain for an APPLIED BUYER REVISION.
+- Ground your analysis strictly in CURRENT CANONICAL OBJECTS & REVISION FACTS.
+- Review every STALE PRIOR FINDING and decide whether it should be:
+  1. RETAIN: the finding remains true and accurate under the revised facts.
+  2. SUPERSEDE: the prior finding is no longer current and must be replaced by a newly formulated finding reflecting current truth.
+  3. REMOVE: the prior finding is no longer applicable (e.g. requirement deleted) and should be dropped with no replacement.
+- You may also propose "new_findings" if the revision introduces new requirements, obligations, criteria, or risks not captured in prior findings.
+
+OUTPUT SCHEMA (Return ONLY valid JSON):
+{
+  "stale_finding_actions": [
+    {
+      "prior_finding_id": "<exact ID of stale prior finding>",
+      "action": "RETAIN|SUPERSEDE|REMOVE",
+      "replacement_finding": {
+        "finding_type": "FACT|RISK|GAP|AMBIGUITY|ATTENTION_ITEM|INTERPRETATION",
+        "title": "<short title, max 12 words>",
+        "detail": "<1-2 concise sentences>",
+        "canonical_ids": ["<canonical_id or REV-FACT-* id>"],
+        "category_scope": "<category label or empty string>",
+        "severity": "HIGH|MEDIUM|LOW",
+        "human_confirmation_required": true|false
+      }
+    }
+  ],
+  "new_findings": [
+    {
+      "finding_type": "FACT|RISK|GAP|AMBIGUITY|ATTENTION_ITEM|INTERPRETATION",
+      "title": "<short title, max 12 words>",
+      "detail": "<1-2 concise sentences>",
+      "canonical_ids": ["<canonical_id or REV-FACT-* id>"],
+      "category_scope": "<category label or empty string>",
+      "severity": "HIGH|MEDIUM|LOW",
+      "human_confirmation_required": true|false
+    }
+  ]
+}
+
+MANDATORY RULES:
+- Every ID in STALE PRIOR FINDINGS must appear EXACTLY ONCE in "stale_finding_actions".
+- For action="RETAIN": "replacement_finding" MUST be null.
+- For action="REMOVE": "replacement_finding" MUST be null.
+- For action="SUPERSEDE": "replacement_finding" MUST be an object with the updated finding.
+- All "canonical_ids" must be in the permitted citation IDs provided below. Unknown IDs will fail validation.
+- Do NOT re-state retained findings from the RETAINED PRIOR FINDINGS list.
+"""
+
+
+def _build_revision_specialist_prompt(context: Any) -> str:
+    specialist_id = getattr(context, "specialist_id", "")
+    domain_brief = SPECIALIST_BRIEFS.get(specialist_id, "").strip()
+
+    current_objects = {
+        "current_canonical_objects": list(getattr(context, "relevant_current_canonical_objects", ())),
+        "revision_facts": [
+            rf.as_dict() if hasattr(rf, "as_dict") else rf
+            for rf in getattr(context, "revision_facts", ())
+        ],
+    }
+    changes = list(getattr(context, "relevant_changes", ()))
+    stale_findings = list(getattr(context, "stale_prior_findings", ()))
+    retained_findings = list(getattr(context, "retained_prior_findings", ()))
+    permitted_ids = list(getattr(context, "permitted_canonical_ids", ()))
+
+    prompt = (
+        domain_brief + "\n\n"
+        + _SHARED_RULES + "\n\n"
+        + _REVISION_DELTA_RULES + "\n\n"
+        + "PERMITTED CANONICAL & REVISION FACT IDS (only these may be cited):\n"
+        + json.dumps(permitted_ids, indent=1, ensure_ascii=False) + "\n\n"
+        + "CURRENT CANONICAL STATE & REVISION FACTS:\n"
+        + json.dumps(current_objects, indent=1, ensure_ascii=False, default=str) + "\n\n"
+        + "APPLIED BUYER REVISION CHANGES:\n"
+        + json.dumps(changes, indent=1, ensure_ascii=False, default=str) + "\n\n"
+        + "STALE PRIOR FINDINGS (Every one must be actioned in stale_finding_actions):\n"
+        + json.dumps(stale_findings, indent=1, ensure_ascii=False, default=str) + "\n\n"
+        + "RETAINED PRIOR FINDINGS (Already valid, carried forward -- do not duplicate):\n"
+        + json.dumps(retained_findings, indent=1, ensure_ascii=False, default=str)
+    )
+    return prompt
+
+
+def run_revision_specialist(
+    context: Any,
+    *,
+    client,
+    telemetry: list,
+    telemetry_context: dict | None = None,
+) -> SpecialistResult:
+    """Run ONE revision specialist incrementally: RevisionSpecialistContext ->
+    structured delta model call -> validated, updated findings with strict
+    completion integrity and delta audit tracking."""
+    t0 = time.monotonic()
+    specialist_id = getattr(context, "specialist_id", "")
+    bid_id = getattr(context, "bid_id", None)
+    result = SpecialistResult(specialist_id=specialist_id, bid_id=bid_id)
+
+    if not getattr(context, "is_executable", True):
+        result.status = STATUS_FAILED
+        result.failure_reason = f"Context is not executable: {getattr(context, 'blocking_reason', None)}"
+        result.duration_seconds = round(time.monotonic() - t0, 6)
+        return result
+
+    try:
+        result.input_digest = getattr(context, "context_fingerprint", "")
+        curr_objs = getattr(context, "relevant_current_canonical_objects", ())
+        rev_facts = getattr(context, "revision_facts", ())
+        changes = getattr(context, "relevant_changes", ())
+        result.canonical_objects_consumed = {
+            "canonical_objects": len(curr_objs),
+            "revision_facts": len(rev_facts),
+            "changes": len(changes),
+        }
+        permitted_ids = set(getattr(context, "permitted_canonical_ids", ()))
+
+        prompt = _build_revision_specialist_prompt(context)
+        before = len(telemetry)
+        call_label = f"specialist_{specialist_id.lower()}_rev_{getattr(context, 'revision_number', 0)}"
+        data = _call_model(
+            prompt,
+            client=client,
+            call_label=call_label,
+            max_tokens=SPECIALIST_MAX_OUTPUT_TOKENS,
+            telemetry=telemetry,
+            telemetry_context=telemetry_context,
+        )
+        rows = telemetry[before:]
+        result.usage = {
+            "calls": len(rows),
+            "input_tokens": sum(r.get("input_tokens") or 0 for r in rows),
+            "output_tokens": sum(r.get("output_tokens") or 0 for r in rows),
+            "request_bytes": sum(r.get("request_bytes") or 0 for r in rows),
+            "model": FULL_ANALYSIS_MODEL,
+        }
+        result.stop_reason, result.parse_status, result.output_truncated = _termination(rows)
+
+        raw_actions = data.get("stale_finding_actions") if isinstance(data, dict) else []
+        raw_new_findings = data.get("new_findings") if isinstance(data, dict) else []
+
+        stale_ids_list = list(getattr(context, "stale_prior_finding_ids", ()))
+        stale_ids_set = set(stale_ids_list)
+        stale_findings_map = {
+            f.get("finding_id"): f
+            for f in getattr(context, "stale_prior_findings", ())
+            if isinstance(f, dict) and f.get("finding_id")
+        }
+
+        seen_prior_ids: set[str] = set()
+        retained_stale_ids: list[str] = []
+        superseded_map: dict[str, str] = {}
+        superseded_replacements: list[dict] = []
+        removed_ids: list[str] = []
+        rejected_actions: list[dict] = []
+        unresolved_stale_ids: set[str] = set()
+        rejected_delta_findings: list[dict] = []
+
+        for item in (raw_actions or []):
+            if not isinstance(item, dict):
+                rejected_actions.append({"reason": "MALFORMED_ACTION", "raw": str(item)[:200]})
+                continue
+            pid = item.get("prior_finding_id")
+            act = str(item.get("action") or "").strip().upper()
+
+            if not pid or pid not in stale_ids_set:
+                rejected_actions.append({"reason": "UNKNOWN_PRIOR_FINDING_ID", "prior_finding_id": pid})
+                continue
+            if pid in seen_prior_ids:
+                rejected_actions.append({"reason": "DUPLICATE_PRIOR_FINDING_ACTION", "prior_finding_id": pid})
+                continue
+            seen_prior_ids.add(pid)
+
+            if act == "RETAIN":
+                retained_stale_ids.append(pid)
+            elif act == "REMOVE":
+                removed_ids.append(pid)
+            elif act == "SUPERSEDE":
+                raw_rep = item.get("replacement_finding")
+                if not raw_rep or not isinstance(raw_rep, dict):
+                    rejected_actions.append({"reason": "MISSING_REPLACEMENT_FINDING", "prior_finding_id": pid})
+                    unresolved_stale_ids.add(pid)
+                else:
+                    accepted_rep, rejected_rep = validate_findings(
+                        [raw_rep], permitted_ids, produced_by=specialist_id
+                    )
+                    if not accepted_rep:
+                        rejected_delta_findings.extend(rejected_rep)
+                        unresolved_stale_ids.add(pid)
+                    else:
+                        rep_finding = accepted_rep[0]
+                        rep_hash = hashlib.sha256(
+                            f"{rep_finding.get('title')}:{rep_finding.get('detail')}:{','.join(sorted(rep_finding.get('canonical_ids', [])))}".encode("utf-8")
+                        ).hexdigest()[:8]
+                        clean_pid = _slug(pid, 20)
+                        rep_finding["finding_id"] = (
+                            f"{specialist_id}:REV-{getattr(context, 'revision_id', '1')}:{clean_pid}-rep-{rep_hash}"
+                        )
+                        rep_finding["supersedes_finding_id"] = pid
+                        superseded_replacements.append(rep_finding)
+                        superseded_map[pid] = rep_finding["finding_id"]
+            else:
+                rejected_actions.append({"reason": f"INVALID_ACTION_{act}", "prior_finding_id": pid})
+                unresolved_stale_ids.add(pid)
+
+        # Check for omitted stale findings
+        for sid in stale_ids_list:
+            if sid not in seen_prior_ids:
+                unresolved_stale_ids.add(sid)
+
+        # Validate new findings
+        added_ids: list[str] = []
+        validated_new_findings: list[dict] = []
+        if raw_new_findings and isinstance(raw_new_findings, list):
+            accepted_new, rejected_new = validate_findings(
+                raw_new_findings, permitted_ids, produced_by=specialist_id
+            )
+            rejected_delta_findings.extend(rejected_new)
+            for idx, new_f in enumerate(accepted_new):
+                new_hash = hashlib.sha256(
+                    f"{new_f.get('title')}:{new_f.get('detail')}:{','.join(sorted(new_f.get('canonical_ids', [])))}".encode("utf-8")
+                ).hexdigest()[:8]
+                new_f["finding_id"] = f"{specialist_id}:REV-{getattr(context, 'revision_id', '1')}:new-{idx}-{new_hash}"
+                validated_new_findings.append(new_f)
+                added_ids.append(new_f["finding_id"])
+
+        # Construct CURRENT findings list
+        current_findings: list[dict] = []
+        # A. Retained prior findings (unchanged IDs)
+        for rf in getattr(context, "retained_prior_findings", ()):
+            if isinstance(rf, dict):
+                current_findings.append(dict(rf))
+
+        # B. Stale findings actioned RETAIN (unchanged IDs)
+        for pid in retained_stale_ids:
+            if pid in stale_findings_map:
+                current_findings.append(dict(stale_findings_map[pid]))
+
+        # C. Validated replacements for SUPERSEDE
+        current_findings.extend(superseded_replacements)
+
+        # D. Validated new findings
+        current_findings.extend(validated_new_findings)
+
+        result.findings = current_findings
+        result.risks = []
+        result.gaps = []
+        result.ambiguities = []
+        result.attention_items = []
+        for f in current_findings:
+            bucket = _TYPE_BUCKETS.get(f.get("finding_type"))
+            if bucket:
+                getattr(result, bucket).append(f)
+
+        result.rejected_findings = rejected_delta_findings + rejected_actions
+
+        # Source refs
+        refs = []
+        for finding in current_findings:
+            for cid in finding.get("canonical_ids", []):
+                if cid not in refs:
+                    refs.append(cid)
+        result.source_refs = refs
+        result.human_confirmation_required = any(
+            f.get("human_confirmation_required") for f in current_findings
+        )
+        supported = sum(1 for f in current_findings if f.get("support_status") == SUPPORT_CANONICAL)
+        result.confidence = (
+            "HIGH" if current_findings and supported == len(current_findings)
+            else "MEDIUM" if supported else "LOW"
+        )
+
+        # Completion integrity
+        if result.output_truncated:
+            result.status = STATUS_PARTIAL
+            result.failure_reason = (
+                f"{OUTPUT_TRUNCATED_REASON}: provider stop_reason=max_tokens at "
+                f"{SPECIALIST_MAX_OUTPUT_TOKENS} output tokens; validated findings preserved"
+            )
+        elif unresolved_stale_ids:
+            result.status = STATUS_PARTIAL
+            result.failure_reason = (
+                f"Unresolved stale prior finding(s): {sorted(unresolved_stale_ids)}"
+            )
+        elif rejected_actions:
+            result.status = STATUS_PARTIAL
+            result.failure_reason = f"Rejected delta action(s): {len(rejected_actions)}"
+        else:
+            result.status = STATUS_COMPLETE
+
+        all_retained_ids = [
+            f.get("finding_id") for f in getattr(context, "retained_prior_findings", ()) if isinstance(f, dict)
+        ] + retained_stale_ids
+        result.delta_audit = {
+            "context_fingerprint": getattr(context, "context_fingerprint", ""),
+            "retained_finding_ids": sorted(all_retained_ids),
+            "superseded_findings": superseded_map,
+            "removed_finding_ids": sorted(removed_ids),
+            "added_finding_ids": sorted(added_ids),
+            "rejected_delta_findings": result.rejected_findings,
+            "unresolved_stale_finding_ids": sorted(unresolved_stale_ids),
+            "completion_integrity": result.status,
+        }
+    except Exception as exc:
+        result.status = STATUS_FAILED
+        result.failure_reason = f"{type(exc).__name__}: {exc}"[:400]
+        result.confidence = "NONE"
+
+    result.duration_seconds = round(time.monotonic() - t0, 6)
+    return result
+
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1609,6 +1927,7 @@ class FullAnalysisResult:
     wall_seconds: float = 0.0
     usage: dict = field(default_factory=dict)
     telemetry: list = field(default_factory=list)
+    revision_update: dict = field(default_factory=dict)
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -1768,6 +2087,404 @@ def run_full_analysis(package: CanonicalPackage, api_key: str | None = None, *,
         telemetry=telemetry,
     )
     return result
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 11b. Revision Full Analysis Orchestration & Reconciliation (PCI-B2B)
+# ═══════════════════════════════════════════════════════════════════════
+
+def build_revision_reconciliation_input(
+    package: CanonicalPackage,
+    contexts: dict[str, Any],
+    specialist_results: list[SpecialistResult],
+    *,
+    revision_facts: Sequence[Any] | None = None,
+    removed_ids: set[str] | None = None,
+) -> dict:
+    """The MINIMAL payload the revision-aware reconciliation stage receives.
+    Adapts base package canonical values with CURRENT authoritative values
+    from contexts and revision facts without mutating the base package."""
+    removed = set(removed_ids or ())
+
+    # 1. Identity overlay
+    identity_fields = {k: v["value"] for k, v in list(dict(package.identity)["fields"].items())[:12]}
+
+    # 2. Scoped criteria overlay
+    criteria_by_id = {
+        c["canonical_id"]: dict(c)
+        for c in package.scoped_criteria
+        if c["canonical_id"] not in removed
+    }
+    for ctx in contexts.values():
+        for obj in getattr(ctx, "relevant_current_canonical_objects", ()):
+            cid = obj.get("canonical_id")
+            if cid and cid in criteria_by_id:
+                if "weight" in obj:
+                    criteria_by_id[cid]["weight"] = obj["weight"]
+                if "criterion" in obj:
+                    criteria_by_id[cid]["criterion"] = obj["criterion"]
+
+    # 3. Requirements overlay
+    req_ids = [r["canonical_id"] for r in package.requirements if r["canonical_id"] not in removed]
+    for rf in (revision_facts or ()):
+        fid = getattr(rf, "fact_id", None) or getattr(rf, "canonical_id", None)
+        if fid and fid not in req_ids:
+            req_ids.append(fid)
+
+    # 4. Obligations overlay
+    obligations = [dict(o) for o in package.commercial_obligations if o["canonical_id"] not in removed]
+
+    # 5. Milestones overlay
+    milestones = [dict(m) for m in package.milestones if m["canonical_id"] not in removed]
+
+    # 6. Submission mechanics overlay
+    submission = {k: v for k, v in dict(package.submission_mechanics).items()
+                  if k in ("submission_deadline", "clarification_deadline")}
+    for ctx in contexts.values():
+        for ch in getattr(ctx, "relevant_changes", ()):
+            ft = ch.get("fact_type", "")
+            if ft in ("submission_deadline", "deadline") and ch.get("after_value"):
+                submission["submission_deadline"] = ch["after_value"]
+            elif ft in ("clarification_deadline",) and ch.get("after_value"):
+                submission["clarification_deadline"] = ch["after_value"]
+
+    index = {
+        "identity": identity_fields,
+        "service_categories": [{"canonical_id": c["canonical_id"], "label": c["label"],
+                                "criterion_count": c["criterion_count"],
+                                "scope_item_count": c["scope_item_count"]}
+                               for c in package.service_categories],
+        "requirement_ids": req_ids,
+        "criterion_index": [{"canonical_id": c["canonical_id"],
+                             "category_scope": c["category_scope"],
+                             "criterion": c["criterion"], "weight": c["weight"]}
+                            for c in criteria_by_id.values()],
+        "obligation_index": [{"canonical_id": o["canonical_id"], "topic": o["topic"]}
+                             for o in obligations],
+        "milestone_index": [{"canonical_id": m["canonical_id"], "label": m["label"],
+                             "scope_key": m["scope_key"],
+                             "date_start": m.get("normalized_date_start")}
+                            for m in milestones],
+        "submission": submission,
+    }
+
+    domains = []
+    for result in specialist_results:
+        domains.append({
+            "specialist_id": result.specialist_id,
+            "status": result.status,
+            "domain_complete": result.status == STATUS_COMPLETE,
+            "output_truncated": bool(getattr(result, "output_truncated", False)),
+            "failure_reason": result.failure_reason,
+            "findings": [{"finding_id": f["finding_id"], "finding_type": f["finding_type"],
+                          "title": f["title"], "detail": f["detail"],
+                          "category_scope": f.get("category_scope"),
+                          "canonical_ids": f.get("canonical_ids"), "severity": f.get("severity")}
+                         for f in result.findings],
+        })
+    return {"canonical_index": index, "domains": domains}
+
+
+def run_revision_reconciliation(
+    package: CanonicalPackage,
+    contexts: dict[str, Any],
+    specialist_results: list[SpecialistResult],
+    *,
+    client,
+    telemetry: list,
+    telemetry_context: dict | None = None,
+    revision_facts: Sequence[Any] | None = None,
+    removed_ids: set[str] | None = None,
+) -> ReconciliationResult:
+    """Revision-aware reconciliation stage. Cross-validates outputs against
+    CURRENT authoritative truth."""
+    t0 = time.monotonic()
+    out = ReconciliationResult()
+    out.incomplete_domains = [
+        {"specialist_id": r.specialist_id, "status": r.status, "reason": r.failure_reason}
+        for r in specialist_results if r.status != STATUS_COMPLETE
+    ]
+
+    merged, duplicates = consolidate_findings(specialist_results)
+    merged, overrides = enforce_canonical_authority(merged, package)
+    out.reconciled_findings = merged
+    out.duplicate_findings = duplicates
+    out.canonical_authority_overrides = overrides
+
+    orphaned = detect_orphaned_requirements(package, specialist_results)
+    if removed_ids:
+        orphaned = [o for o in orphaned if o["canonical_id"] not in removed_ids]
+    out.orphaned_requirements = orphaned
+    out.category_scope_inconsistencies = detect_category_scope_inconsistencies(package, specialist_results)
+    out.evaluation_scope_mismatches = detect_evaluation_scope_mismatches(package)
+    out.unresolved_ambiguities = [
+        {"title": f["title"], "detail": f["detail"], "canonical_ids": f.get("canonical_ids", []),
+         "produced_by": f.get("produced_by", [])}
+        for f in merged if f["finding_type"] == FINDING_AMBIGUITY
+    ]
+
+    payload = build_revision_reconciliation_input(
+        package, contexts, specialist_results, revision_facts=revision_facts, removed_ids=removed_ids
+    )
+    prompt = (
+        _RECONCILIATION_RULES.strip() + "\n\nSPECIALIST OUTPUTS AND CURRENT CANONICAL INDEX:\n"
+        + json.dumps(payload, indent=1, ensure_ascii=False, default=str)
+    )
+    finding_ids = {f["finding_id"] for r in specialist_results for f in r.findings}
+    permitted_cids = (set(package.canonical_ids) - (removed_ids or set()))
+    for rf in (revision_facts or ()):
+        fid = getattr(rf, "fact_id", None) or getattr(rf, "canonical_id", None)
+        if fid:
+            permitted_cids.add(fid)
+
+    try:
+        before = len(telemetry)
+        data = _call_model(
+            prompt, client=client, call_label="reconciliation_revision",
+            max_tokens=RECONCILIATION_MAX_OUTPUT_TOKENS, telemetry=telemetry,
+            telemetry_context=telemetry_context
+        )
+        rows = telemetry[before:]
+        out.usage = {
+            "calls": len(rows),
+            "input_tokens": sum(r.get("input_tokens") or 0 for r in rows),
+            "output_tokens": sum(r.get("output_tokens") or 0 for r in rows),
+            "request_bytes": sum(r.get("request_bytes") or 0 for r in rows),
+            "model": FULL_ANALYSIS_MODEL,
+        }
+        out.cross_domain_risks = _validated_index_items(
+            data.get("cross_domain_risks"), permitted_cids, keep_finding_ids=finding_ids
+        )
+        out.contradictions = _validated_index_items(
+            data.get("contradictions"), permitted_cids, keep_finding_ids=finding_ids
+        )
+        out.unresolved_ambiguities += _validated_index_items(
+            data.get("unresolved_ambiguities"), permitted_cids, keep_finding_ids=finding_ids
+        )
+        out.human_confirmation_required = _validated_index_items(
+            data.get("human_confirmation_required"), permitted_cids, keep_finding_ids=finding_ids
+        )
+        out.completeness_note = _clip(data.get("completeness_note"), 600)
+        out.stop_reason, out.parse_status, out.output_truncated = _termination(rows)
+        if out.output_truncated:
+            out.status = STATUS_PARTIAL
+            out.failure_reason = (
+                f"{OUTPUT_TRUNCATED_REASON}: provider stop_reason=max_tokens at "
+                f"{RECONCILIATION_MAX_OUTPUT_TOKENS} output tokens; recovered reconciliation output preserved"
+            )
+        else:
+            out.status = STATUS_COMPLETE
+    except Exception as exc:
+        out.status = STATUS_FAILED
+        out.failure_reason = f"{type(exc).__name__}: {exc}"[:400]
+
+    out.human_confirmation_required += [
+        {"title": f["title"], "detail": f["detail"], "canonical_ids": f.get("canonical_ids", []),
+         "finding_ids": [f["finding_id"]], "domains": list(f.get("produced_by", [])),
+         "severity": f.get("severity", "MEDIUM"), "authority": f.get("authority", AUTHORITY_SPECIALIST)}
+        for f in merged if f.get("human_confirmation_required")
+    ]
+    out.duration_seconds = round(time.monotonic() - t0, 6)
+    return out
+
+
+def run_revision_full_analysis(
+    package: CanonicalPackage,
+    contexts: dict[str, Any],
+    prior_specialist_results: dict[str, Any] | list[Any],
+    affected_domains: list[str],
+    *,
+    api_key: str | None = None,
+    client = None,
+    max_concurrency: int = MAX_SPECIALIST_CONCURRENCY,
+    telemetry_context: dict | None = None,
+    on_specialist_done = None,
+    on_event = None,
+    revision_facts: Sequence[Any] | None = None,
+    removed_ids: set[str] | None = None,
+    revision_update_metadata: dict | None = None,
+) -> FullAnalysisResult:
+    """Run an incremental revision Full Analysis.
+    Reruns ONLY affected specialists against CURRENT authoritative truth;
+    carries forward unaffected specialist results with 0 provider calls;
+    runs ONE revision-aware reconciliation; persists a complete 6-domain result."""
+    started = datetime.now(timezone.utc)
+    t0 = time.monotonic()
+    if client is None:
+        client = get_anthropic_client(api_key=api_key)
+
+    if isinstance(prior_specialist_results, list):
+        prior_map = {
+            r.specialist_id if hasattr(r, "specialist_id") else r.get("specialist_id"): r
+            for r in prior_specialist_results
+        }
+    else:
+        prior_map = dict(prior_specialist_results)
+
+    ordered = list(SPECIALIST_IDS)
+    per_specialist_telemetry: dict = {s: [] for s in ordered}
+
+    def _emit(event_type: str, payload: dict) -> None:
+        if on_event is None:
+            return
+        try:
+            on_event(event_type, payload)
+        except Exception:
+            pass
+
+    results_by_id: dict = {}
+
+    # 1. Carry forward unaffected domains with 0 provider calls
+    for sid in ordered:
+        if sid not in affected_domains:
+            prior = prior_map.get(sid)
+            if prior is None:
+                raise ValueError(f"Missing prior specialist result for unaffected domain {sid}")
+            prior_dict = prior.as_dict() if hasattr(prior, "as_dict") else dict(prior)
+            carried = SpecialistResult(
+                specialist_id=sid,
+                specialist_version=prior_dict.get("specialist_version", SPECIALIST_VERSION),
+                bid_id=package.bid_id,
+                status=STATUS_COMPLETE,
+                input_digest=prior_dict.get("input_digest", ""),
+                canonical_objects_consumed=prior_dict.get("canonical_objects_consumed") or {},
+                findings=list(prior_dict.get("findings") or []),
+                risks=list(prior_dict.get("risks") or []),
+                ambiguities=list(prior_dict.get("ambiguities") or []),
+                gaps=list(prior_dict.get("gaps") or []),
+                attention_items=list(prior_dict.get("attention_items") or []),
+                source_refs=list(prior_dict.get("source_refs") or []),
+                confidence=prior_dict.get("confidence", "HIGH"),
+                human_confirmation_required=bool(prior_dict.get("human_confirmation_required")),
+                rejected_findings=list(prior_dict.get("rejected_findings") or []),
+                failure_reason=None,
+                duration_seconds=0.0,
+                usage={"calls": 0, "input_tokens": 0, "output_tokens": 0, "request_bytes": 0, "model": FULL_ANALYSIS_MODEL},
+                delta_audit={"carried_forward": True, "provider_calls": 0},
+            )
+            results_by_id[sid] = carried
+            _emit(EVENT_SPECIALIST_COMPLETED, {"specialist_id": sid, "result": carried, "carried_forward": True})
+            if on_specialist_done is not None:
+                try:
+                    on_specialist_done(carried)
+                except Exception:
+                    pass
+
+    # 2. Execute affected domains
+    affected_ordered = [sid for sid in ordered if sid in affected_domains]
+    for sid in affected_ordered:
+        _emit(EVENT_SPECIALIST_QUEUED, {"specialist_id": sid})
+
+    def _run_affected(sid: str):
+        _emit(EVENT_SPECIALIST_STARTED, {"specialist_id": sid})
+        ctx = contexts[sid]
+        outcome = run_revision_specialist(
+            ctx,
+            client=client,
+            telemetry=per_specialist_telemetry[sid],
+            telemetry_context=telemetry_context,
+        )
+        _emit(
+            EVENT_SPECIALIST_COMPLETED if outcome.status in USABLE_STATUSES else EVENT_SPECIALIST_FAILED,
+            {"specialist_id": sid, "result": outcome},
+        )
+        return outcome
+
+    with ThreadPoolExecutor(max_workers=max(1, min(max_concurrency, len(affected_ordered) or 1))) as pool:
+        futures = {pool.submit(_run_affected, sid): sid for sid in affected_ordered}
+        for future, sid in futures.items():
+            try:
+                results_by_id[sid] = future.result()
+            except Exception as exc:
+                failed = SpecialistResult(specialist_id=sid, bid_id=package.bid_id)
+                failed.status = STATUS_FAILED
+                failed.failure_reason = f"{type(exc).__name__}: {exc}"[:400]
+                results_by_id[sid] = failed
+            if on_specialist_done is not None:
+                try:
+                    on_specialist_done(results_by_id[sid])
+                except Exception:
+                    pass
+
+    specialist_results = [results_by_id[sid] for sid in ordered]
+    telemetry: list = []
+    for sid in affected_ordered:
+        telemetry.extend(per_specialist_telemetry[sid])
+
+    # 3. Revision-aware reconciliation
+    _emit(EVENT_RECONCILIATION_STARTED, {
+        "incomplete_domains": [r.specialist_id for r in specialist_results if r.status != STATUS_COMPLETE]
+    })
+    reconciliation = run_revision_reconciliation(
+        package, contexts, specialist_results, client=client, telemetry=telemetry,
+        telemetry_context=telemetry_context, revision_facts=revision_facts, removed_ids=removed_ids
+    )
+    _emit(
+        EVENT_RECONCILIATION_COMPLETED if reconciliation.status in USABLE_STATUSES else EVENT_RECONCILIATION_FAILED,
+        {"reconciliation": reconciliation}
+    )
+
+    usable = [r for r in specialist_results if r.status in USABLE_STATUSES]
+    completed = [r for r in specialist_results if r.status == STATUS_COMPLETE]
+    if not usable:
+        completeness = COMPLETENESS_FAILED
+    elif len(completed) == len(ordered) and reconciliation.status == STATUS_COMPLETE:
+        completeness = COMPLETENESS_COMPLETE
+    else:
+        completeness = COMPLETENESS_PARTIAL
+
+    gaps = [f for f in reconciliation.reconciled_findings if f.get("finding_type") == FINDING_GAP]
+    gaps += [{"finding_type": FINDING_GAP, "title": "Canonical requirement not analysed",
+              "detail": f"{o['description']}", "canonical_ids": [o["canonical_id"]],
+              "produced_by": [], "authority": AUTHORITY_CANONICAL, "severity": "MEDIUM"}
+             for o in reconciliation.orphaned_requirements]
+    gaps += [{"finding_type": FINDING_GAP,
+              "title": f"Incomplete domain: {d['specialist_id']}",
+              "detail": (f"Specialist {d['specialist_id']} output was truncated at provider limit."
+                         if d["status"] == STATUS_PARTIAL else
+                         f"Specialist {d['specialist_id']} did not complete ({d['reason'] or d['status']})."),
+              "canonical_ids": [], "produced_by": [d["specialist_id"]],
+              "authority": AUTHORITY_CANONICAL, "severity": "HIGH"}
+             for d in reconciliation.incomplete_domains]
+
+    source_refs = []
+    for result in specialist_results:
+        for ref in result.source_refs:
+            if ref not in source_refs:
+                source_refs.append(ref)
+
+    usage_rows = telemetry
+    result = FullAnalysisResult(
+        bid_id=package.bid_id,
+        analysis_run_id=package.analysis_run_id,
+        canonical_snapshot_digest=package.package_digest,
+        specialist_statuses={r.specialist_id: r.status for r in specialist_results},
+        specialist_results=[r.as_dict() for r in specialist_results],
+        reconciliation=asdict(reconciliation),
+        reconciled_findings=reconciliation.reconciled_findings,
+        unresolved_gaps=gaps,
+        cross_domain_risks=(reconciliation.cross_domain_risks + reconciliation.contradictions),
+        ambiguities=reconciliation.unresolved_ambiguities,
+        completeness_status=completeness,
+        human_confirmation_required=reconciliation.human_confirmation_required,
+        source_refs=source_refs,
+        started_at=started.isoformat(),
+        completed_at=datetime.now(timezone.utc).isoformat(),
+        wall_seconds=round(time.monotonic() - t0, 6),
+        usage={
+            "model": FULL_ANALYSIS_MODEL,
+            "total_calls": sum(1 for r in usage_rows if r.get("provider_call_attempted")),
+            "input_tokens": sum(r.get("input_tokens") or 0 for r in usage_rows),
+            "output_tokens": sum(r.get("output_tokens") or 0 for r in usage_rows),
+            "request_bytes": sum(r.get("request_bytes") or 0 for r in usage_rows),
+            "by_specialist": {r.specialist_id: dict(r.usage) for r in specialist_results},
+            "reconciliation": dict(reconciliation.usage),
+        },
+        telemetry=telemetry,
+        revision_update=dict(revision_update_metadata or {}),
+    )
+    return result
+
 
 
 # ═══════════════════════════════════════════════════════════════════════

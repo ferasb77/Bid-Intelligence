@@ -1,7 +1,7 @@
 # Current PCI State
 
 Phase:
-PCI-B2A.1 — Context Identity & Fail-Closed Binding Closure
+PCI-B2B — Incremental Specialist Execution + Delta Reconciliation
 
 Architecture decision:
 A procurement is modeled as a living, chronological revision sequence
@@ -93,16 +93,39 @@ Revision-Aware Specialist Context & Identity Closure (PCI-B2A & PCI-B2A.1):
    - Context becomes `is_executable = False` with explicit diagnostic explanation in `blocking_reason`.
    - Unambiguous matches bind deterministically with strong binding type (`EXISTING_CANONICAL`).
 
+Incremental Specialist Execution & Delta Reconciliation (PCI-B2B):
+1. Incremental Re-Execution Flow:
+   - Consumes an APPLIED buyer revision and computes `RevisionImpactPlan`.
+   - Reruns ONLY affected specialists against CURRENT authoritative truth using structured delta contract (`stale_finding_actions` [RETAIN | SUPERSEDE | REMOVE] and `new_findings` [ADD]).
+   - Unaffected domains are carried forward with ZERO provider calls directly into the new run.
+   - Emits exactly 1 revision-aware reconciliation call combining all six current specialist results against current canonical truth.
+   - Persists a NEW self-contained FULL analysis result reusing Migration 020 RPCs and tables (`analysis_runs`, `analysis_results`, `full_analysis_specialist_results`, `full_analysis_events`).
+   - Preserves all historical Full Analysis runs completely unchanged and immutable.
+2. Structured Delta Contract & Deterministic Identifiers:
+   - Retained findings preserve their original `finding_id`.
+   - Superseded findings generate deterministic IDs: `{specialist_id}:REV-{revision_id}:{clean_pid}-rep-{hash}` with `supersedes_finding_id = prior_id`.
+   - Added findings generate deterministic IDs: `{specialist_id}:REV-{revision_id}:new-{idx}-{hash}`.
+   - Every stale prior finding must be resolved into RETAIN, SUPERSEDE (with valid replacement), or REMOVE. Any omitted or unresolved stale ID marks the specialist result as PARTIAL.
+   - Delta audit records context fingerprint, retained findings, superseded mappings, removed IDs, added IDs, rejected findings, and unresolved stale IDs.
+3. Fail-Closed Baseline & Eligibility Guards:
+   - Requires a prior COMPLETE Full Analysis baseline; missing or incomplete prior runs fail closed with `FullAnalysisBaselineRequiredError` before any provider calls.
+   - Non-executable contexts (`is_executable == False`) abort before any provider calls.
+   - Zero-impact revisions (`affected_domains == []`) return `NO_INTELLIGENCE_REFRESH_REQUIRED` with 0 provider calls and create no runs.
+4. Idempotency & Accurate Telemetry:
+   - Revision input fingerprint incorporates prior run ID, canonical digest, revision ID, impact plan fingerprint, and domain context fingerprints.
+   - Duplicate calls with identical input fingerprints return `REUSED_COMPLETE` with 0 additional provider calls.
+   - Telemetry strictly separates carried-forward specialists (calls = 0) from executed specialists (calls = 1).
+
 Schema reused/changed:
 REUSE_EXISTING_SCHEMA.
 No new database migration or DDL was introduced.
-Reuses existing migration 010 schema primitives.
+Reuses existing migration 010 and migration 020 schema primitives.
 
 Entry manifest for next phase (maximum 5 files):
 1. `procurement_change_intelligence.py` — Revision impact plan, domain router, finding dependency resolver, revision specialist context
-2. `full_analysis.py` — Specialist runner, specialist inputs, finding validator, reconciliation
+2. `full_analysis.py` — Specialist runner, delta rules, revision specialist, reconciliation
 3. `full_analysis_service.py` — Durable execution service & DB persistence
-4. `tests/test_procurement_change_intelligence.py` — Impact routing tests & fixtures A-J
+4. `tests/test_procurement_change_intelligence.py` — PCI test suite (Tests 1-49)
 5. `canonical_procurement.py` — Canonical procurement intelligence definitions
 
 Durable objects:
@@ -117,6 +140,8 @@ Durable objects:
 - `RevisionSpecialistContext`: Authoritative revision-aware specialist reanalysis contract providing mutated canonical objects, additive `RevisionFact` items, permitted citation IDs, carry-forward retained findings, stale finding payload, lineage digests, and change bindings
 - `ChangeBinding`: Precise linkage between a `FactChange` and its target canonical entity (`EXISTING_CANONICAL`, `REVISION_FACT`, or `UNRESOLVED`)
 - `RevisionFact`: Structured representation of an additive buyer update not bound to any baseline canonical entity
+- `SpecialistResult.delta_audit`: Comprehensive delta audit dictionary capturing retained, superseded, removed, added, rejected, and unresolved findings per specialist domain
+- `FullAnalysisResult.revision_update`: Self-contained metadata capturing revision run execution details, affected domains, carried-forward domains, context fingerprints, and delta summaries
 
 Key invariants:
 - Previous revisions are immutable
@@ -151,10 +176,16 @@ Key invariants:
 - Specialists receive only prior findings and stale finding IDs belonging to their own domain (`produced_by`)
 - `RevisionSpecialistContext` carries complete `stale_prior_findings` payloads for downstream delta reconciliation
 - Revision specialist context fingerprints (`context_fingerprint`) are 100% deterministic, order-invariant, and sensitive to revision facts, canonical objects, permitted citation IDs, stale/retained findings, `impact_plan_fingerprint`, and `base_package_digest`
-- Pure application-layer routing and context formulation with zero external model calls and zero database migrations
+- Incremental re-execution runs ONLY affected specialists and executes exactly 1 delta reconciliation
+- Unaffected domains are carried forward with 0 provider calls into the new run
+- Carried-forward specialists are persisted in `full_analysis_specialist_results` with 0 calls in usage, making the new run 100% self-contained
+- Prior Full Analysis runs are completely immutable
+- Zero-impact revisions abort with `NO_INTELLIGENCE_REFRESH_REQUIRED` and 0 calls
+- Re-execution with unchanged fingerprint reuses the completed run with `REUSED_COMPLETE` and 0 calls
+- Pure application-layer routing and context formulation with zero paid external calls during tests and zero database migrations
 
 Tests:
-`tests/test_procurement_change_intelligence.py` (90 passed, 0 failed):
+`tests/test_procurement_change_intelligence.py` (107 passed, 0 failed):
 - Fixtures A through J (10 tests)
 - Concurrency and optimistic locking (3 tests)
 - Invariant verification (4 tests)
@@ -169,14 +200,7 @@ Tests:
 - PCI-B1.1 Applied-State & Compatibility tests (10 tests: Tests A through J covering applied gating, chronology gating, unapplied impact plan, raw changeset fail-closed, vocabulary compatibility, prefix normalization, canonical-id bridge, zero-impact key filtering, stable event identity, ambiguous revision number fail-closed)
 - PCI-B2A Revision-Aware Specialist Context tests (14 tests: Test Scenarios A through J covering weight overlay, deadline overlay, commercial obligation overlay, scope overlay, additive revision fact, removed requirement exclusion, replacement pricing form provenance, unapplied revision fail-closed, unresolved binding blocking execution, unaffected domain bounding fail-closed, base package immutability, deterministic context fingerprinting, prior findings filtering, manager end-to-end integration)
 - PCI-B2A.1 Context Identity & Binding Closure tests (6 tests: lineage fields and stale findings payload, real finding shape and domain-bound filtering, fingerprint sensitivity to finding content, fingerprint order-invariance, fail-closed ambiguous canonical binding, deterministic unique strong binding)
+- PCI-B2B Incremental Specialist Execution & Delta Reconciliation tests (17 tests: Tests 33 through 49 covering 1 affected domain with 2 calls and 5 carried forward, 2 affected domains with 3 calls and 4 carried forward, new revision fact citation validation and survival in reconciliation, stale finding SUPERSEDE action with validated replacement and deterministic ID, stale finding REMOVE action, stale finding RETAIN action, new findings ADD action, missing stale finding action resulting in PARTIAL domain, invalid citation rejection resulting in PARTIAL domain, provider truncation resulting in PARTIAL run, non-executable context aborting before provider calls, zero-impact revision returning NO_REFRESH with 0 calls, idempotent reuse returning REUSED_COMPLETE with 0 calls, self-contained persistence queryable via get_full_analysis_result, prior run immutability, revision-aware reconciliation payload verification, and carried-forward call accounting)
 
 Open issues:
-None for PCI-B2A.1. Context identity and fail-closed binding invariants are fully verified and closed.
-
-Entry Manifest for PCI-B2B:
-- `procurement_change_intelligence.py`: `RevisionSpecialistContext`, `build_revision_specialist_context`, `ProcurementRevisionManager.get_revision_specialist_context`
-- `full_analysis.py`: `SPECIALIST_IDS`, `build_specialist_input`, `SpecialistResult`, `validate_findings`
-- `full_analysis_service.py`: `execute_specialist_run`, reanalysis orchestration, persistence adapter
-
-Next phase:
-PCI-B2B — Incremental Specialist Execution + Delta Reconciliation
+None for PCI-B2B. Incremental specialist execution, delta reconciliation, and self-contained persistence are fully verified and closed.
