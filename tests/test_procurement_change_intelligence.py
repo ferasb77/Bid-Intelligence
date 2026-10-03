@@ -4006,5 +4006,452 @@ class TestPCIB2ARevisionAwareSpecialistContext(unittest.TestCase):
         self.assertEqual(sub["submission_deadline"], "2026-11-15")
 
 
+class TestPCIB2A1ContextIdentityAndBindingClosure(unittest.TestCase):
+    """PCI-B2A.1: Context Identity & Fail-Closed Binding Closure Tests.
+    Covers:
+    - Stale prior finding content payload
+    - Domain-bound prior findings via produced_by (excluding commercial findings from evaluation)
+    - Domain-bound stale IDs
+    - Semantic context fingerprint sensitivity to finding content
+    - Fingerprint order-invariance across reordered dictionaries and lists
+    - Lineage fields: impact_plan_fingerprint and base_package_digest
+    - Fail-closed ambiguous canonical binding
+    - Deterministic unique strong binding
+    - Real finding shapes via validate_findings()
+    """
+
+    def setUp(self):
+        import full_analysis as fa
+        from types import SimpleNamespace
+        self.fa = fa
+        self.SimpleNamespace = SimpleNamespace
+        self.bid_id = 1417
+        self.pkg = _make_canonical_package()
+        self.storage = pci.InMemoryPCIStorage()
+
+    def test_lineage_fields_and_stale_findings_payload(self):
+        """Lineage fields (impact_plan_fingerprint, base_package_digest) and stale finding content."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="weight",
+            entity_id="eval.firm_experience.weight",
+            before_value=30,
+            after_value=35,
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+            metadata={"canonical_id": "CRIT-category-1-firm-experience"},
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-1",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[change]),
+            fingerprint="fp1",
+            review_status="applied",
+            is_current=True,
+        )
+
+        prior_eval_finding = {
+            "finding_id": "EVALUATION_INTELLIGENCE:0",
+            "finding_type": "FACT",
+            "title": "Firm Experience is weighted at 30%",
+            "detail": "Firm experience evaluation criteria weight is 30%",
+            "canonical_ids": ["CRIT-category-1-firm-experience"],
+            "category_scope": "",
+            "severity": "MEDIUM",
+            "support_status": "CANONICAL_SUPPORTED",
+            "authority": "CANONICAL",
+            "human_confirmation_required": False,
+            "produced_by": ["EVALUATION_INTELLIGENCE"],
+        }
+        plan = pci.generate_revision_impact_plan(rev, None, existing_findings=[prior_eval_finding], bid_id=self.bid_id)
+        self.assertIn("EVALUATION_INTELLIGENCE:0", plan.stale_finding_ids)
+
+        ctx = pci.build_revision_specialist_context(
+            specialist_id=pci.SPECIALIST_EVALUATION_INTELLIGENCE,
+            revision=rev,
+            procurement_state=None,
+            canonical_package=self.pkg,
+            impact_plan=plan,
+            prior_specialist_findings=[prior_eval_finding],
+            bid_id=self.bid_id,
+        )
+
+        # 1. Lineage fields
+        self.assertEqual(ctx.impact_plan_fingerprint, plan.fingerprint)
+        self.assertEqual(ctx.base_package_digest, self.pkg.package_digest)
+        self.assertEqual(ctx.as_dict()["impact_plan_fingerprint"], plan.fingerprint)
+        self.assertEqual(ctx.as_dict()["base_package_digest"], self.pkg.package_digest)
+
+        # 2. Stale findings content and IDs
+        self.assertEqual(ctx.stale_prior_finding_ids, ("EVALUATION_INTELLIGENCE:0",))
+        self.assertEqual(len(ctx.stale_prior_findings), 1)
+        self.assertEqual(ctx.stale_prior_findings[0]["title"], "Firm Experience is weighted at 30%")
+        self.assertEqual(ctx.as_dict()["stale_prior_findings"][0]["finding_id"], "EVALUATION_INTELLIGENCE:0")
+
+    def test_real_finding_shape_and_domain_bound_filtering(self):
+        """Domain-bound prior findings using validate_findings() shape. Commercial excluded from Evaluation."""
+        raw_eval = [{
+            "finding_type": "FACT",
+            "title": "Firm Experience weighting",
+            "detail": "Evaluation weight for firm experience is 30 points.",
+            "canonical_ids": ["CRIT-category-1-firm-experience"],
+            "category_scope": "",
+            "severity": "MEDIUM",
+        }]
+        raw_comm = [{
+            "finding_type": "FACT",
+            "title": "Commercial insurance requirement",
+            "detail": "Contractor must maintain commercial general liability.",
+            "canonical_ids": ["OBL-0"],
+            "category_scope": "",
+            "severity": "HIGH",
+        }]
+
+        eval_accepted, _ = self.fa.validate_findings(
+            raw_eval,
+            {"CRIT-category-1-firm-experience"},
+            produced_by="EVALUATION_INTELLIGENCE",
+        )
+        comm_accepted, _ = self.fa.validate_findings(
+            raw_comm,
+            {"OBL-0"},
+            produced_by="COMMERCIAL_CONTRACTUAL",
+        )
+
+        self.assertEqual(len(eval_accepted), 1)
+        self.assertEqual(len(comm_accepted), 1)
+        eval_f = eval_accepted[0]
+        comm_f = comm_accepted[0]
+
+        all_prior = [eval_f, comm_f]
+
+        change_eval = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="weight",
+            entity_id="eval.firm_experience.weight",
+            before_value=30,
+            after_value=35,
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+            metadata={"canonical_id": "CRIT-category-1-firm-experience"},
+        )
+        change_comm = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="insurance",
+            entity_id="commercial.insurance",
+            before_value="2M",
+            after_value="5M",
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+            metadata={"canonical_id": "OBL-0"},
+        )
+
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-1",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[change_eval, change_comm]),
+            fingerprint="fp1",
+            review_status="applied",
+            is_current=True,
+        )
+
+        plan = pci.generate_revision_impact_plan(rev, None, existing_findings=all_prior, bid_id=self.bid_id)
+        self.assertIn(eval_f["finding_id"], plan.stale_finding_ids)
+        self.assertIn(comm_f["finding_id"], plan.stale_finding_ids)
+
+        ctx = pci.build_revision_specialist_context(
+            specialist_id=pci.SPECIALIST_EVALUATION_INTELLIGENCE,
+            revision=rev,
+            procurement_state=None,
+            canonical_package=self.pkg,
+            impact_plan=plan,
+            prior_specialist_findings=all_prior,
+            bid_id=self.bid_id,
+        )
+
+        # Evaluation context MUST contain Evaluation stale finding
+        self.assertIn(eval_f["finding_id"], ctx.stale_prior_finding_ids)
+        self.assertEqual(len(ctx.stale_prior_findings), 1)
+        self.assertEqual(ctx.stale_prior_findings[0]["finding_id"], eval_f["finding_id"])
+
+        # Commercial finding MUST NOT appear anywhere in Evaluation context
+        self.assertNotIn(comm_f["finding_id"], ctx.stale_prior_finding_ids)
+        self.assertFalse(any(f["finding_id"] == comm_f["finding_id"] for f in ctx.stale_prior_findings))
+        self.assertFalse(any(f["finding_id"] == comm_f["finding_id"] for f in ctx.retained_prior_findings))
+
+    def test_fingerprint_sensitivity_to_finding_content(self):
+        """Context fingerprint differs when finding content changes, even with identical finding_id."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="weight",
+            entity_id="eval.firm_experience.weight",
+            before_value=30,
+            after_value=35,
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+            metadata={"canonical_id": "CRIT-category-1-firm-experience"},
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-1",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[change]),
+            fingerprint="fp1",
+            review_status="applied",
+            is_current=True,
+        )
+
+        finding_a = {
+            "finding_id": "EVALUATION_INTELLIGENCE:0",
+            "finding_type": "FACT",
+            "title": "Firm Experience is weighted at 30%",
+            "detail": "Firm experience evaluation criteria weight is 30%",
+            "canonical_ids": ["CRIT-category-1-firm-experience"],
+            "produced_by": ["EVALUATION_INTELLIGENCE"],
+        }
+        finding_b = {
+            "finding_id": "EVALUATION_INTELLIGENCE:0",
+            "finding_type": "FACT",
+            "title": "Firm Experience is a mandatory threshold",
+            "detail": "Firm experience evaluation criteria weight is 30%",
+            "canonical_ids": ["CRIT-category-1-firm-experience"],
+            "produced_by": ["EVALUATION_INTELLIGENCE"],
+        }
+
+        plan_a = pci.generate_revision_impact_plan(rev, None, existing_findings=[finding_a], bid_id=self.bid_id)
+        plan_b = pci.generate_revision_impact_plan(rev, None, existing_findings=[finding_b], bid_id=self.bid_id)
+
+        ctx_a = pci.build_revision_specialist_context(
+            specialist_id=pci.SPECIALIST_EVALUATION_INTELLIGENCE,
+            revision=rev,
+            procurement_state=None,
+            canonical_package=self.pkg,
+            impact_plan=plan_a,
+            prior_specialist_findings=[finding_a],
+            bid_id=self.bid_id,
+        )
+        ctx_b = pci.build_revision_specialist_context(
+            specialist_id=pci.SPECIALIST_EVALUATION_INTELLIGENCE,
+            revision=rev,
+            procurement_state=None,
+            canonical_package=self.pkg,
+            impact_plan=plan_b,
+            prior_specialist_findings=[finding_b],
+            bid_id=self.bid_id,
+        )
+
+        self.assertNotEqual(ctx_a.context_fingerprint, ctx_b.context_fingerprint)
+
+    def test_fingerprint_order_invariance(self):
+        """Same semantic context with reordered dict keys or reversed lists yields identical fingerprint."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="weight",
+            entity_id="eval.firm_experience.weight",
+            before_value=30,
+            after_value=35,
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+            metadata={"canonical_id": "CRIT-category-1-firm-experience"},
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-1",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[change]),
+            fingerprint="fp1",
+            review_status="applied",
+            is_current=True,
+        )
+
+        f1 = {
+            "finding_id": "EVALUATION_INTELLIGENCE:0",
+            "finding_type": "FACT",
+            "title": "Firm Experience is weighted at 30%",
+            "detail": "Detail A",
+            "canonical_ids": ["CRIT-category-1-firm-experience"],
+            "produced_by": ["EVALUATION_INTELLIGENCE"],
+        }
+        f2 = {
+            "finding_id": "EVALUATION_INTELLIGENCE:1",
+            "finding_type": "RISK",
+            "title": "Technical Approach risk",
+            "detail": "Detail B",
+            "canonical_ids": ["CRIT-category-1-technical-approach"],
+            "produced_by": ["EVALUATION_INTELLIGENCE"],
+        }
+
+        f1_reordered = dict(reversed(list(f1.items())))
+
+        plan_1 = pci.generate_revision_impact_plan(rev, None, existing_findings=[f1, f2], bid_id=self.bid_id)
+        plan_2 = pci.generate_revision_impact_plan(rev, None, existing_findings=[f2, f1_reordered], bid_id=self.bid_id)
+
+        ctx_1 = pci.build_revision_specialist_context(
+            specialist_id=pci.SPECIALIST_EVALUATION_INTELLIGENCE,
+            revision=rev,
+            procurement_state=None,
+            canonical_package=self.pkg,
+            impact_plan=plan_1,
+            prior_specialist_findings=[f1, f2],
+            bid_id=self.bid_id,
+        )
+        ctx_2 = pci.build_revision_specialist_context(
+            specialist_id=pci.SPECIALIST_EVALUATION_INTELLIGENCE,
+            revision=rev,
+            procurement_state=None,
+            canonical_package=self.pkg,
+            impact_plan=plan_2,
+            prior_specialist_findings=[f2, f1_reordered],
+            bid_id=self.bid_id,
+        )
+
+        self.assertEqual(ctx_1.context_fingerprint, ctx_2.context_fingerprint)
+
+    def test_fail_closed_ambiguous_canonical_binding(self):
+        """Ambiguous match across multiple criteria fails closed with diagnostic reason."""
+        candidate_1 = {
+            "canonical_id": "CRIT-1",
+            "object_type": "SCOPED_EVALUATION_CRITERION",
+            "criterion": "Firm Experience",
+            "weight": 30,
+        }
+        candidate_2 = {
+            "canonical_id": "CRIT-2",
+            "object_type": "SCOPED_EVALUATION_CRITERION",
+            "criterion": "Team Experience",
+            "weight": 20,
+        }
+
+        change_ambiguous = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="weight",
+            entity_id="eval.experience.weight",
+            before_value=20,
+            after_value=25,
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+
+        # 1. Direct _match_canonical_object call
+        obj, reason = pci._match_canonical_object(change_ambiguous, [candidate_1, candidate_2])
+        self.assertIsNone(obj)
+        self.assertIsNotNone(reason)
+        self.assertIn("AMBIGUOUS_CANONICAL_BINDING", reason)
+        self.assertIn("CRIT-1", reason)
+        self.assertIn("CRIT-2", reason)
+
+        # 2. In context builder
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-1",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[change_ambiguous]),
+            fingerprint="fp1",
+            review_status="applied",
+            is_current=True,
+        )
+        plan = pci.generate_revision_impact_plan(rev, None, bid_id=self.bid_id)
+
+        pkg_mock = self.SimpleNamespace(
+            bid_id=1417,
+            package_digest="pkg_digest_123",
+            objects_of_type=lambda ot: (candidate_1, candidate_2) if ot == "SCOPED_EVALUATION_CRITERION" else (),
+            scoped_criteria=(candidate_1, candidate_2),
+        )
+
+        ctx = pci.build_revision_specialist_context(
+            specialist_id=pci.SPECIALIST_EVALUATION_INTELLIGENCE,
+            revision=rev,
+            procurement_state=None,
+            canonical_package=pkg_mock,
+            impact_plan=plan,
+            bid_id=self.bid_id,
+        )
+
+        self.assertFalse(ctx.is_executable)
+        self.assertIn("AMBIGUOUS_CANONICAL_BINDING", ctx.blocking_reason)
+        self.assertEqual(ctx.change_bindings[0].binding_type, pci.BINDING_UNRESOLVED)
+        self.assertIn("CRIT-1", ctx.change_bindings[0].binding_rationale)
+        self.assertIn("CRIT-2", ctx.change_bindings[0].binding_rationale)
+
+    def test_deterministic_unique_strong_binding(self):
+        """Unique strong matching binds deterministically when unambiguous."""
+        candidate_1 = {
+            "canonical_id": "CRIT-1",
+            "object_type": "SCOPED_EVALUATION_CRITERION",
+            "criterion": "Firm Experience",
+            "weight": 30,
+        }
+        candidate_2 = {
+            "canonical_id": "CRIT-2",
+            "object_type": "SCOPED_EVALUATION_CRITERION",
+            "criterion": "Team Experience",
+            "weight": 20,
+        }
+
+        # 1. Exact clean key match among multiple candidates
+        change_exact = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="weight",
+            entity_id="eval.firm_experience.weight",
+            before_value=30,
+            after_value=35,
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        obj, reason = pci._match_canonical_object(change_exact, [candidate_1, candidate_2])
+        self.assertIsNotNone(obj)
+        self.assertIsNone(reason)
+        self.assertEqual(obj["canonical_id"], "CRIT-1")
+
+        # 2. Token overlap with only single candidate in pool binds deterministically
+        change_single = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="weight",
+            entity_id="eval.experience.weight",
+            before_value=30,
+            after_value=35,
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        obj, reason = pci._match_canonical_object(change_single, [candidate_1])
+        self.assertIsNotNone(obj)
+        self.assertIsNone(reason)
+        self.assertEqual(obj["canonical_id"], "CRIT-1")
+
+
 if __name__ == "__main__":
     unittest.main()

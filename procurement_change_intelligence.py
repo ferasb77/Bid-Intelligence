@@ -2856,11 +2856,14 @@ class RevisionSpecialistContext:
     bid_id: int | None
     context_fingerprint: str
     impacted_domain: str
+    impact_plan_fingerprint: str
+    base_package_digest: str
     relevant_changes: tuple[dict[str, Any], ...]
     relevant_current_canonical_objects: tuple[dict[str, Any], ...]
     revision_facts: tuple[RevisionFact, ...]
     permitted_canonical_ids: tuple[str, ...]
     stale_prior_finding_ids: tuple[str, ...]
+    stale_prior_findings: tuple[dict[str, Any], ...]
     retained_prior_findings: tuple[dict[str, Any], ...]
     change_bindings: tuple[ChangeBinding, ...]
     is_executable: bool
@@ -2874,11 +2877,14 @@ class RevisionSpecialistContext:
             "bid_id": self.bid_id,
             "context_fingerprint": self.context_fingerprint,
             "impacted_domain": self.impacted_domain,
+            "impact_plan_fingerprint": self.impact_plan_fingerprint,
+            "base_package_digest": self.base_package_digest,
             "relevant_changes": list(self.relevant_changes),
             "relevant_current_canonical_objects": list(self.relevant_current_canonical_objects),
             "revision_facts": [rf.as_dict() for rf in self.revision_facts],
             "permitted_canonical_ids": list(self.permitted_canonical_ids),
             "stale_prior_finding_ids": list(self.stale_prior_finding_ids),
+            "stale_prior_findings": list(self.stale_prior_findings),
             "retained_prior_findings": list(self.retained_prior_findings),
             "change_bindings": [cb.as_dict() for cb in self.change_bindings],
             "is_executable": self.is_executable,
@@ -2907,26 +2913,92 @@ def _digest(payload: Any) -> str:
     ).hexdigest()
 
 
+def _clean_obj_for_fingerprint(obj: Any) -> Any:
+    if isinstance(obj, RevisionFact):
+        obj = obj.as_dict()
+    elif hasattr(obj, "as_dict"):
+        obj = obj.as_dict()
+    elif hasattr(obj, "to_dict"):
+        obj = obj.to_dict()
+
+    if isinstance(obj, dict):
+        noise_keys = {
+            "created_at", "updated_at", "timestamp", "db_id", "row_id",
+            "latency_seconds", "execution_time", "duration_seconds",
+        }
+        cleaned = {}
+        for k, v in obj.items():
+            if k in noise_keys:
+                continue
+            cleaned[k] = _clean_obj_for_fingerprint(v)
+        return cleaned
+    if isinstance(obj, (list, tuple)):
+        return [_clean_obj_for_fingerprint(x) for x in obj]
+    if isinstance(obj, (set, frozenset)):
+        return sorted(str(x) for x in obj)
+    return obj
+
+
 def compute_specialist_context_fingerprint(
     specialist_id: str,
     revision_number: int,
     revision_id: str,
-    change_set_fingerprint: str,
-    state_fingerprint: str,
-    canonical_package_digest: str,
-    permitted_canonical_ids: Sequence[str],
-    stale_prior_finding_ids: Sequence[str],
+    change_set_fingerprint: str = "",
+    state_fingerprint: str = "",
+    canonical_package_digest: str = "",
+    permitted_canonical_ids: Sequence[str] = (),
+    stale_prior_finding_ids: Sequence[str] = (),
+    *,
+    impact_plan_fingerprint: str = "",
+    base_package_digest: str = "",
+    relevant_canonical_objects: Sequence[dict[str, Any]] = (),
+    revision_facts: Sequence[Any] = (),
+    relevant_changes: Sequence[dict[str, Any]] = (),
+    stale_prior_findings: Sequence[dict[str, Any]] = (),
+    retained_prior_findings: Sequence[dict[str, Any]] = (),
 ) -> str:
-    """Computes stable, deterministic SHA-256 fingerprint for RevisionSpecialistContext."""
+    """Computes stable, deterministic SHA-256 fingerprint for RevisionSpecialistContext.
+    Reflects the ACTUAL semantic context consumed by specialists:
+    includes semantic content of canonical objects, revision facts, relevant changes,
+    stale prior findings, and retained prior findings.
+    Excludes noise: timestamps, DB row IDs, execution time, and dictionary/list ordering."""
+    bp_digest = str(base_package_digest or canonical_package_digest or "")
+    ip_fp = str(impact_plan_fingerprint or change_set_fingerprint or "")
+
+    clean_stale_findings = sorted(
+        [_clean_obj_for_fingerprint(f) for f in stale_prior_findings if isinstance(f, dict)],
+        key=lambda x: str(x.get("finding_id", ""))
+    )
+    clean_retained_findings = sorted(
+        [_clean_obj_for_fingerprint(f) for f in retained_prior_findings if isinstance(f, dict)],
+        key=lambda x: str(x.get("finding_id", ""))
+    )
+    clean_canonical_objs = sorted(
+        [_clean_obj_for_fingerprint(o) for o in relevant_canonical_objects if isinstance(o, dict)],
+        key=lambda x: (str(x.get("canonical_id", "")), str(x.get("object_type", "")))
+    )
+    clean_revision_facts = sorted(
+        [_clean_obj_for_fingerprint(rf) for rf in revision_facts],
+        key=lambda x: str(x.get("fact_id", "") if isinstance(x, dict) else getattr(x, "fact_id", ""))
+    )
+    clean_changes = sorted(
+        [_clean_obj_for_fingerprint(c) for c in relevant_changes if isinstance(c, dict)],
+        key=lambda x: (str(x.get("entity_id", "")), str(x.get("fact_type", "")))
+    )
+
     payload = {
         "specialist_id": str(specialist_id),
         "revision_number": int(revision_number),
         "revision_id": str(revision_id),
-        "change_set_fingerprint": str(change_set_fingerprint),
-        "state_fingerprint": str(state_fingerprint),
-        "canonical_package_digest": str(canonical_package_digest),
+        "impact_plan_fingerprint": ip_fp,
+        "base_package_digest": bp_digest,
         "permitted_canonical_ids": sorted(set(str(x) for x in permitted_canonical_ids)),
         "stale_prior_finding_ids": sorted(set(str(x) for x in stale_prior_finding_ids)),
+        "stale_prior_findings": clean_stale_findings,
+        "retained_prior_findings": clean_retained_findings,
+        "relevant_canonical_objects": clean_canonical_objs,
+        "revision_facts": clean_revision_facts,
+        "relevant_changes": clean_changes,
     }
     return _digest(payload)
 
@@ -2978,11 +3050,30 @@ def _extract_package_objects(canonical_package: Any, specialist_id: str) -> list
     return extracted
 
 
+def _clean_semantic_key(key: str) -> str:
+    s = str(key or "").strip().lower()
+    s = re.sub(r'[\s\:\-_/]+', '.', s)
+    for p in ("eval.", "crit.", "obl.", "comm.", "scope.", "req.", "ms.", "sub.", "doc.", "artifact."):
+        if s.startswith(p):
+            s = s[len(p):]
+    for suf in (".weight", ".threshold", ".limit", ".score", ".date", ".time", ".deliverable", ".terms", ".requirements"):
+        if s.endswith(suf):
+            s = s[:-len(suf)]
+    return s
+
+
 def _match_canonical_object(
     change: FactChange,
     candidate_objects: list[dict[str, Any]],
-) -> dict[str, Any] | None:
-    """Finds the best matching canonical object for a FactChange from a list of candidates."""
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Finds the matching canonical object for a FactChange following strict fail-closed precedence:
+    1. Explicit metadata canonical_id
+    2. Explicit metadata canonical_ids
+    3. Exact normalized canonical identity (entity_id matches canonical_id)
+    4. Deterministic exact / unambiguous semantic key match
+    5. Otherwise UNRESOLVED (fails closed with diagnostic reason, never weak token guessing)
+    Returns (matched_obj, unresolve_reason).
+    """
     from full_analysis import (
         OBJ_SCOPED_EVALUATION_CRITERION,
         OBJ_SUBMISSION_MECHANICS,
@@ -2993,31 +3084,49 @@ def _match_canonical_object(
         OBJ_DOCUMENT_ROLE,
     )
 
-    # 1. Exact canonical_id match from metadata
+    # 1. Explicit canonical_id from metadata
     meta_cid = change.metadata.get("canonical_id")
     if meta_cid:
-        for obj in candidate_objects:
-            if obj.get("canonical_id") == meta_cid:
-                return obj
+        matched = [obj for obj in candidate_objects if obj.get("canonical_id") == meta_cid]
+        if len(matched) == 1:
+            return matched[0], None
+        elif len(matched) > 1:
+            cids = [str(o.get("canonical_id")) for o in matched]
+            return None, f"AMBIGUOUS_CANONICAL_BINDING: multiple objects for explicit canonical_id '{meta_cid}': {sorted(cids)}"
+        else:
+            return None, f"EXPLICIT_CANONICAL_ID_NOT_FOUND: {meta_cid}"
 
-    # 1b. canonical_ids list in metadata
+    # 2. Explicit canonical_ids list in metadata
     meta_cids = change.metadata.get("canonical_ids")
-    if isinstance(meta_cids, (list, tuple)):
-        for obj in candidate_objects:
-            if obj.get("canonical_id") in meta_cids:
-                return obj
+    if isinstance(meta_cids, (list, tuple, set)):
+        meta_cids_set = {str(c).strip() for c in meta_cids if str(c).strip()}
+        matched = [obj for obj in candidate_objects if str(obj.get("canonical_id")).strip() in meta_cids_set]
+        if len(matched) == 1:
+            return matched[0], None
+        elif len(matched) > 1:
+            cids = [str(o.get("canonical_id")) for o in matched]
+            return None, f"AMBIGUOUS_CANONICAL_BINDING: multiple objects for canonical_ids {sorted(meta_cids_set)}: {sorted(cids)}"
+        elif meta_cids_set:
+            return None, f"EXPLICIT_CANONICAL_IDS_NOT_FOUND: {sorted(meta_cids_set)}"
 
-    # 2. Exact match of change.entity_id against obj["canonical_id"]
+    # 3. Exact normalized canonical identity (change.entity_id matches obj["canonical_id"])
     change_eid = str(change.entity_id or "").strip()
     norm_eid = _normalize_key(change_eid)
-    slug_eid = _slug(change_eid)
+    exact_cid_matches = [
+        obj for obj in candidate_objects
+        if obj.get("canonical_id") and (
+            str(obj.get("canonical_id")).strip() == change_eid
+            or _normalize_key(obj.get("canonical_id")) == norm_eid
+        )
+    ]
+    if len(exact_cid_matches) == 1:
+        return exact_cid_matches[0], None
+    elif len(exact_cid_matches) > 1:
+        cids = [str(o.get("canonical_id")) for o in exact_cid_matches]
+        return None, f"AMBIGUOUS_CANONICAL_BINDING: multiple objects match canonical identity '{change_eid}': {sorted(cids)}"
 
-    for obj in candidate_objects:
-        obj_cid = str(obj.get("canonical_id") or "").strip()
-        if obj_cid and (change_eid == obj_cid or norm_eid == _normalize_key(obj_cid)):
-            return obj
-
-    # 3. Submission mechanics matching
+    # 4. Deterministic exact / unambiguous semantic key match
+    # 4a. Submission mechanics matching
     sub_fact_types = {
         "deadline", "submission_deadline", "closing_date", "closing_time",
         "rfp_closing", "bid_closing", "proposal_deadline", "closing_deadline",
@@ -3026,138 +3135,136 @@ def _match_canonical_object(
         "page_limit", "font_size", "number_of_copies", "submission_instructions",
     }
     if _normalize_key(change.fact_type) in sub_fact_types or any(norm_eid.startswith(p) for p in ("sub:", "sub.", "deadline", "submission")):
-        for obj in candidate_objects:
-            if obj.get("canonical_id") == "SUBMISSION" or obj.get("object_type") == OBJ_SUBMISSION_MECHANICS:
-                return obj
+        sub_objs = [
+            obj for obj in candidate_objects
+            if obj.get("canonical_id") == "SUBMISSION" or obj.get("object_type") == OBJ_SUBMISSION_MECHANICS
+        ]
+        if len(sub_objs) == 1:
+            return sub_objs[0], None
+        elif len(sub_objs) > 1:
+            cids = [str(o.get("canonical_id")) for o in sub_objs]
+            return None, f"AMBIGUOUS_CANONICAL_BINDING: multiple submission mechanics objects: {sorted(cids)}"
 
-    # 4. Criteria matching
-    crit_candidates = [
-        o for o in candidate_objects
-        if o.get("object_type") == OBJ_SCOPED_EVALUATION_CRITERION or str(o.get("canonical_id", "")).startswith("CRIT-")
+    def _match_in_pool(
+        pool: list[dict[str, Any]],
+        candidate_key_fn,
+        entity_key: str,
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        if not pool:
+            return None, None
+
+        clean_key = _clean_semantic_key(entity_key)
+        slug_clean = _slug(clean_key)
+        slug_raw = _slug(entity_key)
+
+        # 1. Exact semantic key matches
+        exact_matches = []
+        for obj in pool:
+            keys = candidate_key_fn(obj)
+            slugs = [_slug(k) for k in keys if k]
+            if any(s == slug_clean or s == slug_raw for s in slugs if s and s != "x"):
+                exact_matches.append(obj)
+
+        if len(exact_matches) == 1:
+            return exact_matches[0], None
+        elif len(exact_matches) > 1:
+            cids = [str(o.get("canonical_id")) for o in exact_matches]
+            return None, f"AMBIGUOUS_CANONICAL_BINDING: candidate canonical IDs: {sorted(cids)}"
+
+        # 2. Before-value match if provided on change
+        if change.before_value is not None:
+            slug_bv = _slug(change.before_value)
+            if slug_bv and slug_bv != "x" and len(slug_bv) >= 3:
+                bv_matches = []
+                for obj in pool:
+                    keys = candidate_key_fn(obj)
+                    slugs = [_slug(k) for k in keys if k]
+                    if any(slug_bv == s or slug_bv in s or s in slug_bv for s in slugs if s and s != "x"):
+                        bv_matches.append(obj)
+                if len(bv_matches) == 1:
+                    return bv_matches[0], None
+                elif len(bv_matches) > 1:
+                    cids = [str(o.get("canonical_id")) for o in bv_matches]
+                    return None, f"AMBIGUOUS_CANONICAL_BINDING: candidate canonical IDs: {sorted(cids)}"
+
+        # 3. Plausible / strong substring or token matches
+        plausible_matches = []
+        clean_tokens = [t for t in slug_clean.split("-") if len(t) > 2]
+        raw_tokens = [t for t in slug_raw.split("-") if len(t) > 2]
+        tokens_to_check = set(clean_tokens + raw_tokens)
+
+        for obj in pool:
+            keys = candidate_key_fn(obj)
+            slugs = [_slug(k) for k in keys if k]
+            matched = False
+            for s in slugs:
+                if not s or s == "x":
+                    continue
+                if (slug_clean and len(slug_clean) >= 3 and (slug_clean in s or s in slug_clean)) or \
+                   (slug_raw and len(slug_raw) >= 3 and (slug_raw in s or s in slug_raw)):
+                    matched = True
+                    break
+                if any(t in s for t in tokens_to_check if len(t) >= 4):
+                    matched = True
+                    break
+            if matched:
+                plausible_matches.append(obj)
+
+        if len(plausible_matches) == 1:
+            return plausible_matches[0], None
+        elif len(plausible_matches) > 1:
+            cids = [str(o.get("canonical_id")) for o in plausible_matches]
+            return None, f"AMBIGUOUS_CANONICAL_BINDING: candidate canonical IDs: {sorted(cids)}"
+
+        return None, None
+
+    crit_pool = [o for o in candidate_objects if o.get("object_type") == OBJ_SCOPED_EVALUATION_CRITERION or str(o.get("canonical_id", "")).startswith("CRIT-")]
+    comm_pool = [o for o in candidate_objects if o.get("object_type") == OBJ_COMMERCIAL_OBLIGATION or str(o.get("canonical_id", "")).startswith("OBL-")]
+    scope_pool = [o for o in candidate_objects if o.get("object_type") == OBJ_CATEGORY_SCOPE_ITEM or str(o.get("canonical_id", "")).startswith("SCOPE-")]
+    req_pool = [o for o in candidate_objects if o.get("object_type") == OBJ_CANONICAL_REQUIREMENT or str(o.get("canonical_id", "")).startswith("REQ-")]
+    ms_pool = [o for o in candidate_objects if o.get("object_type") == OBJ_SCOPED_MILESTONE or str(o.get("canonical_id", "")).startswith("MS-")]
+    doc_pool = [o for o in candidate_objects if o.get("object_type") == OBJ_DOCUMENT_ROLE or str(o.get("canonical_id", "")).startswith("DOC-")]
+
+    ordered_pools = []
+    norm_ft = _normalize_key(change.fact_type)
+    if "crit" in norm_eid or "eval" in norm_eid or "weight" in norm_ft or "criterion" in norm_ft:
+        ordered_pools.append((crit_pool, lambda o: [o.get("criterion"), o.get("criterion_name"), o.get("title"), o.get("label"), o.get("scoped_key")]))
+    elif "obl" in norm_eid or "comm" in norm_eid or "insurance" in norm_eid or "commercial" in norm_ft or "liability" in norm_ft:
+        ordered_pools.append((comm_pool, lambda o: [o.get("topic"), o.get("heading"), o.get("clause_text")[:60] if o.get("clause_text") else ""]))
+    elif "scope" in norm_eid or "deliv" in norm_eid or "scope" in norm_ft:
+        ordered_pools.append((scope_pool, lambda o: [o.get("heading"), o.get("scope_item"), o.get("text"), o.get("label")]))
+    elif "req" in norm_eid or "compliance" in norm_ft or "requirement" in norm_ft:
+        ordered_pools.append((req_pool, lambda o: [o.get("req_id"), o.get("requirement_id"), o.get("description")[:80] if o.get("description") else ""]))
+    elif "ms" in norm_eid or "milestone" in norm_eid or "milestone" in norm_ft or "schedule" in norm_ft:
+        ordered_pools.append((ms_pool, lambda o: [o.get("label")]))
+    elif "doc" in norm_eid or "role" in norm_eid or "form" in norm_ft:
+        ordered_pools.append((doc_pool, lambda o: [o.get("document"), o.get("name")]))
+
+    all_pools = [
+        (crit_pool, lambda o: [o.get("criterion"), o.get("criterion_name"), o.get("title"), o.get("label"), o.get("scoped_key")]),
+        (comm_pool, lambda o: [o.get("topic"), o.get("heading"), o.get("clause_text")[:60] if o.get("clause_text") else ""]),
+        (scope_pool, lambda o: [o.get("heading"), o.get("scope_item"), o.get("text"), o.get("label")]),
+        (req_pool, lambda o: [o.get("req_id"), o.get("requirement_id"), o.get("description")[:80] if o.get("description") else ""]),
+        (ms_pool, lambda o: [o.get("label")]),
+        (doc_pool, lambda o: [o.get("document"), o.get("name")]),
     ]
-    if crit_candidates:
-        best_match = None
-        best_score = 0
-        for obj in crit_candidates:
-            c_name = str(obj.get("criterion") or obj.get("criterion_name") or obj.get("title") or obj.get("label") or obj.get("scoped_key") or "").strip()
-            if c_name:
-                slug_cname = _slug(c_name)
-                if slug_cname and (slug_cname == slug_eid or slug_cname in slug_eid or slug_eid in slug_cname):
-                    return obj
-                tokens = [t for t in slug_cname.split("-") if len(t) > 2]
-                score = sum(1 for t in tokens if t in slug_eid)
-                if score > best_score:
-                    best_score = score
-                    best_match = obj
-        if best_match and best_score > 0:
-            return best_match
+    seen_pool_ids = {id(p[0]) for p in ordered_pools}
+    for p, fn in all_pools:
+        if id(p) not in seen_pool_ids:
+            ordered_pools.append((p, fn))
 
-    # 5. Commercial obligation matching
-    obl_candidates = [
-        o for o in candidate_objects
-        if o.get("object_type") == OBJ_COMMERCIAL_OBLIGATION or str(o.get("canonical_id", "")).startswith("OBL-")
-    ]
-    if obl_candidates:
-        best_match = None
-        best_score = 0
-        for obj in obl_candidates:
-            topic = str(obj.get("topic") or "").strip()
-            heading = str(obj.get("heading") or "").strip()
-            clause = str(obj.get("clause_text") or "").strip()
-            slug_topic = _slug(topic)
-            slug_heading = _slug(heading)
-            slug_clause = _slug(clause[:60])
-            if slug_topic and (slug_topic == slug_eid or slug_topic in slug_eid or slug_eid in slug_topic):
-                return obj
-            if slug_heading and (slug_heading == slug_eid or slug_heading in slug_eid or slug_eid in slug_heading):
-                return obj
-            tokens = [t for t in (slug_topic + "-" + slug_heading + "-" + slug_clause).split("-") if len(t) > 2]
-            score = sum(1 for t in tokens if t in slug_eid)
-            if score > best_score:
-                best_score = score
-                best_match = obj
-        if best_match and best_score > 0:
-            return best_match
+    ambiguity_reasons = []
+    for pool, key_fn in ordered_pools:
+        matched, err = _match_in_pool(pool, key_fn, change_eid)
+        if matched is not None:
+            return matched, None
+        if err and "AMBIGUOUS" in err:
+            ambiguity_reasons.append(err)
 
-    # 6. Scope deliverable matching
-    scope_candidates = [
-        o for o in candidate_objects
-        if o.get("object_type") == OBJ_CATEGORY_SCOPE_ITEM or str(o.get("canonical_id", "")).startswith("SCOPE-")
-    ]
-    if scope_candidates:
-        best_match = None
-        best_score = 0
-        for obj in scope_candidates:
-            heading = str(obj.get("heading") or obj.get("scope_item") or obj.get("text") or obj.get("label") or "").strip()
-            slug_h = _slug(heading)
-            if slug_h and (slug_h == slug_eid or slug_h in slug_eid or slug_eid in slug_h):
-                return obj
-            tokens = [t for t in slug_h.split("-") if len(t) > 2]
-            score = sum(1 for t in tokens if t in slug_eid)
-            if score > best_score:
-                best_score = score
-                best_match = obj
-        if best_match and best_score > 0:
-            return best_match
+    if ambiguity_reasons:
+        return None, ambiguity_reasons[0]
 
-    # 7. Requirement matching
-    req_candidates = [
-        o for o in candidate_objects
-        if o.get("object_type") == OBJ_CANONICAL_REQUIREMENT or str(o.get("canonical_id", "")).startswith("REQ-")
-    ]
-    if req_candidates:
-        for obj in req_candidates:
-            req_id = str(obj.get("req_id") or obj.get("requirement_id") or "").strip()
-            if req_id and (_slug(req_id) in slug_eid or slug_eid in _slug(req_id)):
-                return obj
-            desc = str(obj.get("description") or obj.get("requirement_text") or obj.get("text") or "").strip()
-            slug_d = _slug(desc[:80])
-            if slug_d and slug_d in slug_eid:
-                return obj
-
-    # 8. Milestone matching
-    ms_candidates = [
-        o for o in candidate_objects
-        if o.get("object_type") == OBJ_SCOPED_MILESTONE or str(o.get("canonical_id", "")).startswith("MS-")
-    ]
-    if ms_candidates:
-        best_match = None
-        best_score = 0
-        for obj in ms_candidates:
-            label = str(obj.get("label") or "").strip()
-            slug_l = _slug(label)
-            if slug_l and (slug_l == slug_eid or slug_l in slug_eid or slug_eid in slug_l):
-                return obj
-            tokens = [t for t in slug_l.split("-") if len(t) > 2]
-            score = sum(1 for t in tokens if t in slug_eid)
-            if score > best_score:
-                best_score = score
-                best_match = obj
-        if best_match and best_score > 0:
-            return best_match
-
-    # 9. Document role matching
-    doc_candidates = [
-        o for o in candidate_objects
-        if o.get("object_type") == OBJ_DOCUMENT_ROLE or str(o.get("canonical_id", "")).startswith("DOC-")
-    ]
-    if doc_candidates:
-        best_match = None
-        best_score = 0
-        for obj in doc_candidates:
-            doc_name = str(obj.get("document") or obj.get("name") or "").strip()
-            slug_dn = _slug(doc_name)
-            if slug_dn and (slug_dn == slug_eid or slug_dn in slug_eid or slug_eid in slug_dn):
-                return obj
-            tokens = [t for t in slug_dn.split("-") if len(t) > 2]
-            score = sum(1 for t in tokens if t in slug_eid)
-            if score > best_score:
-                best_score = score
-                best_match = obj
-        if best_match and best_score > 0:
-            return best_match
-
-    return None
+    return None, f"Target canonical object for '{change.entity_id}' (change_type='{change.change_type}') could not be resolved"
 
 
 def _apply_change_overlay(
@@ -3259,6 +3366,68 @@ def _apply_change_overlay(
             obj["value"] = val
 
 
+_CANONICAL_SPECIALIST_DOMAINS: dict[str, str] = {
+    "procurement_structure": "procurement_structure",
+    "structure": "procurement_structure",
+    "requirements_compliance": "requirements_compliance",
+    "requirements": "requirements_compliance",
+    "compliance": "requirements_compliance",
+    "evaluation_intelligence": "evaluation_intelligence",
+    "evaluation": "evaluation_intelligence",
+    "eval": "evaluation_intelligence",
+    "scope_deliverables": "scope_deliverables",
+    "scope": "scope_deliverables",
+    "deliverables": "scope_deliverables",
+    "commercial_contractual": "commercial_contractual",
+    "commercial": "commercial_contractual",
+    "contractual": "commercial_contractual",
+    "schedule_submission": "schedule_submission",
+    "schedule": "schedule_submission",
+    "submission": "schedule_submission",
+}
+
+
+def _canonical_domain(name: Any) -> str:
+    cleaned = re.sub(r'[\s\.\:\-_/]+', '_', str(name or "").strip().lower())
+    if cleaned.startswith("specialist_"):
+        cleaned = cleaned[len("specialist_"):]
+    return _CANONICAL_SPECIALIST_DOMAINS.get(cleaned, cleaned)
+
+
+def _finding_belongs_to_specialist(finding: dict[str, Any], specialist_id: str) -> bool:
+    target_domain = _canonical_domain(specialist_id)
+
+    # 1. Check produced_by (list, tuple, set, or string)
+    prod = finding.get("produced_by")
+    if prod:
+        if isinstance(prod, (list, tuple, set)):
+            if any(_canonical_domain(p) == target_domain for p in prod):
+                return True
+            return False
+        elif isinstance(prod, str):
+            return _canonical_domain(prod) == target_domain
+
+    # 2. Check specialist_id
+    sid = finding.get("specialist_id")
+    if sid:
+        return _canonical_domain(sid) == target_domain
+
+    # 3. Check domain
+    dom = finding.get("domain")
+    if dom:
+        return _canonical_domain(dom) == target_domain
+
+    # 4. Check finding_id prefix (e.g. "EVALUATION_INTELLIGENCE:0" or "evaluation_intelligence:0")
+    fid = str(finding.get("finding_id") or "")
+    if ":" in fid:
+        prefix = fid.split(":", 1)[0]
+        prefix_domain = _canonical_domain(prefix)
+        if prefix_domain in _CANONICAL_SPECIALIST_DOMAINS.values():
+            return prefix_domain == target_domain
+
+    return False
+
+
 def build_revision_specialist_context(
     specialist_id: str,
     revision: ProcurementRevision,
@@ -3329,7 +3498,7 @@ def build_revision_specialist_context(
 
     for c_dict in relevant_changes_list:
         change = FactChange.from_dict(c_dict)
-        matched_obj = _match_canonical_object(change, extracted_objects)
+        matched_obj, unresolve_reason = _match_canonical_object(change, extracted_objects)
 
         if matched_obj is not None:
             cid = matched_obj.get("canonical_id")
@@ -3404,7 +3573,7 @@ def build_revision_specialist_context(
                     ))
             else:
                 is_executable = False
-                reason = f"Target canonical object for '{change.entity_id}' (change_type='{change.change_type}') could not be resolved"
+                reason = unresolve_reason or f"Target canonical object for '{change.entity_id}' (change_type='{change.change_type}') could not be resolved"
                 blocking_reasons.append(reason)
                 change_bindings.append(ChangeBinding(
                     change_id=change.entity_id or change.fact_type,
@@ -3432,6 +3601,7 @@ def build_revision_specialist_context(
 
     # 7. Filter prior findings for this specialist domain
     stale_ids_for_specialist: list[str] = []
+    stale_findings_list: list[dict[str, Any]] = []
     retained_findings_list: list[dict[str, Any]] = []
 
     if prior_specialist_findings:
@@ -3442,31 +3612,46 @@ def build_revision_specialist_context(
             fid = str(f.get("finding_id") or "")
             if not fid:
                 continue
-            if f.get("specialist_id") and f.get("specialist_id") != specialist_id:
+
+            # Must belong strictly to this specialist domain
+            if not _finding_belongs_to_specialist(f, specialist_id):
                 continue
 
-            if fid in impact_plan.stale_finding_ids:
+            if fid in impact_plan.stale_finding_ids or fid in impact_plan.unresolved_finding_ids:
                 stale_ids_for_specialist.append(fid)
-            elif fid in impact_plan.unresolved_finding_ids:
-                stale_ids_for_specialist.append(fid)
+                stale_findings_list.append(dict(f))
             elif fid in impact_plan.retained_finding_ids or impact_plan.finding_impacts.get(fid, {}).get("status") == FINDING_STATUS_RETAINED:
                 retained_findings_list.append(dict(f))
             else:
                 retained_findings_list.append(dict(f))
     else:
-        stale_ids_for_specialist = list(impact_plan.stale_finding_ids)
+        # If no prior finding objects were supplied, filter stale IDs by domain prefix if available
+        target_domain = _canonical_domain(specialist_id)
+        for fid in impact_plan.stale_finding_ids:
+            if ":" in fid:
+                prefix_domain = _canonical_domain(fid.split(":", 1)[0])
+                if prefix_domain in _CANONICAL_SPECIALIST_DOMAINS.values():
+                    if prefix_domain == target_domain:
+                        stale_ids_for_specialist.append(fid)
+                    continue
+            stale_ids_for_specialist.append(fid)
 
     # 8. Compute stable context fingerprint
     canonical_package_digest = getattr(canonical_package, "package_digest", "") or _digest(canonical_package)
+    impact_plan_fingerprint = getattr(impact_plan, "fingerprint", "") or impact_plan.fingerprint
     context_fingerprint = compute_specialist_context_fingerprint(
         specialist_id=specialist_id,
         revision_number=revision.revision_number,
         revision_id=revision.revision_id,
-        change_set_fingerprint=impact_plan.change_set_fingerprint,
-        state_fingerprint=impact_plan.state_fingerprint,
-        canonical_package_digest=canonical_package_digest,
+        impact_plan_fingerprint=impact_plan_fingerprint,
+        base_package_digest=canonical_package_digest,
         permitted_canonical_ids=permitted_canonical_ids,
         stale_prior_finding_ids=stale_ids_for_specialist,
+        relevant_canonical_objects=current_canonical_objects,
+        revision_facts=revision_facts,
+        relevant_changes=relevant_changes_list,
+        stale_prior_findings=stale_findings_list,
+        retained_prior_findings=retained_findings_list,
     )
 
     return RevisionSpecialistContext(
@@ -3476,11 +3661,14 @@ def build_revision_specialist_context(
         bid_id=bid_id or getattr(canonical_package, "bid_id", None),
         context_fingerprint=context_fingerprint,
         impacted_domain=specialist_id,
+        impact_plan_fingerprint=impact_plan_fingerprint,
+        base_package_digest=canonical_package_digest,
         relevant_changes=tuple(relevant_changes_list),
         relevant_current_canonical_objects=tuple(current_canonical_objects),
         revision_facts=tuple(revision_facts),
         permitted_canonical_ids=permitted_canonical_ids,
         stale_prior_finding_ids=tuple(sorted(set(stale_ids_for_specialist))),
+        stale_prior_findings=tuple(stale_findings_list),
         retained_prior_findings=tuple(retained_findings_list),
         change_bindings=tuple(change_bindings),
         is_executable=is_executable,

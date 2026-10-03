@@ -1,7 +1,7 @@
 # Current PCI State
 
 Phase:
-PCI-B1 — Impact Routing & Intelligence Dependency Model
+PCI-B2A.1 — Context Identity & Fail-Closed Binding Closure
 
 Architecture decision:
 A procurement is modeled as a living, chronological revision sequence
@@ -34,7 +34,7 @@ Durability, Persistence & Governed Apply (PCI-A.2 & PCI-A.2.1):
    - `source_hash` must match the content hash of that specific document.
    - Missing, non-integer, or mismatched document IDs fail closed (`ValueError`). No fallback to primary document ID.
 
-Impact Routing & Intelligence Dependency Model (PCI-B1):
+Impact Routing & Intelligence Dependency Model (PCI-B1 & PCI-B1.1):
 1. Strict Authority Boundary:
    - Consumes ONLY applied, approved canonical changes.
    - Unapplied reviews, pending changes, rejected changes, `CHANGE_CONFLICTS_WITH`, and revisions with `chronology_unresolved=True` are strictly excluded from specialist invalidation.
@@ -65,13 +65,41 @@ Impact Routing & Intelligence Dependency Model (PCI-B1):
    - Excludes timestamps, DB row IDs, execution time, and ordering noise.
    - 100% idempotent with zero provider/model calls.
 
+Revision-Aware Specialist Context & Identity Closure (PCI-B2A & PCI-B2A.1):
+1. Context Lineage & Fingerprint Identity:
+   - `RevisionSpecialistContext` carries explicit lineage: `impact_plan_fingerprint` and `base_package_digest`.
+   - Context fingerprint (`compute_specialist_context_fingerprint`) reflects the complete semantic state:
+     - Mutated canonical objects, additive `RevisionFact` items, relevant `FactChange` items.
+     - `stale_prior_findings` content, `retained_prior_findings` content.
+     - `permitted_canonical_ids`, `impact_plan_fingerprint`, and `base_package_digest`.
+   - Sensitive to modified finding content (severity, text, detail, citations).
+   - Order-invariant across lists and dictionary keys; strips execution noise (timestamps, database IDs, latencies).
+2. Domain-Bound Prior Findings & Stale IDs:
+   - Prior findings passed into context building are strictly domain-bounded via `produced_by`, `specialist_id`, `domain`, and finding ID prefix.
+   - A specialist (e.g. `EVALUATION_INTELLIGENCE`) receives ONLY its own prior findings (`retained_prior_findings` and `stale_prior_findings`). Findings from other specialists (e.g. Commercial, Schedule) are strictly excluded even if present in the caller pool.
+   - Stale finding IDs (`stale_prior_finding_ids`) are similarly domain-bounded.
+3. Stale Finding Content Payload:
+   - `RevisionSpecialistContext` provides the complete finding payload in `stale_prior_findings` alongside the compact index `stale_prior_finding_ids`.
+   - Allows delta reanalysis specialists to reason over previous finding details for precise RETAIN, SUPERSEDE, REMOVE, or REPLACE decisions.
+4. Fail-Closed Canonical Binding:
+   - `_match_canonical_object` enforces a strict 5-level precedence hierarchy:
+     Level 1: Explicit `canonical_id` field.
+     Level 2: Explicit `canonical_ids` list/tuple/set.
+     Level 3: Exact canonical identity (`id`, `key`, `criteria_id`, `deliverable_id`, etc.).
+     Level 4: Exact semantic match against unique entity titles, scope headings, requirement texts, or `before_value`.
+     Level 5: Unresolved fallback.
+   - When more than one candidate matches Level 4 (e.g. multiple evaluation criteria with identical key tokens), binding fails closed:
+     `AMBIGUOUS_CANONICAL_BINDING: candidate canonical IDs: ['CRIT-1', 'CRIT-2']`.
+   - Context becomes `is_executable = False` with explicit diagnostic explanation in `blocking_reason`.
+   - Unambiguous matches bind deterministically with strong binding type (`EXISTING_CANONICAL`).
+
 Schema reused/changed:
 REUSE_EXISTING_SCHEMA.
 No new database migration or DDL was introduced.
 Reuses existing migration 010 schema primitives.
 
 Entry manifest for next phase (maximum 5 files):
-1. `procurement_change_intelligence.py` — Revision impact plan, domain router, finding dependency resolver
+1. `procurement_change_intelligence.py` — Revision impact plan, domain router, finding dependency resolver, revision specialist context
 2. `full_analysis.py` — Specialist runner, specialist inputs, finding validator, reconciliation
 3. `full_analysis_service.py` — Durable execution service & DB persistence
 4. `tests/test_procurement_change_intelligence.py` — Impact routing tests & fixtures A-J
@@ -86,7 +114,7 @@ Durable objects:
 - `PCIBaseStorage` / `InMemoryPCIStorage` / `PCIDatabaseStorage`: Durable adapters mapping PCI state to Migration 010 persistence, RPC lifecycle, and human review gating
 - `RevisionImpactPlan`: Deterministic routing and finding staleness contract for PCI-B2 incremental execution, including unique `revision_id` event identity
 - `DomainRoutingReason` / `ChangeRoutingDecision`: Explainable deterministic routing decisions
-- `RevisionSpecialistContext`: Authoritative revision-aware specialist reanalysis contract providing mutated canonical objects, additive `RevisionFact` items, permitted citation IDs, carry-forward retained findings, and change bindings
+- `RevisionSpecialistContext`: Authoritative revision-aware specialist reanalysis contract providing mutated canonical objects, additive `RevisionFact` items, permitted citation IDs, carry-forward retained findings, stale finding payload, lineage digests, and change bindings
 - `ChangeBinding`: Precise linkage between a `FactChange` and its target canonical entity (`EXISTING_CANONICAL`, `REVISION_FACT`, or `UNRESOLVED`)
 - `RevisionFact`: Structured representation of an additive buyer update not bound to any baseline canonical entity
 
@@ -119,11 +147,14 @@ Key invariants:
 - Additive requirements or clauses generate stable `REV-FACT-...` IDs and are appended to `permitted_canonical_ids`
 - Removed canonical objects are excluded from active canonical objects and revoked from `permitted_canonical_ids`
 - Unresolved bindings set `is_executable=False` and report clear `blocking_reason` diagnostics
-- Revision specialist context fingerprints (`context_fingerprint`) are 100% deterministic and sensitive to revision facts, canonical objects, and permitted citation IDs
+- When multiple candidate canonical objects match, binding fails closed with `AMBIGUOUS_CANONICAL_BINDING` and candidate IDs
+- Specialists receive only prior findings and stale finding IDs belonging to their own domain (`produced_by`)
+- `RevisionSpecialistContext` carries complete `stale_prior_findings` payloads for downstream delta reconciliation
+- Revision specialist context fingerprints (`context_fingerprint`) are 100% deterministic, order-invariant, and sensitive to revision facts, canonical objects, permitted citation IDs, stale/retained findings, `impact_plan_fingerprint`, and `base_package_digest`
 - Pure application-layer routing and context formulation with zero external model calls and zero database migrations
 
 Tests:
-`tests/test_procurement_change_intelligence.py` (84 passed, 0 failed):
+`tests/test_procurement_change_intelligence.py` (90 passed, 0 failed):
 - Fixtures A through J (10 tests)
 - Concurrency and optimistic locking (3 tests)
 - Invariant verification (4 tests)
@@ -137,9 +168,10 @@ Tests:
 - PCI-B1 Impact Routing & Intelligence Dependency tests (14 tests: Fixtures A-J, domain vocabulary parity, zero-impact administrative, idempotency, manager integration)
 - PCI-B1.1 Applied-State & Compatibility tests (10 tests: Tests A through J covering applied gating, chronology gating, unapplied impact plan, raw changeset fail-closed, vocabulary compatibility, prefix normalization, canonical-id bridge, zero-impact key filtering, stable event identity, ambiguous revision number fail-closed)
 - PCI-B2A Revision-Aware Specialist Context tests (14 tests: Test Scenarios A through J covering weight overlay, deadline overlay, commercial obligation overlay, scope overlay, additive revision fact, removed requirement exclusion, replacement pricing form provenance, unapplied revision fail-closed, unresolved binding blocking execution, unaffected domain bounding fail-closed, base package immutability, deterministic context fingerprinting, prior findings filtering, manager end-to-end integration)
+- PCI-B2A.1 Context Identity & Binding Closure tests (6 tests: lineage fields and stale findings payload, real finding shape and domain-bound filtering, fingerprint sensitivity to finding content, fingerprint order-invariance, fail-closed ambiguous canonical binding, deterministic unique strong binding)
 
 Open issues:
-None for PCI-B2A. Revision specialist context builder is fully implemented, verified, and sealed.
+None for PCI-B2A.1. Context identity and fail-closed binding invariants are fully verified and closed.
 
 Entry Manifest for PCI-B2B:
 - `procurement_change_intelligence.py`: `RevisionSpecialistContext`, `build_revision_specialist_context`, `ProcurementRevisionManager.get_revision_specialist_context`
