@@ -399,11 +399,10 @@ class TestNewRFPPipelineArchitecture(unittest.TestCase):
         # Must navigate to stage_understand
         self.assertIn('go("stage_understand", bid_id)', body)
 
-    def test_deep_verification_preserved_in_stage_understand(self):
-        """Legacy extract_procurement_package must be preserved as an optional expander in stage_understand."""
-        self.assertIn("🔬 Deep Verification & Cross-Document Synthesis (Optional / In-Depth)", self.understand_source)
-        self.assertIn("extract_procurement_package(pkg_files_to_extract, api_key)", self.understand_source)
-        self.assertIn("tenancy.save_bid_brief_for_organization(bid_id, org_id, brief_data)", self.understand_source)
+    def test_deep_verification_removed_from_stage_understand(self):
+        """Deep Verification workflow must not be present in normal stage_understand customer UI."""
+        self.assertNotIn("🔬 Deep Verification & Cross-Document Synthesis (Optional / In-Depth)", self.understand_source)
+        self.assertNotIn("🔬 Run Deep Verification & Package Synthesis", self.understand_source)
 
     def test_procurement_governance_retains_truth_boundary(self):
         """Bids created during onboarding start with standard stage and are ungoverned until baseline review."""
