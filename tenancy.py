@@ -25,12 +25,15 @@ lookup, not something that should depend on a not-yet-written RLS policy.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import auth_client
 import database as db
 from database import format_requirement_payload
+
+logger = logging.getLogger(__name__)
 
 # ── Roles ─────────────────────────────────────────────────────────────────
 VALID_ROLES = ("owner", "admin", "member")
@@ -636,6 +639,11 @@ def create_procurement_update_review_for_organization(
     )
 
 
+def normalize_procurement_change_contract(proposal: dict) -> dict | None:
+    import analyst
+    return analyst.normalize_procurement_change_contract(proposal)
+
+
 def propose_procurement_changes_for_organization(
     bid_id: int, organization_id: str, review_id: int, api_key: str | None = None
 ) -> list[dict]:
@@ -694,8 +702,28 @@ def propose_procurement_changes_for_organization(
             buyer_update_type=review.get("buyer_update_type") or "Original RFP",
         )
 
-        rows = []
+        normalized_proposals = []
+        rejected_count = 0
         for p in proposals:
+            norm = analyst.normalize_procurement_change_contract(p)
+            if norm is None:
+                rejected_count += 1
+                logger.warning(
+                    "Rejecting invalid procurement change proposal: entity_type=%r, change_type=%r, canonical_effect=%r",
+                    p.get("entity_type") if isinstance(p, dict) else None,
+                    p.get("change_type") if isinstance(p, dict) else None,
+                    p.get("canonical_effect") if isinstance(p, dict) else None,
+                )
+                continue
+            normalized_proposals.append(norm)
+
+        if proposals and not normalized_proposals:
+            raise ValueError(
+                f"All {len(proposals)} proposal(s) failed contract validation and were rejected"
+            )
+
+        rows = []
+        for p in normalized_proposals:
             entity_type = p.get("entity_type", "requirement")
             change_type = p.get("change_type", "UNCHANGED")
             target_requirement_id = p.get("target_requirement_id")
@@ -721,7 +749,7 @@ def propose_procurement_changes_for_organization(
 
         db.insert_proposed_procurement_changes(rows)
         db.mark_review_ready_for_review(review_id)
-        return proposals
+        return normalized_proposals
     except Exception as e:
         # Analysis-failure-only terminal state (never left stuck in
         # 'analyzing' with no recovery path) -- matches

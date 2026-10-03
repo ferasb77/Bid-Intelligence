@@ -14,10 +14,13 @@ Provides decision-oriented intelligence across the bid lifecycle:
 import concurrent.futures
 import hashlib
 import json
+import logging
 import re
 from typing import Any
 from config import get_anthropic_client, execute_messages_create
 from requirement_semantics import has_supplier_qualification_evidence
+
+logger = logging.getLogger(__name__)
 
 
 def _call(system: str, user: str, max_tokens: int = 2048, *, operation: str = "unknown",
@@ -4026,6 +4029,60 @@ def analyze_proposal_alignment_package(
 # reaches canonical truth through
 # tenancy.apply_procurement_update_review_for_organization().
 
+VALID_ENTITY_TYPES = frozenset({"requirement", "bid_brief_field", "deliverable", "outline_section", "other"})
+VALID_CHANGE_TYPES = frozenset({"ADDED", "MODIFIED", "SUPERSEDED", "REMOVED", "CLARIFIED", "UNCHANGED"})
+VALID_CANONICAL_EFFECTS = frozenset({"canonical_change", "evidence_only"})
+
+DETERMINISTIC_CHANGE_EFFECT_MAP = {
+    "ADDED": "canonical_change",
+    "MODIFIED": "canonical_change",
+    "SUPERSEDED": "canonical_change",
+    "REMOVED": "canonical_change",
+    "UNCHANGED": "evidence_only",
+}
+
+
+def normalize_procurement_change_contract(proposal: dict) -> dict | None:
+    """Pure validation and contract normalization helper for procurement change proposals.
+
+    Enforces the schema check constraint `change_effect_consistency` from
+    migrations/010_procurement_revision_governance.sql:
+      - ADDED, MODIFIED, SUPERSEDED, REMOVED -> canonical_change
+      - UNCHANGED -> evidence_only
+      - CLARIFIED -> canonical_change or evidence_only
+
+    Validates enums fail-closed:
+      - entity_type must be in VALID_ENTITY_TYPES
+      - change_type must be in VALID_CHANGE_TYPES
+      - For CLARIFIED: canonical_effect must be in VALID_CANONICAL_EFFECTS
+
+    Returns a normalized shallow copy of proposal, or None if invalid.
+    """
+    if not isinstance(proposal, dict):
+        return None
+
+    entity_type = proposal.get("entity_type")
+    if not entity_type or entity_type not in VALID_ENTITY_TYPES:
+        return None
+
+    change_type = proposal.get("change_type")
+    if not change_type or change_type not in VALID_CHANGE_TYPES:
+        return None
+
+    norm = dict(proposal)
+    if change_type in DETERMINISTIC_CHANGE_EFFECT_MAP:
+        norm["canonical_effect"] = DETERMINISTIC_CHANGE_EFFECT_MAP[change_type]
+    elif change_type == "CLARIFIED":
+        canonical_effect = norm.get("canonical_effect")
+        if canonical_effect not in VALID_CANONICAL_EFFECTS:
+            return None
+        norm["canonical_effect"] = canonical_effect
+    else:
+        return None
+
+    return norm
+
+
 _PROCUREMENT_CHANGE_SYSTEM = (
     "You are a senior procurement analyst comparing a buyer-issued update document "
     "against the CURRENT governed procurement truth for this opportunity. You "
@@ -4078,6 +4135,7 @@ Rules:
 - change_type UNCHANGED must have canonical_effect "evidence_only".
 - change_type ADDED, MODIFIED, SUPERSEDED, or REMOVED must have canonical_effect "canonical_change".
 - change_type CLARIFIED: set canonical_effect to "canonical_change" ONLY if this clarification changes how a requirement should be interpreted going forward; otherwise "evidence_only".
+- CRITICAL: Requirement category "Supporting" is NOT the same thing as canonical_effect "evidence_only". A newly introduced Supporting requirement is: change_type = "ADDED", canonical_effect = "canonical_change", new_value.category = "Supporting". "evidence_only" describes whether procurement truth changes (only for UNCHANGED or non-altering CLARIFIED). It does NOT describe the requirement category.
 - Only propose a change when THIS document's text actually supports it -- never invent, never infer from outside knowledge.
 - If this section contains nothing relevant to procurement truth, return an empty "proposals" array."""
 
@@ -4154,7 +4212,16 @@ def propose_procurement_changes(
             for p in proposals:
                 if not isinstance(p, dict):
                     continue
-                p = dict(p)
+                norm = normalize_procurement_change_contract(p)
+                if norm is None:
+                    logger.warning(
+                        "Skipping proposal failing contract validation: entity_type=%r, change_type=%r, canonical_effect=%r",
+                        p.get("entity_type"),
+                        p.get("change_type"),
+                        p.get("canonical_effect"),
+                    )
+                    continue
+                p = norm
                 evidence = p.get("extraction_evidence") or {}
                 sources = evidence.get("sources") if isinstance(evidence, dict) else None
                 if isinstance(sources, list):

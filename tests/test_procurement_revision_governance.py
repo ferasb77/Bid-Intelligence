@@ -670,6 +670,259 @@ class TestAnalystProcurementChangeProposal(unittest.TestCase):
         mock_merge.assert_called_once()
 
 
+class TestProcurementChangeContractNormalization(unittest.TestCase):
+
+    def test_exact_live_failure_added_supporting_normalized(self):
+        import analyst
+        import tenancy
+        failing_proposal = {
+            "entity_type": "requirement",
+            "entity_id": "rfp_sponsor_identification",
+            "change_type": "ADDED",
+            "canonical_effect": "evidence_only",
+            "new_value": {
+                "category": "Supporting",
+                "description": "The RFP sponsor must be explicitly identified in the submission.",
+            },
+        }
+        normalized = analyst.normalize_procurement_change_contract(failing_proposal)
+        self.assertIsNotNone(normalized)
+        self.assertEqual(normalized["entity_type"], "requirement")
+        self.assertEqual(normalized["entity_id"], "rfp_sponsor_identification")
+        self.assertEqual(normalized["change_type"], "ADDED")
+        self.assertEqual(normalized["canonical_effect"], "canonical_change")
+        self.assertEqual(normalized["new_value"]["category"], "Supporting")
+
+        # Tenancy alias test
+        normalized_tenancy = tenancy.normalize_procurement_change_contract(failing_proposal)
+        self.assertEqual(normalized_tenancy, normalized)
+
+    def test_contract_matrix_deterministic_mappings(self):
+        import analyst
+        cases = [
+            ("ADDED", "evidence_only", "canonical_change"),
+            ("ADDED", "canonical_change", "canonical_change"),
+            ("MODIFIED", "evidence_only", "canonical_change"),
+            ("MODIFIED", "canonical_change", "canonical_change"),
+            ("SUPERSEDED", "evidence_only", "canonical_change"),
+            ("SUPERSEDED", "canonical_change", "canonical_change"),
+            ("REMOVED", "evidence_only", "canonical_change"),
+            ("REMOVED", "canonical_change", "canonical_change"),
+            ("UNCHANGED", "canonical_change", "evidence_only"),
+            ("UNCHANGED", "evidence_only", "evidence_only"),
+            ("CLARIFIED", "canonical_change", "canonical_change"),
+            ("CLARIFIED", "evidence_only", "evidence_only"),
+        ]
+        for change_type, input_effect, expected_effect in cases:
+            proposal = {
+                "entity_type": "requirement",
+                "entity_id": "REQ-1",
+                "change_type": change_type,
+                "canonical_effect": input_effect,
+            }
+            norm = analyst.normalize_procurement_change_contract(proposal)
+            self.assertIsNotNone(norm, f"Failed for {change_type} + {input_effect}")
+            self.assertEqual(norm["canonical_effect"], expected_effect, f"Mismatch for {change_type} + {input_effect}")
+
+    def test_contract_matrix_enum_and_structure_rejections(self):
+        import analyst
+        # Non-dict
+        self.assertIsNone(analyst.normalize_procurement_change_contract("not a dict"))
+        self.assertIsNone(analyst.normalize_procurement_change_contract(123))
+        self.assertIsNone(analyst.normalize_procurement_change_contract(None))
+
+        # Unknown or missing entity_type
+        self.assertIsNone(analyst.normalize_procurement_change_contract({
+            "entity_type": "invalid_entity", "change_type": "ADDED", "canonical_effect": "canonical_change"
+        }))
+        self.assertIsNone(analyst.normalize_procurement_change_contract({
+            "change_type": "ADDED", "canonical_effect": "canonical_change"
+        }))
+
+        # Unknown or missing change_type
+        self.assertIsNone(analyst.normalize_procurement_change_contract({
+            "entity_type": "requirement", "change_type": "BOGUS", "canonical_effect": "canonical_change"
+        }))
+        self.assertIsNone(analyst.normalize_procurement_change_contract({
+            "entity_type": "requirement", "canonical_effect": "canonical_change"
+        }))
+
+        # CLARIFIED with unknown canonical_effect
+        self.assertIsNone(analyst.normalize_procurement_change_contract({
+            "entity_type": "requirement", "change_type": "CLARIFIED", "canonical_effect": "unknown_effect"
+        }))
+        self.assertIsNone(analyst.normalize_procurement_change_contract({
+            "entity_type": "requirement", "change_type": "CLARIFIED", "canonical_effect": None
+        }))
+
+        # All valid entity types accepted
+        for ent in ("requirement", "bid_brief_field", "deliverable", "outline_section", "other"):
+            norm = analyst.normalize_procurement_change_contract({
+                "entity_type": ent, "change_type": "ADDED"
+            })
+            self.assertIsNotNone(norm, f"Should accept valid entity_type {ent}")
+            self.assertEqual(norm["canonical_effect"], "canonical_change")
+
+    def test_prompt_clarification_supporting_requirement(self):
+        import analyst
+        prompt = analyst._procurement_change_prompt(
+            bid_header="BID: Test", current_requirements_block="None",
+            buyer_update_type="Addendum", chunk_text="Chunk", chunk_label="Section 1",
+            filename="addendum.pdf"
+        )
+        self.assertIn("Requirement category \"Supporting\" is NOT the same thing as canonical_effect \"evidence_only\"", prompt)
+        self.assertIn("change_type = \"ADDED\", canonical_effect = \"canonical_change\", new_value.category = \"Supporting\"", prompt)
+
+    def test_propose_procurement_changes_normalizes_and_filters_proposals(self):
+        import json
+        import analyst
+        mock_response = json.dumps({
+            "proposals": [
+                {
+                    "entity_type": "requirement", "entity_id": "rfp_sponsor_identification",
+                    "change_type": "ADDED", "canonical_effect": "evidence_only",
+                    "new_value": {"category": "Supporting", "description": "Sponsor ID"},
+                    "extraction_evidence": {"sources": [{"page": 1, "excerpt": "sponsor"}]}
+                },
+                {
+                    "entity_type": "invalid_entity", "entity_id": "bad",
+                    "change_type": "ADDED", "canonical_effect": "canonical_change"
+                },
+                {
+                    "entity_type": "requirement", "entity_id": "M1",
+                    "change_type": "UNCHANGED", "canonical_effect": "canonical_change",
+                    "extraction_evidence": {"sources": [{"page": 2, "excerpt": "license"}]}
+                }
+            ]
+        })
+        with patch("analyst._call", return_value=mock_response):
+            result = analyst.propose_procurement_changes(
+                review_documents=[{"document_id": 42, "filename": "addendum.pdf",
+                                    "content_hash": "hash-xyz", "text": "Buyer text " * 20}],
+                current_requirements=[{"req_id": "M1", "category": "Mandatory", "description": "x"}],
+                bid_info={"title": "T", "client": "C"}, buyer_update_type="Addendum",
+            )
+        # Should have 2 proposals (the invalid one was filtered out)
+        self.assertEqual(len(result), 2)
+        # First proposal normalized from evidence_only to canonical_change
+        self.assertEqual(result[0]["entity_id"], "rfp_sponsor_identification")
+        self.assertEqual(result[0]["canonical_effect"], "canonical_change")
+        self.assertEqual(result[0]["new_value"]["category"], "Supporting")
+        # Second proposal normalized from canonical_change to evidence_only
+        self.assertEqual(result[1]["entity_id"], "M1")
+        self.assertEqual(result[1]["canonical_effect"], "evidence_only")
+
+
+class TestTenancyProcurementChangeBatchSafety(unittest.TestCase):
+
+    @patch("tenancy.db")
+    @patch("tenancy.require_bid_access")
+    def test_partial_rejection_inserts_valid_rows_and_readies_review(self, mock_require, mock_db):
+        import tenancy
+        mock_db.get_procurement_update_reviews.return_value = [
+            {"id": 3, "bid_id": 8, "buyer_update_type": "Addendum"}
+        ]
+        review_docs_query = mock_db.get_client.return_value.table.return_value.select.return_value.eq.return_value
+        review_docs_query.execute.return_value = MagicMock(
+            data=[{"document_id": 10, "role": "primary"}]
+        )
+        mock_db.get_documents.return_value = [
+            {"id": 10, "name": "addendum.pdf", "storage_path": "8/addendum.pdf", "content_hash": "hash-a"}
+        ]
+        mock_db.download_file.return_value = b"pdf bytes"
+        mock_db.get_requirements.return_value = [{"req_id": "M1", "category": "Mandatory"}]
+        mock_db.get_bid.return_value = {"title": "Some RFP", "client": "Some Client"}
+
+        mixed_proposals = [
+            # Proposal 1: ADDED with evidence_only (needs normalization to canonical_change)
+            {"entity_type": "requirement", "entity_id": "rfp_sponsor_identification",
+             "change_type": "ADDED", "canonical_effect": "evidence_only",
+             "new_value": {"category": "Supporting"}, "source_document_id": 10},
+            # Proposal 2: Invalid entity type (must be rejected)
+            {"entity_type": "invalid_entity", "entity_id": "bad", "change_type": "ADDED"},
+            # Proposal 3: UNCHANGED with canonical_change (needs normalization to evidence_only)
+            {"entity_type": "requirement", "entity_id": "M1",
+             "change_type": "UNCHANGED", "canonical_effect": "canonical_change",
+             "source_document_id": 10},
+        ]
+
+        with patch("extractor.extract_text_from_file", return_value="addendum text"), \
+             patch("analyst.propose_procurement_changes", return_value=mixed_proposals):
+            result = tenancy.propose_procurement_changes_for_organization(8, "org-1", 3)
+
+        self.assertEqual(len(result), 2)
+        mock_db.insert_proposed_procurement_changes.assert_called_once()
+        rows = mock_db.insert_proposed_procurement_changes.call_args[0][0]
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["canonical_effect"], "canonical_change")
+        self.assertEqual(rows[0]["new_value"]["category"], "Supporting")
+        self.assertEqual(rows[1]["canonical_effect"], "evidence_only")
+        mock_db.mark_review_ready_for_review.assert_called_once_with(3)
+        mock_db.mark_review_failed.assert_not_called()
+
+    @patch("tenancy.db")
+    @patch("tenancy.require_bid_access")
+    def test_all_rejected_fails_review(self, mock_require, mock_db):
+        import tenancy
+        mock_db.get_procurement_update_reviews.return_value = [
+            {"id": 3, "bid_id": 8, "buyer_update_type": "Addendum"}
+        ]
+        review_docs_query = mock_db.get_client.return_value.table.return_value.select.return_value.eq.return_value
+        review_docs_query.execute.return_value = MagicMock(
+            data=[{"document_id": 10, "role": "primary"}]
+        )
+        mock_db.get_documents.return_value = [
+            {"id": 10, "name": "addendum.pdf", "storage_path": "8/addendum.pdf", "content_hash": "hash-a"}
+        ]
+        mock_db.download_file.return_value = b"pdf bytes"
+        mock_db.get_requirements.return_value = []
+        mock_db.get_bid.return_value = {"title": "Some RFP", "client": "Some Client"}
+
+        all_invalid_proposals = [
+            {"entity_type": "invalid_entity", "entity_id": "bad", "change_type": "ADDED"},
+            {"entity_type": "requirement", "change_type": "BOGUS_TYPE"},
+        ]
+
+        with patch("extractor.extract_text_from_file", return_value="addendum text"), \
+             patch("analyst.propose_procurement_changes", return_value=all_invalid_proposals):
+            with self.assertRaises(ValueError) as ctx:
+                tenancy.propose_procurement_changes_for_organization(8, "org-1", 3)
+            self.assertIn("failed contract validation", str(ctx.exception))
+
+        mock_db.insert_proposed_procurement_changes.assert_not_called()
+        mock_db.mark_review_ready_for_review.assert_not_called()
+        mock_db.mark_review_failed.assert_called_once()
+        self.assertEqual(mock_db.mark_review_failed.call_args[0][0], 3)
+        self.assertIn("failed contract validation", mock_db.mark_review_failed.call_args[0][1])
+
+    @patch("tenancy.db")
+    @patch("tenancy.require_bid_access")
+    def test_empty_proposals_marks_review_ready(self, mock_require, mock_db):
+        import tenancy
+        mock_db.get_procurement_update_reviews.return_value = [
+            {"id": 3, "bid_id": 8, "buyer_update_type": "Addendum"}
+        ]
+        review_docs_query = mock_db.get_client.return_value.table.return_value.select.return_value.eq.return_value
+        review_docs_query.execute.return_value = MagicMock(
+            data=[{"document_id": 10, "role": "primary"}]
+        )
+        mock_db.get_documents.return_value = [
+            {"id": 10, "name": "addendum.pdf", "storage_path": "8/addendum.pdf", "content_hash": "hash-a"}
+        ]
+        mock_db.download_file.return_value = b"pdf bytes"
+        mock_db.get_requirements.return_value = []
+        mock_db.get_bid.return_value = {"title": "Some RFP", "client": "Some Client"}
+
+        with patch("extractor.extract_text_from_file", return_value="addendum text"), \
+             patch("analyst.propose_procurement_changes", return_value=[]):
+            result = tenancy.propose_procurement_changes_for_organization(8, "org-1", 3)
+
+        self.assertEqual(result, [])
+        mock_db.insert_proposed_procurement_changes.assert_called_once_with([])
+        mock_db.mark_review_ready_for_review.assert_called_once_with(3)
+        mock_db.mark_review_failed.assert_not_called()
+
+
 class TestRequirementsLifecycleFiltering(unittest.TestCase):
 
     @patch("database.get_client")
