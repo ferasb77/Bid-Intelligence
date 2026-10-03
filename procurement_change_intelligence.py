@@ -518,9 +518,14 @@ class ProcurementRevision:
     trigger_documents: list[dict[str, Any]]
     change_set: ProcurementChangeSet
     fingerprint: str
+    review_status: str = "applied"
     is_current: bool = False
     chronology_unresolved: bool = False
     no_canonical_change: bool = False
+
+    @property
+    def is_applied(self) -> bool:
+        return self.review_status == "applied"
 
     @property
     def revision_fingerprint(self) -> str:
@@ -536,6 +541,8 @@ class ProcurementRevision:
             "trigger_documents": copy.deepcopy(self.trigger_documents),
             "change_set": self.change_set.to_dict(),
             "fingerprint": self.fingerprint,
+            "review_status": self.review_status,
+            "is_applied": self.is_applied,
             "is_current": self.is_current,
             "chronology_unresolved": self.chronology_unresolved,
             "no_canonical_change": self.no_canonical_change,
@@ -601,30 +608,32 @@ def derive_current_authoritative_state(
     current_rev_fp = ""
 
     for rev in ordered_revs:
-        # All-or-nothing check: if this revision is unapplied (pending review or chronology unresolved),
-        # none of its changes can mutate canonical truth.
-        rev_has_pending = rev.chronology_unresolved or any(
-            c.change_type == CHANGE_CONFLICTS_WITH
-            or c.review_status in (REVIEW_STATUS_HUMAN_REVIEW_REQUIRED, REVIEW_STATUS_PENDING)
-            for c in rev.change_set.changes
+        # All-or-nothing check: only genuinely applied revisions can mutate canonical truth.
+        # Analyzing, ready_for_review, reviewed, failed, or chronology-unresolved reviews must never mutate canonical truth.
+        rev_is_unapplied = (
+            not rev.is_applied
+            or rev.review_status != "applied"
+            or rev.chronology_unresolved
+            or any(
+                c.change_type == CHANGE_CONFLICTS_WITH
+                or c.review_status in (REVIEW_STATUS_HUMAN_REVIEW_REQUIRED, REVIEW_STATUS_PENDING, REVIEW_STATUS_REJECTED)
+                for c in rev.change_set.changes
+            )
         )
 
-        if rev_has_pending:
+        if rev_is_unapplied:
             for change in rev.change_set.changes:
-                if (
-                    change.change_type == CHANGE_CONFLICTS_WITH
-                    or change.review_status in (REVIEW_STATUS_HUMAN_REVIEW_REQUIRED, REVIEW_STATUS_PENDING)
-                    or rev.chronology_unresolved
-                ):
-                    meta = copy.deepcopy(change.metadata) if change.metadata else {}
-                    if rev.chronology_unresolved:
-                        meta["chronology_unresolved"] = True
-                    conflict_change = replace(
-                        change,
-                        review_status=REVIEW_STATUS_HUMAN_REVIEW_REQUIRED,
-                        metadata=meta,
-                    )
-                    pending_conflicts.append(conflict_change)
+                meta = copy.deepcopy(change.metadata) if change.metadata else {}
+                if rev.chronology_unresolved:
+                    meta["chronology_unresolved"] = True
+                if not rev.is_applied:
+                    meta["unapplied_review_status"] = rev.review_status
+                conflict_change = replace(
+                    change,
+                    review_status=REVIEW_STATUS_HUMAN_REVIEW_REQUIRED if change.review_status == REVIEW_STATUS_APPROVED else change.review_status,
+                    metadata=meta,
+                )
+                pending_conflicts.append(conflict_change)
             continue
 
         current_rev_num = rev.revision_number
@@ -950,6 +959,7 @@ class InMemoryPCIStorage(PCIBaseStorage):
                         trigger_documents=trigger_docs,
                         change_set=changeset,
                         fingerprint=r.get("document_set_digest", ""),
+                        review_status=r.get("status", "applied"),
                         is_current=False,
                         chronology_unresolved=chronology_unresolved,
                         no_canonical_change=bool(r.get("no_canonical_change", False)),
@@ -1361,6 +1371,7 @@ class PCIDatabaseStorage(PCIBaseStorage):
                     trigger_documents=trigger_docs,
                     change_set=changeset,
                     fingerprint=r.get("document_set_digest", ""),
+                    review_status=r.get("status", "applied"),
                     is_current=False,
                     chronology_unresolved=chronology_unresolved,
                     no_canonical_change=bool(r.get("no_canonical_change", False)),
@@ -1649,6 +1660,12 @@ class ProcurementRevisionManager:
     def get_revision(self, revision_number: int) -> ProcurementRevision | None:
         return self._revisions.get(revision_number)
 
+    def get_revision_by_id(self, revision_id: str) -> ProcurementRevision | None:
+        for rev in self._all_revisions:
+            if rev.revision_id == revision_id:
+                return rev
+        return None
+
     def get_all_revisions(self) -> list[ProcurementRevision]:
         return sorted(self._all_revisions, key=lambda r: (r.buyer_chronology_index, r.revision_number))
 
@@ -1766,6 +1783,7 @@ class ProcurementRevisionManager:
                 trigger_documents=src_docs,
                 change_set=changeset,
                 fingerprint=rev_fp,
+                review_status="applied",
                 is_current=True,
                 chronology_unresolved=False,
                 no_canonical_change=False,
@@ -1983,6 +2001,7 @@ class ProcurementRevisionManager:
                 trigger_documents=src_docs,
                 change_set=changeset,
                 fingerprint=rev_fp,
+                review_status="ready_for_review" if is_pending_review else "applied",
                 is_current=(not is_pending_review),
                 chronology_unresolved=chronology_unresolved,
                 no_canonical_change=(not has_semantic_changes),
@@ -2036,15 +2055,45 @@ class ProcurementRevisionManager:
                     })
         return history
 
-    def get_revision_impact_plan(
+    def get_revision_impact_plan_by_id(
         self,
-        revision_number: int,
+        revision_id: str,
         existing_findings: Sequence[dict[str, Any]] | None = None,
     ) -> RevisionImpactPlan:
-        """Computes the deterministic RevisionImpactPlan for a given revision against current state."""
-        rev = self.get_revision(revision_number)
+        """Computes deterministic RevisionImpactPlan by revision_id."""
+        rev = self.get_revision_by_id(revision_id)
         if rev is None:
-            raise PCIEngineError(f"Revision {revision_number} not found for bid {self.bid_id}.")
+            raise PCIEngineError(f"Revision with id '{revision_id}' not found for bid {self.bid_id}.")
+        state = self.get_current_state()
+        return generate_revision_impact_plan(rev, state, existing_findings, bid_id=self.bid_id)
+
+    def get_revision_impact_plan(
+        self,
+        target: int | str | ProcurementRevision,
+        existing_findings: Sequence[dict[str, Any]] | None = None,
+    ) -> RevisionImpactPlan:
+        """Computes the deterministic RevisionImpactPlan for a revision against current state.
+        Fails closed on ambiguous integer revision_number matching multiple revisions."""
+        if isinstance(target, ProcurementRevision):
+            rev = target
+        elif isinstance(target, str):
+            rev = self.get_revision_by_id(target)
+            if rev is None:
+                raise PCIEngineError(f"Revision with id '{target}' not found for bid {self.bid_id}.")
+        elif isinstance(target, int):
+            matching = [r for r in self._all_revisions if r.revision_number == target]
+            if not matching:
+                raise PCIEngineError(f"Revision {target} not found for bid {self.bid_id}.")
+            if len(matching) > 1:
+                ids = [r.revision_id for r in matching]
+                raise PCIEngineError(
+                    f"Ambiguous revision_number {target} matches multiple revisions ({ids}). "
+                    f"Use revision_id or get_revision_impact_plan_by_id instead."
+                )
+            rev = matching[0]
+        else:
+            raise TypeError(f"Target must be int, str, or ProcurementRevision, got {type(target).__name__}")
+
         state = self.get_current_state()
         return generate_revision_impact_plan(rev, state, existing_findings, bid_id=self.bid_id)
 
@@ -2121,10 +2170,12 @@ def compute_impact_plan_fingerprint(
     state_fingerprint: str,
     affected_domains: Sequence[str],
     finding_impacts: dict[str, dict[str, Any]],
+    revision_id: str = "",
 ) -> str:
     """Computes a stable, semantic SHA-256 fingerprint for a RevisionImpactPlan.
     Excludes execution time, timestamps, database row IDs, and ordering noise."""
     payload = {
+        "revision_id": str(revision_id or ""),
         "change_set_fingerprint": str(change_set_fingerprint or ""),
         "state_fingerprint": str(state_fingerprint or ""),
         "affected_domains": sorted(set(affected_domains)),
@@ -2153,6 +2204,7 @@ class RevisionImpactPlan:
     unresolved_finding_ids: list[str]
     finding_impacts: dict[str, dict[str, Any]]
     routing_reasons: list[dict[str, Any]]
+    revision_id: str = ""
     fingerprint: str = ""
 
     def __post_init__(self):
@@ -2162,11 +2214,13 @@ class RevisionImpactPlan:
                 state_fingerprint=self.state_fingerprint,
                 affected_domains=self.affected_domains,
                 finding_impacts=self.finding_impacts,
+                revision_id=self.revision_id,
             )
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "revision_number": self.revision_number,
+            "revision_id": self.revision_id,
             "change_set_fingerprint": self.change_set_fingerprint,
             "state_fingerprint": self.state_fingerprint,
             "affected_domains": list(self.affected_domains),
@@ -2192,11 +2246,46 @@ def _expand_key_variants(val: Any) -> set[str]:
         return set()
     norm = _normalize_key(raw)
     variants = {raw, raw.lower(), norm}
-    for prefix in ("doc_", "rel_", "artifact_", "req_", "crit_", "obl_", "ms_", "sub_"):
+
+    # 1. Strip common domain/entity prefixes:
+    for prefix in (
+        "doc_", "rel_", "artifact_", "req_", "crit_", "obl_", "ms_", "sub_",
+        "eval_", "deadline_", "insurance_", "comm_", "commercial_", "scope_",
+        "price_", "pricing_",
+    ):
         if norm.startswith(prefix):
             stripped = norm[len(prefix):]
             if stripped and not stripped.isdigit():
                 variants.add(stripped)
+
+    # 2. For each current variant, strip common trailing attribute suffixes or numeric indices:
+    expanded_more = set()
+    for v in list(variants):
+        for suffix in (
+            "_weight", "_threshold", "_limit", "_score", "_date", "_time",
+            "_submission", "_terms", "_requirements", "_specifications",
+        ):
+            if v.endswith(suffix):
+                s_stripped = v[:-len(suffix)]
+                if s_stripped:
+                    expanded_more.add(s_stripped)
+        num_stripped = re.sub(r'_\d+$', '', v)
+        if num_stripped != v and num_stripped:
+            expanded_more.add(num_stripped)
+
+    # 3. Strip prefixes again on any stripped variants
+    for v in list(expanded_more):
+        for prefix in (
+            "doc_", "rel_", "artifact_", "req_", "crit_", "obl_", "ms_", "sub_",
+            "eval_", "deadline_", "insurance_", "comm_", "commercial_", "scope_",
+            "price_", "pricing_",
+        ):
+            if v.startswith(prefix):
+                stripped = v[len(prefix):]
+                if stripped and not stripped.isdigit():
+                    expanded_more.add(stripped)
+
+    variants.update(expanded_more)
     return variants
 
 
@@ -2226,21 +2315,21 @@ DOMAIN_ROUTING_RULES: tuple[_DomainRule, ...] = (
         rule_id="SUBMISSION_DEADLINE_CHANGE",
         domains=(SPECIALIST_SCHEDULE_SUBMISSION,),
         fact_types=(
-            "submission_deadline", "closing_date", "deadline", "closing_time",
+            "DEADLINE", "deadline", "submission_deadline", "closing_date", "closing_time",
             "rfp_closing", "bid_closing", "proposal_deadline", "closing_deadline",
             "question_deadline", "addendum_deadline",
         ),
-        entity_prefixes=("sub:deadline", "deadline", "closing"),
+        entity_prefixes=("sub:deadline", "sub.deadline", "deadline", "deadline.", "closing"),
     ),
     # 2. Schedule Milestones
     _DomainRule(
         rule_id="SCHEDULE_MILESTONE_CHANGE",
         domains=(SPECIALIST_SCHEDULE_SUBMISSION,),
         fact_types=(
-            "milestone", "schedule", "timetable", "project_schedule",
+            "MILESTONE", "milestone", "schedule", "timetable", "project_schedule",
             "target_date", "scoped_milestone",
         ),
-        entity_prefixes=("ms-", "ms:", "milestone:"),
+        entity_prefixes=("ms-", "ms:", "ms.", "milestone:", "milestone."),
     ),
     # 3. Submission Mechanics (Submission + Procurement Structure)
     _DomainRule(
@@ -2251,28 +2340,28 @@ DOMAIN_ROUTING_RULES: tuple[_DomainRule, ...] = (
             "submission_format", "page_limit", "font_size", "number_of_copies",
             "submission_instructions",
         ),
-        entity_prefixes=("submission", "pkg", "sub:mechanics", "sub:portal", "sub:format"),
+        entity_prefixes=("submission", "pkg", "sub:mechanics", "sub.mechanics", "sub:portal", "sub.portal", "sub:format", "sub.format"),
     ),
     # 4. Evaluation Criteria & Weights
     _DomainRule(
         rule_id="EVALUATION_WEIGHT_CHANGE",
         domains=(SPECIALIST_EVALUATION_INTELLIGENCE,),
         fact_types=(
-            "evaluation_weight", "evaluation_criterion", "evaluation_criteria",
+            "WEIGHT", "weight", "evaluation_weight", "evaluation_criterion", "evaluation_criteria",
             "scoring_weight", "scoring_formula", "evaluation_grid", "rating_scale",
             "criterion_weight", "scoring_model",
         ),
-        entity_prefixes=("crit-", "crit:", "eval:weight", "eval:criterion", "eval."),
+        entity_prefixes=("crit-", "crit:", "crit.", "eval:weight", "eval:criterion", "eval.", "eval_"),
     ),
     # 5. Evaluation Thresholds (Cross-domain: Evaluation + Compliance)
     _DomainRule(
         rule_id="EVALUATION_THRESHOLD_CHANGE",
         domains=(SPECIALIST_EVALUATION_INTELLIGENCE, SPECIALIST_REQUIREMENTS_COMPLIANCE),
         fact_types=(
-            "evaluation_threshold", "minimum_score", "passing_score",
+            "THRESHOLD", "threshold", "evaluation_threshold", "minimum_score", "passing_score",
             "evaluation_gate", "technical_threshold", "minimum_passing_grade",
         ),
-        entity_prefixes=("eval:threshold", "eval.threshold"),
+        entity_prefixes=("eval:threshold", "eval.threshold", "eval_threshold"),
         custom_reasons={
             SPECIALIST_EVALUATION_INTELLIGENCE: "EVALUATION_THRESHOLD_CHANGE",
             SPECIALIST_REQUIREMENTS_COMPLIANCE: "EVALUATION_THRESHOLD_COMPLIANCE_CROSS_DOMAIN",
@@ -2283,11 +2372,11 @@ DOMAIN_ROUTING_RULES: tuple[_DomainRule, ...] = (
         rule_id="REQUIREMENT_COMPLIANCE_CHANGE",
         domains=(SPECIALIST_REQUIREMENTS_COMPLIANCE,),
         fact_types=(
-            "mandatory_qualification", "qualification_requirement", "requirement",
+            "MANDATORY", "mandatory", "mandatory_qualification", "qualification_requirement", "requirement",
             "compliance", "mandatory_requirement", "compliance_requirement",
             "canonical_requirement", "eligibility",
         ),
-        entity_prefixes=("req-", "req:"),
+        entity_prefixes=("req-", "req:", "req."),
     ),
     # 7. Mandatory Staffing / Credentials (Cross-domain: Compliance + Scope)
     _DomainRule(
@@ -2298,7 +2387,7 @@ DOMAIN_ROUTING_RULES: tuple[_DomainRule, ...] = (
             "staffing_requirement", "team_credential", "security_clearance",
             "professional_certification",
         ),
-        entity_prefixes=("credential:", "personnel:", "staffing:"),
+        entity_prefixes=("credential:", "personnel:", "staffing:", "credential.", "personnel.", "staffing."),
         keywords=("credential", "personnel", "staffing", "clearance"),
         custom_reasons={
             SPECIALIST_REQUIREMENTS_COMPLIANCE: "MANDATORY_CREDENTIAL_CHANGE",
@@ -2310,11 +2399,11 @@ DOMAIN_ROUTING_RULES: tuple[_DomainRule, ...] = (
         rule_id="SCOPE_DELIVERABLE_CHANGE",
         domains=(SPECIALIST_SCOPE_DELIVERABLES,),
         fact_types=(
-            "scope_item", "deliverable", "service_scope", "scope_delivery",
+            "SCOPE", "scope", "scope_item", "deliverable", "service_scope", "scope_delivery",
             "statement_of_work", "service", "resource_expectation",
             "specifications", "technical_requirements",
         ),
-        entity_prefixes=("scope-", "scope:", "deliv:"),
+        entity_prefixes=("scope-", "scope:", "scope.", "deliv:", "deliv."),
     ),
     # 9. Delivery Geography / Scope Restriction (Cross-domain: Scope + Commercial)
     _DomainRule(
@@ -2324,7 +2413,7 @@ DOMAIN_ROUTING_RULES: tuple[_DomainRule, ...] = (
             "scope_restriction", "delivery_geography", "geography_restriction",
             "delivery_location", "service_location", "territorial_restriction",
         ),
-        entity_prefixes=("scope:geography", "geography:", "location:"),
+        entity_prefixes=("scope:geography", "scope.geography", "geography:", "geography.", "location:", "location."),
         keywords=("geography", "restriction", "location"),
         custom_reasons={
             SPECIALIST_SCOPE_DELIVERABLES: "SCOPE_DELIVERY_RESTRICTION_CHANGE",
@@ -2336,22 +2425,22 @@ DOMAIN_ROUTING_RULES: tuple[_DomainRule, ...] = (
         rule_id="COMMERCIAL_OBLIGATION_CHANGE",
         domains=(SPECIALIST_COMMERCIAL_CONTRACTUAL,),
         fact_types=(
-            "insurance", "insurance_limit", "liability", "liability_cap",
+            "COMMERCIAL", "commercial", "insurance", "insurance_limit", "liability", "liability_cap",
             "indemnity", "payment_terms", "commercial_obligation",
             "contractual_obligation", "warranty", "ip_rights", "termination",
             "liquidated_damages", "bonding", "confidentiality",
         ),
-        entity_prefixes=("obl-", "comm:", "commercial:", "obl:"),
+        entity_prefixes=("obl-", "comm:", "comm.", "commercial:", "commercial.", "obl:", "obl.", "insurance.", "insurance:"),
     ),
     # 11. Pricing Structure (Cross-domain: Commercial + Compliance)
     _DomainRule(
         rule_id="PRICING_STRUCTURE_CHANGE",
         domains=(SPECIALIST_COMMERCIAL_CONTRACTUAL, SPECIALIST_REQUIREMENTS_COMPLIANCE),
         fact_types=(
-            "pricing_structure", "pricing_model", "pricing_schedule",
+            "PRICING", "pricing", "pricing_structure", "pricing_model", "pricing_schedule",
             "rate_table", "pricing_terms", "fee_structure", "rate_structure",
         ),
-        entity_prefixes=("price:", "pricing:"),
+        entity_prefixes=("price:", "pricing:", "price.", "pricing."),
         custom_reasons={
             SPECIALIST_COMMERCIAL_CONTRACTUAL: "PRICING_STRUCTURE_CHANGE",
             SPECIALIST_REQUIREMENTS_COMPLIANCE: "PRICING_COMPLIANCE_REQUIREMENTS_CROSS_DOMAIN",
@@ -2366,10 +2455,10 @@ DOMAIN_ROUTING_RULES: tuple[_DomainRule, ...] = (
             SPECIALIST_SCHEDULE_SUBMISSION,
         ),
         fact_types=(
-            "pricing_form", "replacement_pricing_form", "pricing_form_replacement",
-            "pricing_artifact",
+            "ARTIFACT", "artifact", "pricing_form", "replacement_pricing_form", "pricing_form_replacement",
+            "pricing_artifact", "artifact.pricing_form",
         ),
-        entity_prefixes=("artifact:pricing", "doc:pricing"),
+        entity_prefixes=("artifact:pricing", "doc:pricing", "artifact.pricing", "artifact.", "artifact:"),
         custom_reasons={
             SPECIALIST_COMMERCIAL_CONTRACTUAL: "PRICING_ARTIFACT_COMMERCIAL_CHANGE",
             SPECIALIST_REQUIREMENTS_COMPLIANCE: "PRICING_FORM_SUBMISSION_COMPLIANCE_CROSS_DOMAIN",
@@ -2384,7 +2473,7 @@ DOMAIN_ROUTING_RULES: tuple[_DomainRule, ...] = (
             "procurement_identity", "document_role", "document_relationship",
             "package_completeness", "service_category", "procurement_structure",
         ),
-        entity_prefixes=("ident", "doc-", "rel-", "pkg", "cat-"),
+        entity_prefixes=("ident", "doc-", "rel-", "pkg", "cat-", "doc.", "rel."),
     ),
 )
 
@@ -2417,9 +2506,10 @@ def route_change_to_domains(fact: FactChange) -> ChangeRoutingDecision:
 
     for rule in DOMAIN_ROUTING_RULES:
         matched = False
-        if norm_ft in rule.fact_types:
+        norm_rule_fts = {_normalize_key(ft) for ft in rule.fact_types}
+        if norm_ft in norm_rule_fts:
             matched = True
-        elif any(norm_eid.startswith(prefix) for prefix in rule.entity_prefixes):
+        elif any(norm_eid.startswith(_normalize_key(prefix)) for prefix in rule.entity_prefixes):
             matched = True
         elif rule.keywords and any(kw in norm_ft or kw in norm_eid for kw in rule.keywords):
             matched = True
@@ -2451,6 +2541,7 @@ def generate_revision_impact_plan(
     authoritative_state: AuthoritativeProcurementState | None = None,
     existing_findings: Sequence[dict[str, Any]] | None = None,
     *,
+    applied: bool = False,
     bid_id: int | None = None,
 ) -> RevisionImpactPlan:
     """Generates the deterministic RevisionImpactPlan for an applied revision/changeset.
@@ -2458,15 +2549,23 @@ def generate_revision_impact_plan(
     Does NOT run specialists or make model calls."""
     is_rev = isinstance(change_set_or_revision, ProcurementRevision)
     rev_num = change_set_or_revision.revision_number if is_rev else change_set_or_revision.revision
+    rev_id = change_set_or_revision.revision_id if is_rev else f"changeset-rev-{rev_num}"
     change_set = change_set_or_revision.change_set if is_rev else change_set_or_revision
     cs_fp = change_set.fingerprint or ""
 
     state_fp = authoritative_state.state_fingerprint if authoritative_state is not None else ""
 
-    # Authority boundary check: if revision has unresolved chronology, it is not applied
-    if is_rev and change_set_or_revision.chronology_unresolved:
+    is_applied = (
+        change_set_or_revision.is_applied
+        and change_set_or_revision.review_status == "applied"
+        and not change_set_or_revision.chronology_unresolved
+    ) if is_rev else applied
+
+    # Authority boundary check: only applied revisions/changesets can mutate canonical intelligence
+    if not is_applied:
         return RevisionImpactPlan(
             revision_number=rev_num,
+            revision_id=rev_id,
             change_set_fingerprint=cs_fp,
             state_fingerprint=state_fp,
             affected_domains=[],
@@ -2479,7 +2578,7 @@ def generate_revision_impact_plan(
             finding_impacts={
                 str(f.get("finding_id")): {
                     "status": FINDING_STATUS_RETAINED,
-                    "reasons": [{"rule": "UNAPPLIED_REVISION_CANONICAL_UNTOUCHED"}],
+                    "reasons": [{"rule": "UNAPPLIED_BUYER_UPDATE_CANONICAL_UNTOUCHED"}],
                 }
                 for f in (existing_findings or [])
                 if isinstance(f, dict) and f.get("finding_id")
@@ -2491,7 +2590,7 @@ def generate_revision_impact_plan(
     affected_domains_set: set[str] = set()
     routing_reasons_list: list[dict[str, Any]] = []
 
-    # Collect changed entity keys for finding dependency matching
+    # Collect changed entity keys for finding dependency matching ONLY from changes with affected domains
     changed_keys: set[str] = set()
     normalized_changed_keys: set[str] = set()
 
@@ -2506,30 +2605,30 @@ def generate_revision_impact_plan(
             affected_domains_set.update(decision.affected_domains)
             routing_reasons_list.append(decision.to_dict())
 
-        # Collect keys
-        for val in (c.entity_id, c.fact_type, c.metadata.get("canonical_id")):
-            if val:
-                variants = _expand_key_variants(val)
+            # Collect keys ONLY if this change affected at least one domain
+            for val in (c.entity_id, c.fact_type, c.metadata.get("canonical_id")):
+                if val:
+                    variants = _expand_key_variants(val)
+                    changed_keys.update(variants)
+                    normalized_changed_keys.update(_normalize_key(v) for v in variants)
+
+            if isinstance(c.metadata.get("canonical_ids"), (list, tuple)):
+                for cid in c.metadata["canonical_ids"]:
+                    variants = _expand_key_variants(cid)
+                    changed_keys.update(variants)
+                    normalized_changed_keys.update(_normalize_key(v) for v in variants)
+
+            if c.metadata.get("artifact_id"):
+                variants = _expand_key_variants(c.metadata["artifact_id"])
                 changed_keys.update(variants)
                 normalized_changed_keys.update(_normalize_key(v) for v in variants)
 
-        if isinstance(c.metadata.get("canonical_ids"), (list, tuple)):
-            for cid in c.metadata["canonical_ids"]:
-                variants = _expand_key_variants(cid)
+            # Artifact replacement
+            if (c.fact_type in ("artifact_replacement", "pricing_form", "revised_form") or c.change_type == CHANGE_REPLACES) and c.before_value:
+                b_val = c.before_value.get("name") if isinstance(c.before_value, dict) else str(c.before_value)
+                variants = _expand_key_variants(b_val)
                 changed_keys.update(variants)
                 normalized_changed_keys.update(_normalize_key(v) for v in variants)
-
-        if c.metadata.get("artifact_id"):
-            variants = _expand_key_variants(c.metadata["artifact_id"])
-            changed_keys.update(variants)
-            normalized_changed_keys.update(_normalize_key(v) for v in variants)
-
-        # Artifact replacement
-        if (c.fact_type in ("artifact_replacement", "pricing_form", "revised_form") or c.change_type == CHANGE_REPLACES) and c.before_value:
-            b_val = c.before_value.get("name") if isinstance(c.before_value, dict) else str(c.before_value)
-            variants = _expand_key_variants(b_val)
-            changed_keys.update(variants)
-            normalized_changed_keys.update(_normalize_key(v) for v in variants)
 
     # Check superseded artifacts in state
     if authoritative_state is not None:
@@ -2596,6 +2695,7 @@ def generate_revision_impact_plan(
 
     return RevisionImpactPlan(
         revision_number=rev_num,
+        revision_id=rev_id,
         change_set_fingerprint=cs_fp,
         state_fingerprint=state_fp,
         affected_domains=sorted(affected_domains_set),

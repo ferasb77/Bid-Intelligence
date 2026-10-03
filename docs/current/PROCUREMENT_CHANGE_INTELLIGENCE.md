@@ -84,7 +84,7 @@ Durable objects:
 - `ProcurementRevision`: Immutable revision node in chronological chain with parent pointer, separating system revision from buyer chronology, with `chronology_unresolved` and `no_canonical_change` flags
 - `AuthoritativeProcurementState`: Deterministically derived current state separating active facts, superseded facts, pending conflicts, and active artifacts
 - `PCIBaseStorage` / `InMemoryPCIStorage` / `PCIDatabaseStorage`: Durable adapters mapping PCI state to Migration 010 persistence, RPC lifecycle, and human review gating
-- `RevisionImpactPlan`: Deterministic routing and finding staleness contract for PCI-B2 incremental execution
+- `RevisionImpactPlan`: Deterministic routing and finding staleness contract for PCI-B2 incremental execution, including unique `revision_id` event identity
 - `DomainRoutingReason` / `ChangeRoutingDecision`: Explainable deterministic routing decisions
 
 Key invariants:
@@ -99,17 +99,21 @@ Key invariants:
 - Human review is strictly gated: pending, rejected, or conflicting changes are never auto-approved
 - Apply is all-or-nothing: unapproved changes or unresolved chronology block canonical revision advance
 - Exact source provenance: every fact change must trace to a verified document ID and matching hash
-- Routing consumes ONLY applied authoritative changes; unapplied updates do not invalidate canonical intelligence
-- Domain routing uses the closed vocabulary of 6 existing specialist domains
+- Routing consumes ONLY applied authoritative changes; unapplied updates (`review_status != "applied"`, e.g. `ready_for_review`, `analyzing`, `failed`) do not mutate canonical truth and return zero canonical impact (`UNAPPLIED_BUYER_UPDATE_CANONICAL_UNTOUCHED`)
+- Raw `ProcurementChangeSet` requires explicit `applied=True` to route, defaulting to fail-closed
+- Domain routing uses the closed vocabulary of 6 existing specialist domains and accepts legacy PCI-A vocabulary (`DEADLINE`, `WEIGHT`, `COMMERCIAL`, `SCOPE`, `ARTIFACT`, etc.)
+- Prefix matching normalizes dot, colon, hyphen, and underscore delimiters identically
+- Finding dependencies bridge canonical prefixes (`CRIT-...`, `SCOPE-...`, `OBL-...`) to FactChange entities without manual metadata injection
 - Staleness is strictly dependency-based; new revisions do not stale unrelated findings
 - Replaced artifacts invalidate only findings citing that artifact
 - Findings with insufficient dependency metadata fail safely to UNRESOLVED (never silently RETAINED)
-- Zero-impact administrative updates affect 0 domains and stale 0 findings
-- Revision impact plans are 100% deterministic and idempotent
+- Zero-impact administrative updates affect 0 domains, do not register changed keys, and stale 0 findings
+- Revision impact plans are 100% deterministic and idempotent with stable event identity (`revision_id`)
+- Ambiguous integer revision numbers matching multiple revisions fail closed via manager
 - Pure application-layer routing with zero external model calls and zero database migrations
 
 Tests:
-`tests/test_procurement_change_intelligence.py` (60 passed, 0 failed):
+`tests/test_procurement_change_intelligence.py` (70 passed, 0 failed):
 - Fixtures A through J (10 tests)
 - Concurrency and optimistic locking (3 tests)
 - Invariant verification (4 tests)
@@ -121,9 +125,10 @@ Tests:
 - PCI-A.2 Governed Apply & Durable Chronology regression tests (5 tests)
 - PCI-A.2.1 Human-Review Gate & Source Provenance tests (6 tests)
 - PCI-B1 Impact Routing & Intelligence Dependency tests (14 tests: Fixtures A-J, domain vocabulary parity, zero-impact administrative, idempotency, manager integration)
+- PCI-B1.1 Applied-State & Compatibility tests (10 tests: Tests A through J covering applied gating, chronology gating, unapplied impact plan, raw changeset fail-closed, vocabulary compatibility, prefix normalization, canonical-id bridge, zero-impact key filtering, stable event identity, ambiguous revision number fail-closed)
 
 Open issues:
-None for PCI-B1. Impact routing and finding dependency model fully closed.
+None for PCI-B1 / PCI-B1.1. Applied-state gating and impact compatibility fully closed.
 
 Next phase:
 PCI-B2 — Incremental Specialist Execution + Delta Reconciliation
