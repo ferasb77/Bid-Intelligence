@@ -180,6 +180,11 @@ class PCIContextBindingError(PCIEngineError):
     """Raised when a procurement change cannot be safely or deterministically bound to canonical objects."""
 
 
+class RevisionNotCurrentError(PCIEngineError):
+    """Raised when an incremental Full Analysis is requested for a revision
+    that is not the latest applied revision (Requirement 1: REVISION_NOT_CURRENT)."""
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 3. Document Classification & Chronology Extraction (Sections 5 & 7)
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1668,15 +1673,20 @@ class ProcurementRevisionManager:
         return proc_state.get("procurement_revision", max(self._revisions.keys(), default=-1))
 
     def get_revision(self, revision_number: int) -> ProcurementRevision | None:
+        self.get_all_revisions()
         return self._revisions.get(revision_number)
 
     def get_revision_by_id(self, revision_id: str) -> ProcurementRevision | None:
-        for rev in self._all_revisions:
+        for rev in self.get_all_revisions():
             if rev.revision_id == revision_id:
                 return rev
         return None
 
     def get_all_revisions(self) -> list[ProcurementRevision]:
+        reloaded = self.storage.load_revisions(self.bid_id, self.organization_id)
+        if reloaded and len(reloaded) > len(self._all_revisions):
+            self._all_revisions = list(reloaded)
+            self._revisions = {r.revision_number: r for r in reloaded}
         return sorted(self._all_revisions, key=lambda r: (r.buyer_chronology_index, r.revision_number))
 
     def get_current_state(self) -> AuthoritativeProcurementState:
@@ -2107,6 +2117,32 @@ class ProcurementRevisionManager:
         state = self.get_current_state()
         return generate_revision_impact_plan(rev, state, existing_findings, bid_id=self.bid_id)
 
+    def get_current_canonical_view(
+        self,
+        canonical_package: Any,
+        up_to_revision: int | str | ProcurementRevision | None = None,
+    ) -> CurrentCanonicalView:
+        """Derives the unified CurrentCanonicalView for the bid up to the specified revision."""
+        all_revs = self.get_all_revisions()
+        target_rev = None
+        if up_to_revision is not None:
+            if isinstance(up_to_revision, ProcurementRevision):
+                target_rev = up_to_revision
+            elif isinstance(up_to_revision, str):
+                target_rev = self.get_revision_by_id(up_to_revision)
+            elif isinstance(up_to_revision, int):
+                matching = [r for r in all_revs if r.revision_number == up_to_revision]
+                if matching:
+                    target_rev = matching[0]
+        up_to_num = target_rev.revision_number if target_rev else None
+        up_to_chrono = target_rev.buyer_chronology_index if target_rev else None
+        return derive_current_canonical_view(
+            canonical_package,
+            all_revs,
+            up_to_revision_number=up_to_num,
+            up_to_buyer_chronology_index=up_to_chrono,
+        )
+
     def get_revision_specialist_context(
         self,
         target: int | str | ProcurementRevision,
@@ -2114,6 +2150,7 @@ class ProcurementRevisionManager:
         canonical_package: Any,
         prior_findings: Sequence[Any] | None = None,
         impact_plan: RevisionImpactPlan | None = None,
+        current_canonical_view: CurrentCanonicalView | None = None,
     ) -> RevisionSpecialistContext:
         """Constructs authoritative RevisionSpecialistContext for an affected specialist domain.
         Fails closed with PCIContextNotEligibleError if unapplied, conflicted, or unaffected."""
@@ -2140,6 +2177,8 @@ class ProcurementRevisionManager:
         state = self.get_current_state()
         if impact_plan is None:
             impact_plan = self.get_revision_impact_plan(rev, existing_findings=prior_findings)
+        if current_canonical_view is None:
+            current_canonical_view = self.get_current_canonical_view(canonical_package, up_to_revision=rev)
 
         return build_revision_specialist_context(
             specialist_id=specialist_id,
@@ -2149,6 +2188,7 @@ class ProcurementRevisionManager:
             impact_plan=impact_plan,
             prior_specialist_findings=prior_findings,
             bid_id=self.bid_id,
+            current_canonical_view=current_canonical_view,
         )
 
 
@@ -2894,6 +2934,85 @@ class RevisionSpecialistContext:
     to_dict = as_dict
 
 
+@dataclass(frozen=True)
+class CurrentCanonicalView:
+    """Current Authoritative Canonical View (PCI-B2B.1).
+    Derived deterministically by replaying all applied revisions against the base
+    CanonicalPackage. Provides the unified, cumulative authoritative procurement truth
+    for specialists and reconciliation."""
+    bid_id: int
+    analysis_run_id: int
+    package_digest: str
+    identity: MappingProxyType
+    document_roles: tuple[dict[str, Any], ...]
+    document_relationships: tuple[dict[str, Any], ...]
+    package_completeness: MappingProxyType
+    service_categories: tuple[dict[str, Any], ...]
+    requirements: tuple[dict[str, Any], ...]
+    scoped_criteria: tuple[dict[str, Any], ...]
+    category_scope_items: tuple[dict[str, Any], ...]
+    commercial_obligations: tuple[dict[str, Any], ...]
+    milestones: tuple[dict[str, Any], ...]
+    submission_mechanics: MappingProxyType
+    canonical_ids: frozenset[str]
+    active_revision_facts: tuple[RevisionFact, ...] = ()
+    removed_canonical_ids: frozenset[str] = frozenset()
+    base_package_digest: str = ""
+
+    def objects_of_type(self, object_type: str) -> tuple[dict[str, Any], ...]:
+        from full_analysis import (
+            OBJ_PROCUREMENT_IDENTITY,
+            OBJ_DOCUMENT_ROLE,
+            OBJ_DOCUMENT_RELATIONSHIP,
+            OBJ_PACKAGE_COMPLETENESS,
+            OBJ_SERVICE_CATEGORY,
+            OBJ_CANONICAL_REQUIREMENT,
+            OBJ_SCOPED_EVALUATION_CRITERION,
+            OBJ_CATEGORY_SCOPE_ITEM,
+            OBJ_COMMERCIAL_OBLIGATION,
+            OBJ_SCOPED_MILESTONE,
+            OBJ_SUBMISSION_MECHANICS,
+        )
+        mapping = {
+            OBJ_PROCUREMENT_IDENTITY: (dict(self.identity),),
+            OBJ_DOCUMENT_ROLE: tuple(self.document_roles),
+            OBJ_DOCUMENT_RELATIONSHIP: tuple(self.document_relationships),
+            OBJ_PACKAGE_COMPLETENESS: (dict(self.package_completeness),),
+            OBJ_SERVICE_CATEGORY: tuple(self.service_categories),
+            OBJ_CANONICAL_REQUIREMENT: tuple(self.requirements),
+            OBJ_SCOPED_EVALUATION_CRITERION: tuple(self.scoped_criteria),
+            OBJ_CATEGORY_SCOPE_ITEM: tuple(self.category_scope_items),
+            OBJ_COMMERCIAL_OBLIGATION: tuple(self.commercial_obligations),
+            OBJ_SCOPED_MILESTONE: tuple(self.milestones),
+            OBJ_SUBMISSION_MECHANICS: (dict(self.submission_mechanics),),
+        }
+        return mapping.get(object_type, ())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "bid_id": self.bid_id,
+            "analysis_run_id": self.analysis_run_id,
+            "package_digest": self.package_digest,
+            "base_package_digest": self.base_package_digest,
+            "identity": dict(self.identity),
+            "document_roles": list(self.document_roles),
+            "document_relationships": list(self.document_relationships),
+            "package_completeness": dict(self.package_completeness),
+            "service_categories": list(self.service_categories),
+            "requirements": list(self.requirements),
+            "scoped_criteria": list(self.scoped_criteria),
+            "category_scope_items": list(self.category_scope_items),
+            "commercial_obligations": list(self.commercial_obligations),
+            "milestones": list(self.milestones),
+            "submission_mechanics": dict(self.submission_mechanics),
+            "canonical_ids": sorted(self.canonical_ids),
+            "active_revision_facts": [rf.as_dict() for rf in self.active_revision_facts],
+            "removed_canonical_ids": sorted(self.removed_canonical_ids),
+        }
+
+    as_dict = to_dict
+
+
 def _slug(text: Any, limit: int = 40) -> str:
     cleaned = re.sub(r'[^a-z0-9]+', '-', str(text or "").strip().lower()).strip('-')
     return cleaned[:limit] or "x"
@@ -2911,6 +3030,324 @@ def _digest(payload: Any) -> str:
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
     ).hexdigest()
+
+
+def derive_current_canonical_view(
+    package: Any,
+    revisions: Sequence[ProcurementRevision],
+    up_to_revision_number: int | None = None,
+    up_to_buyer_chronology_index: int | None = None,
+) -> CurrentCanonicalView:
+    """Deterministically replay all applied revisions against the base CanonicalPackage
+    up to the target revision / buyer chronology index.
+    Produces the authoritative, unified CurrentCanonicalView (PCI-B2B.1)."""
+    from full_analysis import (
+        OBJ_PROCUREMENT_IDENTITY,
+        OBJ_DOCUMENT_ROLE,
+        OBJ_DOCUMENT_RELATIONSHIP,
+        OBJ_PACKAGE_COMPLETENESS,
+        OBJ_SERVICE_CATEGORY,
+        OBJ_CANONICAL_REQUIREMENT,
+        OBJ_SCOPED_EVALUATION_CRITERION,
+        OBJ_CATEGORY_SCOPE_ITEM,
+        OBJ_COMMERCIAL_OBLIGATION,
+        OBJ_SCOPED_MILESTONE,
+        OBJ_SUBMISSION_MECHANICS,
+    )
+
+    base_digest = getattr(package, "package_digest", "") or ""
+    bid_id = getattr(package, "bid_id", 0)
+    analysis_run_id = getattr(package, "analysis_run_id", 0)
+
+    # 1. Base mutable pools (deep-copied from base package)
+    raw_ident = getattr(package, "identity", {})
+    identity_dict = copy.deepcopy(dict(raw_ident) if isinstance(raw_ident, (dict, MappingProxyType)) else {})
+    if "fields" not in identity_dict:
+        identity_dict["fields"] = {}
+    else:
+        identity_dict["fields"] = copy.deepcopy(dict(identity_dict["fields"]))
+
+    raw_comp = getattr(package, "package_completeness", {})
+    completeness_dict = copy.deepcopy(dict(raw_comp) if isinstance(raw_comp, (dict, MappingProxyType)) else {})
+
+    raw_sub = getattr(package, "submission_mechanics", {})
+    submission_dict = copy.deepcopy(dict(raw_sub) if isinstance(raw_sub, (dict, MappingProxyType)) else {})
+    if "page_limits" in submission_dict:
+        submission_dict["page_limits"] = copy.deepcopy(dict(submission_dict["page_limits"]))
+
+    roles_by_id = {
+        d["canonical_id"]: copy.deepcopy(d)
+        for d in (getattr(package, "document_roles", ()) or ())
+        if isinstance(d, dict) and d.get("canonical_id")
+    }
+    rels_by_id = {
+        r["canonical_id"]: copy.deepcopy(r)
+        for r in (getattr(package, "document_relationships", ()) or ())
+        if isinstance(r, dict) and r.get("canonical_id")
+    }
+    cats_by_label = {
+        c["label"]: copy.deepcopy(c)
+        for c in (getattr(package, "service_categories", ()) or ())
+        if isinstance(c, dict) and c.get("label")
+    }
+    criteria_by_id = {
+        c["canonical_id"]: copy.deepcopy(c)
+        for c in (getattr(package, "scoped_criteria", ()) or ())
+        if isinstance(c, dict) and c.get("canonical_id")
+    }
+    scope_by_id = {
+        s["canonical_id"]: copy.deepcopy(s)
+        for s in (getattr(package, "category_scope_items", ()) or ())
+        if isinstance(s, dict) and s.get("canonical_id")
+    }
+    reqs_by_id = {
+        r["canonical_id"]: copy.deepcopy(r)
+        for r in (getattr(package, "requirements", ()) or ())
+        if isinstance(r, dict) and r.get("canonical_id")
+    }
+    obls_by_id = {
+        o["canonical_id"]: copy.deepcopy(o)
+        for o in (getattr(package, "commercial_obligations", ()) or ())
+        if isinstance(o, dict) and o.get("canonical_id")
+    }
+    ms_by_id = {
+        m["canonical_id"]: copy.deepcopy(m)
+        for m in (getattr(package, "milestones", ()) or ())
+        if isinstance(m, dict) and m.get("canonical_id")
+    }
+
+    # 2. Filter applied revisions up to the requested target
+    applied = [
+        r for r in revisions
+        if r.is_applied and r.review_status == "applied" and not r.chronology_unresolved
+    ]
+    ordered_revs = sorted(applied, key=lambda r: (r.buyer_chronology_index, r.revision_number))
+    if up_to_buyer_chronology_index is not None:
+        ordered_revs = [r for r in ordered_revs if r.buyer_chronology_index <= up_to_buyer_chronology_index]
+    if up_to_revision_number is not None:
+        ordered_revs = [r for r in ordered_revs if r.revision_number <= up_to_revision_number]
+
+    active_revision_facts: dict[str, RevisionFact] = {}
+    removed_canonical_ids: set[str] = set()
+
+    for rev in ordered_revs:
+        for c in rev.change_set.changes:
+            if c.review_status != REVIEW_STATUS_APPROVED or c.change_type == CHANGE_CONFLICTS_WITH:
+                continue
+            if c.change_type == CHANGE_UNCHANGED:
+                continue
+
+            # Candidate pool of current active objects
+            candidate_pool = (
+                list(criteria_by_id.values())
+                + list(scope_by_id.values())
+                + list(reqs_by_id.values())
+                + list(obls_by_id.values())
+                + list(ms_by_id.values())
+                + list(roles_by_id.values())
+                + list(rels_by_id.values())
+                + [submission_dict, identity_dict, completeness_dict]
+            )
+
+            matched_obj, _ = _match_canonical_object(c, candidate_pool)
+
+            matched_rf = None
+            if matched_obj is None:
+                meta_cid = c.metadata.get("canonical_id")
+                if meta_cid and meta_cid in active_revision_facts:
+                    matched_rf = active_revision_facts[meta_cid]
+                elif c.entity_id in active_revision_facts:
+                    matched_rf = active_revision_facts[c.entity_id]
+                else:
+                    rf_matches = [rf for rf in active_revision_facts.values() if rf.entity_id == c.entity_id]
+                    if len(rf_matches) == 1:
+                        matched_rf = rf_matches[0]
+
+            if matched_obj is not None:
+                cid = matched_obj.get("canonical_id")
+                if c.change_type == CHANGE_REMOVES:
+                    if cid:
+                        removed_canonical_ids.add(cid)
+                        criteria_by_id.pop(cid, None)
+                        scope_by_id.pop(cid, None)
+                        reqs_by_id.pop(cid, None)
+                        obls_by_id.pop(cid, None)
+                        ms_by_id.pop(cid, None)
+                        roles_by_id.pop(cid, None)
+                        rels_by_id.pop(cid, None)
+                else:
+                    _apply_change_overlay(matched_obj, c, rev)
+                    if matched_obj.get("object_type") == OBJ_SUBMISSION_MECHANICS or cid == "SUBMISSION":
+                        submission_dict.update(matched_obj)
+                        if "submission_deadline" in matched_obj:
+                            identity_dict.setdefault("fields", {})["submission_deadline"] = {
+                                "value": matched_obj["submission_deadline"],
+                                "source_doc": c.source_document,
+                            }
+                        if "clarification_deadline" in matched_obj:
+                            identity_dict.setdefault("fields", {})["clarification_deadline"] = {
+                                "value": matched_obj["clarification_deadline"],
+                                "source_doc": c.source_document,
+                            }
+                    elif matched_obj.get("object_type") == OBJ_PROCUREMENT_IDENTITY or cid == "IDENT":
+                        identity_dict.update(matched_obj)
+
+            elif matched_rf is not None:
+                fid = matched_rf.fact_id
+                if c.change_type == CHANGE_REMOVES:
+                    removed_canonical_ids.add(fid)
+                    active_revision_facts.pop(fid, None)
+                else:
+                    updated_desc = c.metadata.get("description")
+                    if not updated_desc:
+                        updated_desc = str(c.after_value) if not isinstance(c.after_value, dict) else c.after_value.get("description", matched_rf.description)
+                    updated_rf = replace(
+                        matched_rf,
+                        value=c.after_value,
+                        change_type=c.change_type,
+                        authority_status=c.authority_status,
+                        review_status=c.review_status,
+                        description=updated_desc,
+                        metadata=dict(c.metadata),
+                    )
+                    active_revision_facts[fid] = updated_rf
+
+            else:
+                if c.change_type == CHANGE_ADDS:
+                    if c.source_document_id is not None and c.source_hash:
+                        fact_id = f"REV-FACT-{_slug(c.entity_id)}"
+                        eff_date = getattr(rev, "effective_date", None) or getattr(rev, "buyer_issued_date", None)
+                        rf = RevisionFact(
+                            fact_id=fact_id,
+                            fact_type=c.fact_type,
+                            entity_id=c.entity_id,
+                            value=c.after_value,
+                            change_type=c.change_type,
+                            source_document_id=c.source_document_id,
+                            source_document=c.source_document,
+                            source_hash=c.source_hash,
+                            revision_id=rev.revision_id,
+                            revision_number=rev.revision_number,
+                            effective_date=eff_date,
+                            authority_status=c.authority_status,
+                            review_status=c.review_status,
+                            description=c.metadata.get("description") or (str(c.after_value) if not isinstance(c.after_value, dict) else c.after_value.get("description")),
+                            metadata=dict(c.metadata),
+                        )
+                        active_revision_facts[fact_id] = rf
+                elif c.change_type == CHANGE_REMOVES:
+                    rem_id = c.metadata.get("canonical_id") or c.entity_id
+                    if rem_id:
+                        removed_canonical_ids.add(rem_id)
+                        criteria_by_id.pop(rem_id, None)
+                        scope_by_id.pop(rem_id, None)
+                        reqs_by_id.pop(rem_id, None)
+                        obls_by_id.pop(rem_id, None)
+                        ms_by_id.pop(rem_id, None)
+                        active_revision_facts.pop(rem_id, None)
+
+    active_criteria = tuple(
+        c for cid, c in criteria_by_id.items() if cid not in removed_canonical_ids
+    )
+    active_scope = tuple(
+        s for sid, s in scope_by_id.items() if sid not in removed_canonical_ids
+    )
+
+    # Recalculate derived service categories deterministically
+    all_cat_labels = sorted(
+        {c.get("category_scope") for c in active_criteria if c.get("category_scope")}
+        | {s.get("category_scope") for s in active_scope if s.get("category_scope")}
+        | set(cats_by_label.keys())
+    )
+    derived_categories = []
+    for label in all_cat_labels:
+        crit_count = sum(1 for c in active_criteria if c.get("category_scope") == label)
+        scope_count = sum(1 for s in active_scope if s.get("category_scope") == label)
+        cid = f"CAT-{_slug(label)}"
+        derived_categories.append({
+            "canonical_id": cid,
+            "object_type": OBJ_SERVICE_CATEGORY,
+            "label": label,
+            "criterion_count": crit_count,
+            "scope_item_count": scope_count,
+        })
+    service_categories = tuple(derived_categories)
+
+    # Active requirements = native non-removed + active REV-FACT requirements
+    reqs_list = [r for cid, r in reqs_by_id.items() if cid not in removed_canonical_ids]
+    for fid, rf in sorted(active_revision_facts.items()):
+        ft = _normalize_key(rf.fact_type)
+        if "req" in ft or "compliance" in ft or "mandatory" in ft or "requirement" in ft:
+            req_obj = {
+                "canonical_id": rf.fact_id,
+                "object_type": OBJ_CANONICAL_REQUIREMENT,
+                "description": rf.description or str(rf.value),
+                "requirement_type": "MANDATORY" if "mandatory" in ft else "STANDARD",
+                "semantic_type": "MANDATORY_REQUIREMENT" if "mandatory" in ft else "GENERAL_REQUIREMENT",
+                "applicability": "ALL",
+                "applicable_category_ids": [],
+                "source_docs": [rf.source_document] if rf.source_document else [],
+                "source_refs": [f"doc:{rf.source_document_id}"] if rf.source_document_id else [],
+                "source_document_id": rf.source_document_id,
+                "revision_number": rf.revision_number,
+                "last_modified_revision": rf.revision_number,
+            }
+            reqs_list.append(req_obj)
+    requirements = tuple(reqs_list)
+
+    commercial_obligations = tuple(
+        o for oid, o in obls_by_id.items() if oid not in removed_canonical_ids
+    )
+    milestones = tuple(
+        m for mid, m in ms_by_id.items() if mid not in removed_canonical_ids
+    )
+    document_roles = tuple(
+        d for did, d in roles_by_id.items() if did not in removed_canonical_ids
+    )
+    document_relationships = tuple(
+        r for rid, r in rels_by_id.items() if rid not in removed_canonical_ids
+    )
+
+    all_cids = {"IDENT", "SUBMISSION", "PKG"}
+    for group in (document_roles, document_relationships, service_categories, requirements,
+                  active_criteria, active_scope, commercial_obligations, milestones):
+        all_cids |= {o["canonical_id"] for o in group if o.get("canonical_id")}
+    for fid in active_revision_facts.keys():
+        all_cids.add(fid)
+    all_cids -= removed_canonical_ids
+
+    view_digest_payload = {
+        "identity": identity_dict,
+        "document_roles": list(document_roles),
+        "requirements": list(requirements),
+        "scoped_criteria": list(active_criteria),
+        "category_scope_items": list(active_scope),
+        "commercial_obligations": list(commercial_obligations),
+        "milestones": list(milestones),
+        "submission": submission_dict,
+    }
+    current_view_digest = _digest(view_digest_payload)
+
+    return CurrentCanonicalView(
+        bid_id=bid_id,
+        analysis_run_id=analysis_run_id,
+        package_digest=current_view_digest,
+        base_package_digest=base_digest,
+        identity=MappingProxyType(identity_dict),
+        document_roles=document_roles,
+        document_relationships=document_relationships,
+        package_completeness=MappingProxyType(completeness_dict),
+        service_categories=service_categories,
+        requirements=requirements,
+        scoped_criteria=active_criteria,
+        category_scope_items=active_scope,
+        commercial_obligations=commercial_obligations,
+        milestones=milestones,
+        submission_mechanics=MappingProxyType(submission_dict),
+        canonical_ids=frozenset(all_cids),
+        active_revision_facts=tuple(active_revision_facts.values()),
+        removed_canonical_ids=frozenset(removed_canonical_ids),
+    )
 
 
 def _clean_obj_for_fingerprint(obj: Any) -> Any:
@@ -3331,6 +3768,8 @@ def _apply_change_overlay(
         else:
             obj["clause_text"] = str(val)
             obj["current_value"] = val
+            obj["value"] = val
+            obj["summary"] = str(val)
 
     elif obj_type == OBJ_CATEGORY_SCOPE_ITEM:
         if isinstance(val, dict):
@@ -3338,6 +3777,7 @@ def _apply_change_overlay(
         else:
             obj["text"] = str(val)
             obj["scope_item"] = str(val)
+            obj["description"] = str(val)
 
     elif obj_type == OBJ_CANONICAL_REQUIREMENT:
         if isinstance(val, dict):
@@ -3436,6 +3876,8 @@ def build_revision_specialist_context(
     impact_plan: RevisionImpactPlan,
     prior_specialist_findings: Sequence[Any] | None = None,
     bid_id: int | None = None,
+    *,
+    current_canonical_view: CurrentCanonicalView | None = None,
 ) -> RevisionSpecialistContext:
     """Builds authoritative, revision-aware specialist execution context for ONE affected domain.
 
@@ -3444,12 +3886,13 @@ def build_revision_specialist_context(
     - Revision has unresolved chronology conflicts
     - Specialist domain is not among impact_plan.affected_domains
 
-    Overlay rules:
+    Overlay rules (PCI-B2B.1):
     - Base CanonicalPackage remains strictly immutable.
-    - Updated values replace stale baseline values in relevant_current_canonical_objects.
+    - Updated values in relevant_current_canonical_objects reflect cumulative active truth through current revision.
     - Removed facts are completely excluded from relevant_current_canonical_objects.
+    - relevant_changes reflects TARGET REVISION DELTA only.
     - Additive facts are represented as grounded RevisionFact instances.
-    - permitted_canonical_ids contains only active canonical IDs + revision fact IDs.
+    - permitted_canonical_ids contains only active canonical IDs + active revision fact IDs.
     - Unresolved bindings mark is_executable = False and set blocking_reason.
     """
     # 1. Authoritative Eligibility Checks (fail-closed)
@@ -3472,9 +3915,10 @@ def build_revision_specialist_context(
         )
 
     # 2. Extract deep-copied canonical objects for this specialist slice
-    extracted_objects = _extract_package_objects(canonical_package, specialist_id)
+    source_package = current_canonical_view if current_canonical_view is not None else canonical_package
+    extracted_objects = _extract_package_objects(source_package, specialist_id)
 
-    # 3. Route and filter changes relevant to this specialist
+    # 3. Route and filter changes relevant to this specialist (TARGET REVISION DELTA)
     relevant_changes_list: list[dict[str, Any]] = []
     for change in revision.change_set.changes:
         if change.review_status != REVIEW_STATUS_APPROVED or change.change_type == CHANGE_CONFLICTS_WITH:
@@ -3496,9 +3940,25 @@ def build_revision_specialist_context(
     is_executable = True
     blocking_reasons: list[str] = []
 
+    active_facts_map = {
+        rf.fact_id: rf for rf in getattr(current_canonical_view, "active_revision_facts", ())
+    } if current_canonical_view else {}
+
     for c_dict in relevant_changes_list:
         change = FactChange.from_dict(c_dict)
         matched_obj, unresolve_reason = _match_canonical_object(change, extracted_objects)
+
+        matched_rf = None
+        if matched_obj is None and active_facts_map:
+            meta_cid = change.metadata.get("canonical_id")
+            if meta_cid and meta_cid in active_facts_map:
+                matched_rf = active_facts_map[meta_cid]
+            elif change.entity_id in active_facts_map:
+                matched_rf = active_facts_map[change.entity_id]
+            else:
+                rf_matches = [rf for rf in active_facts_map.values() if rf.entity_id == change.entity_id]
+                if len(rf_matches) == 1:
+                    matched_rf = rf_matches[0]
 
         if matched_obj is not None:
             cid = matched_obj.get("canonical_id")
@@ -3516,7 +3976,8 @@ def build_revision_specialist_context(
                     binding_rationale=f"Bound to existing canonical object {cid} for removal",
                 ))
             else:
-                _apply_change_overlay(matched_obj, change, revision)
+                if current_canonical_view is None:
+                    _apply_change_overlay(matched_obj, change, revision)
                 change_bindings.append(ChangeBinding(
                     change_id=change.entity_id or change.fact_type,
                     entity_id=change.entity_id,
@@ -3525,6 +3986,29 @@ def build_revision_specialist_context(
                     canonical_id=cid,
                     object_type=otype,
                     binding_rationale=f"Bound to existing canonical object {cid} and applied overlay",
+                ))
+        elif matched_rf is not None:
+            fid = matched_rf.fact_id
+            if change.change_type == CHANGE_REMOVES:
+                removed_canonical_ids.add(fid)
+                change_bindings.append(ChangeBinding(
+                    change_id=change.entity_id or change.fact_type,
+                    entity_id=change.entity_id,
+                    fact_type=change.fact_type,
+                    binding_type=BINDING_REVISION_FACT,
+                    canonical_id=fid,
+                    object_type="REVISION_FACT",
+                    binding_rationale=f"Bound to active revision fact {fid} for removal",
+                ))
+            else:
+                change_bindings.append(ChangeBinding(
+                    change_id=change.entity_id or change.fact_type,
+                    entity_id=change.entity_id,
+                    fact_type=change.fact_type,
+                    binding_type=BINDING_REVISION_FACT,
+                    canonical_id=fid,
+                    object_type="REVISION_FACT",
+                    binding_rationale=f"Bound to active revision fact {fid} and applied update",
                 ))
         else:
             if change.change_type == CHANGE_ADDS:
@@ -3571,6 +4055,18 @@ def build_revision_specialist_context(
                         object_type=None,
                         binding_rationale=reason,
                     ))
+            elif change.change_type == CHANGE_REMOVES:
+                rem_id = change.metadata.get("canonical_id") or change.entity_id
+                removed_canonical_ids.add(rem_id)
+                change_bindings.append(ChangeBinding(
+                    change_id=change.entity_id or change.fact_type,
+                    entity_id=change.entity_id,
+                    fact_type=change.fact_type,
+                    binding_type=BINDING_EXISTING_CANONICAL if change.metadata.get("canonical_id") else BINDING_UNRESOLVED,
+                    canonical_id=rem_id,
+                    object_type=None,
+                    binding_rationale=f"Removed canonical id {rem_id}",
+                ))
             else:
                 is_executable = False
                 reason = unresolve_reason or f"Target canonical object for '{change.entity_id}' (change_type='{change.change_type}') could not be resolved"
@@ -3584,6 +4080,36 @@ def build_revision_specialist_context(
                     object_type=None,
                     binding_rationale=reason,
                 ))
+
+    # Incorporate cumulative active revision facts if current_canonical_view is provided
+    if current_canonical_view is not None:
+        target_domain = _canonical_domain(specialist_id)
+        active_cum_facts = []
+        for rf in current_canonical_view.active_revision_facts:
+            if rf.fact_id in removed_canonical_ids:
+                continue
+            ft = _normalize_key(rf.fact_type)
+            if target_domain == "requirements_compliance" and ("req" in ft or "compliance" in ft or "mandatory" in ft or "requirement" in ft):
+                active_cum_facts.append(rf)
+            else:
+                dummy_change = FactChange(
+                    change_type=rf.change_type,
+                    fact_type=rf.fact_type,
+                    entity_id=rf.entity_id,
+                    before_value=None,
+                    after_value=rf.value,
+                    source_document=rf.source_document,
+                    source_hash=rf.source_hash,
+                    source_document_id=rf.source_document_id,
+                    review_status=REVIEW_STATUS_APPROVED,
+                )
+                routing = route_change_to_domains(dummy_change)
+                if specialist_id in routing.affected_domains:
+                    active_cum_facts.append(rf)
+        for rf in revision_facts:
+            if not any(x.fact_id == rf.fact_id for x in active_cum_facts):
+                active_cum_facts.append(rf)
+        revision_facts = active_cum_facts
 
     # 5. Filter removed canonical objects
     current_canonical_objects = [

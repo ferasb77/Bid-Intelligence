@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import copy
+import dataclasses
 import hashlib
 import unittest
 from unittest.mock import MagicMock, patch
@@ -5339,6 +5340,584 @@ class TestPCIB2BIncrementalExecution(unittest.TestCase):
         res = self.fake_db.results[new_run_id]["full_analysis_result"]
         total_calls = res.get("usage", {}).get("total_calls")
         self.assertEqual(total_calls, 2)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 16. Test Suite: PCI-B2B.1 Cumulative Authoritative Truth & Multi-Hop Invariants
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestPCIB2B1CumulativeTruth(TestPCIB2BIncrementalExecution):
+    """Verifies PCI-B2B.1 cumulative authoritative truth preservation across multi-hop revisions:
+    - Target revision delta vs cumulative active state distinction
+    - Deterministic CurrentCanonicalView duck-typed for CanonicalPackage
+    - Carry-forward of active REV-FACTs with original provenance
+    - Removal via ChangeBinding canonical ID
+    - Stale / Unresolved finding domain resolution
+    - Current-revision fail-closed gate
+    - Immutability of baseline and historical runs
+    """
+
+    # ── Required Sequential Multi-Hop Test (30% -> 35% -> Deadline) ───────────
+    def test_sequential_cumulative_state_preservation(self):
+        """Sequential test: Rev 0 (30%, Oct 22) -> Rev 1 (35%) -> Rev 2 (Oct 29).
+        At Rev 2, only Schedule specialist runs (1 call) + reconciliation (1 call).
+        Reconciliation canonical view contains BOTH 35% weight and Oct 29 deadline.
+        Baseline Run 0 and Rev 1 Run remain unchanged.
+        """
+        # Rev 1: Firm Experience weight 30% -> 35%
+        crit_cid = self.pkg.scoped_criteria[0]["canonical_id"]
+        c1 = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="weight",
+            entity_id="eval.firm_experience.weight",
+            before_value=30,
+            after_value=35,
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+            metadata={"canonical_id": crit_cid},
+        )
+        rev1 = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-seq-1",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[c1]),
+            fingerprint="fp_seq_1",
+            review_status="applied",
+            is_current=True,
+        )
+        self.storage.persist_revision(self.bid_id, self.org_id, rev1, expected_base_revision=0)
+
+        # Run 1 at Rev 1
+        client1 = PCIB2BMockClient()
+        out1 = fas.start_revision_full_analysis(
+            self.bid_id, rev1, client=client1, package_builder=lambda _: self.pkg,
+            pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+        )
+        self.assertEqual(out1["outcome"], fas.OUTCOME_CREATED)
+        run1_id = out1["run"]["id"]
+        run1_snapshot = copy.deepcopy(self.fake_db.runs[run1_id])
+
+        # Rev 2: Submission deadline 2026-11-01 -> 2026-11-15
+        c2 = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="submission_deadline",
+            entity_id="sub:deadline",
+            before_value="2026-11-01",
+            after_value="2026-11-15",
+            source_document="Addendum 2.pdf",
+            source_hash="h_add2",
+            source_document_id=3,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+            metadata={"canonical_id": "SUBMISSION"},
+        )
+        rev2 = pci.ProcurementRevision(
+            revision_number=2,
+            revision_id="bid-1417-rev-seq-2",
+            parent_revision_id="bid-1417-rev-seq-1",
+            buyer_chronology_index=2,
+            buyer_issued_date="2026-10-10",
+            trigger_documents=[{"document_id": 3, "name": "Addendum 2.pdf", "content_hash": "h_add2"}],
+            change_set=pci.ProcurementChangeSet(revision=2, previous_revision=1, source_documents=[], changes=[c2]),
+            fingerprint="fp_seq_2",
+            review_status="applied",
+            is_current=True,
+        )
+        self.storage.persist_revision(self.bid_id, self.org_id, rev2, expected_base_revision=1)
+
+        captured_recon_prompts = []
+
+        def handler(prompt):
+            if "RECONCILIATION" in prompt:
+                captured_recon_prompts.append(prompt)
+                return {
+                    "cross_domain_risks": [], "contradictions": [],
+                    "unresolved_ambiguities": [], "human_confirmation_required": [],
+                    "completeness_note": "Reconciliation verified cumulative state",
+                }
+            return None
+
+        client2 = PCIB2BMockClient(handler=handler)
+        out2 = fas.start_revision_full_analysis(
+            self.bid_id, rev2, client=client2, package_builder=lambda _: self.pkg,
+            pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+        )
+        self.assertEqual(out2["outcome"], fas.OUTCOME_CREATED)
+        run2_id = out2["run"]["id"]
+
+        # Exactly 2 provider calls at Rev 2: 1 schedule specialist + 1 reconciliation
+        self.assertEqual(len(client2.prompts), 2)
+
+        # Evaluation specialist carried forward with 0 calls
+        specs2 = self.fake_db.get_full_analysis_specialist_results(run2_id)
+        eval_spec = next(s for s in specs2 if s["specialist_id"] == fa.SPECIALIST_EVALUATION_INTELLIGENCE)
+        self.assertEqual(eval_spec["result"]["usage"]["calls"], 0)
+
+        # Reconciliation prompt contains BOTH 35% weight and 2026-11-15 deadline
+        self.assertEqual(len(captured_recon_prompts), 1)
+        recon_prompt = captured_recon_prompts[0]
+        self.assertIn('"weight": 35', recon_prompt)
+        self.assertIn("2026-11-15", recon_prompt)
+        self.assertNotIn('"weight": 30,', recon_prompt)
+
+        # Base CanonicalPackage remains strictly immutable
+        orig_crit = next(o for o in self.pkg.scoped_criteria if o["canonical_id"] == crit_cid)
+        self.assertEqual(orig_crit["weight"], "30")
+
+        # Prior runs remain immutable
+        self.assertEqual(self.fake_db.runs[run1_id], run1_snapshot)
+
+    # ── Test A: Additive ISO requirement at Rev 1 persists at Rev 2 ───────────
+    def test_multihop_a_additive_iso_requirement_persists(self):
+        c_add = pci.FactChange(
+            change_type=pci.CHANGE_ADDS,
+            fact_type="requirement",
+            entity_id="req:iso_27001",
+            before_value=None,
+            after_value="Vendor must be ISO 27001 certified.",
+            source_document="Addendum 1.pdf",
+            source_hash="h_iso",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        rev1 = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-iso-1",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_iso"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[c_add]),
+            fingerprint="fp_iso_1",
+            review_status="applied",
+            is_current=True,
+        )
+        self.storage.persist_revision(self.bid_id, self.org_id, rev1, expected_base_revision=0)
+
+        c_dead = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="submission_deadline",
+            entity_id="sub:deadline",
+            before_value="2026-11-01",
+            after_value="2026-11-20",
+            source_document="Addendum 2.pdf",
+            source_hash="h_dead",
+            source_document_id=3,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+            metadata={"canonical_id": "SUBMISSION"},
+        )
+        rev2 = pci.ProcurementRevision(
+            revision_number=2,
+            revision_id="bid-1417-rev-iso-2",
+            parent_revision_id="bid-1417-rev-iso-1",
+            buyer_chronology_index=2,
+            buyer_issued_date="2026-10-10",
+            trigger_documents=[{"document_id": 3, "name": "Addendum 2.pdf", "content_hash": "h_dead"}],
+            change_set=pci.ProcurementChangeSet(revision=2, previous_revision=1, source_documents=[], changes=[c_dead]),
+            fingerprint="fp_iso_2",
+            review_status="applied",
+            is_current=True,
+        )
+        self.storage.persist_revision(self.bid_id, self.org_id, rev2, expected_base_revision=1)
+
+        canonical_view = self.manager.get_current_canonical_view(self.pkg, up_to_revision=rev2)
+        req_cids = [r["canonical_id"] for r in canonical_view.requirements]
+        self.assertIn("REV-FACT-req-iso-27001", req_cids)
+
+        # Check provenance preserved
+        iso_req = next(r for r in canonical_view.requirements if r["canonical_id"] == "REV-FACT-req-iso-27001")
+        self.assertEqual(iso_req["revision_number"], 1)
+        self.assertEqual(iso_req["source_document_id"], 2)
+
+    # ── Test B: Native REQ-17 removal at Rev 1 persists at Rev 2 ──────────────
+    def test_multihop_b_native_req_removal_persists(self):
+        target_req = self.pkg.requirements[0]["canonical_id"]
+        c_rem = pci.FactChange(
+            change_type=pci.CHANGE_REMOVES,
+            fact_type="requirement",
+            entity_id=target_req,
+            before_value="Previous requirement text",
+            after_value=None,
+            source_document="Addendum 1.pdf",
+            source_hash="h_rem",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+            metadata={"canonical_id": target_req},
+        )
+        rev1 = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-rem-1",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_rem"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[c_rem]),
+            fingerprint="fp_rem_1",
+            review_status="applied",
+            is_current=True,
+        )
+        self.storage.persist_revision(self.bid_id, self.org_id, rev1, expected_base_revision=0)
+
+        c_dead = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="submission_deadline",
+            entity_id="sub:deadline",
+            before_value="2026-11-01",
+            after_value="2026-11-20",
+            source_document="Addendum 2.pdf",
+            source_hash="h_dead",
+            source_document_id=3,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+            metadata={"canonical_id": "SUBMISSION"},
+        )
+        rev2 = pci.ProcurementRevision(
+            revision_number=2,
+            revision_id="bid-1417-rev-rem-2",
+            parent_revision_id="bid-1417-rev-rem-1",
+            buyer_chronology_index=2,
+            buyer_issued_date="2026-10-10",
+            trigger_documents=[{"document_id": 3, "name": "Addendum 2.pdf", "content_hash": "h_dead"}],
+            change_set=pci.ProcurementChangeSet(revision=2, previous_revision=1, source_documents=[], changes=[c_dead]),
+            fingerprint="fp_rem_2",
+            review_status="applied",
+            is_current=True,
+        )
+        self.storage.persist_revision(self.bid_id, self.org_id, rev2, expected_base_revision=1)
+
+        canonical_view = self.manager.get_current_canonical_view(self.pkg, up_to_revision=rev2)
+        req_cids = [r["canonical_id"] for r in canonical_view.requirements]
+        self.assertNotIn(target_req, req_cids)
+
+    # ── Test C: Commercial obligation (CGL 10M) persists at Rev 2 ─────────────
+    def test_multihop_c_commercial_obligation_persists(self):
+        obl_cid = self.pkg.commercial_obligations[0]["canonical_id"]
+        c_cgl = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="commercial_obligation",
+            entity_id="comm:cgl",
+            before_value="5,000,000 CAD",
+            after_value="10,000,000 CAD",
+            source_document="Addendum 1.pdf",
+            source_hash="h_cgl",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+            metadata={"canonical_id": obl_cid},
+        )
+        rev1 = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-cgl-1",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_cgl"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[c_cgl]),
+            fingerprint="fp_cgl_1",
+            review_status="applied",
+            is_current=True,
+        )
+        self.storage.persist_revision(self.bid_id, self.org_id, rev1, expected_base_revision=0)
+
+        c_dead = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="submission_deadline",
+            entity_id="sub:deadline",
+            before_value="2026-11-01",
+            after_value="2026-11-20",
+            source_document="Addendum 2.pdf",
+            source_hash="h_dead",
+            source_document_id=3,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+            metadata={"canonical_id": "SUBMISSION"},
+        )
+        rev2 = pci.ProcurementRevision(
+            revision_number=2,
+            revision_id="bid-1417-rev-cgl-2",
+            parent_revision_id="bid-1417-rev-cgl-1",
+            buyer_chronology_index=2,
+            buyer_issued_date="2026-10-10",
+            trigger_documents=[{"document_id": 3, "name": "Addendum 2.pdf", "content_hash": "h_dead"}],
+            change_set=pci.ProcurementChangeSet(revision=2, previous_revision=1, source_documents=[], changes=[c_dead]),
+            fingerprint="fp_cgl_2",
+            review_status="applied",
+            is_current=True,
+        )
+        self.storage.persist_revision(self.bid_id, self.org_id, rev2, expected_base_revision=1)
+
+        canonical_view = self.manager.get_current_canonical_view(self.pkg, up_to_revision=rev2)
+        obl = next(o for o in canonical_view.commercial_obligations if o["canonical_id"] == obl_cid)
+        self.assertEqual(obl.get("summary") or obl.get("value"), "10,000,000 CAD")
+
+    # ── Test D: Scope deliverable narrowing persists at Rev 2 ─────────────────
+    def test_multihop_d_scope_narrowing_persists(self):
+        scope_cid = self.pkg.category_scope_items[0]["canonical_id"]
+        c_scope = pci.FactChange(
+            change_type=pci.CHANGE_NARROWS,
+            fact_type="scope_deliverable",
+            entity_id="scope:training",
+            before_value="100% in-person",
+            after_value="25% in-person, 75% virtual",
+            source_document="Addendum 1.pdf",
+            source_hash="h_sc",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+            metadata={"canonical_id": scope_cid},
+        )
+        rev1 = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-sc-1",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_sc"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[c_scope]),
+            fingerprint="fp_sc_1",
+            review_status="applied",
+            is_current=True,
+        )
+        self.storage.persist_revision(self.bid_id, self.org_id, rev1, expected_base_revision=0)
+
+        c_dead = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="submission_deadline",
+            entity_id="sub:deadline",
+            before_value="2026-11-01",
+            after_value="2026-11-20",
+            source_document="Addendum 2.pdf",
+            source_hash="h_dead",
+            source_document_id=3,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+            metadata={"canonical_id": "SUBMISSION"},
+        )
+        rev2 = pci.ProcurementRevision(
+            revision_number=2,
+            revision_id="bid-1417-rev-sc-2",
+            parent_revision_id="bid-1417-rev-sc-1",
+            buyer_chronology_index=2,
+            buyer_issued_date="2026-10-10",
+            trigger_documents=[{"document_id": 3, "name": "Addendum 2.pdf", "content_hash": "h_dead"}],
+            change_set=pci.ProcurementChangeSet(revision=2, previous_revision=1, source_documents=[], changes=[c_dead]),
+            fingerprint="fp_sc_2",
+            review_status="applied",
+            is_current=True,
+        )
+        self.storage.persist_revision(self.bid_id, self.org_id, rev2, expected_base_revision=1)
+
+        canonical_view = self.manager.get_current_canonical_view(self.pkg, up_to_revision=rev2)
+        item = next(o for o in canonical_view.category_scope_items if o["canonical_id"] == scope_cid)
+        self.assertEqual(item.get("description"), "25% in-person, 75% virtual")
+
+    # ── Test E: Removal using ChangeBinding canonical_id ─────────────────────
+    def test_multihop_e_removal_with_change_binding_canonical_id(self):
+        target_cid = self.pkg.requirements[0]["canonical_id"]
+        # FactChange entity_id is semantic but metadata contains canonical_id
+        c_rem = pci.FactChange(
+            change_type=pci.CHANGE_REMOVES,
+            fact_type="requirement",
+            entity_id="semantic_mandatory_bilingual",
+            before_value="Mandatory bilingualism",
+            after_value=None,
+            source_document="Addendum 1.pdf",
+            source_hash="h_rem_bind",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+            metadata={"canonical_id": target_cid},
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-bind-rem",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_rem_bind"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[c_rem]),
+            fingerprint="fp_bind_rem",
+            review_status="applied",
+            is_current=True,
+        )
+        self.storage.persist_revision(self.bid_id, self.org_id, rev, expected_base_revision=0)
+
+        canonical_view = self.manager.get_current_canonical_view(self.pkg, up_to_revision=rev)
+        req_cids = [r["canonical_id"] for r in canonical_view.requirements]
+        self.assertNotIn(target_cid, req_cids)
+
+    # ── Test F: Stale finding expands affected domains ───────────────────────
+    def test_multihop_f_stale_finding_expands_affected_domains(self):
+        # A change on an entity matching a Commercial finding dependency,
+        # but with a fact_type that does NOT normally route to Commercial.
+        c = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="submission_deadline",
+            entity_id="custom.comm.key",
+            before_value="old",
+            after_value="new",
+            source_document="Addendum 1.pdf",
+            source_hash="h_comm_stale",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+            metadata={"canonical_id": "SUBMISSION"},
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-stale-expand",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_comm_stale"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[c]),
+            fingerprint="fp_stale_expand",
+            review_status="applied",
+            is_current=True,
+        )
+        self.storage.persist_revision(self.bid_id, self.org_id, rev, expected_base_revision=0)
+
+        # Mutate Commercial prior finding in fake_db to depend on custom.comm.key
+        for sr in self.fake_db.specialist_results:
+            if sr["specialist_id"] == fa.SPECIALIST_COMMERCIAL_CONTRACTUAL:
+                sr["result"]["findings"][0]["dependencies"] = ["custom.comm.key"]
+
+        client = PCIB2BMockClient()
+        out = fas.start_revision_full_analysis(
+            self.bid_id, rev, client=client, package_builder=lambda _: self.pkg,
+            pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+        )
+        self.assertEqual(out["outcome"], fas.OUTCOME_CREATED)
+        res = self.fake_db.results[out["run"]["id"]]["full_analysis_result"]
+        rev_update = res.get("revision_update", {})
+        # Both Schedule (from change) and Commercial (from stale finding) are affected
+        self.assertIn(fa.SPECIALIST_COMMERCIAL_CONTRACTUAL, rev_update.get("affected_domains", []))
+        self.assertIn(fa.SPECIALIST_SCHEDULE_SUBMISSION, rev_update.get("affected_domains", []))
+
+    # ── Test G: Unresolved finding refreshes producer domain ──────────────────
+    def test_multihop_g_unresolved_finding_refreshes_producer_domain(self):
+        # When an unresolved finding producer is known, that producer domain is refreshed
+        c = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="submission_deadline",
+            entity_id="sub:deadline",
+            before_value="2026-11-01",
+            after_value="2026-11-20",
+            source_document="Addendum 1.pdf",
+            source_hash="h_dead_unres",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+            metadata={"canonical_id": "SUBMISSION"},
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-unres-prod",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_dead_unres"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[c]),
+            fingerprint="fp_unres_prod",
+            review_status="applied",
+            is_current=True,
+        )
+        self.storage.persist_revision(self.bid_id, self.org_id, rev, expected_base_revision=0)
+
+        # Mock generate_revision_impact_plan to return an unresolved finding from REQUIREMENTS_COMPLIANCE
+        orig_gen_plan = pci.generate_revision_impact_plan
+
+        def mock_gen_plan(*args, **kwargs):
+            plan = orig_gen_plan(*args, **kwargs)
+            req_fid = f"{fa.SPECIALIST_REQUIREMENTS_COMPLIANCE}:0"
+            return dataclasses.replace(
+                plan,
+                unresolved_finding_ids=[req_fid],
+                fingerprint="",
+            )
+
+        with patch("procurement_change_intelligence.generate_revision_impact_plan", side_effect=mock_gen_plan):
+            client = PCIB2BMockClient()
+            out = fas.start_revision_full_analysis(
+                self.bid_id, rev, client=client, package_builder=lambda _: self.pkg,
+                pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+            )
+            self.assertEqual(out["outcome"], fas.OUTCOME_CREATED)
+            res = self.fake_db.results[out["run"]["id"]]["full_analysis_result"]
+            self.assertIn(fa.SPECIALIST_REQUIREMENTS_COMPLIANCE, res.get("revision_update", {}).get("affected_domains", []))
+
+        # Unknown producer fails closed
+        def mock_gen_plan_unknown(*args, **kwargs):
+            plan = orig_gen_plan(*args, **kwargs)
+            return dataclasses.replace(
+                plan,
+                unresolved_finding_ids=["UNKNOWN_DOMAIN:99"],
+                fingerprint="",
+            )
+
+        with patch("procurement_change_intelligence.generate_revision_impact_plan", side_effect=mock_gen_plan_unknown):
+            with self.assertRaises(pci.PCIEngineError):
+                fas.start_revision_full_analysis(
+                    self.bid_id, rev, client=PCIB2BMockClient(), package_builder=lambda _: self.pkg,
+                    pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+                )
+
+    # ── Test H: Current-Revision Gate fails closed on older revision ───────────
+    def test_multihop_h_current_revision_gate_fails_closed(self):
+        c1 = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="weight",
+            entity_id="eval.weight",
+            before_value=30,
+            after_value=35,
+            source_document="Addendum 1.pdf",
+            source_hash="h1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        rev1 = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-gate-1",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[c1]),
+            fingerprint="fp_gate_1",
+            review_status="applied",
+            is_current=True,
+        )
+        self.storage.persist_revision(self.bid_id, self.org_id, rev1, expected_base_revision=0)
+
+        c2 = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="submission_deadline",
+            entity_id="sub:deadline",
+            before_value="2026-11-01",
+            after_value="2026-11-15",
+            source_document="Addendum 2.pdf",
+            source_hash="h2",
+            source_document_id=3,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        rev2 = pci.ProcurementRevision(
+            revision_number=2,
+            revision_id="bid-1417-rev-gate-2",
+            parent_revision_id="bid-1417-rev-gate-1",
+            buyer_chronology_index=2,
+            buyer_issued_date="2026-10-10",
+            trigger_documents=[{"document_id": 3, "name": "Addendum 2.pdf", "content_hash": "h2"}],
+            change_set=pci.ProcurementChangeSet(revision=2, previous_revision=1, source_documents=[], changes=[c2]),
+            fingerprint="fp_gate_2",
+            review_status="applied",
+            is_current=True,
+        )
+        self.storage.persist_revision(self.bid_id, self.org_id, rev2, expected_base_revision=1)
+
+        # Calling start_revision_full_analysis targeting Rev 1 when Rev 2 is applied must fail closed
+        with self.assertRaises(fas.RevisionNotCurrentError) as ctx:
+            fas.start_revision_full_analysis(
+                self.bid_id, rev1, client=PCIB2BMockClient(), package_builder=lambda _: self.pkg,
+                pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+            )
+        self.assertIn("REVISION_NOT_CURRENT", str(ctx.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

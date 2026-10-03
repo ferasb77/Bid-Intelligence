@@ -2094,7 +2094,7 @@ def run_full_analysis(package: CanonicalPackage, api_key: str | None = None, *,
 # ═══════════════════════════════════════════════════════════════════════
 
 def build_revision_reconciliation_input(
-    package: CanonicalPackage,
+    canonical_view: Any,
     contexts: dict[str, Any],
     specialist_results: list[SpecialistResult],
     *,
@@ -2102,20 +2102,26 @@ def build_revision_reconciliation_input(
     removed_ids: set[str] | None = None,
 ) -> dict:
     """The MINIMAL payload the revision-aware reconciliation stage receives.
-    Adapts base package canonical values with CURRENT authoritative values
-    from contexts and revision facts without mutating the base package."""
-    removed = set(removed_ids or ())
+    Consumes CURRENT authoritative values directly from canonical_view (CurrentCanonicalView
+    or CanonicalPackage) without mutating the base package (PCI-B2B.1)."""
+    removed = set(removed_ids or ()) | set(getattr(canonical_view, "removed_canonical_ids", ()))
 
-    # 1. Identity overlay
-    identity_fields = {k: v["value"] for k, v in list(dict(package.identity)["fields"].items())[:12]}
+    # 1. Identity
+    raw_ident = getattr(canonical_view, "identity", {})
+    if isinstance(raw_ident, (dict, MappingProxyType)) and "fields" in raw_ident:
+        identity_fields = {k: v["value"] for k, v in list(dict(raw_ident["fields"]).items())[:12] if isinstance(v, dict) and "value" in v}
+    elif isinstance(raw_ident, (dict, MappingProxyType)):
+        identity_fields = {k: v["value"] for k, v in list(dict(raw_ident).items())[:12] if isinstance(v, dict) and "value" in v}
+    else:
+        identity_fields = {}
 
     # 2. Scoped criteria overlay
     criteria_by_id = {
         c["canonical_id"]: dict(c)
-        for c in package.scoped_criteria
+        for c in (getattr(canonical_view, "scoped_criteria", ()) or ())
         if c["canonical_id"] not in removed
     }
-    for ctx in contexts.values():
+    for ctx in (contexts or {}).values():
         for obj in getattr(ctx, "relevant_current_canonical_objects", ()):
             cid = obj.get("canonical_id")
             if cid and cid in criteria_by_id:
@@ -2125,22 +2131,35 @@ def build_revision_reconciliation_input(
                     criteria_by_id[cid]["criterion"] = obj["criterion"]
 
     # 3. Requirements overlay
-    req_ids = [r["canonical_id"] for r in package.requirements if r["canonical_id"] not in removed]
-    for rf in (revision_facts or ()):
+    req_ids = [
+        r["canonical_id"] for r in (getattr(canonical_view, "requirements", ()) or ())
+        if r["canonical_id"] not in removed
+    ]
+    all_rev_facts = list(revision_facts or ()) + list(getattr(canonical_view, "active_revision_facts", ()))
+    for rf in all_rev_facts:
         fid = getattr(rf, "fact_id", None) or getattr(rf, "canonical_id", None)
-        if fid and fid not in req_ids:
+        if fid and fid not in req_ids and fid not in removed:
             req_ids.append(fid)
 
     # 4. Obligations overlay
-    obligations = [dict(o) for o in package.commercial_obligations if o["canonical_id"] not in removed]
+    obligations = [
+        dict(o) for o in (getattr(canonical_view, "commercial_obligations", ()) or ())
+        if o["canonical_id"] not in removed
+    ]
 
     # 5. Milestones overlay
-    milestones = [dict(m) for m in package.milestones if m["canonical_id"] not in removed]
+    milestones = [
+        dict(m) for m in (getattr(canonical_view, "milestones", ()) or ())
+        if m["canonical_id"] not in removed
+    ]
 
     # 6. Submission mechanics overlay
-    submission = {k: v for k, v in dict(package.submission_mechanics).items()
-                  if k in ("submission_deadline", "clarification_deadline")}
-    for ctx in contexts.values():
+    raw_sub = getattr(canonical_view, "submission_mechanics", {})
+    submission = {
+        k: v for k, v in dict(raw_sub).items()
+        if k in ("submission_deadline", "clarification_deadline")
+    }
+    for ctx in (contexts or {}).values():
         for ch in getattr(ctx, "relevant_changes", ()):
             ft = ch.get("fact_type", "")
             if ft in ("submission_deadline", "deadline") and ch.get("after_value"):
@@ -2153,7 +2172,7 @@ def build_revision_reconciliation_input(
         "service_categories": [{"canonical_id": c["canonical_id"], "label": c["label"],
                                 "criterion_count": c["criterion_count"],
                                 "scope_item_count": c["scope_item_count"]}
-                               for c in package.service_categories],
+                               for c in (getattr(canonical_view, "service_categories", ()) or ())],
         "requirement_ids": req_ids,
         "criterion_index": [{"canonical_id": c["canonical_id"],
                              "category_scope": c["category_scope"],
@@ -2186,7 +2205,7 @@ def build_revision_reconciliation_input(
 
 
 def run_revision_reconciliation(
-    package: CanonicalPackage,
+    canonical_view: Any,
     contexts: dict[str, Any],
     specialist_results: list[SpecialistResult],
     *,
@@ -2197,7 +2216,7 @@ def run_revision_reconciliation(
     removed_ids: set[str] | None = None,
 ) -> ReconciliationResult:
     """Revision-aware reconciliation stage. Cross-validates outputs against
-    CURRENT authoritative truth."""
+    CURRENT authoritative truth (PCI-B2B.1)."""
     t0 = time.monotonic()
     out = ReconciliationResult()
     out.incomplete_domains = [
@@ -2205,18 +2224,20 @@ def run_revision_reconciliation(
         for r in specialist_results if r.status != STATUS_COMPLETE
     ]
 
+    all_removed = set(removed_ids or ()) | set(getattr(canonical_view, "removed_canonical_ids", ()))
+
     merged, duplicates = consolidate_findings(specialist_results)
-    merged, overrides = enforce_canonical_authority(merged, package)
+    merged, overrides = enforce_canonical_authority(merged, canonical_view)
     out.reconciled_findings = merged
     out.duplicate_findings = duplicates
     out.canonical_authority_overrides = overrides
 
-    orphaned = detect_orphaned_requirements(package, specialist_results)
-    if removed_ids:
-        orphaned = [o for o in orphaned if o["canonical_id"] not in removed_ids]
+    orphaned = detect_orphaned_requirements(canonical_view, specialist_results)
+    if all_removed:
+        orphaned = [o for o in orphaned if o["canonical_id"] not in all_removed]
     out.orphaned_requirements = orphaned
-    out.category_scope_inconsistencies = detect_category_scope_inconsistencies(package, specialist_results)
-    out.evaluation_scope_mismatches = detect_evaluation_scope_mismatches(package)
+    out.category_scope_inconsistencies = detect_category_scope_inconsistencies(canonical_view, specialist_results)
+    out.evaluation_scope_mismatches = detect_evaluation_scope_mismatches(canonical_view)
     out.unresolved_ambiguities = [
         {"title": f["title"], "detail": f["detail"], "canonical_ids": f.get("canonical_ids", []),
          "produced_by": f.get("produced_by", [])}
@@ -2224,18 +2245,21 @@ def run_revision_reconciliation(
     ]
 
     payload = build_revision_reconciliation_input(
-        package, contexts, specialist_results, revision_facts=revision_facts, removed_ids=removed_ids
+        canonical_view, contexts, specialist_results, revision_facts=revision_facts, removed_ids=all_removed
     )
     prompt = (
         _RECONCILIATION_RULES.strip() + "\n\nSPECIALIST OUTPUTS AND CURRENT CANONICAL INDEX:\n"
         + json.dumps(payload, indent=1, ensure_ascii=False, default=str)
     )
     finding_ids = {f["finding_id"] for r in specialist_results for f in r.findings}
-    permitted_cids = (set(package.canonical_ids) - (removed_ids or set()))
+    permitted_cids = (set(canonical_view.canonical_ids) - all_removed)
     for rf in (revision_facts or ()):
         fid = getattr(rf, "fact_id", None) or getattr(rf, "canonical_id", None)
         if fid:
             permitted_cids.add(fid)
+    for rf in getattr(canonical_view, "active_revision_facts", ()):
+        if rf.fact_id:
+            permitted_cids.add(rf.fact_id)
 
     try:
         before = len(telemetry)
@@ -2303,11 +2327,13 @@ def run_revision_full_analysis(
     revision_facts: Sequence[Any] | None = None,
     removed_ids: set[str] | None = None,
     revision_update_metadata: dict | None = None,
+    canonical_view: Any = None,
 ) -> FullAnalysisResult:
     """Run an incremental revision Full Analysis.
     Reruns ONLY affected specialists against CURRENT authoritative truth;
     carries forward unaffected specialist results with 0 provider calls;
-    runs ONE revision-aware reconciliation; persists a complete 6-domain result."""
+    runs ONE revision-aware reconciliation against unified CurrentCanonicalView;
+    persists a complete 6-domain result."""
     started = datetime.now(timezone.utc)
     t0 = time.monotonic()
     if client is None:
@@ -2411,13 +2437,18 @@ def run_revision_full_analysis(
     for sid in affected_ordered:
         telemetry.extend(per_specialist_telemetry[sid])
 
-    # 3. Revision-aware reconciliation
+    # 3. Revision-aware reconciliation against unified current canonical view
     _emit(EVENT_RECONCILIATION_STARTED, {
         "incomplete_domains": [r.specialist_id for r in specialist_results if r.status != STATUS_COMPLETE]
     })
+    canonical_truth = canonical_view if canonical_view is not None else package
     reconciliation = run_revision_reconciliation(
-        package, contexts, specialist_results, client=client, telemetry=telemetry,
+        canonical_truth, contexts, specialist_results, client=client, telemetry=telemetry,
         telemetry_context=telemetry_context, revision_facts=revision_facts, removed_ids=removed_ids
+    )
+    _emit(
+        EVENT_RECONCILIATION_COMPLETED if reconciliation.status in USABLE_STATUSES else EVENT_RECONCILIATION_FAILED,
+        {"reconciliation": reconciliation}
     )
     _emit(
         EVENT_RECONCILIATION_COMPLETED if reconciliation.status in USABLE_STATUSES else EVENT_RECONCILIATION_FAILED,

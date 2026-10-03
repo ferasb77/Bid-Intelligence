@@ -125,6 +125,10 @@ class FullAnalysisBaselineRequiredError(FullAnalysisError):
     """A prior COMPLETE Full Analysis run is required for incremental revision execution."""
 
 
+class RevisionNotCurrentError(FullAnalysisError):
+    """The requested revision is not the latest applied revision (Requirement 1: REVISION_NOT_CURRENT)."""
+
+
 class RunNotFoundError(FullAnalysisError):
     """The requested FULL run does not exist for this bid."""
 
@@ -720,6 +724,7 @@ def _execute_revision_full_analysis_run(
     fingerprint_inputs: dict,
     api_key: str | None,
     client = None,
+    canonical_view = None,
 ) -> None:
     """Execute one already-created revision FULL run to a terminal state."""
     run_id, bid_id = int(run["id"]), int(run["bid_id"])
@@ -727,7 +732,7 @@ def _execute_revision_full_analysis_run(
     recorder = _EventRecorder(run_id, bid_id)
     try:
         recorder.record(EVENT_CANONICAL_PACKAGE_READY, status=RUN_RUNNING,
-                        detail=_package_detail(package, fingerprint))
+                        detail=_package_detail(canonical_view or package, fingerprint))
         if recorder.aborted:
             return
         telemetry_context = {
@@ -783,6 +788,7 @@ def _execute_revision_full_analysis_run(
             revision_facts=all_rev_facts,
             removed_ids=removed_ids,
             revision_update_metadata=revision_update_meta,
+            canonical_view=canonical_view,
         )
 
         delta_summaries = {}
@@ -901,6 +907,33 @@ def start_revision_full_analysis(
             f"Revision {rev.revision_id} has unresolved chronology"
         )
 
+    # 2b. Current-Revision Gate (Fail closed if a later applied revision exists)
+    applied_revs = [
+        r for r in mgr.get_all_revisions()
+        if r.is_applied and r.review_status == "applied" and not r.chronology_unresolved
+    ]
+    if applied_revs:
+        target_key = (
+            rev.buyer_chronology_index if rev.buyer_chronology_index is not None else -1,
+            rev.revision_number,
+        )
+        latest_applied = sorted(
+            applied_revs,
+            key=lambda r: (
+                r.buyer_chronology_index if r.buyer_chronology_index is not None else -1,
+                r.revision_number,
+            )
+        )[-1]
+        latest_key = (
+            latest_applied.buyer_chronology_index if latest_applied.buyer_chronology_index is not None else -1,
+            latest_applied.revision_number,
+        )
+        if target_key < latest_key:
+            raise RevisionNotCurrentError(
+                f"REVISION_NOT_CURRENT: revision {rev.revision_id} (rev #{rev.revision_number}) is not the latest "
+                f"applied revision (latest is {latest_applied.revision_id}, rev #{latest_applied.revision_number})"
+            )
+
     # 3. Resolve prior COMPLETE Full Analysis
     if prior_run_id is not None:
         prior_run = _get_full_run(bid_id, prior_run_id)
@@ -951,6 +984,41 @@ def start_revision_full_analysis(
     # 5. Build RevisionImpactPlan
     impact_plan = mgr.get_revision_impact_plan(rev, existing_findings=prior_findings)
 
+    # 5b. Enforce stale / unresolved finding domain coverage before execution
+    finding_to_producer = {}
+    for sid, sres in prior_spec_results.items():
+        for f in (sres.get("findings") or []):
+            fid = f.get("finding_id")
+            if fid:
+                prod = f.get("produced_by") or sid
+                if isinstance(prod, (list, tuple)) and prod:
+                    prod = prod[0]
+                finding_to_producer[fid] = prod
+
+    effective_affected_domains = set(impact_plan.affected_domains)
+
+    for fid in getattr(impact_plan, "stale_finding_ids", ()):
+        prod = finding_to_producer.get(fid)
+        if prod and prod in fa.SPECIALIST_IDS:
+            effective_affected_domains.add(prod)
+
+    for fid in getattr(impact_plan, "unresolved_finding_ids", ()):
+        prod = finding_to_producer.get(fid)
+        if not prod or prod not in fa.SPECIALIST_IDS:
+            raise pci.PCIEngineError(
+                f"Cannot establish producing specialist domain for unresolved finding {fid}"
+            )
+        effective_affected_domains.add(prod)
+
+    import dataclasses
+    if set(effective_affected_domains) != set(impact_plan.affected_domains):
+        impact_plan = dataclasses.replace(
+            impact_plan,
+            affected_domains=sorted(effective_affected_domains),
+            fingerprint="",
+        )
+        impact_plan.__post_init__()
+
     # 6. Zero-Impact check
     if not impact_plan.affected_domains:
         return {
@@ -963,17 +1031,19 @@ def start_revision_full_analysis(
             "run": None,
         }
 
-    # 7. Assemble CanonicalPackage
+    # 7. Assemble CanonicalPackage and CurrentCanonicalView
     builder = package_builder or _default_package_builder
     source_run_id = int(prior_run["source_analysis_run_id"])
     package = builder(source_run_id)
+    current_canonical_view = mgr.get_current_canonical_view(package, up_to_revision=rev)
 
     # 8. Build and verify RevisionSpecialistContext for each affected domain
     contexts = {}
     for domain in impact_plan.affected_domains:
         ctx = mgr.get_revision_specialist_context(
             rev, specialist_id=domain, canonical_package=package,
-            prior_findings=prior_findings, impact_plan=impact_plan
+            prior_findings=prior_findings, impact_plan=impact_plan,
+            current_canonical_view=current_canonical_view,
         )
         if not ctx.is_executable:
             raise pci.PCIContextNotEligibleError(
@@ -1029,6 +1099,7 @@ def start_revision_full_analysis(
         prior_run=prior_run, impact_plan=impact_plan, revision=rev,
         fingerprint=fingerprint, fingerprint_inputs=fingerprint_inputs,
         api_key=api_key, client=client,
+        canonical_view=current_canonical_view,
     )
     if execution == EXECUTION_INLINE:
         _execute_revision_full_analysis_run(**kwargs)
