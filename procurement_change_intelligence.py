@@ -30,6 +30,7 @@ import json
 import logging
 import re
 import threading
+from types import MappingProxyType
 from typing import Any, Sequence
 
 logger = logging.getLogger(__name__)
@@ -169,6 +170,14 @@ class ChronologyConflictError(PCIEngineError):
 
 class ImmutableRevisionError(PCIEngineError):
     """Raised when an illegal attempt is made to mutate historical revision records."""
+
+
+class PCIContextNotEligibleError(PCIEngineError):
+    """Raised when a revision or specialist domain is not eligible for revision-aware specialist context."""
+
+
+class PCIContextBindingError(PCIEngineError):
+    """Raised when a procurement change cannot be safely or deterministically bound to canonical objects."""
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -436,6 +445,7 @@ class FactChange:
             "review_status": self.review_status,
             "metadata": copy.deepcopy(self.metadata),
         }
+    as_dict = to_dict
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> FactChange:
@@ -2097,6 +2107,50 @@ class ProcurementRevisionManager:
         state = self.get_current_state()
         return generate_revision_impact_plan(rev, state, existing_findings, bid_id=self.bid_id)
 
+    def get_revision_specialist_context(
+        self,
+        target: int | str | ProcurementRevision,
+        specialist_id: str,
+        canonical_package: Any,
+        prior_findings: Sequence[Any] | None = None,
+        impact_plan: RevisionImpactPlan | None = None,
+    ) -> RevisionSpecialistContext:
+        """Constructs authoritative RevisionSpecialistContext for an affected specialist domain.
+        Fails closed with PCIContextNotEligibleError if unapplied, conflicted, or unaffected."""
+        if isinstance(target, ProcurementRevision):
+            rev = target
+        elif isinstance(target, str):
+            rev = self.get_revision_by_id(target)
+            if rev is None:
+                raise PCIEngineError(f"Revision with id '{target}' not found for bid {self.bid_id}.")
+        elif isinstance(target, int):
+            matching = [r for r in self._all_revisions if r.revision_number == target]
+            if not matching:
+                raise PCIEngineError(f"Revision {target} not found for bid {self.bid_id}.")
+            if len(matching) > 1:
+                ids = [r.revision_id for r in matching]
+                raise PCIEngineError(
+                    f"Ambiguous revision_number {target} matches multiple revisions ({ids}). "
+                    f"Use revision_id instead."
+                )
+            rev = matching[0]
+        else:
+            raise TypeError(f"Target must be int, str, or ProcurementRevision, got {type(target).__name__}")
+
+        state = self.get_current_state()
+        if impact_plan is None:
+            impact_plan = self.get_revision_impact_plan(rev, existing_findings=prior_findings)
+
+        return build_revision_specialist_context(
+            specialist_id=specialist_id,
+            revision=rev,
+            procurement_state=state,
+            canonical_package=canonical_package,
+            impact_plan=impact_plan,
+            prior_specialist_findings=prior_findings,
+            bid_id=self.bid_id,
+        )
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 9. Top-Level Production Entrypoint & Rehydration API (Section 15)
@@ -2704,4 +2758,731 @@ def generate_revision_impact_plan(
         unresolved_finding_ids=sorted(unresolved_ids),
         finding_impacts=finding_impacts,
         routing_reasons=routing_reasons_list,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 11. Revision-Aware Specialist Context (PCI-B2A)
+# ═══════════════════════════════════════════════════════════════════════════
+
+BINDING_EXISTING_CANONICAL = "EXISTING_CANONICAL"
+BINDING_REVISION_FACT = "REVISION_FACT"
+BINDING_UNRESOLVED = "UNRESOLVED"
+
+CHANGE_BINDING_TYPES = (
+    BINDING_EXISTING_CANONICAL,
+    BINDING_REVISION_FACT,
+    BINDING_UNRESOLVED,
+)
+
+
+@dataclass(frozen=True)
+class ChangeBinding:
+    """Deterministic binding between a FactChange and a canonical object or revision fact."""
+    change_id: str
+    entity_id: str
+    fact_type: str
+    binding_type: str
+    canonical_id: str | None
+    object_type: str | None
+    binding_rationale: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "change_id": self.change_id,
+            "entity_id": self.entity_id,
+            "fact_type": self.fact_type,
+            "binding_type": self.binding_type,
+            "canonical_id": self.canonical_id,
+            "object_type": self.object_type,
+            "binding_rationale": self.binding_rationale,
+        }
+
+    to_dict = as_dict
+
+
+@dataclass(frozen=True)
+class RevisionFact:
+    """Additive or newly introduced procurement fact created from an applied revision."""
+    fact_id: str
+    fact_type: str
+    entity_id: str
+    value: Any
+    change_type: str
+    source_document_id: int
+    source_document: str
+    source_hash: str
+    revision_id: str
+    revision_number: int
+    effective_date: str | None
+    authority_status: str
+    review_status: str
+    description: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "fact_id": self.fact_id,
+            "canonical_id": self.fact_id,
+            "fact_type": self.fact_type,
+            "entity_id": self.entity_id,
+            "value": self.value,
+            "change_type": self.change_type,
+            "source_document_id": self.source_document_id,
+            "source_document": self.source_document,
+            "source_hash": self.source_hash,
+            "revision_id": self.revision_id,
+            "revision_number": self.revision_number,
+            "effective_date": self.effective_date,
+            "authority_status": self.authority_status,
+            "review_status": self.review_status,
+            "description": self.description,
+            "metadata": dict(self.metadata),
+        }
+
+    to_dict = as_dict
+
+
+@dataclass(frozen=True)
+class RevisionSpecialistContext:
+    """Authoritative revision-aware specialist execution context.
+
+    Carries overlayed current active canonical objects, revision facts,
+    provenance, and filtered prior findings for ONE affected specialist domain.
+    """
+    specialist_id: str
+    revision_number: int
+    revision_id: str
+    bid_id: int | None
+    context_fingerprint: str
+    impacted_domain: str
+    relevant_changes: tuple[dict[str, Any], ...]
+    relevant_current_canonical_objects: tuple[dict[str, Any], ...]
+    revision_facts: tuple[RevisionFact, ...]
+    permitted_canonical_ids: tuple[str, ...]
+    stale_prior_finding_ids: tuple[str, ...]
+    retained_prior_findings: tuple[dict[str, Any], ...]
+    change_bindings: tuple[ChangeBinding, ...]
+    is_executable: bool
+    blocking_reason: str | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "specialist_id": self.specialist_id,
+            "revision_number": self.revision_number,
+            "revision_id": self.revision_id,
+            "bid_id": self.bid_id,
+            "context_fingerprint": self.context_fingerprint,
+            "impacted_domain": self.impacted_domain,
+            "relevant_changes": list(self.relevant_changes),
+            "relevant_current_canonical_objects": list(self.relevant_current_canonical_objects),
+            "revision_facts": [rf.as_dict() for rf in self.revision_facts],
+            "permitted_canonical_ids": list(self.permitted_canonical_ids),
+            "stale_prior_finding_ids": list(self.stale_prior_finding_ids),
+            "retained_prior_findings": list(self.retained_prior_findings),
+            "change_bindings": [cb.as_dict() for cb in self.change_bindings],
+            "is_executable": self.is_executable,
+            "blocking_reason": self.blocking_reason,
+        }
+
+    to_dict = as_dict
+
+
+def _slug(text: Any, limit: int = 40) -> str:
+    cleaned = re.sub(r'[^a-z0-9]+', '-', str(text or "").strip().lower()).strip('-')
+    return cleaned[:limit] or "x"
+
+
+def _thaw(value: Any) -> Any:
+    if isinstance(value, (MappingProxyType, dict)):
+        return {k: _thaw(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [_thaw(v) for v in value]
+    return value
+
+
+def _digest(payload: Any) -> str:
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
+
+
+def compute_specialist_context_fingerprint(
+    specialist_id: str,
+    revision_number: int,
+    revision_id: str,
+    change_set_fingerprint: str,
+    state_fingerprint: str,
+    canonical_package_digest: str,
+    permitted_canonical_ids: Sequence[str],
+    stale_prior_finding_ids: Sequence[str],
+) -> str:
+    """Computes stable, deterministic SHA-256 fingerprint for RevisionSpecialistContext."""
+    payload = {
+        "specialist_id": str(specialist_id),
+        "revision_number": int(revision_number),
+        "revision_id": str(revision_id),
+        "change_set_fingerprint": str(change_set_fingerprint),
+        "state_fingerprint": str(state_fingerprint),
+        "canonical_package_digest": str(canonical_package_digest),
+        "permitted_canonical_ids": sorted(set(str(x) for x in permitted_canonical_ids)),
+        "stale_prior_finding_ids": sorted(set(str(x) for x in stale_prior_finding_ids)),
+    }
+    return _digest(payload)
+
+
+def _extract_package_objects(canonical_package: Any, specialist_id: str) -> list[dict[str, Any]]:
+    """Extracts deep-copied, mutable dictionary representations of canonical objects
+    permitted for specialist_id without mutating the underlying canonical package."""
+    from full_analysis import CANONICAL_OBJECT_TYPES, SPECIALIST_INPUT_TYPES, CanonicalBoundaryError
+
+    if specialist_id not in SPECIALIST_INPUT_TYPES:
+        raise CanonicalBoundaryError(f"unknown specialist id: {specialist_id!r}")
+
+    permitted_types = SPECIALIST_INPUT_TYPES[specialist_id]
+    extracted: list[dict[str, Any]] = []
+
+    for obj_type in CANONICAL_OBJECT_TYPES:
+        if obj_type not in permitted_types:
+            continue
+
+        raw_objs: Sequence[Any] = []
+        if hasattr(canonical_package, "objects_of_type"):
+            try:
+                raw_objs = canonical_package.objects_of_type(obj_type)
+            except Exception:
+                raw_objs = []
+        elif isinstance(canonical_package, dict):
+            raw_objs = canonical_package.get("objects", {}).get(obj_type, [])
+            if not raw_objs and obj_type in canonical_package:
+                raw_objs = canonical_package[obj_type]
+        else:
+            attr_name = obj_type.lower()
+            if hasattr(canonical_package, attr_name):
+                raw_objs = getattr(canonical_package, attr_name)
+
+        if not raw_objs and hasattr(canonical_package, "objects") and isinstance(canonical_package.objects, dict):
+            raw_objs = canonical_package.objects.get(obj_type, [])
+
+        if isinstance(raw_objs, (dict, MappingProxyType)):
+            raw_objs = [raw_objs]
+
+        for item in raw_objs:
+            thawed = _thaw(item)
+            if isinstance(thawed, dict):
+                obj_copy = copy.deepcopy(thawed)
+                if "object_type" not in obj_copy:
+                    obj_copy["object_type"] = obj_type
+                extracted.append(obj_copy)
+
+    return extracted
+
+
+def _match_canonical_object(
+    change: FactChange,
+    candidate_objects: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Finds the best matching canonical object for a FactChange from a list of candidates."""
+    from full_analysis import (
+        OBJ_SCOPED_EVALUATION_CRITERION,
+        OBJ_SUBMISSION_MECHANICS,
+        OBJ_COMMERCIAL_OBLIGATION,
+        OBJ_CATEGORY_SCOPE_ITEM,
+        OBJ_CANONICAL_REQUIREMENT,
+        OBJ_SCOPED_MILESTONE,
+        OBJ_DOCUMENT_ROLE,
+    )
+
+    # 1. Exact canonical_id match from metadata
+    meta_cid = change.metadata.get("canonical_id")
+    if meta_cid:
+        for obj in candidate_objects:
+            if obj.get("canonical_id") == meta_cid:
+                return obj
+
+    # 1b. canonical_ids list in metadata
+    meta_cids = change.metadata.get("canonical_ids")
+    if isinstance(meta_cids, (list, tuple)):
+        for obj in candidate_objects:
+            if obj.get("canonical_id") in meta_cids:
+                return obj
+
+    # 2. Exact match of change.entity_id against obj["canonical_id"]
+    change_eid = str(change.entity_id or "").strip()
+    norm_eid = _normalize_key(change_eid)
+    slug_eid = _slug(change_eid)
+
+    for obj in candidate_objects:
+        obj_cid = str(obj.get("canonical_id") or "").strip()
+        if obj_cid and (change_eid == obj_cid or norm_eid == _normalize_key(obj_cid)):
+            return obj
+
+    # 3. Submission mechanics matching
+    sub_fact_types = {
+        "deadline", "submission_deadline", "closing_date", "closing_time",
+        "rfp_closing", "bid_closing", "proposal_deadline", "closing_deadline",
+        "question_deadline", "addendum_deadline", "submission_mechanics",
+        "submission_portal", "submission_method", "submission_format",
+        "page_limit", "font_size", "number_of_copies", "submission_instructions",
+    }
+    if _normalize_key(change.fact_type) in sub_fact_types or any(norm_eid.startswith(p) for p in ("sub:", "sub.", "deadline", "submission")):
+        for obj in candidate_objects:
+            if obj.get("canonical_id") == "SUBMISSION" or obj.get("object_type") == OBJ_SUBMISSION_MECHANICS:
+                return obj
+
+    # 4. Criteria matching
+    crit_candidates = [
+        o for o in candidate_objects
+        if o.get("object_type") == OBJ_SCOPED_EVALUATION_CRITERION or str(o.get("canonical_id", "")).startswith("CRIT-")
+    ]
+    if crit_candidates:
+        best_match = None
+        best_score = 0
+        for obj in crit_candidates:
+            c_name = str(obj.get("criterion") or obj.get("criterion_name") or obj.get("title") or obj.get("label") or obj.get("scoped_key") or "").strip()
+            if c_name:
+                slug_cname = _slug(c_name)
+                if slug_cname and (slug_cname == slug_eid or slug_cname in slug_eid or slug_eid in slug_cname):
+                    return obj
+                tokens = [t for t in slug_cname.split("-") if len(t) > 2]
+                score = sum(1 for t in tokens if t in slug_eid)
+                if score > best_score:
+                    best_score = score
+                    best_match = obj
+        if best_match and best_score > 0:
+            return best_match
+
+    # 5. Commercial obligation matching
+    obl_candidates = [
+        o for o in candidate_objects
+        if o.get("object_type") == OBJ_COMMERCIAL_OBLIGATION or str(o.get("canonical_id", "")).startswith("OBL-")
+    ]
+    if obl_candidates:
+        best_match = None
+        best_score = 0
+        for obj in obl_candidates:
+            topic = str(obj.get("topic") or "").strip()
+            heading = str(obj.get("heading") or "").strip()
+            clause = str(obj.get("clause_text") or "").strip()
+            slug_topic = _slug(topic)
+            slug_heading = _slug(heading)
+            slug_clause = _slug(clause[:60])
+            if slug_topic and (slug_topic == slug_eid or slug_topic in slug_eid or slug_eid in slug_topic):
+                return obj
+            if slug_heading and (slug_heading == slug_eid or slug_heading in slug_eid or slug_eid in slug_heading):
+                return obj
+            tokens = [t for t in (slug_topic + "-" + slug_heading + "-" + slug_clause).split("-") if len(t) > 2]
+            score = sum(1 for t in tokens if t in slug_eid)
+            if score > best_score:
+                best_score = score
+                best_match = obj
+        if best_match and best_score > 0:
+            return best_match
+
+    # 6. Scope deliverable matching
+    scope_candidates = [
+        o for o in candidate_objects
+        if o.get("object_type") == OBJ_CATEGORY_SCOPE_ITEM or str(o.get("canonical_id", "")).startswith("SCOPE-")
+    ]
+    if scope_candidates:
+        best_match = None
+        best_score = 0
+        for obj in scope_candidates:
+            heading = str(obj.get("heading") or obj.get("scope_item") or obj.get("text") or obj.get("label") or "").strip()
+            slug_h = _slug(heading)
+            if slug_h and (slug_h == slug_eid or slug_h in slug_eid or slug_eid in slug_h):
+                return obj
+            tokens = [t for t in slug_h.split("-") if len(t) > 2]
+            score = sum(1 for t in tokens if t in slug_eid)
+            if score > best_score:
+                best_score = score
+                best_match = obj
+        if best_match and best_score > 0:
+            return best_match
+
+    # 7. Requirement matching
+    req_candidates = [
+        o for o in candidate_objects
+        if o.get("object_type") == OBJ_CANONICAL_REQUIREMENT or str(o.get("canonical_id", "")).startswith("REQ-")
+    ]
+    if req_candidates:
+        for obj in req_candidates:
+            req_id = str(obj.get("req_id") or obj.get("requirement_id") or "").strip()
+            if req_id and (_slug(req_id) in slug_eid or slug_eid in _slug(req_id)):
+                return obj
+            desc = str(obj.get("description") or obj.get("requirement_text") or obj.get("text") or "").strip()
+            slug_d = _slug(desc[:80])
+            if slug_d and slug_d in slug_eid:
+                return obj
+
+    # 8. Milestone matching
+    ms_candidates = [
+        o for o in candidate_objects
+        if o.get("object_type") == OBJ_SCOPED_MILESTONE or str(o.get("canonical_id", "")).startswith("MS-")
+    ]
+    if ms_candidates:
+        best_match = None
+        best_score = 0
+        for obj in ms_candidates:
+            label = str(obj.get("label") or "").strip()
+            slug_l = _slug(label)
+            if slug_l and (slug_l == slug_eid or slug_l in slug_eid or slug_eid in slug_l):
+                return obj
+            tokens = [t for t in slug_l.split("-") if len(t) > 2]
+            score = sum(1 for t in tokens if t in slug_eid)
+            if score > best_score:
+                best_score = score
+                best_match = obj
+        if best_match and best_score > 0:
+            return best_match
+
+    # 9. Document role matching
+    doc_candidates = [
+        o for o in candidate_objects
+        if o.get("object_type") == OBJ_DOCUMENT_ROLE or str(o.get("canonical_id", "")).startswith("DOC-")
+    ]
+    if doc_candidates:
+        best_match = None
+        best_score = 0
+        for obj in doc_candidates:
+            doc_name = str(obj.get("document") or obj.get("name") or "").strip()
+            slug_dn = _slug(doc_name)
+            if slug_dn and (slug_dn == slug_eid or slug_dn in slug_eid or slug_eid in slug_dn):
+                return obj
+            tokens = [t for t in slug_dn.split("-") if len(t) > 2]
+            score = sum(1 for t in tokens if t in slug_eid)
+            if score > best_score:
+                best_score = score
+                best_match = obj
+        if best_match and best_score > 0:
+            return best_match
+
+    return None
+
+
+def _apply_change_overlay(
+    obj: dict[str, Any],
+    change: FactChange,
+    revision: ProcurementRevision,
+) -> None:
+    """Mutates deep-copied candidate object with values and provenance from an applied FactChange."""
+    from full_analysis import (
+        OBJ_SCOPED_EVALUATION_CRITERION,
+        OBJ_SUBMISSION_MECHANICS,
+        OBJ_COMMERCIAL_OBLIGATION,
+        OBJ_CATEGORY_SCOPE_ITEM,
+        OBJ_CANONICAL_REQUIREMENT,
+        OBJ_SCOPED_MILESTONE,
+        OBJ_DOCUMENT_ROLE,
+    )
+
+    obj["last_modified_revision"] = revision.revision_number
+    obj["source_document_id"] = change.source_document_id
+    obj["source_hash"] = change.source_hash
+    obj["source_document"] = change.source_document
+
+    val = change.after_value
+    obj_type = obj.get("object_type")
+
+    if change.before_value is not None:
+        obj["prior_value"] = change.before_value
+
+    if obj_type == OBJ_SCOPED_EVALUATION_CRITERION:
+        if change.fact_type in ("weight", "WEIGHT", "evaluation_weight", "scoring_weight", "criterion_weight"):
+            obj["weight"] = val
+            if "points" in obj:
+                obj["points"] = val
+            if change.before_value is not None:
+                obj["prior_weight"] = change.before_value
+        elif isinstance(val, dict):
+            obj.update(val)
+        else:
+            obj["criterion_value"] = val
+
+    elif obj_type == OBJ_SUBMISSION_MECHANICS:
+        norm_ft = _normalize_key(change.fact_type)
+        norm_eid = _normalize_key(change.entity_id)
+        if "clarification" in norm_eid or "clarification" in norm_ft:
+            obj["clarification_deadline"] = val
+        elif "deadline" in norm_eid or "deadline" in norm_ft:
+            obj["submission_deadline"] = val
+        elif "portal" in norm_eid or "method" in norm_eid or "submission_method" in norm_ft:
+            obj["submission_method"] = val
+        elif "page_limit" in norm_eid or "page_limit" in norm_ft:
+            if isinstance(obj.get("page_limits"), dict) and isinstance(val, dict):
+                obj["page_limits"].update(val)
+            else:
+                obj["page_limits"] = val
+        elif isinstance(val, dict):
+            obj.update(val)
+        else:
+            obj["value"] = val
+
+    elif obj_type == OBJ_COMMERCIAL_OBLIGATION:
+        if isinstance(val, dict):
+            obj.update(val)
+        else:
+            obj["clause_text"] = str(val)
+            obj["current_value"] = val
+
+    elif obj_type == OBJ_CATEGORY_SCOPE_ITEM:
+        if isinstance(val, dict):
+            obj.update(val)
+        else:
+            obj["text"] = str(val)
+            obj["scope_item"] = str(val)
+
+    elif obj_type == OBJ_CANONICAL_REQUIREMENT:
+        if isinstance(val, dict):
+            obj.update(val)
+        else:
+            obj["description"] = str(val)
+            obj["requirement_text"] = str(val)
+
+    elif obj_type == OBJ_SCOPED_MILESTONE:
+        if isinstance(val, dict):
+            obj.update(val)
+        else:
+            obj["normalized_date_end"] = str(val)
+            obj["target_date"] = str(val)
+
+    elif obj_type == OBJ_DOCUMENT_ROLE:
+        if isinstance(val, dict):
+            obj.update(val)
+        else:
+            obj["document"] = str(val)
+
+    else:
+        if isinstance(val, dict):
+            obj.update(val)
+        else:
+            obj["value"] = val
+
+
+def build_revision_specialist_context(
+    specialist_id: str,
+    revision: ProcurementRevision,
+    procurement_state: ProcurementState | dict[str, Any] | None,
+    canonical_package: Any,
+    impact_plan: RevisionImpactPlan,
+    prior_specialist_findings: Sequence[Any] | None = None,
+    bid_id: int | None = None,
+) -> RevisionSpecialistContext:
+    """Builds authoritative, revision-aware specialist execution context for ONE affected domain.
+
+    Fails closed with PCIContextNotEligibleError if:
+    - Revision is not APPLIED
+    - Revision has unresolved chronology conflicts
+    - Specialist domain is not among impact_plan.affected_domains
+
+    Overlay rules:
+    - Base CanonicalPackage remains strictly immutable.
+    - Updated values replace stale baseline values in relevant_current_canonical_objects.
+    - Removed facts are completely excluded from relevant_current_canonical_objects.
+    - Additive facts are represented as grounded RevisionFact instances.
+    - permitted_canonical_ids contains only active canonical IDs + revision fact IDs.
+    - Unresolved bindings mark is_executable = False and set blocking_reason.
+    """
+    # 1. Authoritative Eligibility Checks (fail-closed)
+    if revision.review_status != "applied" or not revision.is_applied:
+        raise PCIContextNotEligibleError(
+            f"Revision {revision.revision_number} is not applied (status='{revision.review_status}'). "
+            "Specialist context can only be built from APPLIED revisions."
+        )
+
+    if revision.chronology_unresolved:
+        raise PCIContextNotEligibleError(
+            f"Revision {revision.revision_number} has unresolved chronology conflicts. "
+            "Specialist context cannot be built until chronology is resolved."
+        )
+
+    if specialist_id not in impact_plan.affected_domains:
+        raise PCIContextNotEligibleError(
+            f"Specialist '{specialist_id}' is not in affected domains ({impact_plan.affected_domains}) "
+            f"for revision {revision.revision_number}."
+        )
+
+    # 2. Extract deep-copied canonical objects for this specialist slice
+    extracted_objects = _extract_package_objects(canonical_package, specialist_id)
+
+    # 3. Route and filter changes relevant to this specialist
+    relevant_changes_list: list[dict[str, Any]] = []
+    for change in revision.change_set.changes:
+        if change.review_status != REVIEW_STATUS_APPROVED or change.change_type == CHANGE_CONFLICTS_WITH:
+            continue
+        if change.change_type == CHANGE_UNCHANGED:
+            continue
+        routing = route_change_to_domains(change)
+        if specialist_id in routing.affected_domains:
+            c_dict = change.to_dict()
+            c_dict["revision_id"] = revision.revision_id
+            c_dict["revision_number"] = revision.revision_number
+            c_dict["effective_date"] = getattr(revision, "effective_date", None) or getattr(revision, "buyer_issued_date", None)
+            relevant_changes_list.append(c_dict)
+
+    # 4. Bind changes and apply overlays
+    change_bindings: list[ChangeBinding] = []
+    revision_facts: list[RevisionFact] = []
+    removed_canonical_ids: set[str] = set()
+    is_executable = True
+    blocking_reasons: list[str] = []
+
+    for c_dict in relevant_changes_list:
+        change = FactChange.from_dict(c_dict)
+        matched_obj = _match_canonical_object(change, extracted_objects)
+
+        if matched_obj is not None:
+            cid = matched_obj.get("canonical_id")
+            otype = matched_obj.get("object_type")
+            if change.change_type == CHANGE_REMOVES:
+                if cid:
+                    removed_canonical_ids.add(cid)
+                change_bindings.append(ChangeBinding(
+                    change_id=change.entity_id or change.fact_type,
+                    entity_id=change.entity_id,
+                    fact_type=change.fact_type,
+                    binding_type=BINDING_EXISTING_CANONICAL,
+                    canonical_id=cid,
+                    object_type=otype,
+                    binding_rationale=f"Bound to existing canonical object {cid} for removal",
+                ))
+            else:
+                _apply_change_overlay(matched_obj, change, revision)
+                change_bindings.append(ChangeBinding(
+                    change_id=change.entity_id or change.fact_type,
+                    entity_id=change.entity_id,
+                    fact_type=change.fact_type,
+                    binding_type=BINDING_EXISTING_CANONICAL,
+                    canonical_id=cid,
+                    object_type=otype,
+                    binding_rationale=f"Bound to existing canonical object {cid} and applied overlay",
+                ))
+        else:
+            if change.change_type == CHANGE_ADDS:
+                if change.source_document_id is not None and change.source_hash:
+                    fact_id = f"REV-FACT-{_slug(change.entity_id)}"
+                    eff_date = getattr(revision, "effective_date", None) or getattr(revision, "buyer_issued_date", None)
+                    rf = RevisionFact(
+                        fact_id=fact_id,
+                        fact_type=change.fact_type,
+                        entity_id=change.entity_id,
+                        value=change.after_value,
+                        change_type=change.change_type,
+                        source_document_id=change.source_document_id,
+                        source_document=change.source_document,
+                        source_hash=change.source_hash,
+                        revision_id=revision.revision_id,
+                        revision_number=revision.revision_number,
+                        effective_date=eff_date,
+                        authority_status=change.authority_status,
+                        review_status=change.review_status,
+                        description=change.metadata.get("description") or (str(change.after_value) if not isinstance(change.after_value, dict) else change.after_value.get("description")),
+                        metadata=dict(change.metadata),
+                    )
+                    revision_facts.append(rf)
+                    change_bindings.append(ChangeBinding(
+                        change_id=change.entity_id or change.fact_type,
+                        entity_id=change.entity_id,
+                        fact_type=change.fact_type,
+                        binding_type=BINDING_REVISION_FACT,
+                        canonical_id=fact_id,
+                        object_type="REVISION_FACT",
+                        binding_rationale=f"Additive fact formulated as revision fact {fact_id}",
+                    ))
+                else:
+                    is_executable = False
+                    reason = f"Additive change '{change.entity_id}' missing valid source provenance"
+                    blocking_reasons.append(reason)
+                    change_bindings.append(ChangeBinding(
+                        change_id=change.entity_id or change.fact_type,
+                        entity_id=change.entity_id,
+                        fact_type=change.fact_type,
+                        binding_type=BINDING_UNRESOLVED,
+                        canonical_id=None,
+                        object_type=None,
+                        binding_rationale=reason,
+                    ))
+            else:
+                is_executable = False
+                reason = f"Target canonical object for '{change.entity_id}' (change_type='{change.change_type}') could not be resolved"
+                blocking_reasons.append(reason)
+                change_bindings.append(ChangeBinding(
+                    change_id=change.entity_id or change.fact_type,
+                    entity_id=change.entity_id,
+                    fact_type=change.fact_type,
+                    binding_type=BINDING_UNRESOLVED,
+                    canonical_id=None,
+                    object_type=None,
+                    binding_rationale=reason,
+                ))
+
+    # 5. Filter removed canonical objects
+    current_canonical_objects = [
+        obj for obj in extracted_objects
+        if obj.get("canonical_id") not in removed_canonical_ids
+    ]
+
+    # 6. Assemble permitted canonical IDs
+    active_canonical_ids = {
+        obj["canonical_id"] for obj in current_canonical_objects
+        if obj.get("canonical_id")
+    }
+    rev_fact_ids = {rf.fact_id for rf in revision_facts}
+    permitted_canonical_ids = tuple(sorted(active_canonical_ids | rev_fact_ids))
+
+    # 7. Filter prior findings for this specialist domain
+    stale_ids_for_specialist: list[str] = []
+    retained_findings_list: list[dict[str, Any]] = []
+
+    if prior_specialist_findings:
+        for raw_f in prior_specialist_findings:
+            f = raw_f.as_dict() if hasattr(raw_f, "as_dict") else (raw_f.to_dict() if hasattr(raw_f, "to_dict") else raw_f)
+            if not isinstance(f, dict):
+                continue
+            fid = str(f.get("finding_id") or "")
+            if not fid:
+                continue
+            if f.get("specialist_id") and f.get("specialist_id") != specialist_id:
+                continue
+
+            if fid in impact_plan.stale_finding_ids:
+                stale_ids_for_specialist.append(fid)
+            elif fid in impact_plan.unresolved_finding_ids:
+                stale_ids_for_specialist.append(fid)
+            elif fid in impact_plan.retained_finding_ids or impact_plan.finding_impacts.get(fid, {}).get("status") == FINDING_STATUS_RETAINED:
+                retained_findings_list.append(dict(f))
+            else:
+                retained_findings_list.append(dict(f))
+    else:
+        stale_ids_for_specialist = list(impact_plan.stale_finding_ids)
+
+    # 8. Compute stable context fingerprint
+    canonical_package_digest = getattr(canonical_package, "package_digest", "") or _digest(canonical_package)
+    context_fingerprint = compute_specialist_context_fingerprint(
+        specialist_id=specialist_id,
+        revision_number=revision.revision_number,
+        revision_id=revision.revision_id,
+        change_set_fingerprint=impact_plan.change_set_fingerprint,
+        state_fingerprint=impact_plan.state_fingerprint,
+        canonical_package_digest=canonical_package_digest,
+        permitted_canonical_ids=permitted_canonical_ids,
+        stale_prior_finding_ids=stale_ids_for_specialist,
+    )
+
+    return RevisionSpecialistContext(
+        specialist_id=specialist_id,
+        revision_number=revision.revision_number,
+        revision_id=revision.revision_id,
+        bid_id=bid_id or getattr(canonical_package, "bid_id", None),
+        context_fingerprint=context_fingerprint,
+        impacted_domain=specialist_id,
+        relevant_changes=tuple(relevant_changes_list),
+        relevant_current_canonical_objects=tuple(current_canonical_objects),
+        revision_facts=tuple(revision_facts),
+        permitted_canonical_ids=permitted_canonical_ids,
+        stale_prior_finding_ids=tuple(sorted(set(stale_ids_for_specialist))),
+        retained_prior_findings=tuple(retained_findings_list),
+        change_bindings=tuple(change_bindings),
+        is_executable=is_executable,
+        blocking_reason="; ".join(blocking_reasons) if blocking_reasons else None,
     )

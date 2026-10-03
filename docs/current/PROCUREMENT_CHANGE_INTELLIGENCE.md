@@ -86,6 +86,9 @@ Durable objects:
 - `PCIBaseStorage` / `InMemoryPCIStorage` / `PCIDatabaseStorage`: Durable adapters mapping PCI state to Migration 010 persistence, RPC lifecycle, and human review gating
 - `RevisionImpactPlan`: Deterministic routing and finding staleness contract for PCI-B2 incremental execution, including unique `revision_id` event identity
 - `DomainRoutingReason` / `ChangeRoutingDecision`: Explainable deterministic routing decisions
+- `RevisionSpecialistContext`: Authoritative revision-aware specialist reanalysis contract providing mutated canonical objects, additive `RevisionFact` items, permitted citation IDs, carry-forward retained findings, and change bindings
+- `ChangeBinding`: Precise linkage between a `FactChange` and its target canonical entity (`EXISTING_CANONICAL`, `REVISION_FACT`, or `UNRESOLVED`)
+- `RevisionFact`: Structured representation of an additive buyer update not bound to any baseline canonical entity
 
 Key invariants:
 - Previous revisions are immutable
@@ -110,10 +113,17 @@ Key invariants:
 - Zero-impact administrative updates affect 0 domains, do not register changed keys, and stale 0 findings
 - Revision impact plans are 100% deterministic and idempotent with stable event identity (`revision_id`)
 - Ambiguous integer revision numbers matching multiple revisions fail closed via manager
-- Pure application-layer routing with zero external model calls and zero database migrations
+- Base `CanonicalPackage` is strictly immutable: building revision specialist context produces zero side effects and preserves `package_digest` byte-for-byte
+- Unapplied revisions or unresolved chronology fail closed with `PCIContextNotEligibleError`
+- Requesting context for a specialist domain not affected by the revision impact plan fails closed with `PCIContextNotEligibleError`
+- Additive requirements or clauses generate stable `REV-FACT-...` IDs and are appended to `permitted_canonical_ids`
+- Removed canonical objects are excluded from active canonical objects and revoked from `permitted_canonical_ids`
+- Unresolved bindings set `is_executable=False` and report clear `blocking_reason` diagnostics
+- Revision specialist context fingerprints (`context_fingerprint`) are 100% deterministic and sensitive to revision facts, canonical objects, and permitted citation IDs
+- Pure application-layer routing and context formulation with zero external model calls and zero database migrations
 
 Tests:
-`tests/test_procurement_change_intelligence.py` (70 passed, 0 failed):
+`tests/test_procurement_change_intelligence.py` (84 passed, 0 failed):
 - Fixtures A through J (10 tests)
 - Concurrency and optimistic locking (3 tests)
 - Invariant verification (4 tests)
@@ -126,9 +136,15 @@ Tests:
 - PCI-A.2.1 Human-Review Gate & Source Provenance tests (6 tests)
 - PCI-B1 Impact Routing & Intelligence Dependency tests (14 tests: Fixtures A-J, domain vocabulary parity, zero-impact administrative, idempotency, manager integration)
 - PCI-B1.1 Applied-State & Compatibility tests (10 tests: Tests A through J covering applied gating, chronology gating, unapplied impact plan, raw changeset fail-closed, vocabulary compatibility, prefix normalization, canonical-id bridge, zero-impact key filtering, stable event identity, ambiguous revision number fail-closed)
+- PCI-B2A Revision-Aware Specialist Context tests (14 tests: Test Scenarios A through J covering weight overlay, deadline overlay, commercial obligation overlay, scope overlay, additive revision fact, removed requirement exclusion, replacement pricing form provenance, unapplied revision fail-closed, unresolved binding blocking execution, unaffected domain bounding fail-closed, base package immutability, deterministic context fingerprinting, prior findings filtering, manager end-to-end integration)
 
 Open issues:
-None for PCI-B1 / PCI-B1.1. Applied-state gating and impact compatibility fully closed.
+None for PCI-B2A. Revision specialist context builder is fully implemented, verified, and sealed.
+
+Entry Manifest for PCI-B2B:
+- `procurement_change_intelligence.py`: `RevisionSpecialistContext`, `build_revision_specialist_context`, `ProcurementRevisionManager.get_revision_specialist_context`
+- `full_analysis.py`: `SPECIALIST_IDS`, `build_specialist_input`, `SpecialistResult`, `validate_findings`
+- `full_analysis_service.py`: `execute_specialist_run`, reanalysis orchestration, persistence adapter
 
 Next phase:
-PCI-B2 — Incremental Specialist Execution + Delta Reconciliation
+PCI-B2B — Incremental Specialist Execution + Delta Reconciliation

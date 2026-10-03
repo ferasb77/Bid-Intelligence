@@ -3236,5 +3236,775 @@ class TestPCIB11AppliedStateAndCompatibility(unittest.TestCase):
         plan_a = mgr.get_revision_impact_plan("bid-7702-rev-1-a")
         self.assertEqual(plan_a.revision_id, "bid-7702-rev-1-a")
 
+
+def _occ(category: str, label: str, weight: str, doc: str) -> dict[str, Any]:
+    return {
+        "criterion_label": label,
+        "category_scope": category,
+        "weight": weight,
+        "minimum_score": None,
+        "evaluation_stage": "Stage 3 - Rated criteria",
+        "source_doc": doc,
+        "source_refs": [f"{doc} p.3"],
+    }
+
+
+def _make_canonical_package():
+    import full_analysis as fa
+    from types import SimpleNamespace
+    import canonical_procurement as canon
+
+    MAIN_RFP = "RFP.pdf"
+    FORM_D2 = "Appendix D2.docx"
+    CAT_1 = "Category 1"
+
+    base = dict(
+        doc_metadata_by_doc={
+            MAIN_RFP: {
+                "title": "IT Professional Services",
+                "client": "Client Org",
+                "file_number": "RFP 2026-001",
+                "submission_deadline": "2026-11-01",
+                "clarification_deadline": "2026-10-15",
+                "submission_method": "Electronic Portal",
+            },
+            FORM_D2: {"title": "Pricing Schedule Appendix B"},
+        },
+        typed_observations=[
+            {
+                "family": "MILESTONE",
+                "semantic_kind": "Demonstration",
+                "original_value": "2026-11-16",
+                "scope": {"category": CAT_1},
+                "source_refs": [f"{MAIN_RFP} p.9"],
+            },
+        ],
+        evaluation_criteria=[],
+        evaluation_occurrences=[
+            _occ(CAT_1, "Firm Experience", "30", FORM_D2),
+            _occ(CAT_1, "Technical Approach", "40", FORM_D2),
+        ],
+        scoped_criterion_response_prompts={},
+        requirements=[
+            {
+                "description": "Bidder must have 5 years in business",
+                "requirement_type": "MANDATORY",
+                "source_doc": MAIN_RFP,
+                "category_scope": CAT_1,
+                "req_id": "REQ-1",
+            },
+            {
+                "description": "Bidders must submit 5 printed copies",
+                "requirement_type": "MANDATORY",
+                "source_doc": MAIN_RFP,
+                "category_scope": CAT_1,
+                "req_id": "REQ-2",
+            },
+        ],
+        commercial_clauses=[
+            {
+                "clause_text": "Contractor shall maintain Commercial General Liability with $2,000,000 limit.",
+                "heading": "General Liability Insurance",
+                "topic": "insurance",
+                "source_doc": MAIN_RFP,
+            },
+        ],
+        category_scope_items={
+            CAT_1: [
+                {
+                    "text": "On-premise hybrid delivery",
+                    "heading": "Delivery Model",
+                    "semantic_type": canon.SEMANTIC_SCOPE_ITEM,
+                    "source_doc": MAIN_RFP,
+                }
+            ],
+        },
+        page_limits={FORM_D2: 5},
+        skipped_documents=[],
+        batched_documents=[],
+        documents_by_route={},
+        ambiguities={},
+        telemetry=[],
+        wall_seconds=1.0,
+        deterministic_seconds=0.1,
+        buyer_intelligence=None,
+        deterministic_service_scope=None,
+        deterministic_response_guidelines=[],
+        deterministic_criterion_response_prompts={},
+        scoped_criterion_evaluation={},
+        canonical_milestones=[],
+        document_relationships={},
+        package_completeness={"status": "SUFFICIENT"},
+        pricing_occurrences=[],
+        focused_sections_found={},
+    )
+    result = SimpleNamespace(**base)
+    return fa.build_canonical_package(result, bid_id=1417, analysis_run_id=10)
+
+
+class TestPCIB2ARevisionAwareSpecialistContext(unittest.TestCase):
+    """PCI-B2A: Authoritative Revision-Aware Specialist Context Tests.
+    Covers scenarios A through J, package immutability, deterministic fingerprinting,
+    and manager integration.
+    """
+
+    def setUp(self):
+        self.bid_id = 1417
+        self.org_id = "4326b564-8cc5-4463-9304-9a589f08cc91"
+        self.pkg = _make_canonical_package()
+        self.storage = pci.InMemoryPCIStorage()
+
+    def test_a_evaluation_weight_overlay(self):
+        """Scenario A: Firm Experience weight 30% -> 35% in evaluation context."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="weight",
+            entity_id="eval.firm_experience.weight",
+            before_value=30,
+            after_value=35,
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-1",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[change]),
+            fingerprint="fp1",
+            review_status="applied",
+            is_current=True,
+        )
+        plan = pci.generate_revision_impact_plan(rev, None, bid_id=self.bid_id)
+        self.assertIn(pci.SPECIALIST_EVALUATION_INTELLIGENCE, plan.affected_domains)
+
+        ctx = pci.build_revision_specialist_context(
+            specialist_id=pci.SPECIALIST_EVALUATION_INTELLIGENCE,
+            revision=rev,
+            procurement_state=None,
+            canonical_package=self.pkg,
+            impact_plan=plan,
+            bid_id=self.bid_id,
+        )
+
+        self.assertTrue(ctx.is_executable)
+        self.assertIsNone(ctx.blocking_reason)
+        crit = next(o for o in ctx.relevant_current_canonical_objects if "Firm Experience" in str(o.get("criterion") or o.get("criterion_name") or ""))
+        self.assertEqual(crit["weight"], 35)
+        self.assertEqual(crit.get("prior_weight"), 30)
+        self.assertEqual(crit.get("source_document_id"), 2)
+
+        # Baseline CanonicalPackage remains strictly immutable
+        orig_crit = next(o for o in self.pkg.scoped_criteria if "Firm Experience" in str(o.get("criterion") or o.get("criterion_name") or ""))
+        self.assertEqual(orig_crit["weight"], "30")
+
+        # Binding check
+        self.assertEqual(len(ctx.change_bindings), 1)
+        self.assertEqual(ctx.change_bindings[0].binding_type, pci.BINDING_EXISTING_CANONICAL)
+        self.assertEqual(ctx.change_bindings[0].canonical_id, orig_crit["canonical_id"])
+
+    def test_b_deadline_overlay(self):
+        """Scenario B: Submission deadline extended from 2026-11-01 to 2026-11-15."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="submission_deadline",
+            entity_id="sub:deadline",
+            before_value="2026-11-01",
+            after_value="2026-11-15",
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-1",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[change]),
+            fingerprint="fp1",
+            review_status="applied",
+            is_current=True,
+        )
+        plan = pci.generate_revision_impact_plan(rev, None, bid_id=self.bid_id)
+        self.assertIn(pci.SPECIALIST_SCHEDULE_SUBMISSION, plan.affected_domains)
+
+        ctx = pci.build_revision_specialist_context(
+            specialist_id=pci.SPECIALIST_SCHEDULE_SUBMISSION,
+            revision=rev,
+            procurement_state=None,
+            canonical_package=self.pkg,
+            impact_plan=plan,
+            bid_id=self.bid_id,
+        )
+
+        self.assertTrue(ctx.is_executable)
+        sub = next(o for o in ctx.relevant_current_canonical_objects if o.get("canonical_id") == "SUBMISSION")
+        self.assertEqual(sub["submission_deadline"], "2026-11-15")
+        self.assertEqual(self.pkg.submission_mechanics["submission_deadline"], "2026-11-01")
+
+    def test_c_commercial_obligation_overlay(self):
+        """Scenario C: Commercial obligation insurance updated from 2M to 5M."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="insurance",
+            entity_id="insurance.general_liability",
+            before_value="2M limit",
+            after_value="Minimum $5,000,000 coverage",
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-1",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[change]),
+            fingerprint="fp1",
+            review_status="applied",
+            is_current=True,
+        )
+        plan = pci.generate_revision_impact_plan(rev, None, bid_id=self.bid_id)
+        self.assertIn(pci.SPECIALIST_COMMERCIAL_CONTRACTUAL, plan.affected_domains)
+
+        ctx = pci.build_revision_specialist_context(
+            specialist_id=pci.SPECIALIST_COMMERCIAL_CONTRACTUAL,
+            revision=rev,
+            procurement_state=None,
+            canonical_package=self.pkg,
+            impact_plan=plan,
+            bid_id=self.bid_id,
+        )
+
+        self.assertTrue(ctx.is_executable)
+        obl = next(o for o in ctx.relevant_current_canonical_objects if str(o.get("topic") or "").lower() == "insurance")
+        self.assertIn("5,000,000", obl["clause_text"])
+
+    def test_d_scope_deliverable_overlay(self):
+        """Scenario D: Scope deliverable delivery model updated."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="scope",
+            entity_id="scope.delivery_model",
+            before_value="On-premise hybrid delivery",
+            after_value="Cloud native multi-region delivery",
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-1",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[change]),
+            fingerprint="fp1",
+            review_status="applied",
+            is_current=True,
+        )
+        plan = pci.generate_revision_impact_plan(rev, None, bid_id=self.bid_id)
+        self.assertIn(pci.SPECIALIST_SCOPE_DELIVERABLES, plan.affected_domains)
+
+        ctx = pci.build_revision_specialist_context(
+            specialist_id=pci.SPECIALIST_SCOPE_DELIVERABLES,
+            revision=rev,
+            procurement_state=None,
+            canonical_package=self.pkg,
+            impact_plan=plan,
+            bid_id=self.bid_id,
+        )
+
+        self.assertTrue(ctx.is_executable)
+        scope = next(o for o in ctx.relevant_current_canonical_objects if "delivery" in str(o.get("text") or o.get("heading") or "").lower())
+        self.assertEqual(scope["text"], "Cloud native multi-region delivery")
+
+    def test_e_new_additive_requirement_revision_fact(self):
+        """Scenario E: Additive requirement formulated as RevisionFact with permitted canonical ID."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_ADDS,
+            fact_type="mandatory_requirement",
+            entity_id="req:iso27001_security",
+            before_value=None,
+            after_value="Bidder must maintain active ISO 27001 certification.",
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-1",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[change]),
+            fingerprint="fp1",
+            review_status="applied",
+            is_current=True,
+        )
+        plan = pci.generate_revision_impact_plan(rev, None, bid_id=self.bid_id)
+        self.assertIn(pci.SPECIALIST_REQUIREMENTS_COMPLIANCE, plan.affected_domains)
+
+        ctx = pci.build_revision_specialist_context(
+            specialist_id=pci.SPECIALIST_REQUIREMENTS_COMPLIANCE,
+            revision=rev,
+            procurement_state=None,
+            canonical_package=self.pkg,
+            impact_plan=plan,
+            bid_id=self.bid_id,
+        )
+
+        self.assertTrue(ctx.is_executable)
+        self.assertEqual(len(ctx.revision_facts), 1)
+        rf = ctx.revision_facts[0]
+        self.assertEqual(rf.fact_id, "REV-FACT-req-iso27001-security")
+        self.assertEqual(rf.source_document_id, 2)
+        self.assertEqual(rf.source_hash, "h_add1")
+        self.assertIn("REV-FACT-req-iso27001-security", ctx.permitted_canonical_ids)
+        self.assertEqual(ctx.change_bindings[0].binding_type, pci.BINDING_REVISION_FACT)
+
+    def test_f_removed_requirement_excluded_from_current_truth(self):
+        """Scenario F: Removed requirement excluded from current canonical objects and permitted IDs."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_REMOVES,
+            fact_type="mandatory_requirement",
+            entity_id="REQ-1",
+            before_value="Bidders must submit 5 printed copies",
+            after_value=None,
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-1",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[change]),
+            fingerprint="fp1",
+            review_status="applied",
+            is_current=True,
+        )
+        plan = pci.generate_revision_impact_plan(rev, None, bid_id=self.bid_id)
+        self.assertIn(pci.SPECIALIST_REQUIREMENTS_COMPLIANCE, plan.affected_domains)
+
+        ctx = pci.build_revision_specialist_context(
+            specialist_id=pci.SPECIALIST_REQUIREMENTS_COMPLIANCE,
+            revision=rev,
+            procurement_state=None,
+            canonical_package=self.pkg,
+            impact_plan=plan,
+            bid_id=self.bid_id,
+        )
+
+        self.assertTrue(ctx.is_executable)
+        current_cids = {o["canonical_id"] for o in ctx.relevant_current_canonical_objects if o.get("canonical_id")}
+        self.assertNotIn("REQ-1", current_cids)
+        self.assertNotIn("REQ-1", ctx.permitted_canonical_ids)
+        self.assertEqual(ctx.change_bindings[0].binding_type, pci.BINDING_EXISTING_CANONICAL)
+        self.assertEqual(ctx.change_bindings[0].canonical_id, "REQ-1")
+
+    def test_g_replacement_pricing_form_provenance(self):
+        """Scenario G: Replacement pricing form retains exact provenance from addendum."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_REPLACES,
+            fact_type="pricing_form",
+            entity_id="Pricing Schedule Appendix B",
+            before_value={"name": "Pricing Schedule Appendix B"},
+            after_value={"name": "Pricing Schedule Appendix B - Rev 1"},
+            source_document="Addendum 2.pdf",
+            source_hash="h_add2",
+            source_document_id=3,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-1",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 3, "name": "Addendum 2.pdf", "content_hash": "h_add2"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[change]),
+            fingerprint="fp1",
+            review_status="applied",
+            is_current=True,
+        )
+        plan = pci.generate_revision_impact_plan(rev, None, bid_id=self.bid_id)
+        self.assertIn(pci.SPECIALIST_COMMERCIAL_CONTRACTUAL, plan.affected_domains)
+
+        ctx = pci.build_revision_specialist_context(
+            specialist_id=pci.SPECIALIST_COMMERCIAL_CONTRACTUAL,
+            revision=rev,
+            procurement_state=None,
+            canonical_package=self.pkg,
+            impact_plan=plan,
+            bid_id=self.bid_id,
+        )
+
+        self.assertEqual(ctx.relevant_changes[0]["source_document_id"], 3)
+        self.assertEqual(ctx.relevant_changes[0]["source_hash"], "h_add2")
+        self.assertEqual(ctx.relevant_changes[0]["source_document"], "Addendum 2.pdf")
+
+    def test_h_unapplied_revision_not_eligible(self):
+        """Scenario H: Unapplied revision or chronology conflict fails closed with PCIContextNotEligibleError."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="submission_deadline",
+            entity_id="sub:deadline",
+            before_value="2026-11-01",
+            after_value="2026-11-15",
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        # Case 1: review_status="ready_for_review" (not applied)
+        rev_unapplied = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-1-unapplied",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[change]),
+            fingerprint="fp_unapplied",
+            review_status="ready_for_review",
+        )
+        plan_unapplied = pci.RevisionImpactPlan(
+            revision_number=1, revision_id="bid-1417-rev-1-unapplied",
+            change_set_fingerprint="csfp", state_fingerprint="sfp",
+            affected_domains=[pci.SPECIALIST_SCHEDULE_SUBMISSION],
+            retained_finding_ids=[], stale_finding_ids=[], unresolved_finding_ids=[],
+            finding_impacts={}, routing_reasons=[],
+        )
+        with self.assertRaises(pci.PCIContextNotEligibleError) as ctx_err:
+            pci.build_revision_specialist_context(
+                specialist_id=pci.SPECIALIST_SCHEDULE_SUBMISSION,
+                revision=rev_unapplied,
+                procurement_state=None,
+                canonical_package=self.pkg,
+                impact_plan=plan_unapplied,
+            )
+        self.assertIn("not applied", str(ctx_err.exception))
+
+        # Case 2: chronology_unresolved = True
+        rev_chrono = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-1-chrono",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[change]),
+            fingerprint="fp_chrono",
+            review_status="applied",
+            chronology_unresolved=True,
+        )
+        with self.assertRaises(pci.PCIContextNotEligibleError) as ctx_err2:
+            pci.build_revision_specialist_context(
+                specialist_id=pci.SPECIALIST_SCHEDULE_SUBMISSION,
+                revision=rev_chrono,
+                procurement_state=None,
+                canonical_package=self.pkg,
+                impact_plan=plan_unapplied,
+            )
+        self.assertIn("chronology", str(ctx_err2.exception).lower())
+
+    def test_i_unresolved_binding_blocks_execution(self):
+        """Scenario I: Unresolved change binding marks is_executable=False and populates blocking_reason."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="weight",
+            entity_id="unresolvable_criterion_xyz_999",
+            before_value=10,
+            after_value=25,
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-1",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[change]),
+            fingerprint="fp1",
+            review_status="applied",
+            is_current=True,
+        )
+        plan = pci.generate_revision_impact_plan(rev, None, bid_id=self.bid_id)
+
+        ctx = pci.build_revision_specialist_context(
+            specialist_id=pci.SPECIALIST_EVALUATION_INTELLIGENCE,
+            revision=rev,
+            procurement_state=None,
+            canonical_package=self.pkg,
+            impact_plan=plan,
+            bid_id=self.bid_id,
+        )
+
+        self.assertFalse(ctx.is_executable)
+        self.assertIsNotNone(ctx.blocking_reason)
+        self.assertIn("unresolvable_criterion_xyz_999", ctx.blocking_reason)
+        self.assertEqual(ctx.change_bindings[0].binding_type, pci.BINDING_UNRESOLVED)
+
+    def test_j_domain_bounding_unaffected_domain_not_eligible(self):
+        """Scenario J: Domain bounding raises PCIContextNotEligibleError for unaffected specialist domains."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="submission_deadline",
+            entity_id="sub:deadline",
+            before_value="2026-11-01",
+            after_value="2026-11-15",
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-1",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[change]),
+            fingerprint="fp1",
+            review_status="applied",
+            is_current=True,
+        )
+        plan = pci.generate_revision_impact_plan(rev, None, bid_id=self.bid_id)
+        # Plan only affects SCHEDULE_SUBMISSION
+        self.assertEqual(plan.affected_domains, [pci.SPECIALIST_SCHEDULE_SUBMISSION])
+
+        with self.assertRaises(pci.PCIContextNotEligibleError) as ctx_err:
+            pci.build_revision_specialist_context(
+                specialist_id=pci.SPECIALIST_SCOPE_DELIVERABLES,
+                revision=rev,
+                procurement_state=None,
+                canonical_package=self.pkg,
+                impact_plan=plan,
+                bid_id=self.bid_id,
+            )
+        self.assertIn("not in affected domains", str(ctx_err.exception))
+
+    def test_base_package_remains_strictly_immutable(self):
+        """Base CanonicalPackage package_digest and attributes remain byte-for-byte identical after context build."""
+        initial_digest = self.pkg.package_digest
+        initial_reqs = copy.deepcopy([dict(r) for r in self.pkg.requirements])
+
+        change = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="weight",
+            entity_id="eval.firm_experience.weight",
+            before_value=30,
+            after_value=35,
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-1",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[change]),
+            fingerprint="fp1",
+            review_status="applied",
+            is_current=True,
+        )
+        plan = pci.generate_revision_impact_plan(rev, None, bid_id=self.bid_id)
+
+        ctx = pci.build_revision_specialist_context(
+            specialist_id=pci.SPECIALIST_EVALUATION_INTELLIGENCE,
+            revision=rev,
+            procurement_state=None,
+            canonical_package=self.pkg,
+            impact_plan=plan,
+            bid_id=self.bid_id,
+        )
+
+        self.assertEqual(self.pkg.package_digest, initial_digest)
+        after_reqs = [dict(r) for r in self.pkg.requirements]
+        self.assertEqual(initial_reqs, after_reqs)
+
+    def test_deterministic_context_fingerprint(self):
+        """Context fingerprint is deterministic and stable over semantic inputs."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="submission_deadline",
+            entity_id="sub:deadline",
+            before_value="2026-11-01",
+            after_value="2026-11-15",
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-1",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[change]),
+            fingerprint="fp1",
+            review_status="applied",
+            is_current=True,
+        )
+        plan = pci.generate_revision_impact_plan(rev, None, bid_id=self.bid_id)
+
+        ctx1 = pci.build_revision_specialist_context(
+            specialist_id=pci.SPECIALIST_SCHEDULE_SUBMISSION,
+            revision=rev,
+            procurement_state=None,
+            canonical_package=self.pkg,
+            impact_plan=plan,
+            bid_id=self.bid_id,
+        )
+        ctx2 = pci.build_revision_specialist_context(
+            specialist_id=pci.SPECIALIST_SCHEDULE_SUBMISSION,
+            revision=rev,
+            procurement_state=None,
+            canonical_package=self.pkg,
+            impact_plan=plan,
+            bid_id=self.bid_id,
+        )
+
+        self.assertEqual(ctx1.context_fingerprint, ctx2.context_fingerprint)
+        self.assertEqual(len(ctx1.context_fingerprint), 64)
+
+    def test_prior_findings_filtering(self):
+        """Stale and retained prior findings are filtered correctly based on impact plan."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="weight",
+            entity_id="eval.firm_experience.weight",
+            before_value=30,
+            after_value=35,
+            source_document="Addendum 1.pdf",
+            source_hash="h_add1",
+            source_document_id=2,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        rev = pci.ProcurementRevision(
+            revision_number=1,
+            revision_id="bid-1417-rev-1",
+            parent_revision_id="bid-1417-rev-0",
+            buyer_chronology_index=1,
+            buyer_issued_date="2026-10-05",
+            trigger_documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            change_set=pci.ProcurementChangeSet(revision=1, previous_revision=0, source_documents=[], changes=[change]),
+            fingerprint="fp1",
+            review_status="applied",
+            is_current=True,
+        )
+        prior_findings = [
+            {
+                "finding_id": "FINDING-EVAL-01",
+                "specialist_id": pci.SPECIALIST_EVALUATION_INTELLIGENCE,
+                "canonical_ids": ["eval.firm_experience.weight"],
+                "claim": "Firm Experience is 30% of total score",
+            },
+            {
+                "finding_id": "FINDING-EVAL-02",
+                "specialist_id": pci.SPECIALIST_EVALUATION_INTELLIGENCE,
+                "canonical_ids": ["CAT-1"],
+                "claim": "Category 1 includes advisory services",
+            },
+        ]
+        plan = pci.generate_revision_impact_plan(rev, None, existing_findings=prior_findings, bid_id=self.bid_id)
+
+        ctx = pci.build_revision_specialist_context(
+            specialist_id=pci.SPECIALIST_EVALUATION_INTELLIGENCE,
+            revision=rev,
+            procurement_state=None,
+            canonical_package=self.pkg,
+            impact_plan=plan,
+            prior_specialist_findings=prior_findings,
+            bid_id=self.bid_id,
+        )
+
+        self.assertIn("FINDING-EVAL-01", ctx.stale_prior_finding_ids)
+        self.assertNotIn("FINDING-EVAL-02", ctx.stale_prior_finding_ids)
+        retained_ids = [f["finding_id"] for f in ctx.retained_prior_findings]
+        self.assertIn("FINDING-EVAL-02", retained_ids)
+
+    def test_manager_get_revision_specialist_context_integration(self):
+        """End-to-end integration via ProcurementRevisionManager.get_revision_specialist_context."""
+        mgr = pci.ProcurementRevisionManager(bid_id=self.bid_id, organization_id=self.org_id, storage=self.storage)
+        rev0 = mgr.create_baseline_revision(
+            documents=[{"document_id": 1, "name": "RFP.pdf", "content_hash": "h_rfp", "role": "primary"}],
+            initial_facts=[
+                pci.FactChange(
+                    change_type=pci.CHANGE_ADDS,
+                    fact_type="submission_deadline",
+                    entity_id="sub:deadline",
+                    before_value=None,
+                    after_value="2026-11-01",
+                    source_document="RFP.pdf",
+                    source_hash="h_rfp",
+                    source_document_id=1,
+                    review_status=pci.REVIEW_STATUS_APPROVED,
+                )
+            ],
+            buyer_issued_date="2026-10-01",
+        )
+
+        res1 = mgr.add_buyer_update_revision(
+            documents=[{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "h_add1"}],
+            changes=[
+                pci.FactChange(
+                    change_type=pci.CHANGE_SUPERSEDES,
+                    fact_type="submission_deadline",
+                    entity_id="sub:deadline",
+                    before_value="2026-11-01",
+                    after_value="2026-11-15",
+                    source_document="Addendum 1.pdf",
+                    source_hash="h_add1",
+                    source_document_id=2,
+                    review_status=pci.REVIEW_STATUS_APPROVED,
+                )
+            ],
+            buyer_issued_date="2026-10-05",
+        )
+        rev1 = res1["revision"]
+
+        ctx = mgr.get_revision_specialist_context(
+            target=rev1.revision_id,
+            specialist_id=pci.SPECIALIST_SCHEDULE_SUBMISSION,
+            canonical_package=self.pkg,
+        )
+
+        self.assertTrue(ctx.is_executable)
+        self.assertEqual(ctx.revision_id, rev1.revision_id)
+        sub = next(o for o in ctx.relevant_current_canonical_objects if o.get("canonical_id") == "SUBMISSION")
+        self.assertEqual(sub["submission_deadline"], "2026-11-15")
+
+
 if __name__ == "__main__":
     unittest.main()
