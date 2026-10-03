@@ -440,31 +440,36 @@ def start_opportunity_analysis(
             except Exception as exc:
                 logger.warning("Duplicate detection skipped for bid %s: %s", bid_id, exc)
 
-    # 2. Check for existing FULL analysis status
-    status = tenancy.get_full_analysis_status_for_organization(bid_id, organization_id)
-    if status and not retry:
-        run_status = status.get("status")
-        if run_status in ("QUEUED", "RUNNING") and not (status.get("stuck") or {}).get("stuck"):
-            return {
-                "outcome": "ACTIVE_RUN_EXISTS",
-                "status": status,
-                "is_live": True,
-                "step": STEP_FULL_ANALYSIS_RUNNING,
-            }
-        if run_status == "COMPLETE":
-            return {
-                "outcome": "REUSED_COMPLETE",
-                "status": status,
-                "is_live": False,
-                "step": STEP_COMPLETE,
-            }
-
-    # Fail closed upfront if baseline document primary selection is ambiguous
-    doc_ids, doc_roles = resolve_baseline_documents(docs, chosen_primary_id=chosen_primary_doc_id)
-    if doc_ids is None:
+    # 2. Check procurement governance status first.
+    # Precedence rule: for an ungoverned bid, historical FULL runs never bypass baseline governance.
+    try:
         proc_state = db.get_bid_procurement_state(bid_id)
-        truth_status = proc_state.get("procurement_truth_status", "ungoverned")
-        if truth_status != "governed":
+    except Exception:
+        proc_state = {"procurement_truth_status": "ungoverned", "procurement_revision": 1}
+    truth_status = proc_state.get("procurement_truth_status", "ungoverned")
+
+    if truth_status == "governed":
+        status = tenancy.get_full_analysis_status_for_organization(bid_id, organization_id)
+        if status and not retry:
+            run_status = status.get("status")
+            if run_status in ("QUEUED", "RUNNING") and not (status.get("stuck") or {}).get("stuck"):
+                return {
+                    "outcome": "ACTIVE_RUN_EXISTS",
+                    "status": status,
+                    "is_live": True,
+                    "step": STEP_FULL_ANALYSIS_RUNNING,
+                }
+            if run_status == "COMPLETE":
+                return {
+                    "outcome": "REUSED_COMPLETE",
+                    "status": status,
+                    "is_live": False,
+                    "step": STEP_COMPLETE,
+                }
+    else:
+        # Ungoverned: fail closed upfront if baseline document primary selection is ambiguous
+        doc_ids, doc_roles = resolve_baseline_documents(docs, chosen_primary_id=chosen_primary_doc_id)
+        if doc_ids is None:
             reviews = db.get_procurement_update_reviews(bid_id)
             baseline_reviews = [r for r in reviews if r.get("review_kind") == "baseline"]
             active_baseline = next(
@@ -622,40 +627,13 @@ def get_opportunity_analysis_state(bid_id: int, organization_id: str) -> dict[st
     pending_changes_count = 0
     approved_changes_count = 0
 
-    if full_status:
-        run_id = full_status.get("run_id")
-        raw_status = full_status.get("status")
-        is_stuck = bool((full_status.get("stuck") or {}).get("stuck"))
-        if raw_status in ("QUEUED", "RUNNING") and not is_stuck:
+    if truth_status != "governed":
+        # Precedence rule: for an ungoverned bid, historical FULL runs never bypass baseline governance.
+        if latest_fast_run and latest_fast_run.get("status") in ("QUEUED", "PREPARING", "ANALYZING", "ASSEMBLING"):
             is_live = True
-            step = STEP_FULL_ANALYSIS_RUNNING
-            status_label = "Analyzing opportunity across six intelligence lenses…"
-        elif raw_status == "COMPLETE":
-            is_complete = True
-            step = STEP_COMPLETE
-            status_label = "Opportunity intelligence current"
-        elif raw_status == "PARTIAL":
-            is_partial = True
-            step = STEP_PARTIAL
-            status_label = "Opportunity intelligence complete (partial notices)"
-        elif raw_status == "FAILED":
-            is_failed = True
-            step = STEP_FAILED
-            status_label = f"Analysis failed: {full_status.get('failure_reason') or 'Unknown error'}"
-        elif is_stuck:
-            is_stuck = True
-            step = STEP_FAILED
-            status_label = "Analysis interrupted (stuck)"
-    elif latest_fast_run and latest_fast_run.get("status") in ("QUEUED", "PREPARING", "ANALYZING", "ASSEMBLING"):
-        is_live = True
-        step = STEP_FOUNDATION_RUNNING
-        status_label = "Analyzing procurement documents…"
-    elif latest_fast_run and latest_fast_run.get("status") == "FAILED":
-        is_failed = True
-        step = STEP_FAILED
-        status_label = f"Procurement analysis failed: {latest_fast_run.get('failure_reason') or 'Unknown error'}"
-    elif truth_status != "governed":
-        if active_baseline:
+            step = STEP_FOUNDATION_RUNNING
+            status_label = "Analyzing procurement documents…"
+        elif active_baseline:
             b_status = active_baseline.get("status")
             if b_status == "analyzing":
                 is_live = True
@@ -684,6 +662,10 @@ def get_opportunity_analysis_state(bid_id: int, organization_id: str) -> dict[st
             is_failed = True
             step = STEP_FAILED
             status_label = f"Baseline analysis failed: {baseline_review.get('review_note') or 'Unknown error'}"
+        elif latest_fast_run and latest_fast_run.get("status") == "FAILED":
+            is_failed = True
+            step = STEP_FAILED
+            status_label = f"Procurement analysis failed: {latest_fast_run.get('failure_reason') or 'Unknown error'}"
         elif latest_fast_run and latest_fast_run.get("status") == "COMPLETE":
             step = STEP_READY
             status_label = "Ready to confirm procurement facts"
@@ -691,33 +673,65 @@ def get_opportunity_analysis_state(bid_id: int, organization_id: str) -> dict[st
             step = STEP_READY
             status_label = "Ready to analyze opportunity"
     else:
-        step = STEP_READY
-        status_label = "Ready to analyze opportunity"
+        # Governed: now evaluate FULL analysis status
+        if full_status:
+            run_id = full_status.get("run_id")
+            raw_status = full_status.get("status")
+            is_stuck = bool((full_status.get("stuck") or {}).get("stuck"))
+            if raw_status in ("QUEUED", "RUNNING") and not is_stuck:
+                is_live = True
+                step = STEP_FULL_ANALYSIS_RUNNING
+                status_label = "Analyzing opportunity across six intelligence lenses…"
+            elif raw_status == "COMPLETE":
+                is_complete = True
+                step = STEP_COMPLETE
+                status_label = "Opportunity intelligence current"
+            elif raw_status == "PARTIAL":
+                is_partial = True
+                step = STEP_PARTIAL
+                status_label = "Opportunity intelligence complete (partial notices)"
+            elif raw_status == "FAILED":
+                is_failed = True
+                step = STEP_FAILED
+                status_label = f"Analysis failed: {full_status.get('failure_reason') or 'Unknown error'}"
+            elif is_stuck:
+                is_stuck = True
+                step = STEP_FAILED
+                status_label = "Analysis interrupted (stuck)"
+        elif latest_fast_run and latest_fast_run.get("status") in ("QUEUED", "PREPARING", "ANALYZING", "ASSEMBLING"):
+            is_live = True
+            step = STEP_FOUNDATION_RUNNING
+            status_label = "Analyzing procurement documents…"
+        elif latest_fast_run and latest_fast_run.get("status") == "FAILED":
+            is_failed = True
+            step = STEP_FAILED
+            status_label = f"Procurement analysis failed: {latest_fast_run.get('failure_reason') or 'Unknown error'}"
+        else:
+            step = STEP_READY
+            status_label = "Ready to analyze opportunity"
 
     # Lens progression
     lenses_state = []
-    spec_statuses = (full_status.get("specialists") or {}) if full_status else {}
+    spec_statuses = (full_status.get("specialists") or {}) if (full_status and truth_status == "governed") else {}
     for lid, name, code, desc in LENSES:
         s_info = spec_statuses.get(lid) or {}
-        st = s_info.get("status", "WAITING")
-        if not full_status:
-            st = "WAITING"
+        st = s_info.get("status", "WAITING") if (full_status and truth_status == "governed") else "WAITING"
         lenses_state.append({
             "id": lid,
             "name": name,
             "code": code,
             "description": desc,
             "status": st,
-            "duration": s_info.get("duration_seconds"),
+            "duration": s_info.get("duration_seconds") if (full_status and truth_status == "governed") else None,
         })
 
     # Reconciliation state
-    recon_info = (full_status.get("reconciliation") or {}) if full_status else {}
+    recon_info = (full_status.get("reconciliation") or {}) if (full_status and truth_status == "governed") else {}
     recon_status = recon_info.get("status", "WAITING")
 
     # Counts from events
     hub_counts = []
-    if full_status:
+    if full_status and truth_status == "governed":
         for ev in full_status.get("events") or []:
             if ev.get("event_type") == "CANONICAL_PACKAGE_READY":
                 counts = (ev.get("detail") or {}).get("object_counts") or {}
@@ -743,11 +757,12 @@ def get_opportunity_analysis_state(bid_id: int, organization_id: str) -> dict[st
         "is_partial": is_partial,
         "is_failed": is_failed,
         "is_stuck": is_stuck,
-        "full_status": full_status,
+        "full_status": full_status if truth_status == "governed" else None,
+        "historical_full_status": full_status,
         "lenses": lenses_state,
         "reconciliation_status": recon_status,
         "hub_counts": hub_counts,
-        "has_full_run": full_status is not None,
+        "has_full_run": (full_status is not None) if truth_status == "governed" else False,
         "has_fast_run": latest_fast_run is not None,
         "procurement_state": proc_state,
         "baseline_review": baseline_review,

@@ -56,24 +56,26 @@ class TestStartOpportunityAnalysis(unittest.TestCase):
         mock_start_full.assert_called_once()
         self.assertEqual(res.get("outcome"), "CREATED")
 
+    @patch("understand_analysis.db.get_bid_procurement_state", return_value={"procurement_truth_status": "governed", "procurement_revision": 1})
     @patch("understand_analysis.tenancy.get_full_analysis_status_for_organization", return_value={
         "run_id": 50, "status": "COMPLETE"
     })
     @patch("understand_analysis.tenancy.get_documents_authenticated", return_value=[])
     @patch("understand_analysis.tenancy.require_bid_access")
     def test_start_reuses_complete_full_run_when_not_retry(
-        self, mock_access, mock_docs, mock_full_status
+        self, mock_access, mock_docs, mock_full_status, mock_proc_state
     ):
         res = ua.start_opportunity_analysis(101, "org-test", retry=False)
         self.assertEqual(res.get("outcome"), "REUSED_COMPLETE")
 
+    @patch("understand_analysis.db.get_bid_procurement_state", return_value={"procurement_truth_status": "governed", "procurement_revision": 1})
     @patch("understand_analysis.tenancy.get_full_analysis_status_for_organization", return_value={
         "run_id": 50, "status": "RUNNING"
     })
     @patch("understand_analysis.tenancy.get_documents_authenticated", return_value=[])
     @patch("understand_analysis.tenancy.require_bid_access")
     def test_start_reconnects_to_active_run(
-        self, mock_access, mock_docs, mock_full_status
+        self, mock_access, mock_docs, mock_full_status, mock_proc_state
     ):
         res = ua.start_opportunity_analysis(101, "org-test", retry=False)
         self.assertEqual(res.get("outcome"), "ACTIVE_RUN_EXISTS")
@@ -81,6 +83,7 @@ class TestStartOpportunityAnalysis(unittest.TestCase):
 
 
 class TestGetOpportunityAnalysisState(unittest.TestCase):
+    @patch("understand_analysis.tenancy.get_procurement_state_for_organization", return_value={"procurement_truth_status": "governed", "procurement_revision": 1})
     @patch("understand_analysis.db.list_analysis_runs", return_value=[])
     @patch("understand_analysis.tenancy.get_full_analysis_status_for_organization", return_value={
         "run_id": 52,
@@ -102,7 +105,7 @@ class TestGetOpportunityAnalysisState(unittest.TestCase):
             }
         ]
     })
-    def test_state_reports_truthful_lens_and_counts(self, mock_full_status, mock_list_runs):
+    def test_state_reports_truthful_lens_and_counts(self, mock_full_status, mock_list_runs, mock_proc_state):
         state = ua.get_opportunity_analysis_state(101, "org-test")
         self.assertTrue(state["is_live"])
         self.assertFalse(state["is_complete"])
@@ -117,6 +120,140 @@ class TestGetOpportunityAnalysisState(unittest.TestCase):
         # Verify hub counts
         self.assertIn("5 evaluation criteria verified", state["hub_counts"])
         self.assertIn("24 requirements identified", state["hub_counts"])
+
+
+class TestGovernancePrecedenceOverHistoricalFull(unittest.TestCase):
+    """
+    Requirements from UNDERSTAND-UX1.2:
+    1. Precedence: PROCUREMENT GOVERNANCE STATE must be evaluated before a
+       historical FULL COMPLETE can be considered current.
+    2. For an UNGOVERNED bid:
+       - existing FULL COMPLETE must NOT bypass baseline establishment
+       - existing FULL data remains historical and immutable
+       - deterministic foundation may be reused if valid
+       - baseline governance must still be completed
+       - state reports NOT COMPLETE, next step is baseline governance
+       - 0 model calls to inspect state or present this step
+    3. For a GOVERNED bid + current FULL COMPLETE:
+       - Opportunity intelligence current
+       - Reused complete
+       - 0 model calls
+    """
+
+    @patch("understand_analysis.tenancy.get_procurement_state_for_organization", return_value={"procurement_truth_status": "ungoverned", "procurement_revision": 1})
+    @patch("understand_analysis.db.list_analysis_runs", return_value=[])
+    @patch("understand_analysis.tenancy.get_documents_authenticated", return_value=[{"id": 1, "doc_type": "RFP / Source", "name": "rfp.pdf"}])
+    @patch("understand_analysis.tenancy.get_full_analysis_status_for_organization", return_value={
+        "run_id": 99,
+        "status": "COMPLETE",
+        "specialists": {
+            lid: {"status": "COMPLETE", "duration_seconds": 10.0} for lid in ua.LENS_IDS
+        },
+        "reconciliation": {"status": "COMPLETE", "duration_seconds": 5.0},
+        "events": [
+            {
+                "event_type": "CANONICAL_PACKAGE_READY",
+                "detail": {"object_counts": {"CANONICAL_REQUIREMENT": 20}}
+            }
+        ]
+    })
+    def test_ungoverned_bid_with_historical_full_complete_reports_not_complete_in_state(
+        self, mock_full_status, mock_docs, mock_runs, mock_proc_state
+    ):
+        state = ua.get_opportunity_analysis_state(101, "org-test")
+        # Must NOT be complete
+        self.assertFalse(state["is_complete"])
+        self.assertNotEqual(state["step"], ua.STEP_COMPLETE)
+        self.assertNotEqual(state["status_label"], "Opportunity intelligence current")
+        # Lenses must report WAITING for customer presentation
+        for lens in state["lenses"]:
+            self.assertEqual(lens["status"], "WAITING")
+        self.assertEqual(state["reconciliation_status"], "WAITING")
+        self.assertEqual(state["hub_counts"], [])
+        # Active full run is None for customer UI, historical full status preserved
+        self.assertIsNone(state["run_id"])
+        self.assertIsNone(state["full_status"])
+        self.assertFalse(state["has_full_run"])
+        self.assertEqual(state.get("historical_full_status", {}).get("status"), "COMPLETE")
+
+    @patch("understand_analysis.db.get_bid_procurement_state", return_value={"procurement_truth_status": "ungoverned", "procurement_revision": 1})
+    @patch("understand_analysis.db.get_procurement_update_reviews", return_value=[
+        {"id": 201, "review_kind": "baseline", "status": "ready_for_review", "base_procurement_revision": 1}
+    ])
+    @patch("understand_analysis.db.get_procurement_changes", return_value=[
+        {"id": 301, "bid_id": 101, "review_id": 201, "review_decision": "pending"}
+    ])
+    @patch("understand_analysis.db.list_analysis_runs", return_value=[
+        {"id": 48, "analysis_mode": "FAST", "status": "COMPLETE"}
+    ])
+    @patch("understand_analysis.tenancy.get_full_analysis_status_for_organization", return_value={
+        "run_id": 99,
+        "status": "COMPLETE",
+    })
+    @patch("understand_analysis.tenancy.get_documents_authenticated", return_value=[{"id": 1, "doc_type": "RFP / Source", "name": "rfp.pdf"}])
+    @patch("understand_analysis.tenancy.require_bid_access")
+    def test_ungoverned_bid_with_historical_full_complete_does_not_return_reused_complete_in_start(
+        self, mock_access, mock_docs, mock_full_status, mock_list_runs, mock_changes, mock_reviews, mock_proc_state
+    ):
+        res = ua.start_opportunity_analysis(101, "org-test", retry=False)
+        # Must NOT return REUSED_COMPLETE
+        self.assertNotEqual(res.get("outcome"), "REUSED_COMPLETE")
+        self.assertNotEqual(res.get("step"), ua.STEP_COMPLETE)
+        # Must require baseline review
+        self.assertEqual(res.get("outcome"), "BASELINE_REVIEW_REQUIRED")
+        self.assertEqual(res.get("step"), ua.STEP_BASELINE_REVIEW_REQUIRED)
+
+    @patch("understand_analysis.db.get_bid_procurement_state", return_value={"procurement_truth_status": "governed", "procurement_revision": 1})
+    @patch("understand_analysis.tenancy.get_procurement_state_for_organization", return_value={"procurement_truth_status": "governed", "procurement_revision": 1})
+    @patch("understand_analysis.tenancy.get_full_analysis_status_for_organization", return_value={
+        "run_id": 99,
+        "status": "COMPLETE",
+    })
+    @patch("understand_analysis.tenancy.get_documents_authenticated", return_value=[{"id": 1, "doc_type": "RFP / Source", "name": "rfp.pdf"}])
+    @patch("understand_analysis.tenancy.require_bid_access")
+    def test_governed_bid_with_current_full_complete_returns_reused_complete(
+        self, mock_access, mock_docs, mock_full_status, mock_proc_org, mock_proc_db
+    ):
+        # 1. State inspection
+        state = ua.get_opportunity_analysis_state(101, "org-test")
+        self.assertTrue(state["is_complete"])
+        self.assertEqual(state["step"], ua.STEP_COMPLETE)
+        self.assertEqual(state["status_label"], "Opportunity intelligence current")
+        self.assertTrue(state["has_full_run"])
+
+        # 2. Start call
+        res = ua.start_opportunity_analysis(101, "org-test", retry=False)
+        self.assertEqual(res.get("outcome"), "REUSED_COMPLETE")
+        self.assertEqual(res.get("step"), ua.STEP_COMPLETE)
+
+    @patch("understand_analysis.db.get_bid_procurement_state", return_value={"procurement_truth_status": "ungoverned", "procurement_revision": 1})
+    @patch("understand_analysis.tenancy.get_procurement_state_for_organization", return_value={"procurement_truth_status": "ungoverned", "procurement_revision": 1})
+    @patch("understand_analysis.db.get_procurement_update_reviews", return_value=[
+        {"id": 201, "review_kind": "baseline", "status": "ready_for_review", "base_procurement_revision": 1}
+    ])
+    @patch("understand_analysis.db.get_procurement_changes", return_value=[
+        {"id": 301, "bid_id": 101, "review_id": 201, "review_decision": "pending"}
+    ])
+    @patch("understand_analysis.db.list_analysis_runs", return_value=[
+        {"id": 48, "analysis_mode": "FAST", "status": "COMPLETE"}
+    ])
+    @patch("understand_analysis.tenancy.get_full_analysis_status_for_organization", return_value={
+        "run_id": 99,
+        "status": "COMPLETE",
+    })
+    @patch("understand_analysis.tenancy.get_documents_authenticated", return_value=[{"id": 1, "doc_type": "RFP / Source", "name": "rfp.pdf"}])
+    @patch("understand_analysis.tenancy.require_bid_access")
+    @patch("understand_analysis.db.start_full_analysis_run")
+    @patch("understand_analysis.db.finalize_full_analysis_run")
+    def test_ungoverned_historical_full_run_remains_immutable(
+        self, mock_finalize_run, mock_start_run, mock_access, mock_docs, mock_full_status, mock_list_runs, mock_changes, mock_reviews, mock_proc_org, mock_proc_db
+    ):
+        """Inspection and start on ungoverned bid must never mutate or delete historical full runs."""
+        state = ua.get_opportunity_analysis_state(101, "org-test")
+        res = ua.start_opportunity_analysis(101, "org-test", retry=False)
+        # Verify no run mutation RPCs were called
+        mock_start_run.assert_not_called()
+        mock_finalize_run.assert_not_called()
 
 
 # ── Production reconciliation budget regression tests ─────────────────────────
