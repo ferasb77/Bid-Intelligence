@@ -804,10 +804,11 @@ def test_committed_migrations_are_unmodified_and_020_is_next():
     names = sorted(p.name for p in (ROOT / "migrations").glob("*.sql"))
     i = names.index("020_full_analysis_runs.sql")
     assert names[i - 1] == "019_section_draft_claim_mappings.sql"
-    # CHECK-1 added 021 and CHECK-2B added 022 after 020; MA-2A's own
+    # CHECK-1 added 021, CHECK-2B added 022, and UX1 added 023 after 020; MA-2A's own
     # guarantee is only that 020 directly follows 019.
     assert names[i + 1:] in ([], ["021_submission_evidence_registry.sql"],
-                             ["021_submission_evidence_registry.sql", "022_check_runs.sql"])
+                             ["021_submission_evidence_registry.sql", "022_check_runs.sql"],
+                             ["021_submission_evidence_registry.sql", "022_check_runs.sql", "023_fix_procurement_document_digest_schema.sql"])
 
 
 def test_model_results_never_write_canonical_layers(fake, monkeypatch):

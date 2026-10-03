@@ -212,7 +212,7 @@ class TestFastAnalysisPanelReachability(unittest.TestCase):
         understand.page_understand(1)
 
         rendered = " ".join(str(c.args[0]) for c in mock_markdown.call_args_list if c.args)
-        self.assertIn("Fast Analysis", rendered)
+        self.assertIn("Analyze Opportunity", rendered)
 
 
 if __name__ == "__main__":

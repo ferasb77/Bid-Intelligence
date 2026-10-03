@@ -248,9 +248,10 @@ with st.sidebar:
                         unsafe_allow_html=True)
             st.markdown("")
 
+            # Backward-compatible internal stage declaration (UNDERSTAND-UX1: reachable via stage_understand, not in sidebar):
+            _BACKWARD_COMPAT_ROUTING = {"🧬  Full Bid Intelligence": "stage_full_analysis"}
             stages_nav = {
                 "💡  1. UNDERSTAND": "stage_understand",
-                "🧬  Full Bid Intelligence": "stage_full_analysis",
                 "⚖️  2. DECIDE":     "stage_decide",
                 "🛠️  3. BUILD":      "stage_build",
                 "🛡️  4. CHECK: Proposal Assurance": "stage_check_assurance",
@@ -431,7 +432,7 @@ def page_new_bid():
         pkg_client = c_t2.text_input("Client / Organization *", value="", placeholder="e.g. City of Calgary", key="pkg_bid_client")
 
         st.markdown("")
-        if st.button("⚡ Create Bid & Start Fast Analysis →", use_container_width=True, type="primary"):
+        if st.button("⚡ Create Opportunity & Analyze →", use_container_width=True, type="primary"):
             from config import get_api_key as _gak, api_key_configured as _akc
             api_key = st.session_state.get("anthropic_api_key") or (_gak() if _akc() else None)
             if not api_key:
@@ -455,7 +456,7 @@ def page_new_bid():
                                 bid_id, _ctx.organization_id, fn, fb, doc_type="RFP / Source"
                             )
 
-                        # 3. Start Fast Analysis in background via tenancy authorization boundary
+                        # 3. Start deterministic procurement foundation via tenancy boundary
                         _tenancy.start_fast_analysis_for_organization(
                             bid_id, _ctx.organization_id, api_key, created_by="app-ui"
                         )
@@ -463,7 +464,7 @@ def page_new_bid():
                         # 4. Navigate immediately to stage_understand to observe live progress
                         go("stage_understand", bid_id)
                     except Exception as e:
-                        st.error(f"Failed to initialize procurement analysis: {e}")
+                        st.error(f"Failed to initialize opportunity analysis: {e}")
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
     with st.expander("✏️ Create bid manually instead"):

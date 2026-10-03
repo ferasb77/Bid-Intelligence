@@ -234,7 +234,7 @@ def _render_fast_analysis_governance_note(run: dict, procurement_state: dict) ->
     elif based_on != current_revision:
         st.markdown(
             f'<div class="warn-box">⚠️ This run was based on procurement revision {based_on}; the current '
-            f'revision is {current_revision}. Re-run Fast Analysis to reflect the latest procurement truth.</div>',
+            f'revision is {current_revision}. Re-analyze opportunity to reflect the latest procurement truth.</div>',
             unsafe_allow_html=True)
 
     if unreviewed is None:
@@ -251,98 +251,213 @@ def _render_fast_analysis_governance_note(run: dict, procurement_state: dict) ->
             unsafe_allow_html=True)
 
 
-def _render_fast_analysis_panel(bid_id: int, rfp_docs: list, procurement_state: dict):
-    """Status + start/retry UI for the Fast Analysis engine. Goes through
-    analysis_service.py exclusively; never touches fast_analysis.py or the
-    report adapters directly. The active/non-terminal case is delegated to
-    the auto-polling _poll_active_analysis fragment (Phase 2); every other
-    branch below is unchanged from Phase 1."""
-    st.markdown("### 💡 Analyze Opportunity")
-    st.caption("Complete multi-lens intelligence: Procurement Structure, Evaluation, Requirements, Scope, Commercial, Submission & Reconciliation. (Engine: Fast Analysis foundation + Multi-Agent Intelligence)")
+def _render_unified_progress(opp_state: dict) -> None:
+    """Renders the durable 4-step progress breakdown for live opportunity analysis (B4)."""
+    import understand_analysis as ua
+    step = opp_state.get("step")
+    full_status = opp_state.get("full_status") or {}
+    proc_state = opp_state.get("procurement_state") or {}
+    truth_status = proc_state.get("procurement_truth_status", "ungoverned")
+
+    # Step 1: Structuring procurement package
+    s1_done = step in (
+        ua.STEP_BASELINE_REVIEW_REQUIRED,
+        ua.STEP_BASELINE_APPLYING,
+        ua.STEP_FULL_ANALYSIS_RUNNING,
+        ua.STEP_COMPLETE,
+        ua.STEP_PARTIAL,
+    ) or (truth_status == "governed")
+    s1_active = step == ua.STEP_FOUNDATION_RUNNING
+
+    # Step 2: Establishing procurement baseline
+    s2_done = truth_status == "governed" or step in (
+        ua.STEP_FULL_ANALYSIS_RUNNING,
+        ua.STEP_COMPLETE,
+        ua.STEP_PARTIAL,
+    )
+    s2_active = step in (
+        ua.STEP_BASELINE_REVIEW_REQUIRED,
+        ua.STEP_BASELINE_APPLYING,
+    )
+
+    # Step 3: Running multi-specialist intelligence
+    specs = full_status.get("specialists") or {}
+    spec_complete = sum(1 for s in specs.values() if s.get("status") == "COMPLETE")
+    s3_done = spec_complete == 6 or step in (ua.STEP_COMPLETE, ua.STEP_PARTIAL)
+    s3_active = step == ua.STEP_FULL_ANALYSIS_RUNNING and not s3_done
+
+    # Step 4: Reconciling bid intelligence
+    s4_done = step in (ua.STEP_COMPLETE, ua.STEP_PARTIAL)
+    s4_active = step == ua.STEP_FULL_ANALYSIS_RUNNING and s3_done and not s4_done
+
+    def _row(done, active, label, detail=""):
+        if done:
+            icon = "✅"
+            color = "#27AE60"
+        elif active:
+            icon = "⏳"
+            color = "#C9A96E"
+        else:
+            icon = "⏸"
+            color = "#6E6C66"
+        det_html = f' <span style="font-size:.76rem;color:#A9A69D">({detail})</span>' if detail else ''
+        return f'<div style="font-size:.85rem;padding:.22rem 0;color:{color}">{icon} <strong>{label}</strong>{det_html}</div>'
+
+    s3_detail = f"{spec_complete}/6 specialists complete" if (s3_active or (s3_done and not s4_done)) else ""
+    html = '<div style="background:#111118;border:1px solid #292832;border-radius:6px;padding:.85rem 1.15rem;margin:.5rem 0">'
+    html += '<div style="font-size:.74rem;color:#C9A96E;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem;font-weight:700">Opportunity Intelligence Pipeline</div>'
+    html += _row(s1_done, s1_active, "Step 1: Structuring procurement package…")
+    html += _row(s2_done, s2_active, "Step 2: Establishing procurement baseline…")
+    html += _row(s3_done, s3_active, "Step 3: Running multi-specialist intelligence…", s3_detail)
+    html += _row(s4_done, s4_active, "Step 4: Reconciling bid intelligence…")
+    html += '</div>'
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def _render_unified_opportunity_analysis_panel(
+    bid_id: int, organization_id: str, docs: list, procurement_state: dict
+) -> None:
+    """The ONE unified initial RFP analysis panel (UNDERSTAND-UX1).
+    Replaces separate Fast Analysis and Establish Baseline cards with
+    a single coherent customer experience.
+    """
+    import understand_analysis as ua
     _token, org_id = _current_access_token_and_org()
-    run = tenancy.get_latest_analysis_run_authenticated(_token, bid_id, "FAST")
-    try:
-        full_status = tenancy.get_full_analysis_status_for_organization(bid_id, org_id)
-    except Exception:
-        full_status = None
+    opp_state = ua.get_opportunity_analysis_state(bid_id, org_id)
+    step = opp_state.get("step")
 
-    if not rfp_docs:
-        st.markdown('<div class="info-box">Upload at least one RFP / Source document above to run Fast Analysis.</div>', unsafe_allow_html=True)
+    rfp_docs = [d for d in docs if isinstance(d, dict) and d.get("doc_type") == "RFP / Source"]
+    if not rfp_docs and not docs:
+        st.markdown(
+            '<div class="info-box">Upload at least one RFP / Source document above to analyze opportunity.</div>',
+            unsafe_allow_html=True,
+        )
         return
 
-    if full_status and full_status.get("status") in ("QUEUED", "RUNNING") and not (full_status.get("stuck") or {}).get("stuck"):
-        from components import full_analysis_view as fav
-        view = fav.build_view(full_status)
-        st.markdown(fav.render_constellation(view), unsafe_allow_html=True)
-        st.markdown('<div class="info-box">🧠 Multi-lens specialist analysis in progress… Six specialists are analyzing the canonical procurement truth.</div>', unsafe_allow_html=True)
-        if st.button("🔄 Refresh status", key=f"refresh_fa_{bid_id}"):
+    # COMPLETE or PARTIAL: Compact status bar + exports
+    if step in (ua.STEP_COMPLETE, ua.STEP_PARTIAL):
+        rev = procurement_state.get("procurement_revision", 1)
+        full_status = opp_state.get("full_status") or {}
+        telemetry = full_status.get("telemetry") or {}
+        completed_at = full_status.get("completed_at") or full_status.get("created_at") or ""
+        duration = telemetry.get("wall_seconds")
+        dur_str = f" in {duration:.0f}s" if isinstance(duration, (int, float)) else ""
+        time_str = f" | Last analyzed: {completed_at[:19].replace('T', ' ')}" if completed_at else ""
+
+        st.markdown(
+            f'<div style="background:#0F1A12;border:1px solid #1E3A25;border-radius:6px;padding:.7rem 1.1rem;margin-bottom:.7rem;'
+            f'display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">'
+            f'<div><span style="color:#27AE60;font-weight:700">✓ Opportunity intelligence current</span>'
+            f'<span style="color:#A9A69D;font-size:.82rem"> | Procurement revision: Baseline (v{rev}){time_str}{dur_str}</span></div>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+        _render_fast_analysis_governance_note(opp_state.get("latest_fast_run") or full_status, procurement_state)
+        c1, c2 = st.columns(2)
+        try:
+            export_run_id = full_status.get("run_id") or (opp_state.get("latest_fast_run") or {}).get("id")
+            brief_bytes = tenancy.export_bid_intelligence_brief_for_organization(
+                bid_id, export_run_id, org_id
+            )
+            c1.download_button(
+                "⬇ Download Bid Intelligence Brief",
+                data=brief_bytes,
+                file_name=f"bid_intelligence_brief_{bid_id}.pdf",
+                mime="application/pdf",
+                key=f"dl_brief_{bid_id}",
+                use_container_width=True,
+                type="primary",
+            )
+        except (ValueError, tenancy.AccessDeniedError) as exc:
+            c1.caption(f"Brief export is unavailable: {exc}")
+
+        latest_fast = opp_state.get("latest_fast_run") or {}
+        if latest_fast.get("report_storage_path"):
+            appendix_bytes = _download_stored_file(latest_fast["report_storage_path"])
+            if appendix_bytes:
+                c1.download_button(
+                    "Download Full Intelligence Appendix",
+                    data=appendix_bytes,
+                    file_name=f"full_intelligence_appendix_{bid_id}.pdf",
+                    mime="application/pdf",
+                    key=f"dl_analysis_{bid_id}",
+                    use_container_width=True,
+                )
+        if c2.button("🔁 Re-analyze Opportunity", key=f"rerun_analysis_{bid_id}", use_container_width=True):
+            _start_opportunity_analysis(bid_id, retry=True)
+
+        with st.expander("🧬 View Specialist Constellation & Details", expanded=False):
+            if full_status:
+                from components import full_analysis_view as fav
+                view = fav.build_view(full_status)
+                st.markdown(fav.render_constellation(view), unsafe_allow_html=True)
+            if opp_state.get("hub_counts"):
+                st.markdown("**Canonical Intelligence Summary:**")
+                for count_line in opp_state["hub_counts"]:
+                    st.markdown(f"• {count_line}")
+            if st.button("🔬 Open Full Specialist Debug View", key=f"open_full_analysis_{bid_id}"):
+                st.session_state.page = "stage_full_analysis"
+                st.rerun()
+        return
+
+    # BASELINE_REVIEW_REQUIRED: In-place baseline review
+    if step == ua.STEP_BASELINE_REVIEW_REQUIRED:
+        st.markdown("### 🏛️ Review Procurement Baseline")
+        st.caption("Confirm the extracted procurement facts before finalizing bid intelligence. (Engine: Fast Analysis foundation + Multi-Agent Intelligence)")
+        _render_unified_progress(opp_state)
+        review = opp_state.get("baseline_review")
+        if review:
+            _render_review_decision_and_apply(bid_id, org_id, review, "baseline")
+        return
+
+    # RUNNING: Active progress with auto-polling
+    if step in (
+        ua.STEP_FOUNDATION_RUNNING,
+        ua.STEP_FULL_ANALYSIS_RUNNING,
+        ua.STEP_BASELINE_APPLYING,
+    ):
+        st.markdown("### 💡 Analyzing Opportunity…")
+        st.caption("Extracting requirements, establishing baseline, and executing 6-specialist intelligence. (Engine: Fast Analysis foundation + Multi-Agent Intelligence)")
+        _render_unified_progress(opp_state)
+        full_status = opp_state.get("full_status")
+        if full_status and full_status.get("specialists"):
+            from components import full_analysis_view as fav
+            view = fav.build_view(full_status)
+            st.markdown(fav.render_constellation(view), unsafe_allow_html=True)
+        if st.button("🔄 Refresh status", key=f"refresh_opp_{bid_id}"):
             st.rerun()
-        return
-
-    if _should_poll(run):
         _poll_active_analysis(bid_id)
         return
 
-    effective_run = full_status if (full_status and full_status.get("status") in ("COMPLETE", "PARTIAL")) else run
-
-    if run and run["status"] == "FAILED" and not (full_status and full_status.get("status") in ("COMPLETE", "PARTIAL")):
-        st.markdown(f'<div class="warn-box">❌ The last analysis run failed: '
-                    f'{run.get("failure_reason") or "unknown error"}</div>', unsafe_allow_html=True)
-        if st.button("🔁 Retry Fast Analysis", key=f"retry_analysis_{bid_id}", type="primary"):
-            _start_fast_analysis(bid_id)
-        return
-
-    if effective_run and effective_run.get("status") in ("COMPLETE", "PARTIAL"):
-        telemetry = effective_run.get("telemetry") or {}
-        duration = telemetry.get("wall_seconds")
+    # FAILED:
+    if step == ua.STEP_FAILED:
         st.markdown(
-            f'<div class="info-box">✅ Opportunity analysis complete'
-            f'{f" in {duration:.0f}s" if isinstance(duration, (int, float)) else ""} '
-            f'— see below for the complete intelligence report and download the Brief.</div>',
-            unsafe_allow_html=True)
-        _render_fast_analysis_governance_note(run or effective_run, procurement_state)
-        c1, c2 = st.columns(2)
-        try:
-            # Primary customer export: deterministic Brief from completed analysis
-            export_run_id = effective_run.get("run_id") or effective_run.get("id")
-            brief_bytes = tenancy.export_bid_intelligence_brief_for_organization(
-                bid_id, export_run_id, _current_access_token_and_org()[1])
-            c1.download_button("⬇ Download Bid Intelligence Brief", data=brief_bytes,
-                               file_name=f"bid_intelligence_brief_{bid_id}.pdf",
-                               mime="application/pdf", key=f"dl_brief_{bid_id}",
-                               use_container_width=True, type="primary")
-        except (ValueError, tenancy.AccessDeniedError) as exc:
-            c1.caption(f"Brief export is unavailable: {exc}")
-        if (run or {}).get("report_storage_path"):
-            appendix_bytes = _download_stored_file(run["report_storage_path"])
-            if appendix_bytes:
-                c1.download_button("Download Full Intelligence Appendix", data=appendix_bytes,
-                                   file_name=f"full_intelligence_appendix_{bid_id}.pdf",
-                                   mime="application/pdf", key=f"dl_analysis_{bid_id}",
-                                   use_container_width=True)
-        if c2.button("🔁 Re-analyze Opportunity", key=f"rerun_analysis_{bid_id}", use_container_width=True):
-            _start_fast_analysis(bid_id)
-        # Specialist breakdown navigation
-        if not full_status or full_status.get("status") not in ("COMPLETE", "PARTIAL"):
-            st.markdown('<div style="font-size:.8rem;color:#A9A69D;margin-top:.4rem">Need deeper intelligence? '
-                        '<strong>Full Bid Intelligence</strong> runs six specialist analyses over this '
-                        'Fast Analysis and reconciles them.</div>', unsafe_allow_html=True)
-            if st.button("🧬 Open Full Bid Intelligence", key=f"open_full_analysis_{bid_id}"):
-                st.session_state.page = "stage_full_analysis"
-                st.rerun()
-        else:
-            if st.button("🧬 View Specialist Constellation & Raw Findings", key=f"open_full_analysis_{bid_id}"):
-                st.session_state.page = "stage_full_analysis"
-                st.rerun()
+            f'<div class="warn-box">❌ {opp_state.get("status_label") or "Analysis interrupted or failed"}</div>',
+            unsafe_allow_html=True,
+        )
+        if st.button("🔁 Retry Opportunity Analysis", key=f"retry_analysis_{bid_id}", type="primary"):
+            _start_opportunity_analysis(bid_id, retry=True)
         return
 
-    # No run yet.
-    st.markdown('<div style="font-size:.82rem;color:#A9A69D">Runs the full opportunity intelligence engine '
-                '(evaluation criteria, pricing structure, ambiguities, commercial terms) in the '
-                'background and populates the UNDERSTAND stage automatically. Typically 2–4 minutes.</div>',
-                unsafe_allow_html=True)
+    # READY: Prominent action card
+    st.markdown("### 💡 Analyze Opportunity")
+    st.caption("Complete multi-lens intelligence: Procurement Structure, Evaluation, Requirements, Scope, Commercial, Submission & Reconciliation. (Engine: Fast Analysis foundation + Multi-Agent Intelligence)")
+    st.markdown(
+        '<div style="background:#111118;border:1px solid #292832;border-radius:8px;padding:1.2rem 1.4rem;margin:.5rem 0 .9rem 0">'
+        '<div style="font-size:.9rem;color:#EDEAE3;font-weight:600;margin-bottom:.4rem">'
+        'Run the unified opportunity intelligence engine to extract and verify:'
+        '</div>'
+        '<ul style="font-size:.85rem;color:#A9A69D;margin:.3rem 0;padding-left:1.2rem;line-height:1.6">'
+        '<li><strong>Structured requirements & commercial terms</strong> — extracted from all RFP source documents</li>'
+        '<li><strong>Governed procurement baseline</strong> — verified qualification gates, scoring criteria, and commercial terms</li>'
+        '<li><strong>Multi-specialist intelligence & risk analysis</strong> — 6 specialist lenses with cross-domain reconciliation</li>'
+        '<li><strong>Canonical procurement foundation</strong> — authoritative basis for proposal generation</li>'
+        '</ul>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
     if st.button("⚡ Analyze Opportunity", key=f"start_analysis_{bid_id}", type="primary"):
-        _start_fast_analysis(bid_id)
+        _start_opportunity_analysis(bid_id)
 
     # Optional Deep Verification & Package Synthesis expander
     with st.expander("🔬 Deep Verification & Cross-Document Synthesis (Optional / In-Depth)", expanded=False):
@@ -350,7 +465,7 @@ def _render_fast_analysis_panel(bid_id: int, rfp_docs: list, procurement_state: 
             '<div style="font-size:.82rem;color:#A9A69D">'
             'Runs the legacy 4-stage Deep Extraction pipeline (Stages A–D: detailed item-by-item extraction, '
             '6-type conflict reconciliation, and executive brief synthesis). This is an intensive process (~5–10 min) '
-            'and is purely optional for deeper cross-document auditing. Fast Analysis above remains the primary '
+            'and is purely optional for deeper cross-document auditing. Opportunity Analysis above remains the primary '
             'advisory intelligence engine.'
             '</div>',
             unsafe_allow_html=True
@@ -361,7 +476,6 @@ def _render_fast_analysis_panel(bid_id: int, rfp_docs: list, procurement_state: 
             else:
                 api_key = st.session_state.get("anthropic_api_key") or get_api_key()
                 from extractor import extract_procurement_package
-                # Download file bytes for rfp_docs
                 pkg_files_to_extract = []
                 for d in rfp_docs:
                     fp = d.get("file_path")
@@ -376,7 +490,6 @@ def _render_fast_analysis_panel(bid_id: int, rfp_docs: list, procurement_state: 
                     with st.spinner(f"Running multi-stage deep verification on {len(pkg_files_to_extract)} document(s)…"):
                         try:
                             result, model_used = extract_procurement_package(pkg_files_to_extract, api_key)
-                            # Save synthesized brief
                             brief_data = result.get("brief") or {}
                             brief_data["bid_id"] = bid_id
                             _, org_id = _current_access_token_and_org()
@@ -387,15 +500,40 @@ def _render_fast_analysis_panel(bid_id: int, rfp_docs: list, procurement_state: 
                             st.error(f"Deep verification failed: {e}")
 
 
-def _start_fast_analysis(bid_id: int):
-    """Phase 8 remediation package 3: a user-triggered privileged
-    operation (creates an analysis_runs row, spends LLM tokens) -- routed
-    through tenancy.start_fast_analysis_for_organization(), which verifies
-    the caller's organization actually owns bid_id BEFORE calling
-    analysis_service.start_fast_analysis() at all (instruction 16/17).
-    analysis_service.py / fast_analysis.py themselves are unchanged; this
-    only adds the authorization check in front of the existing call."""
+def _start_opportunity_analysis(bid_id: int, retry: bool = False):
+    """Start or retry unified opportunity analysis via understand_analysis."""
     if not st.session_state.get("anthropic_api_key") and not api_key_configured():
+        st.error("Add your Anthropic API key first (see New Bid page or Settings).")
+        return
+    api_key = st.session_state.get("anthropic_api_key") or get_api_key()
+    _, organization_id = _current_access_token_and_org()
+    try:
+        import understand_analysis as ua
+        ua.start_opportunity_analysis(
+            bid_id, organization_id, api_key=api_key,
+            created_by_user_id=_current_user_id(),
+            retry=retry,
+            execution="background",
+        )
+        st.success("Opportunity analysis started.")
+        st.rerun()
+    except tenancy.AccessDeniedError:
+        st.error("You do not have access to that bid.")
+    except Exception as e:
+        st.error(f"Could not start opportunity analysis: {e}")
+
+
+def _render_fast_analysis_panel(bid_id: int, rfp_docs: list, procurement_state: dict):
+    """Backward-compatible wrapper for tests; delegates to the unified panel."""
+    _token, org_id = _current_access_token_and_org()
+    docs = tenancy.get_documents_authenticated(_token, bid_id) if hasattr(tenancy, "get_documents_authenticated") else rfp_docs
+    _render_unified_opportunity_analysis_panel(bid_id, org_id, docs, procurement_state)
+
+
+def _start_fast_analysis(bid_id: int):
+    """Start Fast Analysis through the authenticated tenancy wrapper.
+    Never calls analysis_service directly."""
+    if not _governance_llm_ready():
         st.error("Add your Anthropic API key first (see New Bid page or Settings).")
         return
     api_key = st.session_state.get("anthropic_api_key") or get_api_key()
@@ -406,11 +544,6 @@ def _start_fast_analysis(bid_id: int):
         st.rerun()
     except tenancy.AccessDeniedError:
         st.error("You do not have access to that bid.")
-    except analysis_service.DuplicateAnalysisRunError as e:
-        st.warning(f"An analysis is already in progress for this bid (run {e.existing_run.get('id')}).")
-        st.rerun()
-    except analysis_service.NoCorpusError as e:
-        st.error(str(e))
     except Exception as e:
         st.error(f"Could not start Fast Analysis: {e}")
 
@@ -590,14 +723,40 @@ def _render_review_decision_and_apply(bid_id: int, organization_id: str, review:
         st.markdown(f'<div class="info-box">{pending_count} decision(s) still pending — '
                     f'Apply unlocks once every proposal has been approved or rejected.</div>',
                     unsafe_allow_html=True)
+    if key_prefix == "baseline" and pending_count > 0:
+        if st.button("✅ Approve All & Commit Baseline", key=f"{key_prefix}_approve_all_{review['id']}",
+                     type="primary", use_container_width=True):
+            try:
+                import understand_analysis as ua
+                api_key = st.session_state.get("anthropic_api_key") or get_api_key()
+                res = ua.apply_baseline_and_resume_analysis(
+                    bid_id, organization_id, review["id"],
+                    user_id=_current_user_id(), api_key=api_key,
+                    approve_all_pending=True,
+                )
+                st.session_state[f"{key_prefix}_apply_result_{bid_id}"] = res.get("apply_result")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Could not apply baseline: {e}")
+
     if st.button("🔒 Apply — commit governed procurement truth", key=f"{key_prefix}_apply_{review['id']}",
                  type="primary", disabled=pending_count > 0, use_container_width=True):
         try:
-            result = tenancy.apply_procurement_update_review_for_organization(
-                bid_id, organization_id, review["id"], review.get("base_procurement_revision"),
-                _current_user_id(),
-            )
-            st.session_state[f"{key_prefix}_apply_result_{bid_id}"] = result
+            if key_prefix == "baseline":
+                import understand_analysis as ua
+                api_key = st.session_state.get("anthropic_api_key") or get_api_key()
+                res = ua.apply_baseline_and_resume_analysis(
+                    bid_id, organization_id, review["id"],
+                    user_id=_current_user_id(), api_key=api_key,
+                    approve_all_pending=False,
+                )
+                st.session_state[f"{key_prefix}_apply_result_{bid_id}"] = res.get("apply_result")
+            else:
+                result = tenancy.apply_procurement_update_review_for_organization(
+                    bid_id, organization_id, review["id"], review.get("base_procurement_revision"),
+                    _current_user_id(),
+                )
+                st.session_state[f"{key_prefix}_apply_result_{bid_id}"] = result
             st.rerun()
         except Exception as e:
             reason = str(e)
@@ -717,7 +876,8 @@ def _render_buyer_update_workflow(bid_id: int, organization_id: str, docs: list,
 
 def _render_procurement_governance_panel(bid_id: int, organization_id: str, docs: list) -> dict:
     """Returns the fetched procurement_state so callers elsewhere on this
-    page (the Fast Analysis panel) don't need a second, redundant fetch."""
+    page don't need a second, redundant fetch. In the unified flow, baseline
+    review is handled in-place within the Analyze Opportunity panel."""
     state = tenancy.get_procurement_state_for_organization(bid_id, organization_id)
     truth_status = state.get("procurement_truth_status", "ungoverned")
     revision = state.get("procurement_revision", 1)
@@ -725,7 +885,9 @@ def _render_procurement_governance_panel(bid_id: int, organization_id: str, docs
     if truth_status == "governed":
         _render_buyer_update_workflow(bid_id, organization_id, docs, revision)
     else:
-        _render_baseline_workflow(bid_id, organization_id, docs, revision)
+        st.markdown(
+            '<div class="warn-box">⚠ <strong>Procurement truth is not yet governed.</strong> The intelligence '
+            'for this opportunity will establish and confirm a governed baseline.</div>', unsafe_allow_html=True)
 
     return state
 
@@ -879,14 +1041,10 @@ def page_understand(bid_id: int):
     k4.markdown(metric_card("Procurement Model", proc_model[:22], f"Lead: {bid.get('owner') or 'Unassigned'}"), unsafe_allow_html=True)
     st.markdown("")
 
-    # ── FAST ANALYSIS: START / LIVE PROGRESS ──────────────────────────────────
-    # Phase 3 commissioning fix: this is the only reachable place in the
-    # product a user can actually start/observe Fast Analysis (see the panel
-    # functions above for why). Runs before the completed-intelligence
-    # section further down, which continues to render only once a run is
-    # COMPLETE.
-    rfp_docs = [d for d in docs if d.get("doc_type") == "RFP / Source"]
-    _render_fast_analysis_panel(bid_id, rfp_docs, procurement_state)
+    # ── OPPORTUNITY ANALYSIS: START / LIVE PROGRESS (UNDERSTAND-UX1) ───────────
+    # Unified single customer-facing workflow: Fast Analysis foundation ->
+    # baseline review governance -> Full Bid Intelligence.
+    _render_unified_opportunity_analysis_panel(bid_id, _org_id, docs, procurement_state)
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
     # ── SECTION A0: CROSS-DOCUMENT CONFLICTS & DISCREPANCIES ──────────────────
@@ -1226,10 +1384,10 @@ def page_understand(bid_id: int):
     if analysis_result and analysis_result.get("structured_intelligence"):
         oi = _ensure_dict(analysis_result["structured_intelligence"])
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-        st.markdown("## ⚡ Fast Analysis — Full Intelligence")
+        st.markdown("## ⚡ Opportunity Intelligence — Detailed Findings")
         st.markdown(
             '<div style="font-size:.82rem;color:#A9A69D;margin-bottom:.6rem">'
-            'Detailed, source-traceable output from the default analysis engine. '
+            'Detailed, source-traceable output from the opportunity intelligence engine. '
             'Expand any "View Source" panel to see the exact document, page, and excerpt a fact came from.'
             '</div>',
             unsafe_allow_html=True

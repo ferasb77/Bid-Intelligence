@@ -844,12 +844,13 @@ class TestMigrationAndRegression:
         # CHECK-2B.1 applied 022 live; its only pre-application edit was the
         # STATUS header (see tests/test_check2b1_live_commissioning.py).
         names = sorted(p.name for p in (ROOT / "migrations").glob("*.sql"))
-        assert names[-2:] == ["021_submission_evidence_registry.sql", "022_check_runs.sql"]
+        idx_022 = names.index("022_check_runs.sql")
+        assert names[idx_022 - 1] == "021_submission_evidence_registry.sql"
         assert "STATUS: APPLIED_AND_COMMISSIONED" in MIGRATION_022
 
     def test_migrations_001_to_021_unmodified(self):
         files = [f"migrations/{p.name}" for p in sorted((ROOT / "migrations").glob("0[0-2][0-9]_*.sql"))
-                 if not p.name.startswith("022")]
+                 if not p.name.startswith(("022", "023"))]
         assert _git_diff(*files) == ""
 
     def test_migration_widens_modes_without_touching_canonical_tables(self):

@@ -93,7 +93,18 @@ def _production_recon_budget():
     finally:
         fa.RECONCILIATION_MAX_OUTPUT_TOKENS = original
 
-# Lens definitions matching the 6 specialist domains + cross-domain reconciliation
+# ---------------------------------------------------------------------------
+# Unified opportunity analysis workflow steps (UNDERSTAND-UX1)
+# ---------------------------------------------------------------------------
+STEP_READY: str = "READY"
+STEP_FOUNDATION_RUNNING: str = "FOUNDATION_RUNNING"
+STEP_BASELINE_REVIEW_REQUIRED: str = "BASELINE_REVIEW_REQUIRED"
+STEP_BASELINE_APPLYING: str = "BASELINE_APPLYING"
+STEP_FULL_ANALYSIS_RUNNING: str = "FULL_ANALYSIS_RUNNING"
+STEP_COMPLETE: str = "COMPLETE"
+STEP_PARTIAL: str = "PARTIAL"
+STEP_FAILED: str = "FAILED"
+
 LENSES = (
     ("PROCUREMENT_STRUCTURE", "Procurement Structure", "PS", "Verifying document hierarchy and packaging rules"),
     ("REQUIREMENTS_COMPLIANCE", "Requirements & Compliance", "RC", "Auditing mandatory qualification gates and compliance items"),
@@ -108,6 +119,237 @@ LENS_CODE = {lens[0]: lens[2] for lens in LENSES}
 LENS_DESC = {lens[0]: lens[3] for lens in LENSES}
 
 
+def resolve_baseline_documents(docs: list[dict]) -> tuple[list[int], list[str]]:
+    """Resolve document IDs and roles for baseline review (B7).
+
+    Rules:
+    - Default to all registered documents with doc_type == 'RFP / Source'.
+    - If none have doc_type == 'RFP / Source', fall back to all registered docs.
+    - If exactly 1 document: assign role = 'primary'.
+    - If multiple documents:
+      * If any document already has role == 'primary', preserve that assignment.
+      * Otherwise, assign role = 'primary' to the first document and 'supporting' to the rest.
+    """
+    if not docs:
+        return [], []
+    rfp_docs = [d for d in docs if isinstance(d, dict) and d.get("doc_type") == "RFP / Source"]
+    if not rfp_docs:
+        rfp_docs = [d for d in docs if isinstance(d, dict)]
+    if not rfp_docs:
+        return [], []
+
+    valid_docs = [d for d in rfp_docs if "id" in d]
+    if not valid_docs:
+        return [], []
+
+    doc_ids = [d["id"] for d in valid_docs]
+    if len(doc_ids) == 1:
+        return doc_ids, ["primary"]
+
+    has_primary = any((d.get("role") == "primary") for d in valid_docs)
+    roles = []
+    found_primary = False
+    for i, d in enumerate(valid_docs):
+        if has_primary:
+            if d.get("role") == "primary" and not found_primary:
+                roles.append("primary")
+                found_primary = True
+            else:
+                roles.append(d.get("role") or "supporting")
+        else:
+            if i == 0:
+                roles.append("primary")
+            else:
+                roles.append("supporting")
+    return doc_ids, roles
+
+
+def _get_bid_documents(bid_id: int, organization_id: str) -> list[dict]:
+    try:
+        if hasattr(tenancy, "get_documents_authenticated"):
+            return tenancy.get_documents_authenticated(organization_id, bid_id)
+        return db.get_documents(bid_id)
+    except Exception:
+        try:
+            return db.get_documents(bid_id)
+        except Exception:
+            return []
+
+
+def _continue_orchestration_after_fast(
+    bid_id: int,
+    organization_id: str,
+    key: str | None,
+    *,
+    created_by_user_id: str | None = None,
+    retry: bool = False,
+    execution: str = "background",
+) -> dict:
+    """Step 2 & 3 in unified flow (B5, B6):
+    Once the deterministic foundation (Fast Analysis) has completed:
+    1. Check if bid's procurement_truth_status == 'governed'.
+    2. If ungoverned:
+       - Check or create baseline review.
+       - If baseline review has pending proposals: yield cleanly with state BASELINE_REVIEW_REQUIRED.
+       - If all proposals decided & at least one approved: apply baseline review.
+    3. Once governed:
+       - Run/launch Full Analysis with _production_recon_budget().
+    """
+    proc_state = db.get_bid_procurement_state(bid_id)
+    truth_status = proc_state.get("procurement_truth_status", "ungoverned")
+
+    if truth_status != "governed":
+        reviews = db.get_procurement_update_reviews(bid_id)
+        baseline_review = next((r for r in reviews if r.get("review_kind") == "baseline"), None)
+
+        if not baseline_review:
+            docs = _get_bid_documents(bid_id, organization_id)
+            doc_ids, doc_roles = resolve_baseline_documents(docs)
+            if doc_ids:
+                created = tenancy.create_procurement_update_review_for_organization(
+                    bid_id, organization_id, "baseline", doc_ids, doc_roles,
+                    buyer_update_type="Original RFP",
+                )
+                review_id = created.get("review_id")
+                if review_id:
+                    try:
+                        tenancy.propose_procurement_changes_for_organization(
+                            bid_id, organization_id, review_id, api_key=key
+                        )
+                    except Exception as exc:
+                        logger.error("Failed to propose baseline procurement changes for bid %s: %s", bid_id, exc)
+                    reviews = db.get_procurement_update_reviews(bid_id)
+                    baseline_review = next((r for r in reviews if r.get("id") == review_id), None)
+
+        if baseline_review:
+            b_status = baseline_review.get("status")
+            if b_status == "analyzing":
+                return {
+                    "outcome": "ACTIVE_RUN_EXISTS",
+                    "step": STEP_FOUNDATION_RUNNING,
+                    "review_id": baseline_review.get("id"),
+                    "status_label": "Establishing procurement baseline…",
+                    "is_live": True,
+                }
+            if b_status in ("ready_for_review", "reviewed"):
+                changes = db.get_procurement_changes(baseline_review["id"])
+                pending = [c for c in changes if c.get("review_decision") == "pending"]
+                approved = [c for c in changes if c.get("review_decision") == "approved"]
+                if pending:
+                    return {
+                        "outcome": "BASELINE_REVIEW_REQUIRED",
+                        "step": STEP_BASELINE_REVIEW_REQUIRED,
+                        "review_id": baseline_review["id"],
+                        "pending_count": len(pending),
+                        "approved_count": len(approved),
+                        "total_count": len(changes),
+                    }
+                elif approved:
+                    # All decided and at least 1 approved -> Apply baseline review
+                    try:
+                        base_rev = baseline_review.get("base_procurement_revision", 1)
+                        tenancy.apply_procurement_update_review_for_organization(
+                            bid_id, organization_id, baseline_review["id"],
+                            expected_base_revision=base_rev,
+                            applied_by_user_id=created_by_user_id,
+                        )
+                    except Exception as exc:
+                        logger.error("Failed to apply baseline review %s: %s", baseline_review["id"], exc)
+                        return {
+                            "outcome": "BASELINE_APPLY_FAILED",
+                            "step": STEP_FAILED,
+                            "error": str(exc),
+                        }
+                else:
+                    return {
+                        "outcome": "BASELINE_REVIEW_REQUIRED",
+                        "step": STEP_BASELINE_REVIEW_REQUIRED,
+                        "review_id": baseline_review["id"],
+                        "pending_count": 0,
+                        "approved_count": 0,
+                        "total_count": len(changes),
+                    }
+            elif b_status == "failed":
+                return {
+                    "outcome": "BASELINE_FAILED",
+                    "step": STEP_FAILED,
+                    "error": baseline_review.get("review_note") or "Baseline analysis failed",
+                }
+
+    # Once baseline is applied (governed), proceed directly to Full Analysis!
+    with _production_recon_budget():
+        res = tenancy.start_full_analysis_for_organization(
+            bid_id, organization_id, key,
+            created_by_user_id=created_by_user_id,
+            retry=retry,
+            execution=execution,
+        )
+        if isinstance(res, dict) and "step" not in res:
+            out = res.get("outcome")
+            if out in ("CREATED", "ACTIVE_RUN_EXISTS"):
+                res["step"] = STEP_FULL_ANALYSIS_RUNNING
+            elif out == "REUSED_COMPLETE":
+                res["step"] = STEP_COMPLETE
+        return res
+
+
+def apply_baseline_and_resume_analysis(
+    bid_id: int,
+    organization_id: str,
+    review_id: int,
+    *,
+    user_id: str | None = None,
+    api_key: str | None = None,
+    approve_all_pending: bool = False,
+    execution: str = "background",
+) -> dict:
+    """Approve pending proposals (if requested), apply the baseline review,
+    and automatically resume Full Analysis (B8).
+    """
+    tenancy.require_bid_access(bid_id, organization_id)
+    key = api_key or (get_api_key() if api_key_configured() else None)
+
+    reviews = [r for r in tenancy.get_procurement_update_reviews_for_organization(bid_id, organization_id)
+               if r.get("id") == review_id]
+    if not reviews:
+        raise ValueError(f"Review {review_id} not found for bid {bid_id}")
+    review = reviews[0]
+
+    changes = tenancy.get_procurement_changes_for_organization(bid_id, organization_id, review_id)
+    if approve_all_pending:
+        for c in changes:
+            if c.get("review_decision") == "pending":
+                tenancy.record_change_review_decision_for_organization(
+                    bid_id, organization_id, c["id"], "approved", user_id
+                )
+        changes = tenancy.get_procurement_changes_for_organization(bid_id, organization_id, review_id)
+
+    pending_count = sum(1 for c in changes if c.get("review_decision") == "pending")
+    approved_count = sum(1 for c in changes if c.get("review_decision") == "approved")
+    if pending_count > 0:
+        raise ValueError(f"Cannot apply baseline review: {pending_count} proposal(s) still pending.")
+    if approved_count < 1:
+        raise ValueError("Cannot apply baseline review: at least one proposal must be approved.")
+
+    base_rev = review.get("base_procurement_revision", 1)
+    apply_result = tenancy.apply_procurement_update_review_for_organization(
+        bid_id, organization_id, review_id,
+        expected_base_revision=base_rev,
+        applied_by_user_id=user_id,
+    )
+
+    # Immediately launch/resume Full Analysis!
+    full_res = start_opportunity_analysis(
+        bid_id, organization_id, api_key=key,
+        created_by_user_id=user_id, execution=execution
+    )
+    return {
+        "apply_result": apply_result,
+        "analysis_result": full_res,
+        "step": full_res.get("step") or STEP_FULL_ANALYSIS_RUNNING,
+    }
+
+
 def start_opportunity_analysis(
     bid_id: int,
     organization_id: str,
@@ -119,10 +361,11 @@ def start_opportunity_analysis(
 ) -> dict:
     """Start or reconnect to the unified multi-agent opportunity analysis for a bid.
 
-    Orchestrates:
+    Orchestrates (B5, B6):
     1. Document duplicate detection on registered RFP documents.
-    2. Verification or creation of the deterministic procurement foundation.
-    3. Multi-agent specialist analysis + cross-domain reconciliation.
+    2. Verification or creation of the deterministic procurement foundation (Fast Analysis).
+    3. Baseline procurement review proposal and apply (governance).
+    4. Multi-agent specialist analysis + cross-domain reconciliation (Full Analysis).
 
     Returns dict with outcome and run info.
     """
@@ -130,15 +373,7 @@ def start_opportunity_analysis(
     key = api_key or (get_api_key() if api_key_configured() else None)
 
     # 1. Scalability check: detect duplicate documents in the bid corpus.
-    # get_documents_authenticated requires a web-session JWT; fall back to
-    # db.get_documents in script/service contexts where no session exists.
-    try:
-        if hasattr(tenancy, "get_documents_authenticated"):
-            docs = tenancy.get_documents_authenticated(organization_id, bid_id)
-        else:
-            docs = db.get_documents(bid_id)
-    except Exception:
-        docs = db.get_documents(bid_id)
+    docs = _get_bid_documents(bid_id, organization_id)
     rfp_docs = [d for d in docs if isinstance(d, dict) and d.get("doc_type") == "RFP / Source"]
     if rfp_docs:
         # detect_duplicate_documents expects (filename, content) tuples
@@ -161,44 +396,63 @@ def start_opportunity_analysis(
     status = tenancy.get_full_analysis_status_for_organization(bid_id, organization_id)
     if status and not retry:
         run_status = status.get("status")
-        if run_status in ("QUEUED", "RUNNING"):
-            return {"outcome": "ACTIVE_RUN_EXISTS", "status": status, "is_live": True}
+        if run_status in ("QUEUED", "RUNNING") and not (status.get("stuck") or {}).get("stuck"):
+            return {
+                "outcome": "ACTIVE_RUN_EXISTS",
+                "status": status,
+                "is_live": True,
+                "step": STEP_FULL_ANALYSIS_RUNNING,
+            }
         if run_status == "COMPLETE":
-            return {"outcome": "REUSED_COMPLETE", "status": status, "is_live": False}
+            return {
+                "outcome": "REUSED_COMPLETE",
+                "status": status,
+                "is_live": False,
+                "step": STEP_COMPLETE,
+            }
 
-    # 4. Check whether a COMPLETE FAST foundation run exists
+    # 3. Check whether a COMPLETE FAST foundation run exists
     runs = db.list_analysis_runs(bid_id)
     complete_fast_run = next(
         (r for r in runs if r.get("analysis_mode", "FAST") == "FAST" and r.get("status") == "COMPLETE"),
         None
     )
+    active_fast_run = next(
+        (r for r in runs if r.get("analysis_mode", "FAST") == "FAST" and r.get("status") in ("QUEUED", "PREPARING", "ANALYZING", "ASSEMBLING")),
+        None
+    )
+
+    if active_fast_run:
+        return {
+            "outcome": "ACTIVE_RUN_EXISTS",
+            "status": active_fast_run,
+            "is_live": True,
+            "step": STEP_FOUNDATION_RUNNING,
+        }
 
     if complete_fast_run:
-        # Source foundation is ready -> Launch full multi-agent analysis directly.
-        # Apply the production reconciliation output budget for this call.
-        with _production_recon_budget():
-            return tenancy.start_full_analysis_for_organization(
-                bid_id, organization_id, key,
-                created_by_user_id=created_by_user_id,
-                retry=retry,
-            )
+        # Foundation complete -> proceed to baseline governance and full analysis
+        return _continue_orchestration_after_fast(
+            bid_id, organization_id, key,
+            created_by_user_id=created_by_user_id,
+            retry=retry,
+            execution=execution,
+        )
 
-    # If no COMPLETE FAST foundation exists, orchestrate foundation -> full analysis
+    # If no COMPLETE FAST foundation exists, orchestrate foundation -> baseline -> full analysis
     if execution == "inline":
-        # Run deterministic foundation inline
         import analysis_service
-        fast_res = analysis_service.start_fast_analysis(
+        analysis_service.start_fast_analysis(
             bid_id, key, execution="inline", created_by="understand_analysis"
         )
-        # Then start full analysis inline with the production reconciliation budget
-        with _production_recon_budget():
-            return tenancy.start_full_analysis_for_organization(
-                bid_id, organization_id, key,
-                created_by_user_id=created_by_user_id,
-                retry=retry,
-            )
+        return _continue_orchestration_after_fast(
+            bid_id, organization_id, key,
+            created_by_user_id=created_by_user_id,
+            retry=retry,
+            execution="inline",
+        )
     else:
-        # Background: start foundation run and chain full analysis
+        # Background: start foundation run and chain baseline + full analysis
         import analysis_service
 
         def _orchestrate_background():
@@ -218,13 +472,12 @@ def start_opportunity_analysis(
                         None
                     )
                     if fast:
-                        # Launch full analysis with the production reconciliation budget
-                        with _production_recon_budget():
-                            tenancy.start_full_analysis_for_organization(
-                                bid_id, organization_id, key,
-                                created_by_user_id=created_by_user_id,
-                                retry=retry,
-                            )
+                        _continue_orchestration_after_fast(
+                            bid_id, organization_id, key,
+                            created_by_user_id=created_by_user_id,
+                            retry=retry,
+                            execution="background",
+                        )
                         break
                     failed = next(
                         (r for r in latest_runs if r.get("analysis_mode", "FAST") == "FAST" and r.get("status") == "FAILED"),
@@ -237,16 +490,41 @@ def start_opportunity_analysis(
 
         t = threading.Thread(target=_orchestrate_background, daemon=True, name=f"opp-analysis-{bid_id}")
         t.start()
-        return {"outcome": "CREATED", "executing": True}
+        return {"outcome": "CREATED", "executing": True, "step": STEP_FOUNDATION_RUNNING}
 
 
 def get_opportunity_analysis_state(bid_id: int, organization_id: str) -> dict[str, Any]:
     """Return the truthful live or completed opportunity analysis state for the UI.
 
+    Determines the current unified step across:
+    FOUNDATION_RUNNING -> BASELINE_REVIEW_REQUIRED -> BASELINE_APPLYING ->
+    FULL_ANALYSIS_RUNNING -> COMPLETE (or PARTIAL / FAILED / READY).
+
     Never invents progress or displays fake percentages.
     """
-    full_status = tenancy.get_full_analysis_status_for_organization(bid_id, organization_id)
-    runs = db.list_analysis_runs(bid_id)
+    try:
+        full_status = tenancy.get_full_analysis_status_for_organization(bid_id, organization_id)
+    except Exception:
+        full_status = None
+
+    try:
+        runs = db.list_analysis_runs(bid_id)
+    except Exception:
+        runs = []
+
+    try:
+        proc_state = tenancy.get_procurement_state_for_organization(bid_id, organization_id)
+    except Exception:
+        proc_state = {"procurement_truth_status": "ungoverned", "procurement_revision": 1}
+
+    truth_status = proc_state.get("procurement_truth_status", "ungoverned")
+
+    try:
+        reviews = tenancy.get_procurement_update_reviews_for_organization(bid_id, organization_id)
+    except Exception:
+        reviews = []
+    baseline_review = next((r for r in reviews if r.get("review_kind") == "baseline"), None)
+
     latest_fast_run = next((r for r in runs if r.get("analysis_mode", "FAST") == "FAST"), None)
 
     # Determine overall status and live state
@@ -256,7 +534,11 @@ def get_opportunity_analysis_state(bid_id: int, organization_id: str) -> dict[st
     is_partial = False
     is_stuck = False
     run_id = None
+    step = STEP_READY
     status_label = "Ready to analyze"
+    baseline_changes: list[dict] = []
+    pending_changes_count = 0
+    approved_changes_count = 0
 
     if full_status:
         run_id = full_status.get("run_id")
@@ -264,21 +546,68 @@ def get_opportunity_analysis_state(bid_id: int, organization_id: str) -> dict[st
         is_stuck = bool((full_status.get("stuck") or {}).get("stuck"))
         if raw_status in ("QUEUED", "RUNNING") and not is_stuck:
             is_live = True
-            status_label = "Analyzing opportunity…"
+            step = STEP_FULL_ANALYSIS_RUNNING
+            status_label = "Running multi-specialist bid intelligence…"
         elif raw_status == "COMPLETE":
             is_complete = True
-            status_label = "Analysis complete"
+            step = STEP_COMPLETE
+            status_label = "Opportunity intelligence current"
         elif raw_status == "PARTIAL":
             is_partial = True
-            status_label = "Analysis complete with partial notices"
+            step = STEP_PARTIAL
+            status_label = "Opportunity intelligence complete (partial notices)"
         elif raw_status == "FAILED":
             is_failed = True
+            step = STEP_FAILED
             status_label = f"Analysis failed: {full_status.get('failure_reason') or 'Unknown error'}"
         elif is_stuck:
+            is_stuck = True
+            step = STEP_FAILED
             status_label = "Analysis interrupted (stuck)"
     elif latest_fast_run and latest_fast_run.get("status") in ("QUEUED", "PREPARING", "ANALYZING", "ASSEMBLING"):
         is_live = True
-        status_label = "Preparing deterministic foundation…"
+        step = STEP_FOUNDATION_RUNNING
+        status_label = "Structuring procurement package…"
+    elif latest_fast_run and latest_fast_run.get("status") == "FAILED":
+        is_failed = True
+        step = STEP_FAILED
+        status_label = f"Procurement structuring failed: {latest_fast_run.get('failure_reason') or 'Unknown error'}"
+    elif truth_status != "governed":
+        if baseline_review:
+            b_status = baseline_review.get("status")
+            if b_status == "analyzing":
+                is_live = True
+                step = STEP_FOUNDATION_RUNNING
+                status_label = "Establishing procurement baseline…"
+            elif b_status in ("ready_for_review", "reviewed"):
+                try:
+                    baseline_changes = tenancy.get_procurement_changes_for_organization(
+                        bid_id, organization_id, baseline_review["id"]
+                    )
+                except Exception:
+                    baseline_changes = []
+                pending = [c for c in baseline_changes if c.get("review_decision") == "pending"]
+                approved = [c for c in baseline_changes if c.get("review_decision") == "approved"]
+                pending_changes_count = len(pending)
+                approved_changes_count = len(approved)
+                step = STEP_BASELINE_REVIEW_REQUIRED
+                if pending:
+                    status_label = "Procurement baseline review required"
+                else:
+                    status_label = "Procurement baseline review ready to apply"
+            elif b_status == "failed":
+                is_failed = True
+                step = STEP_FAILED
+                status_label = f"Baseline analysis failed: {baseline_review.get('review_note') or 'Unknown error'}"
+        elif latest_fast_run and latest_fast_run.get("status") == "COMPLETE":
+            step = STEP_READY
+            status_label = "Ready to establish procurement baseline"
+        else:
+            step = STEP_READY
+            status_label = "Ready to analyze opportunity"
+    else:
+        step = STEP_READY
+        status_label = "Ready to analyze opportunity"
 
     # Lens progression
     lenses_state = []
@@ -322,6 +651,7 @@ def get_opportunity_analysis_state(bid_id: int, organization_id: str) -> dict[st
     return {
         "bid_id": bid_id,
         "run_id": run_id,
+        "step": step,
         "status_label": status_label,
         "is_live": is_live,
         "is_complete": is_complete,
@@ -334,4 +664,10 @@ def get_opportunity_analysis_state(bid_id: int, organization_id: str) -> dict[st
         "hub_counts": hub_counts,
         "has_full_run": full_status is not None,
         "has_fast_run": latest_fast_run is not None,
+        "procurement_state": proc_state,
+        "baseline_review": baseline_review,
+        "baseline_changes": baseline_changes,
+        "pending_changes_count": pending_changes_count,
+        "approved_changes_count": approved_changes_count,
+        "latest_fast_run": latest_fast_run,
     }
