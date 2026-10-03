@@ -98,6 +98,7 @@ def _production_recon_budget():
 # ---------------------------------------------------------------------------
 STEP_READY: str = "READY"
 STEP_FOUNDATION_RUNNING: str = "FOUNDATION_RUNNING"
+STEP_BASELINE_PRIMARY_AMBIGUOUS: str = "BASELINE_PRIMARY_AMBIGUOUS"
 STEP_BASELINE_REVIEW_REQUIRED: str = "BASELINE_REVIEW_REQUIRED"
 STEP_BASELINE_APPLYING: str = "BASELINE_APPLYING"
 STEP_FULL_ANALYSIS_RUNNING: str = "FULL_ANALYSIS_RUNNING"
@@ -119,16 +120,24 @@ LENS_CODE = {lens[0]: lens[2] for lens in LENSES}
 LENS_DESC = {lens[0]: lens[3] for lens in LENSES}
 
 
-def resolve_baseline_documents(docs: list[dict]) -> tuple[list[int], list[str]]:
-    """Resolve document IDs and roles for baseline review (B7).
+def resolve_baseline_documents(
+    docs: list[dict],
+    chosen_primary_id: int | None = None,
+) -> tuple[list[int] | None, list[str] | str]:
+    """Resolve document IDs and roles for baseline review without array-order guessing (UX1.1).
 
     Rules:
     - Default to all registered documents with doc_type == 'RFP / Source'.
     - If none have doc_type == 'RFP / Source', fall back to all registered docs.
+    - If empty: return ([], []).
     - If exactly 1 document: assign role = 'primary'.
-    - If multiple documents:
-      * If any document already has role == 'primary', preserve that assignment.
-      * Otherwise, assign role = 'primary' to the first document and 'supporting' to the rest.
+    - If chosen_primary_id is provided and valid:
+        assign role = 'primary' to chosen document, 'supporting' (or explicit non-primary role) to the rest.
+    - If multiple documents and chosen_primary_id is None:
+        * Count documents with role == 'primary':
+          - If exactly 1 document has role == 'primary': preserve it; others become 'supporting' (or explicit non-primary role).
+          - If 0 documents have role == 'primary': return (None, "AMBIGUOUS_NO_PRIMARY").
+          - If >1 documents have role == 'primary': return (None, "AMBIGUOUS_MULTIPLE_PRIMARIES").
     """
     if not docs:
         return [], []
@@ -142,26 +151,44 @@ def resolve_baseline_documents(docs: list[dict]) -> tuple[list[int], list[str]]:
     if not valid_docs:
         return [], []
 
-    doc_ids = [d["id"] for d in valid_docs]
-    if len(doc_ids) == 1:
-        return doc_ids, ["primary"]
+    if len(valid_docs) == 1:
+        return [valid_docs[0]["id"]], ["primary"]
 
-    has_primary = any((d.get("role") == "primary") for d in valid_docs)
-    roles = []
-    found_primary = False
-    for i, d in enumerate(valid_docs):
-        if has_primary:
-            if d.get("role") == "primary" and not found_primary:
-                roles.append("primary")
-                found_primary = True
-            else:
-                roles.append(d.get("role") or "supporting")
-        else:
-            if i == 0:
+    if chosen_primary_id is not None and any(d["id"] == chosen_primary_id for d in valid_docs):
+        doc_ids = []
+        roles = []
+        for d in valid_docs:
+            doc_ids.append(d["id"])
+            if d["id"] == chosen_primary_id:
                 roles.append("primary")
             else:
-                roles.append("supporting")
-    return doc_ids, roles
+                existing_role = d.get("role")
+                if existing_role in ("supporting", "replacement", "attachment"):
+                    roles.append(existing_role)
+                else:
+                    roles.append("supporting")
+        return doc_ids, roles
+
+    primary_docs = [d for d in valid_docs if d.get("role") == "primary"]
+    if len(primary_docs) == 1:
+        target_primary_id = primary_docs[0]["id"]
+        doc_ids = []
+        roles = []
+        for d in valid_docs:
+            doc_ids.append(d["id"])
+            if d["id"] == target_primary_id:
+                roles.append("primary")
+            else:
+                existing_role = d.get("role")
+                if existing_role in ("supporting", "replacement", "attachment"):
+                    roles.append(existing_role)
+                else:
+                    roles.append("supporting")
+        return doc_ids, roles
+    elif len(primary_docs) == 0:
+        return None, "AMBIGUOUS_NO_PRIMARY"
+    else:
+        return None, "AMBIGUOUS_MULTIPLE_PRIMARIES"
 
 
 def _get_bid_documents(bid_id: int, organization_id: str) -> list[dict]:
@@ -181,6 +208,7 @@ def _continue_orchestration_after_fast(
     organization_id: str,
     key: str | None,
     *,
+    chosen_primary_doc_id: int | None = None,
     created_by_user_id: str | None = None,
     retry: bool = False,
     execution: str = "background",
@@ -189,7 +217,8 @@ def _continue_orchestration_after_fast(
     Once the deterministic foundation (Fast Analysis) has completed:
     1. Check if bid's procurement_truth_status == 'governed'.
     2. If ungoverned:
-       - Check or create baseline review.
+       - Check for an active baseline review (analyzing, ready_for_review, reviewed).
+       - If no active review exists (fresh bid or prior review failed), create a fresh review on retry/trigger.
        - If baseline review has pending proposals: yield cleanly with state BASELINE_REVIEW_REQUIRED.
        - If all proposals decided & at least one approved: apply baseline review.
     3. Once governed:
@@ -200,17 +229,35 @@ def _continue_orchestration_after_fast(
 
     if truth_status != "governed":
         reviews = db.get_procurement_update_reviews(bid_id)
-        baseline_review = next((r for r in reviews if r.get("review_kind") == "baseline"), None)
+        baseline_reviews = [r for r in reviews if r.get("review_kind") == "baseline"]
 
+        # Look for an ACTIVE baseline review (analyzing, ready_for_review, reviewed)
+        active_review = next(
+            (r for r in baseline_reviews if r.get("status") in ("analyzing", "ready_for_review", "reviewed")),
+            None
+        )
+        baseline_review = active_review
+
+        created_fresh = False
+        # If no active baseline review exists (fresh bid or prior review failed), create a fresh review
         if not baseline_review:
             docs = _get_bid_documents(bid_id, organization_id)
-            doc_ids, doc_roles = resolve_baseline_documents(docs)
+            doc_ids, doc_roles = resolve_baseline_documents(docs, chosen_primary_id=chosen_primary_doc_id)
+            if doc_ids is None:
+                return {
+                    "outcome": "BASELINE_PRIMARY_AMBIGUOUS",
+                    "step": STEP_BASELINE_PRIMARY_AMBIGUOUS,
+                    "ambiguity_reason": doc_roles,
+                    "eligible_docs": [d for d in docs if isinstance(d, dict) and d.get("doc_type") == "RFP / Source"] or docs,
+                }
             if doc_ids:
                 created = tenancy.create_procurement_update_review_for_organization(
                     bid_id, organization_id, "baseline", doc_ids, doc_roles,
                     buyer_update_type="Original RFP",
                 )
-                review_id = created.get("review_id")
+                created_fresh = True
+                baseline_review = created
+                review_id = created.get("id") or created.get("review_id")
                 if review_id:
                     try:
                         tenancy.propose_procurement_changes_for_organization(
@@ -219,16 +266,16 @@ def _continue_orchestration_after_fast(
                     except Exception as exc:
                         logger.error("Failed to propose baseline procurement changes for bid %s: %s", bid_id, exc)
                     reviews = db.get_procurement_update_reviews(bid_id)
-                    baseline_review = next((r for r in reviews if r.get("id") == review_id), None)
+                    baseline_review = next((r for r in reviews if r.get("id") == review_id), created)
 
         if baseline_review:
             b_status = baseline_review.get("status")
             if b_status == "analyzing":
                 return {
-                    "outcome": "ACTIVE_RUN_EXISTS",
+                    "outcome": "CREATED" if created_fresh else "ACTIVE_RUN_EXISTS",
                     "step": STEP_FOUNDATION_RUNNING,
                     "review_id": baseline_review.get("id"),
-                    "status_label": "Establishing procurement baseline…",
+                    "status_label": "Confirming procurement facts…",
                     "is_live": True,
                 }
             if b_status in ("ready_for_review", "reviewed"):
@@ -358,6 +405,7 @@ def start_opportunity_analysis(
     retry: bool = False,
     created_by_user_id: str | None = None,
     execution: str = "background",
+    chosen_primary_doc_id: int | None = None,
 ) -> dict:
     """Start or reconnect to the unified multi-agent opportunity analysis for a bid.
 
@@ -411,6 +459,26 @@ def start_opportunity_analysis(
                 "step": STEP_COMPLETE,
             }
 
+    # Fail closed upfront if baseline document primary selection is ambiguous
+    doc_ids, doc_roles = resolve_baseline_documents(docs, chosen_primary_id=chosen_primary_doc_id)
+    if doc_ids is None:
+        proc_state = db.get_bid_procurement_state(bid_id)
+        truth_status = proc_state.get("procurement_truth_status", "ungoverned")
+        if truth_status != "governed":
+            reviews = db.get_procurement_update_reviews(bid_id)
+            baseline_reviews = [r for r in reviews if r.get("review_kind") == "baseline"]
+            active_baseline = next(
+                (r for r in baseline_reviews if r.get("status") in ("analyzing", "ready_for_review", "reviewed")),
+                None
+            )
+            if not active_baseline:
+                return {
+                    "outcome": "BASELINE_PRIMARY_AMBIGUOUS",
+                    "step": STEP_BASELINE_PRIMARY_AMBIGUOUS,
+                    "ambiguity_reason": doc_roles,
+                    "eligible_docs": [d for d in docs if isinstance(d, dict) and d.get("doc_type") == "RFP / Source"] or docs,
+                }
+
     # 3. Check whether a COMPLETE FAST foundation run exists
     runs = db.list_analysis_runs(bid_id)
     complete_fast_run = next(
@@ -434,6 +502,7 @@ def start_opportunity_analysis(
         # Foundation complete -> proceed to baseline governance and full analysis
         return _continue_orchestration_after_fast(
             bid_id, organization_id, key,
+            chosen_primary_doc_id=chosen_primary_doc_id,
             created_by_user_id=created_by_user_id,
             retry=retry,
             execution=execution,
@@ -447,6 +516,7 @@ def start_opportunity_analysis(
         )
         return _continue_orchestration_after_fast(
             bid_id, organization_id, key,
+            chosen_primary_doc_id=chosen_primary_doc_id,
             created_by_user_id=created_by_user_id,
             retry=retry,
             execution="inline",
@@ -474,6 +544,7 @@ def start_opportunity_analysis(
                     if fast:
                         _continue_orchestration_after_fast(
                             bid_id, organization_id, key,
+                            chosen_primary_doc_id=chosen_primary_doc_id,
                             created_by_user_id=created_by_user_id,
                             retry=retry,
                             execution="background",
@@ -523,9 +594,20 @@ def get_opportunity_analysis_state(bid_id: int, organization_id: str) -> dict[st
         reviews = tenancy.get_procurement_update_reviews_for_organization(bid_id, organization_id)
     except Exception:
         reviews = []
-    baseline_review = next((r for r in reviews if r.get("review_kind") == "baseline"), None)
+    baseline_reviews = [r for r in reviews if r.get("review_kind") == "baseline"]
+    active_baseline = next(
+        (r for r in baseline_reviews if r.get("status") in ("analyzing", "ready_for_review", "reviewed")),
+        None
+    )
+    baseline_review = active_baseline or (baseline_reviews[0] if baseline_reviews else None)
 
     latest_fast_run = next((r for r in runs if r.get("analysis_mode", "FAST") == "FAST"), None)
+
+    docs = _get_bid_documents(bid_id, organization_id)
+    rfp_docs = [d for d in docs if isinstance(d, dict) and d.get("doc_type") == "RFP / Source"]
+    target_docs = rfp_docs or docs
+    doc_ids, doc_roles = resolve_baseline_documents(target_docs)
+    eligible_docs = [d for d in target_docs if isinstance(d, dict)]
 
     # Determine overall status and live state
     is_live = False
@@ -547,7 +629,7 @@ def get_opportunity_analysis_state(bid_id: int, organization_id: str) -> dict[st
         if raw_status in ("QUEUED", "RUNNING") and not is_stuck:
             is_live = True
             step = STEP_FULL_ANALYSIS_RUNNING
-            status_label = "Running multi-specialist bid intelligence…"
+            status_label = "Analyzing opportunity across six intelligence lenses…"
         elif raw_status == "COMPLETE":
             is_complete = True
             step = STEP_COMPLETE
@@ -567,22 +649,22 @@ def get_opportunity_analysis_state(bid_id: int, organization_id: str) -> dict[st
     elif latest_fast_run and latest_fast_run.get("status") in ("QUEUED", "PREPARING", "ANALYZING", "ASSEMBLING"):
         is_live = True
         step = STEP_FOUNDATION_RUNNING
-        status_label = "Structuring procurement package…"
+        status_label = "Analyzing procurement documents…"
     elif latest_fast_run and latest_fast_run.get("status") == "FAILED":
         is_failed = True
         step = STEP_FAILED
-        status_label = f"Procurement structuring failed: {latest_fast_run.get('failure_reason') or 'Unknown error'}"
+        status_label = f"Procurement analysis failed: {latest_fast_run.get('failure_reason') or 'Unknown error'}"
     elif truth_status != "governed":
-        if baseline_review:
-            b_status = baseline_review.get("status")
+        if active_baseline:
+            b_status = active_baseline.get("status")
             if b_status == "analyzing":
                 is_live = True
                 step = STEP_FOUNDATION_RUNNING
-                status_label = "Establishing procurement baseline…"
+                status_label = "Confirming procurement facts…"
             elif b_status in ("ready_for_review", "reviewed"):
                 try:
                     baseline_changes = tenancy.get_procurement_changes_for_organization(
-                        bid_id, organization_id, baseline_review["id"]
+                        bid_id, organization_id, active_baseline["id"]
                     )
                 except Exception:
                     baseline_changes = []
@@ -592,16 +674,19 @@ def get_opportunity_analysis_state(bid_id: int, organization_id: str) -> dict[st
                 approved_changes_count = len(approved)
                 step = STEP_BASELINE_REVIEW_REQUIRED
                 if pending:
-                    status_label = "Procurement baseline review required"
+                    status_label = "Confirm procurement facts to continue"
                 else:
-                    status_label = "Procurement baseline review ready to apply"
-            elif b_status == "failed":
-                is_failed = True
-                step = STEP_FAILED
-                status_label = f"Baseline analysis failed: {baseline_review.get('review_note') or 'Unknown error'}"
+                    status_label = "Procurement facts ready to apply"
+        elif doc_ids is None:
+            step = STEP_BASELINE_PRIMARY_AMBIGUOUS
+            status_label = "Primary solicitation document selection required"
+        elif baseline_review and baseline_review.get("status") == "failed":
+            is_failed = True
+            step = STEP_FAILED
+            status_label = f"Baseline analysis failed: {baseline_review.get('review_note') or 'Unknown error'}"
         elif latest_fast_run and latest_fast_run.get("status") == "COMPLETE":
             step = STEP_READY
-            status_label = "Ready to establish procurement baseline"
+            status_label = "Ready to confirm procurement facts"
         else:
             step = STEP_READY
             status_label = "Ready to analyze opportunity"
@@ -670,4 +755,6 @@ def get_opportunity_analysis_state(bid_id: int, organization_id: str) -> dict[st
         "pending_changes_count": pending_changes_count,
         "approved_changes_count": approved_changes_count,
         "latest_fast_run": latest_fast_run,
+        "eligible_docs": eligible_docs,
+        "ambiguity_reason": doc_roles if doc_ids is None else None,
     }
