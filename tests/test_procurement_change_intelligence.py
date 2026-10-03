@@ -5341,10 +5341,111 @@ class TestPCIB2BIncrementalExecution(unittest.TestCase):
         total_calls = res.get("usage", {}).get("total_calls")
         self.assertEqual(total_calls, 2)
 
+    # ── Test 50: Exact Reconciliation Event Sequence (No Duplicate Terminal Event) ──
+    def test_50_reconciliation_exact_event_sequence_no_duplicates(self):
+        """A one-domain incremental run produces exactly:
+        1 RECONCILIATION_STARTED
+        1 RECONCILIATION_COMPLETED
+        and exactly 1 reconciliation provider call. Zero duplicate terminal events."""
+        rev = self._make_schedule_revision()
+        client = PCIB2BMockClient()
+
+        captured_events = []
+        orig_run_rev_fa = fa.run_revision_full_analysis
+
+        def spy_run_rev_fa(*args, **kwargs):
+            user_on_event = kwargs.get("on_event")
+            def event_spy(event_type, payload):
+                captured_events.append((event_type, payload))
+                if user_on_event:
+                    user_on_event(event_type, payload)
+            kwargs["on_event"] = event_spy
+            return orig_run_rev_fa(*args, **kwargs)
+
+        with patch("full_analysis.run_revision_full_analysis", side_effect=spy_run_rev_fa):
+            out = fas.start_revision_full_analysis(
+                self.bid_id, rev, client=client, package_builder=lambda _: self.pkg,
+                pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+            )
+
+        new_run_id = out["run"]["id"]
+        db_events = [e for e in self.fake_db.events if e["run_id"] == new_run_id]
+
+        started_events = [e for e in db_events if e["event_type"] == fa.EVENT_RECONCILIATION_STARTED]
+        completed_events = [e for e in db_events if e["event_type"] == fa.EVENT_RECONCILIATION_COMPLETED]
+        failed_events = [e for e in db_events if e["event_type"] == fa.EVENT_RECONCILIATION_FAILED]
+
+        self.assertEqual(len(started_events), 1, "Must have exactly 1 RECONCILIATION_STARTED event")
+        self.assertEqual(len(completed_events), 1, "Must have exactly 1 RECONCILIATION_COMPLETED event")
+        self.assertEqual(len(failed_events), 0, "Must have exactly 0 RECONCILIATION_FAILED events")
+
+        started_idx = db_events.index(started_events[0])
+        completed_idx = db_events.index(completed_events[0])
+        self.assertLess(started_idx, completed_idx, "RECONCILIATION_STARTED must precede RECONCILIATION_COMPLETED")
+
+        rec_captured = [e[0] for e in captured_events if "RECONCILIATION" in e[0]]
+        self.assertEqual(rec_captured, [fa.EVENT_RECONCILIATION_STARTED, fa.EVENT_RECONCILIATION_COMPLETED])
+
+        recon_calls = sum(1 for p in client.prompts if "RECONCILIATION" in p)
+        self.assertEqual(recon_calls, 1, "Must make exactly 1 reconciliation provider call")
+        self.assertEqual(len(client.prompts), 2, "Total provider calls must be 1 specialist + 1 reconciliation")
+
+    # ── Test 51: Failed Reconciliation Event Sequence (No Duplicate Terminal Event) ──
+    def test_51_reconciliation_failed_event_sequence_no_duplicates(self):
+        """A failed reconciliation produces exactly:
+        1 RECONCILIATION_STARTED
+        1 RECONCILIATION_FAILED
+        and zero duplicate terminal events."""
+        rev = self._make_schedule_revision()
+
+        def fail_recon_handler(prompt):
+            if "RECONCILIATION" in prompt:
+                raise RuntimeError("simulated provider error during reconciliation")
+            return None
+
+        client = PCIB2BMockClient(handler=fail_recon_handler)
+
+        captured_events = []
+        orig_run_rev_fa = fa.run_revision_full_analysis
+
+        def spy_run_rev_fa(*args, **kwargs):
+            user_on_event = kwargs.get("on_event")
+            def event_spy(event_type, payload):
+                captured_events.append((event_type, payload))
+                if user_on_event:
+                    user_on_event(event_type, payload)
+            kwargs["on_event"] = event_spy
+            return orig_run_rev_fa(*args, **kwargs)
+
+        with patch("full_analysis.run_revision_full_analysis", side_effect=spy_run_rev_fa):
+            out = fas.start_revision_full_analysis(
+                self.bid_id, rev, client=client, package_builder=lambda _: self.pkg,
+                pci_storage=self.storage, organization_id=self.org_id, execution=fas.EXECUTION_INLINE
+            )
+
+        new_run_id = out["run"]["id"]
+        db_events = [e for e in self.fake_db.events if e["run_id"] == new_run_id]
+
+        started_events = [e for e in db_events if e["event_type"] == fa.EVENT_RECONCILIATION_STARTED]
+        completed_events = [e for e in db_events if e["event_type"] == fa.EVENT_RECONCILIATION_COMPLETED]
+        failed_events = [e for e in db_events if e["event_type"] == fa.EVENT_RECONCILIATION_FAILED]
+
+        self.assertEqual(len(started_events), 1, "Must have exactly 1 RECONCILIATION_STARTED event")
+        self.assertEqual(len(failed_events), 1, "Must have exactly 1 RECONCILIATION_FAILED event")
+        self.assertEqual(len(completed_events), 0, "Must have exactly 0 RECONCILIATION_COMPLETED events")
+
+        started_idx = db_events.index(started_events[0])
+        failed_idx = db_events.index(failed_events[0])
+        self.assertLess(started_idx, failed_idx, "RECONCILIATION_STARTED must precede RECONCILIATION_FAILED")
+
+        rec_captured = [e[0] for e in captured_events if "RECONCILIATION" in e[0]]
+        self.assertEqual(rec_captured, [fa.EVENT_RECONCILIATION_STARTED, fa.EVENT_RECONCILIATION_FAILED])
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 16. Test Suite: PCI-B2B.1 Cumulative Authoritative Truth & Multi-Hop Invariants
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestPCIB2B1CumulativeTruth(TestPCIB2BIncrementalExecution):
     """Verifies PCI-B2B.1 cumulative authoritative truth preservation across multi-hop revisions:

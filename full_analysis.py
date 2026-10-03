@@ -2450,10 +2450,6 @@ def run_revision_full_analysis(
         EVENT_RECONCILIATION_COMPLETED if reconciliation.status in USABLE_STATUSES else EVENT_RECONCILIATION_FAILED,
         {"reconciliation": reconciliation}
     )
-    _emit(
-        EVENT_RECONCILIATION_COMPLETED if reconciliation.status in USABLE_STATUSES else EVENT_RECONCILIATION_FAILED,
-        {"reconciliation": reconciliation}
-    )
 
     usable = [r for r in specialist_results if r.status in USABLE_STATUSES]
     completed = [r for r in specialist_results if r.status == STATUS_COMPLETE]
