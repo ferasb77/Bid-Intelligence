@@ -118,6 +118,34 @@ OUTCOME_NO_NEW_REVISION = "NO_NEW_REVISION"
 OUTCOME_NEW_REVISION_NO_SEMANTIC_CHANGE = "NEW_REVISION_NO_SEMANTIC_CHANGE"
 OUTCOME_ORDERING_REVIEW_REQUIRED = "ORDERING_REVIEW_REQUIRED"
 
+# Specialist domain vocabulary (Reused from full_analysis.py)
+SPECIALIST_PROCUREMENT_STRUCTURE = "PROCUREMENT_STRUCTURE"
+SPECIALIST_REQUIREMENTS_COMPLIANCE = "REQUIREMENTS_COMPLIANCE"
+SPECIALIST_EVALUATION_INTELLIGENCE = "EVALUATION_INTELLIGENCE"
+SPECIALIST_SCOPE_DELIVERABLES = "SCOPE_DELIVERABLES"
+SPECIALIST_COMMERCIAL_CONTRACTUAL = "COMMERCIAL_CONTRACTUAL"
+SPECIALIST_SCHEDULE_SUBMISSION = "SCHEDULE_SUBMISSION"
+
+SPECIALIST_DOMAINS = (
+    SPECIALIST_PROCUREMENT_STRUCTURE,
+    SPECIALIST_REQUIREMENTS_COMPLIANCE,
+    SPECIALIST_EVALUATION_INTELLIGENCE,
+    SPECIALIST_SCOPE_DELIVERABLES,
+    SPECIALIST_COMMERCIAL_CONTRACTUAL,
+    SPECIALIST_SCHEDULE_SUBMISSION,
+)
+
+# Finding PCI Statuses (Section 10)
+FINDING_STATUS_RETAINED = "RETAINED"
+FINDING_STATUS_STALE = "STALE"
+FINDING_STATUS_UNRESOLVED = "UNRESOLVED"
+
+FINDING_PCI_STATUSES = (
+    FINDING_STATUS_RETAINED,
+    FINDING_STATUS_STALE,
+    FINDING_STATUS_UNRESOLVED,
+)
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 2. Exceptions
@@ -2008,6 +2036,18 @@ class ProcurementRevisionManager:
                     })
         return history
 
+    def get_revision_impact_plan(
+        self,
+        revision_number: int,
+        existing_findings: Sequence[dict[str, Any]] | None = None,
+    ) -> RevisionImpactPlan:
+        """Computes the deterministic RevisionImpactPlan for a given revision against current state."""
+        rev = self.get_revision(revision_number)
+        if rev is None:
+            raise PCIEngineError(f"Revision {revision_number} not found for bid {self.bid_id}.")
+        state = self.get_current_state()
+        return generate_revision_impact_plan(rev, state, existing_findings, bid_id=self.bid_id)
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 9. Top-Level Production Entrypoint & Rehydration API (Section 15)
@@ -2045,3 +2085,523 @@ def load_current_authoritative_state(
     """Rehydrates and deterministically derives current authoritative procurement state from storage."""
     mgr = get_pci_manager(bid_id, organization_id, storage=storage)
     return mgr.get_current_state()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 10. PCI-B1: Deterministic Impact Routing & Intelligence Dependency Engine
+# ═══════════════════════════════════════════════════════════════════════════
+
+@dataclass(frozen=True)
+class DomainRoutingReason:
+    """A compact, deterministic reason explaining why a domain was affected."""
+    domain: str
+    rule: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {"domain": self.domain, "rule": self.rule}
+
+
+@dataclass(frozen=True)
+class ChangeRoutingDecision:
+    """Deterministic routing decision for a single applied FactChange."""
+    change_id: str
+    affected_domains: tuple[str, ...]
+    reasons: tuple[DomainRoutingReason, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "change_id": self.change_id,
+            "affected_domains": list(self.affected_domains),
+            "reasons": [r.to_dict() for r in self.reasons],
+        }
+
+
+def compute_impact_plan_fingerprint(
+    change_set_fingerprint: str,
+    state_fingerprint: str,
+    affected_domains: Sequence[str],
+    finding_impacts: dict[str, dict[str, Any]],
+) -> str:
+    """Computes a stable, semantic SHA-256 fingerprint for a RevisionImpactPlan.
+    Excludes execution time, timestamps, database row IDs, and ordering noise."""
+    payload = {
+        "change_set_fingerprint": str(change_set_fingerprint or ""),
+        "state_fingerprint": str(state_fingerprint or ""),
+        "affected_domains": sorted(set(affected_domains)),
+        "finding_impacts": [
+            {
+                "finding_id": str(fid),
+                "status": impact["status"],
+                "reasons": sorted(impact.get("reasons", []), key=lambda r: json.dumps(r, sort_keys=True)),
+            }
+            for fid, impact in sorted(finding_impacts.items())
+        ],
+    }
+    return _canonical_json_hash(payload)
+
+
+@dataclass
+class RevisionImpactPlan:
+    """The deterministic contract consumed by PCI-B2.
+    Determines affected domains, stale findings, retained findings, and unresolved items."""
+    revision_number: int
+    change_set_fingerprint: str
+    state_fingerprint: str
+    affected_domains: list[str]
+    retained_finding_ids: list[str]
+    stale_finding_ids: list[str]
+    unresolved_finding_ids: list[str]
+    finding_impacts: dict[str, dict[str, Any]]
+    routing_reasons: list[dict[str, Any]]
+    fingerprint: str = ""
+
+    def __post_init__(self):
+        if not self.fingerprint:
+            self.fingerprint = compute_impact_plan_fingerprint(
+                change_set_fingerprint=self.change_set_fingerprint,
+                state_fingerprint=self.state_fingerprint,
+                affected_domains=self.affected_domains,
+                finding_impacts=self.finding_impacts,
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "revision_number": self.revision_number,
+            "change_set_fingerprint": self.change_set_fingerprint,
+            "state_fingerprint": self.state_fingerprint,
+            "affected_domains": list(self.affected_domains),
+            "retained_finding_ids": list(self.retained_finding_ids),
+            "stale_finding_ids": list(self.stale_finding_ids),
+            "unresolved_finding_ids": list(self.unresolved_finding_ids),
+            "finding_impacts": copy.deepcopy(self.finding_impacts),
+            "routing_reasons": copy.deepcopy(self.routing_reasons),
+            "fingerprint": self.fingerprint,
+        }
+
+
+def _normalize_key(val: Any) -> str:
+    """Normalize dependency / entity key for robust matching across formats."""
+    s = str(val or "").strip().lower()
+    return re.sub(r'[\s\.\:\-_/]+', '_', s)
+
+
+def _expand_key_variants(val: Any) -> set[str]:
+    """Expands key variants to bridge canonical prefixes, slugs, and entity formats."""
+    raw = str(val or "").strip()
+    if not raw:
+        return set()
+    norm = _normalize_key(raw)
+    variants = {raw, raw.lower(), norm}
+    for prefix in ("doc_", "rel_", "artifact_", "req_", "crit_", "obl_", "ms_", "sub_"):
+        if norm.startswith(prefix):
+            stripped = norm[len(prefix):]
+            if stripped and not stripped.isdigit():
+                variants.add(stripped)
+    return variants
+
+
+ZERO_IMPACT_FACT_TYPES = frozenset({
+    "buyer_contact",
+    "administrative_contact",
+    "administrative_notice",
+    "document_metadata",
+    "typographical_correction",
+    "unchanged_fact",
+})
+
+
+@dataclass(frozen=True)
+class _DomainRule:
+    rule_id: str
+    domains: tuple[str, ...]
+    fact_types: tuple[str, ...]
+    entity_prefixes: tuple[str, ...] = ()
+    keywords: tuple[str, ...] = ()
+    custom_reasons: dict[str, str] | None = None  # domain -> custom rule name
+
+
+DOMAIN_ROUTING_RULES: tuple[_DomainRule, ...] = (
+    # 1. Schedule & Submission Deadlines
+    _DomainRule(
+        rule_id="SUBMISSION_DEADLINE_CHANGE",
+        domains=(SPECIALIST_SCHEDULE_SUBMISSION,),
+        fact_types=(
+            "submission_deadline", "closing_date", "deadline", "closing_time",
+            "rfp_closing", "bid_closing", "proposal_deadline", "closing_deadline",
+            "question_deadline", "addendum_deadline",
+        ),
+        entity_prefixes=("sub:deadline", "deadline", "closing"),
+    ),
+    # 2. Schedule Milestones
+    _DomainRule(
+        rule_id="SCHEDULE_MILESTONE_CHANGE",
+        domains=(SPECIALIST_SCHEDULE_SUBMISSION,),
+        fact_types=(
+            "milestone", "schedule", "timetable", "project_schedule",
+            "target_date", "scoped_milestone",
+        ),
+        entity_prefixes=("ms-", "ms:", "milestone:"),
+    ),
+    # 3. Submission Mechanics (Submission + Procurement Structure)
+    _DomainRule(
+        rule_id="SUBMISSION_MECHANICS_CHANGE",
+        domains=(SPECIALIST_SCHEDULE_SUBMISSION, SPECIALIST_PROCUREMENT_STRUCTURE),
+        fact_types=(
+            "submission_mechanics", "submission_portal", "submission_method",
+            "submission_format", "page_limit", "font_size", "number_of_copies",
+            "submission_instructions",
+        ),
+        entity_prefixes=("submission", "pkg", "sub:mechanics", "sub:portal", "sub:format"),
+    ),
+    # 4. Evaluation Criteria & Weights
+    _DomainRule(
+        rule_id="EVALUATION_WEIGHT_CHANGE",
+        domains=(SPECIALIST_EVALUATION_INTELLIGENCE,),
+        fact_types=(
+            "evaluation_weight", "evaluation_criterion", "evaluation_criteria",
+            "scoring_weight", "scoring_formula", "evaluation_grid", "rating_scale",
+            "criterion_weight", "scoring_model",
+        ),
+        entity_prefixes=("crit-", "crit:", "eval:weight", "eval:criterion", "eval."),
+    ),
+    # 5. Evaluation Thresholds (Cross-domain: Evaluation + Compliance)
+    _DomainRule(
+        rule_id="EVALUATION_THRESHOLD_CHANGE",
+        domains=(SPECIALIST_EVALUATION_INTELLIGENCE, SPECIALIST_REQUIREMENTS_COMPLIANCE),
+        fact_types=(
+            "evaluation_threshold", "minimum_score", "passing_score",
+            "evaluation_gate", "technical_threshold", "minimum_passing_grade",
+        ),
+        entity_prefixes=("eval:threshold", "eval.threshold"),
+        custom_reasons={
+            SPECIALIST_EVALUATION_INTELLIGENCE: "EVALUATION_THRESHOLD_CHANGE",
+            SPECIALIST_REQUIREMENTS_COMPLIANCE: "EVALUATION_THRESHOLD_COMPLIANCE_CROSS_DOMAIN",
+        },
+    ),
+    # 6. Requirements & Compliance
+    _DomainRule(
+        rule_id="REQUIREMENT_COMPLIANCE_CHANGE",
+        domains=(SPECIALIST_REQUIREMENTS_COMPLIANCE,),
+        fact_types=(
+            "mandatory_qualification", "qualification_requirement", "requirement",
+            "compliance", "mandatory_requirement", "compliance_requirement",
+            "canonical_requirement", "eligibility",
+        ),
+        entity_prefixes=("req-", "req:"),
+    ),
+    # 7. Mandatory Staffing / Credentials (Cross-domain: Compliance + Scope)
+    _DomainRule(
+        rule_id="MANDATORY_CREDENTIAL_CHANGE",
+        domains=(SPECIALIST_REQUIREMENTS_COMPLIANCE, SPECIALIST_SCOPE_DELIVERABLES),
+        fact_types=(
+            "mandatory_credential", "personnel_credential", "key_personnel",
+            "staffing_requirement", "team_credential", "security_clearance",
+            "professional_certification",
+        ),
+        entity_prefixes=("credential:", "personnel:", "staffing:"),
+        keywords=("credential", "personnel", "staffing", "clearance"),
+        custom_reasons={
+            SPECIALIST_REQUIREMENTS_COMPLIANCE: "MANDATORY_CREDENTIAL_CHANGE",
+            SPECIALIST_SCOPE_DELIVERABLES: "STAFFING_CREDENTIAL_SCOPE_CROSS_DOMAIN",
+        },
+    ),
+    # 8. Scope & Deliverables
+    _DomainRule(
+        rule_id="SCOPE_DELIVERABLE_CHANGE",
+        domains=(SPECIALIST_SCOPE_DELIVERABLES,),
+        fact_types=(
+            "scope_item", "deliverable", "service_scope", "scope_delivery",
+            "statement_of_work", "service", "resource_expectation",
+            "specifications", "technical_requirements",
+        ),
+        entity_prefixes=("scope-", "scope:", "deliv:"),
+    ),
+    # 9. Delivery Geography / Scope Restriction (Cross-domain: Scope + Commercial)
+    _DomainRule(
+        rule_id="DELIVERY_GEOGRAPHY_COMMERCIAL_CROSS_DOMAIN",
+        domains=(SPECIALIST_SCOPE_DELIVERABLES, SPECIALIST_COMMERCIAL_CONTRACTUAL),
+        fact_types=(
+            "scope_restriction", "delivery_geography", "geography_restriction",
+            "delivery_location", "service_location", "territorial_restriction",
+        ),
+        entity_prefixes=("scope:geography", "geography:", "location:"),
+        keywords=("geography", "restriction", "location"),
+        custom_reasons={
+            SPECIALIST_SCOPE_DELIVERABLES: "SCOPE_DELIVERY_RESTRICTION_CHANGE",
+            SPECIALIST_COMMERCIAL_CONTRACTUAL: "CONTRACT_GEOGRAPHY_COMMERCIAL_CROSS_DOMAIN",
+        },
+    ),
+    # 10. Commercial Obligations
+    _DomainRule(
+        rule_id="COMMERCIAL_OBLIGATION_CHANGE",
+        domains=(SPECIALIST_COMMERCIAL_CONTRACTUAL,),
+        fact_types=(
+            "insurance", "insurance_limit", "liability", "liability_cap",
+            "indemnity", "payment_terms", "commercial_obligation",
+            "contractual_obligation", "warranty", "ip_rights", "termination",
+            "liquidated_damages", "bonding", "confidentiality",
+        ),
+        entity_prefixes=("obl-", "comm:", "commercial:", "obl:"),
+    ),
+    # 11. Pricing Structure (Cross-domain: Commercial + Compliance)
+    _DomainRule(
+        rule_id="PRICING_STRUCTURE_CHANGE",
+        domains=(SPECIALIST_COMMERCIAL_CONTRACTUAL, SPECIALIST_REQUIREMENTS_COMPLIANCE),
+        fact_types=(
+            "pricing_structure", "pricing_model", "pricing_schedule",
+            "rate_table", "pricing_terms", "fee_structure", "rate_structure",
+        ),
+        entity_prefixes=("price:", "pricing:"),
+        custom_reasons={
+            SPECIALIST_COMMERCIAL_CONTRACTUAL: "PRICING_STRUCTURE_CHANGE",
+            SPECIALIST_REQUIREMENTS_COMPLIANCE: "PRICING_COMPLIANCE_REQUIREMENTS_CROSS_DOMAIN",
+        },
+    ),
+    # 12. Pricing Artifact / Replacement Form (Cross-domain: Commercial + Compliance + Schedule)
+    _DomainRule(
+        rule_id="PRICING_ARTIFACT_REPLACEMENT",
+        domains=(
+            SPECIALIST_COMMERCIAL_CONTRACTUAL,
+            SPECIALIST_REQUIREMENTS_COMPLIANCE,
+            SPECIALIST_SCHEDULE_SUBMISSION,
+        ),
+        fact_types=(
+            "pricing_form", "replacement_pricing_form", "pricing_form_replacement",
+            "pricing_artifact",
+        ),
+        entity_prefixes=("artifact:pricing", "doc:pricing"),
+        custom_reasons={
+            SPECIALIST_COMMERCIAL_CONTRACTUAL: "PRICING_ARTIFACT_COMMERCIAL_CHANGE",
+            SPECIALIST_REQUIREMENTS_COMPLIANCE: "PRICING_FORM_SUBMISSION_COMPLIANCE_CROSS_DOMAIN",
+            SPECIALIST_SCHEDULE_SUBMISSION: "PRICING_FORM_SUBMISSION_MECHANICS_CROSS_DOMAIN",
+        },
+    ),
+    # 13. Procurement Structure & Roles
+    _DomainRule(
+        rule_id="PROCUREMENT_STRUCTURE_CHANGE",
+        domains=(SPECIALIST_PROCUREMENT_STRUCTURE,),
+        fact_types=(
+            "procurement_identity", "document_role", "document_relationship",
+            "package_completeness", "service_category", "procurement_structure",
+        ),
+        entity_prefixes=("ident", "doc-", "rel-", "pkg", "cat-"),
+    ),
+)
+
+
+def route_change_to_domains(fact: FactChange) -> ChangeRoutingDecision:
+    """Pure deterministic router mapping one applied FactChange to affected specialist domains."""
+    change_id = fact.entity_id or fact.fact_type or "unknown_change"
+
+    # Authority boundary: only approved, non-conflict changes can route
+    if fact.review_status != REVIEW_STATUS_APPROVED or fact.change_type == CHANGE_CONFLICTS_WITH:
+        return ChangeRoutingDecision(
+            change_id=change_id,
+            affected_domains=(),
+            reasons=(),
+        )
+
+    # Zero-impact changes: unchanged facts and administrative metadata
+    if fact.change_type == CHANGE_UNCHANGED or fact.fact_type in ZERO_IMPACT_FACT_TYPES:
+        return ChangeRoutingDecision(
+            change_id=change_id,
+            affected_domains=(),
+            reasons=(),
+        )
+
+    norm_ft = _normalize_key(fact.fact_type)
+    norm_eid = _normalize_key(fact.entity_id)
+
+    affected: set[str] = set()
+    reasons: list[DomainRoutingReason] = []
+
+    for rule in DOMAIN_ROUTING_RULES:
+        matched = False
+        if norm_ft in rule.fact_types:
+            matched = True
+        elif any(norm_eid.startswith(prefix) for prefix in rule.entity_prefixes):
+            matched = True
+        elif rule.keywords and any(kw in norm_ft or kw in norm_eid for kw in rule.keywords):
+            matched = True
+
+        if matched:
+            for domain in rule.domains:
+                affected.add(domain)
+                rule_name = (rule.custom_reasons or {}).get(domain, rule.rule_id)
+                reasons.append(DomainRoutingReason(domain=domain, rule=rule_name))
+
+    # Deduplicate reasons while preserving order
+    seen_reasons = set()
+    deduped_reasons = []
+    for r in reasons:
+        k = (r.domain, r.rule)
+        if k not in seen_reasons:
+            seen_reasons.add(k)
+            deduped_reasons.append(r)
+
+    return ChangeRoutingDecision(
+        change_id=change_id,
+        affected_domains=tuple(sorted(affected)),
+        reasons=tuple(deduped_reasons),
+    )
+
+
+def generate_revision_impact_plan(
+    change_set_or_revision: ProcurementRevision | ProcurementChangeSet,
+    authoritative_state: AuthoritativeProcurementState | None = None,
+    existing_findings: Sequence[dict[str, Any]] | None = None,
+    *,
+    bid_id: int | None = None,
+) -> RevisionImpactPlan:
+    """Generates the deterministic RevisionImpactPlan for an applied revision/changeset.
+    Consumes ONLY authoritative applied changes.
+    Does NOT run specialists or make model calls."""
+    is_rev = isinstance(change_set_or_revision, ProcurementRevision)
+    rev_num = change_set_or_revision.revision_number if is_rev else change_set_or_revision.revision
+    change_set = change_set_or_revision.change_set if is_rev else change_set_or_revision
+    cs_fp = change_set.fingerprint or ""
+
+    state_fp = authoritative_state.state_fingerprint if authoritative_state is not None else ""
+
+    # Authority boundary check: if revision has unresolved chronology, it is not applied
+    if is_rev and change_set_or_revision.chronology_unresolved:
+        return RevisionImpactPlan(
+            revision_number=rev_num,
+            change_set_fingerprint=cs_fp,
+            state_fingerprint=state_fp,
+            affected_domains=[],
+            retained_finding_ids=[
+                str(f.get("finding_id")) for f in (existing_findings or [])
+                if isinstance(f, dict) and f.get("finding_id")
+            ],
+            stale_finding_ids=[],
+            unresolved_finding_ids=[],
+            finding_impacts={
+                str(f.get("finding_id")): {
+                    "status": FINDING_STATUS_RETAINED,
+                    "reasons": [{"rule": "UNAPPLIED_REVISION_CANONICAL_UNTOUCHED"}],
+                }
+                for f in (existing_findings or [])
+                if isinstance(f, dict) and f.get("finding_id")
+            },
+            routing_reasons=[],
+        )
+
+    # Route changes to affected specialist domains
+    affected_domains_set: set[str] = set()
+    routing_reasons_list: list[dict[str, Any]] = []
+
+    # Collect changed entity keys for finding dependency matching
+    changed_keys: set[str] = set()
+    normalized_changed_keys: set[str] = set()
+
+    for c in change_set.changes:
+        if c.review_status != REVIEW_STATUS_APPROVED or c.change_type == CHANGE_CONFLICTS_WITH:
+            continue
+        if c.change_type == CHANGE_UNCHANGED:
+            continue
+
+        decision = route_change_to_domains(c)
+        if decision.affected_domains:
+            affected_domains_set.update(decision.affected_domains)
+            routing_reasons_list.append(decision.to_dict())
+
+        # Collect keys
+        for val in (c.entity_id, c.fact_type, c.metadata.get("canonical_id")):
+            if val:
+                variants = _expand_key_variants(val)
+                changed_keys.update(variants)
+                normalized_changed_keys.update(_normalize_key(v) for v in variants)
+
+        if isinstance(c.metadata.get("canonical_ids"), (list, tuple)):
+            for cid in c.metadata["canonical_ids"]:
+                variants = _expand_key_variants(cid)
+                changed_keys.update(variants)
+                normalized_changed_keys.update(_normalize_key(v) for v in variants)
+
+        if c.metadata.get("artifact_id"):
+            variants = _expand_key_variants(c.metadata["artifact_id"])
+            changed_keys.update(variants)
+            normalized_changed_keys.update(_normalize_key(v) for v in variants)
+
+        # Artifact replacement
+        if (c.fact_type in ("artifact_replacement", "pricing_form", "revised_form") or c.change_type == CHANGE_REPLACES) and c.before_value:
+            b_val = c.before_value.get("name") if isinstance(c.before_value, dict) else str(c.before_value)
+            variants = _expand_key_variants(b_val)
+            changed_keys.update(variants)
+            normalized_changed_keys.update(_normalize_key(v) for v in variants)
+
+    # Check superseded artifacts in state
+    if authoritative_state is not None:
+        for art_id, art_rec in authoritative_state.active_artifacts.items():
+            if art_rec.status == AUTHORITY_SUPERSEDED:
+                variants = _expand_key_variants(art_rec.artifact_id) | _expand_key_variants(art_rec.name)
+                changed_keys.update(variants)
+                normalized_changed_keys.update(_normalize_key(v) for v in variants)
+            if art_rec.replaces_artifact_id:
+                variants = _expand_key_variants(art_rec.replaces_artifact_id)
+                changed_keys.update(variants)
+                normalized_changed_keys.update(_normalize_key(v) for v in variants)
+
+    # Evaluate existing findings
+    retained_ids: list[str] = []
+    stale_ids: list[str] = []
+    unresolved_ids: list[str] = []
+    finding_impacts: dict[str, dict[str, Any]] = {}
+
+    for raw_f in (existing_findings or []):
+        f = raw_f.as_dict() if hasattr(raw_f, "as_dict") else (raw_f.to_dict() if hasattr(raw_f, "to_dict") else raw_f)
+        if not isinstance(f, dict):
+            continue
+
+        fid = str(f.get("finding_id") or "UNKNOWN_ID")
+        canonical_ids = [str(x).strip() for x in (f.get("canonical_ids") or []) if str(x).strip()]
+        dependencies = [str(x).strip() for x in (f.get("dependencies") or []) if str(x).strip()]
+        artifact_ids = [str(x).strip() for x in (f.get("artifact_ids") or []) if str(x).strip()]
+        source_refs = [str(x).strip() for x in (f.get("source_refs") or []) if str(x).strip()]
+
+        has_deps = bool(canonical_ids or dependencies or artifact_ids or source_refs)
+
+        # Insufficient dependency metadata check
+        if not has_deps:
+            status = FINDING_STATUS_UNRESOLVED
+            reasons = [{"rule": "UNRESOLVED_FINDING_DEPENDENCY", "reason": "INSUFFICIENT_DEPENDENCY_METADATA"}]
+            unresolved_ids.append(fid)
+            finding_impacts[fid] = {"status": status, "reasons": reasons}
+            continue
+
+        # Check if finding depends on any changed key
+        finding_keys: set[str] = set()
+        for k in (canonical_ids + dependencies + artifact_ids + source_refs):
+            finding_keys.update(_expand_key_variants(k))
+
+        matched_deps = []
+        for k in finding_keys:
+            if k in changed_keys or _normalize_key(k) in normalized_changed_keys:
+                matched_deps.append(k)
+
+        if matched_deps:
+            status = FINDING_STATUS_STALE
+            reasons = [{
+                "rule": "AUTHORITATIVE_DEPENDENCY_CHANGED",
+                "matched_dependencies": sorted(set(matched_deps)),
+            }]
+            stale_ids.append(fid)
+        else:
+            status = FINDING_STATUS_RETAINED
+            reasons = [{"rule": "DEPENDENCIES_UNAFFECTED"}]
+            retained_ids.append(fid)
+
+        finding_impacts[fid] = {"status": status, "reasons": reasons}
+
+    return RevisionImpactPlan(
+        revision_number=rev_num,
+        change_set_fingerprint=cs_fp,
+        state_fingerprint=state_fp,
+        affected_domains=sorted(affected_domains_set),
+        retained_finding_ids=sorted(retained_ids),
+        stale_finding_ids=sorted(stale_ids),
+        unresolved_finding_ids=sorted(unresolved_ids),
+        finding_impacts=finding_impacts,
+        routing_reasons=routing_reasons_list,
+    )

@@ -2285,5 +2285,479 @@ class TestPCIA21HumanReviewGateAndProvenance(unittest.TestCase):
         self.assertEqual(chg_map["pricing.total_fee"], 62)
 
 
+class TestPCIB1ImpactRoutingAndIntelligenceDependency(unittest.TestCase):
+    """PCI-B1 Acceptance & Test Fixtures (A through J).
+    Tests deterministic impact routing, finding dependency resolution,
+    explainability, idempotency, and authority boundaries."""
+
+    def test_domain_vocabulary_parity_with_full_analysis(self):
+        """Verifies closed domain vocabulary parity with full_analysis.SPECIALIST_IDS."""
+        from full_analysis import SPECIALIST_IDS
+        self.assertEqual(pci.SPECIALIST_DOMAINS, SPECIALIST_IDS)
+
+    def test_fixture_a_deadline_change(self):
+        """Fixture A: Deadline change -> schedule/submission affected, unrelated findings retained."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_CORRECTS,
+            fact_type="submission_deadline",
+            entity_id="sub:deadline",
+            before_value="2026-11-01",
+            after_value="2026-11-15",
+            source_document="Addendum 1.pdf",
+            source_hash="hash_a1",
+            source_document_id=101,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        cs = pci.ProcurementChangeSet(
+            revision=1,
+            previous_revision=0,
+            source_documents=[{"document_id": 101, "name": "Addendum 1.pdf", "content_hash": "hash_a1"}],
+            changes=[change],
+        )
+        findings = [
+            {
+                "finding_id": "SCHEDULE_SUBMISSION:0",
+                "finding_type": "FACT",
+                "canonical_ids": ["sub:deadline"],
+                "title": "Closing Deadline",
+            },
+            {
+                "finding_id": "REQUIREMENTS_COMPLIANCE:1",
+                "finding_type": "FACT",
+                "canonical_ids": ["REQ-1"],
+                "dependencies": ["req:1"],
+                "title": "Mandatory Insurance",
+            },
+        ]
+        plan = pci.generate_revision_impact_plan(cs, existing_findings=findings)
+        self.assertEqual(plan.affected_domains, [pci.SPECIALIST_SCHEDULE_SUBMISSION])
+        self.assertEqual(plan.stale_finding_ids, ["SCHEDULE_SUBMISSION:0"])
+        self.assertEqual(plan.retained_finding_ids, ["REQUIREMENTS_COMPLIANCE:1"])
+        self.assertEqual(plan.unresolved_finding_ids, [])
+        self.assertTrue(len(plan.routing_reasons) > 0)
+        self.assertEqual(plan.routing_reasons[0]["reasons"][0]["rule"], "SUBMISSION_DEADLINE_CHANGE")
+
+    def test_fixture_b_evaluation_weight_change(self):
+        """Fixture B: Evaluation weight 30 -> 35 -> evaluation affected, findings depending on criterion stale."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="evaluation_weight",
+            entity_id="eval.firm_experience.weight",
+            before_value=30,
+            after_value=35,
+            source_document="Addendum 2.pdf",
+            source_hash="hash_b1",
+            source_document_id=102,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+            metadata={"canonical_id": "CRIT-firm_experience"},
+        )
+        cs = pci.ProcurementChangeSet(
+            revision=2,
+            previous_revision=1,
+            source_documents=[{"document_id": 102, "name": "Addendum 2.pdf", "content_hash": "hash_b1"}],
+            changes=[change],
+        )
+        findings = [
+            {
+                "finding_id": "EVALUATION_INTELLIGENCE:0",
+                "finding_type": "FACT",
+                "canonical_ids": ["CRIT-firm_experience"],
+                "dependencies": ["eval.firm_experience.weight"],
+                "title": "Firm Experience Weight",
+            },
+            {
+                "finding_id": "COMMERCIAL_CONTRACTUAL:1",
+                "finding_type": "RISK",
+                "canonical_ids": ["OBL-1"],
+                "dependencies": ["comm:insurance"],
+                "title": "Insurance Risk",
+            },
+        ]
+        plan = pci.generate_revision_impact_plan(cs, existing_findings=findings)
+        self.assertEqual(plan.affected_domains, [pci.SPECIALIST_EVALUATION_INTELLIGENCE])
+        self.assertEqual(plan.stale_finding_ids, ["EVALUATION_INTELLIGENCE:0"])
+        self.assertEqual(plan.retained_finding_ids, ["COMMERCIAL_CONTRACTUAL:1"])
+        self.assertEqual(plan.routing_reasons[0]["reasons"][0]["rule"], "EVALUATION_WEIGHT_CHANGE")
+
+    def test_fixture_c_insurance_change(self):
+        """Fixture C: Insurance 5M -> 10M -> commercial affected."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="insurance_limit",
+            entity_id="comm:insurance",
+            before_value="5,000,000 CAD",
+            after_value="10,000,000 CAD",
+            source_document="Addendum 3.pdf",
+            source_hash="hash_c1",
+            source_document_id=103,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        decision = pci.route_change_to_domains(change)
+        self.assertEqual(decision.affected_domains, (pci.SPECIALIST_COMMERCIAL_CONTRACTUAL,))
+        self.assertEqual(decision.reasons[0].rule, "COMMERCIAL_OBLIGATION_CHANGE")
+
+    def test_fixture_d_scope_delivery_restriction(self):
+        """Fixture D: Scope delivery restriction -> scope/delivery + commercial affected via explicit cross-domain rule."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_NARROWS,
+            fact_type="scope_restriction",
+            entity_id="scope:delivery_geography",
+            before_value="North America",
+            after_value="Province of Alberta only",
+            source_document="Addendum 4.pdf",
+            source_hash="hash_d1",
+            source_document_id=104,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        decision = pci.route_change_to_domains(change)
+        self.assertIn(pci.SPECIALIST_SCOPE_DELIVERABLES, decision.affected_domains)
+        self.assertIn(pci.SPECIALIST_COMMERCIAL_CONTRACTUAL, decision.affected_domains)
+        rules = {r.rule for r in decision.reasons}
+        self.assertIn("SCOPE_DELIVERY_RESTRICTION_CHANGE", rules)
+        self.assertIn("CONTRACT_GEOGRAPHY_COMMERCIAL_CROSS_DOMAIN", rules)
+
+    def test_fixture_e_pricing_form_replacement(self):
+        """Fixture E: Pricing form replacement -> commercial + compliance + submission affected; old-form findings stale."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_REPLACES,
+            fact_type="pricing_form",
+            entity_id="artifact:pricing_form",
+            before_value="Pricing Form v1.xlsx",
+            after_value="Pricing Form v2.xlsx",
+            source_document="Pricing Form v2.xlsx",
+            source_hash="hash_pf2",
+            source_document_id=105,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        cs = pci.ProcurementChangeSet(
+            revision=3,
+            previous_revision=2,
+            source_documents=[{"document_id": 105, "name": "Pricing Form v2.xlsx", "content_hash": "hash_pf2"}],
+            changes=[change],
+        )
+        findings = [
+            {
+                "finding_id": "COMMERCIAL_CONTRACTUAL:2",
+                "finding_type": "FACT",
+                "canonical_ids": ["DOC-pricing-form-v1"],
+                "dependencies": ["Pricing Form v1.xlsx"],
+                "title": "Pricing Structure Table",
+            },
+            {
+                "finding_id": "EVALUATION_INTELLIGENCE:5",
+                "finding_type": "FACT",
+                "canonical_ids": ["CRIT-presentation"],
+                "dependencies": ["eval:presentation"],
+                "title": "Interview Presentation",
+            },
+        ]
+        plan = pci.generate_revision_impact_plan(cs, existing_findings=findings)
+        self.assertIn(pci.SPECIALIST_COMMERCIAL_CONTRACTUAL, plan.affected_domains)
+        self.assertIn(pci.SPECIALIST_REQUIREMENTS_COMPLIANCE, plan.affected_domains)
+        self.assertIn(pci.SPECIALIST_SCHEDULE_SUBMISSION, plan.affected_domains)
+        self.assertEqual(plan.stale_finding_ids, ["COMMERCIAL_CONTRACTUAL:2"])
+        self.assertEqual(plan.retained_finding_ids, ["EVALUATION_INTELLIGENCE:5"])
+
+    def test_fixture_f_pure_unchanged_fact(self):
+        """Fixture F: Pure UNCHANGED fact -> 0 affected domains, 0 stale findings."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_UNCHANGED,
+            fact_type="submission_deadline",
+            entity_id="sub:deadline",
+            before_value="2026-11-01",
+            after_value="2026-11-01",
+            source_document="Addendum 5.pdf",
+            source_hash="hash_f1",
+            source_document_id=106,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        cs = pci.ProcurementChangeSet(
+            revision=4,
+            previous_revision=3,
+            source_documents=[{"document_id": 106, "name": "Addendum 5.pdf", "content_hash": "hash_f1"}],
+            changes=[change],
+        )
+        findings = [
+            {
+                "finding_id": "SCHEDULE_SUBMISSION:0",
+                "finding_type": "FACT",
+                "canonical_ids": ["sub:deadline"],
+                "dependencies": ["sub:deadline"],
+                "title": "Closing Deadline",
+            },
+        ]
+        plan = pci.generate_revision_impact_plan(cs, existing_findings=findings)
+        self.assertEqual(plan.affected_domains, [])
+        self.assertEqual(plan.stale_finding_ids, [])
+        self.assertEqual(plan.retained_finding_ids, ["SCHEDULE_SUBMISSION:0"])
+
+    def test_fixture_g_pending_human_review_required(self):
+        """Fixture G: Pending HUMAN_REVIEW_REQUIRED update -> not eligible for canonical impact routing."""
+        pending_change = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="evaluation_weight",
+            entity_id="eval.weight",
+            before_value=20,
+            after_value=40,
+            source_document="Ambiguous Notice.pdf",
+            source_hash="hash_g1",
+            source_document_id=107,
+            review_status=pci.REVIEW_STATUS_HUMAN_REVIEW_REQUIRED,
+        )
+        decision = pci.route_change_to_domains(pending_change)
+        self.assertEqual(decision.affected_domains, ())
+        self.assertEqual(decision.reasons, ())
+
+        cs = pci.ProcurementChangeSet(
+            revision=5,
+            previous_revision=4,
+            source_documents=[{"document_id": 107, "name": "Ambiguous Notice.pdf", "content_hash": "hash_g1"}],
+            changes=[pending_change],
+        )
+        findings = [
+            {
+                "finding_id": "EVAL:1",
+                "finding_type": "FACT",
+                "canonical_ids": ["eval.weight"],
+                "title": "Eval Weight",
+            }
+        ]
+        plan = pci.generate_revision_impact_plan(cs, existing_findings=findings)
+        self.assertEqual(plan.affected_domains, [])
+        self.assertEqual(plan.stale_finding_ids, [])
+        self.assertEqual(plan.retained_finding_ids, ["EVAL:1"])
+
+    def test_fixture_h_mixed_revision(self):
+        """Fixture H: Mixed revision (deadline + evaluation criterion + pricing change) -> only relevant domains, not 6."""
+        changes = [
+            pci.FactChange(
+                change_type=pci.CHANGE_CORRECTS,
+                fact_type="submission_deadline",
+                entity_id="sub:deadline",
+                before_value="2026-11-01",
+                after_value="2026-11-15",
+                source_document="Addendum 6.pdf",
+                source_hash="hash_h1",
+                source_document_id=108,
+                review_status=pci.REVIEW_STATUS_APPROVED,
+            ),
+            pci.FactChange(
+                change_type=pci.CHANGE_SUPERSEDES,
+                fact_type="evaluation_weight",
+                entity_id="eval:weight",
+                before_value=30,
+                after_value=35,
+                source_document="Addendum 6.pdf",
+                source_hash="hash_h1",
+                source_document_id=108,
+                review_status=pci.REVIEW_STATUS_APPROVED,
+            ),
+            pci.FactChange(
+                change_type=pci.CHANGE_SUPERSEDES,
+                fact_type="pricing_structure",
+                entity_id="price:rates",
+                before_value="Fixed",
+                after_value="Time and Materials",
+                source_document="Addendum 6.pdf",
+                source_hash="hash_h1",
+                source_document_id=108,
+                review_status=pci.REVIEW_STATUS_APPROVED,
+            ),
+        ]
+        cs = pci.ProcurementChangeSet(
+            revision=6,
+            previous_revision=5,
+            source_documents=[{"document_id": 108, "name": "Addendum 6.pdf", "content_hash": "hash_h1"}],
+            changes=changes,
+        )
+        plan = pci.generate_revision_impact_plan(cs)
+        expected = sorted([
+            pci.SPECIALIST_SCHEDULE_SUBMISSION,
+            pci.SPECIALIST_EVALUATION_INTELLIGENCE,
+            pci.SPECIALIST_COMMERCIAL_CONTRACTUAL,
+            pci.SPECIALIST_REQUIREMENTS_COMPLIANCE,
+        ])
+        self.assertEqual(plan.affected_domains, expected)
+        # Bounded check: SCOPE_DELIVERABLES and PROCUREMENT_STRUCTURE are NOT affected
+        self.assertNotIn(pci.SPECIALIST_SCOPE_DELIVERABLES, plan.affected_domains)
+        self.assertNotIn(pci.SPECIALIST_PROCUREMENT_STRUCTURE, plan.affected_domains)
+
+    def test_fixture_i_unrelated_existing_finding(self):
+        """Fixture I: Unrelated existing finding -> RETAINED."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="insurance_limit",
+            entity_id="comm:insurance",
+            before_value="5M",
+            after_value="10M",
+            source_document="Addendum 7.pdf",
+            source_hash="hash_i1",
+            source_document_id=109,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        cs = pci.ProcurementChangeSet(
+            revision=7,
+            previous_revision=6,
+            source_documents=[{"document_id": 109, "name": "Addendum 7.pdf", "content_hash": "hash_i1"}],
+            changes=[change],
+        )
+        findings = [
+            {
+                "finding_id": "REQ:ISO",
+                "finding_type": "FACT",
+                "canonical_ids": ["REQ-ISO-9001"],
+                "dependencies": ["req:iso_9001"],
+                "title": "ISO 9001 Certification Requirement",
+            }
+        ]
+        plan = pci.generate_revision_impact_plan(cs, existing_findings=findings)
+        self.assertEqual(plan.retained_finding_ids, ["REQ:ISO"])
+        self.assertEqual(plan.stale_finding_ids, [])
+        self.assertEqual(plan.finding_impacts["REQ:ISO"]["status"], pci.FINDING_STATUS_RETAINED)
+
+    def test_fixture_j_insufficient_dependency_metadata(self):
+        """Fixture J: Finding with insufficient dependency metadata -> UNRESOLVED, not silently RETAINED."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_CORRECTS,
+            fact_type="submission_deadline",
+            entity_id="sub:deadline",
+            before_value="2026-11-01",
+            after_value="2026-11-15",
+            source_document="Addendum 8.pdf",
+            source_hash="hash_j1",
+            source_document_id=110,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        cs = pci.ProcurementChangeSet(
+            revision=8,
+            previous_revision=7,
+            source_documents=[{"document_id": 110, "name": "Addendum 8.pdf", "content_hash": "hash_j1"}],
+            changes=[change],
+        )
+        findings = [
+            {
+                "finding_id": "RISK:UNANCHORED",
+                "finding_type": "RISK",
+                "title": "Unanchored Risk Claim",
+                "canonical_ids": [],
+                "dependencies": [],
+            }
+        ]
+        plan = pci.generate_revision_impact_plan(cs, existing_findings=findings)
+        self.assertEqual(plan.unresolved_finding_ids, ["RISK:UNANCHORED"])
+        self.assertNotIn("RISK:UNANCHORED", plan.retained_finding_ids)
+        self.assertEqual(plan.finding_impacts["RISK:UNANCHORED"]["status"], pci.FINDING_STATUS_UNRESOLVED)
+        self.assertEqual(
+            plan.finding_impacts["RISK:UNANCHORED"]["reasons"][0]["reason"],
+            "INSUFFICIENT_DEPENDENCY_METADATA"
+        )
+
+    def test_idempotency_and_fingerprint_stability(self):
+        """Proves impact routing is 100% deterministic, idempotent, and invariant to finding order."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_SUPERSEDES,
+            fact_type="evaluation_weight",
+            entity_id="eval.weight",
+            before_value=20,
+            after_value=30,
+            source_document="Addendum 9.pdf",
+            source_hash="hash_idemp",
+            source_document_id=111,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        cs = pci.ProcurementChangeSet(
+            revision=9,
+            previous_revision=8,
+            source_documents=[{"document_id": 111, "name": "Addendum 9.pdf", "content_hash": "hash_idemp"}],
+            changes=[change],
+        )
+        f1 = {"finding_id": "F1", "finding_type": "FACT", "canonical_ids": ["eval.weight"]}
+        f2 = {"finding_id": "F2", "finding_type": "FACT", "canonical_ids": ["req:1"]}
+
+        plan1 = pci.generate_revision_impact_plan(cs, existing_findings=[f1, f2])
+        plan2 = pci.generate_revision_impact_plan(cs, existing_findings=[f2, f1])
+
+        self.assertEqual(plan1.fingerprint, plan2.fingerprint)
+        self.assertEqual(plan1.affected_domains, plan2.affected_domains)
+        self.assertEqual(plan1.stale_finding_ids, plan2.stale_finding_ids)
+        self.assertEqual(plan1.retained_finding_ids, plan2.retained_finding_ids)
+
+    def test_zero_impact_administrative_change(self):
+        """Proves administrative/contact changes affect 0 domains and stale 0 findings."""
+        change = pci.FactChange(
+            change_type=pci.CHANGE_CORRECTS,
+            fact_type="buyer_contact",
+            entity_id="contact:buyer_email",
+            before_value="typo@city.ca",
+            after_value="procurement@city.ca",
+            source_document="Notice 1.pdf",
+            source_hash="hash_admin",
+            source_document_id=112,
+            review_status=pci.REVIEW_STATUS_APPROVED,
+        )
+        decision = pci.route_change_to_domains(change)
+        self.assertEqual(decision.affected_domains, ())
+        self.assertEqual(decision.reasons, ())
+
+        cs = pci.ProcurementChangeSet(
+            revision=10,
+            previous_revision=9,
+            source_documents=[{"document_id": 112, "name": "Notice 1.pdf", "content_hash": "hash_admin"}],
+            changes=[change],
+        )
+        findings = [{"finding_id": "F1", "finding_type": "FACT", "canonical_ids": ["req:1"]}]
+        plan = pci.generate_revision_impact_plan(cs, existing_findings=findings)
+        self.assertEqual(plan.affected_domains, [])
+        self.assertEqual(plan.stale_finding_ids, [])
+        self.assertEqual(plan.retained_finding_ids, ["F1"])
+
+    def test_manager_get_revision_impact_plan_integration(self):
+        """End-to-end integration proof via ProcurementRevisionManager."""
+        storage = pci.InMemoryPCIStorage()
+        mgr = pci.ProcurementRevisionManager(bid_id=9901, organization_id="org-b1", storage=storage)
+
+        baseline_docs = [{"document_id": 1, "name": "RFP.pdf", "content_hash": "rfp_hash_9901"}]
+        baseline_facts = [
+            pci.FactChange(
+                change_type=pci.CHANGE_ADDS,
+                fact_type="submission_deadline",
+                entity_id="sub:deadline",
+                before_value=None,
+                after_value="2026-11-01",
+                source_document="RFP.pdf",
+                source_hash="rfp_hash_9901",
+                source_document_id=1,
+            )
+        ]
+        mgr.create_baseline_revision(baseline_docs, baseline_facts)
+
+        add_docs = [{"document_id": 2, "name": "Addendum 1.pdf", "content_hash": "add_hash_9901"}]
+        add_facts = [
+            pci.FactChange(
+                change_type=pci.CHANGE_CORRECTS,
+                fact_type="submission_deadline",
+                entity_id="sub:deadline",
+                before_value="2026-11-01",
+                after_value="2026-11-15",
+                source_document="Addendum 1.pdf",
+                source_hash="add_hash_9901",
+                source_document_id=2,
+                review_status=pci.REVIEW_STATUS_APPROVED,
+            )
+        ]
+        res = mgr.add_buyer_update_revision(add_docs, add_facts)
+        self.assertEqual(res["review_status"], "applied")
+
+        existing_findings = [
+            {"finding_id": "F_DEADLINE", "finding_type": "FACT", "canonical_ids": ["sub:deadline"]},
+            {"finding_id": "F_REQ", "finding_type": "FACT", "canonical_ids": ["req:1"]},
+        ]
+        plan = mgr.get_revision_impact_plan(1, existing_findings=existing_findings)
+        self.assertEqual(plan.revision_number, 1)
+        self.assertEqual(plan.affected_domains, [pci.SPECIALIST_SCHEDULE_SUBMISSION])
+        self.assertEqual(plan.stale_finding_ids, ["F_DEADLINE"])
+        self.assertEqual(plan.retained_finding_ids, ["F_REQ"])
+
+
 if __name__ == "__main__":
     unittest.main()

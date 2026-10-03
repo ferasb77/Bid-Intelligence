@@ -1,7 +1,7 @@
 # Current PCI State
 
 Phase:
-PCI-A.2.1 — Human-Review Gate & Source Provenance Closure
+PCI-B1 — Impact Routing & Intelligence Dependency Model
 
 Architecture decision:
 A procurement is modeled as a living, chronological revision sequence
@@ -16,7 +16,6 @@ Idempotent document hashing prevents duplicate revisions from re-uploads.
 Out-of-order uploads are re-ordered by buyer chronology rather than upload time.
 
 Durability, Persistence & Governed Apply (PCI-A.2 & PCI-A.2.1):
-PCI-A.2 & PCI-A.2.1 integrate revision intelligence with governed atomic apply, durable chronology, and human-review gating:
 1. Transactional Governed Apply:
    - Direct SQL updates to `bids.procurement_revision` from Python are strictly prohibited.
    - All revision state transitions flow through the Migration 010 RPC lifecycle:
@@ -26,44 +25,57 @@ PCI-A.2 & PCI-A.2.1 integrate revision intelligence with governed atomic apply, 
      d. Decisions are recorded via `record_change_review_decision` RPC (`decision='approved'` only for approved changes).
      e. Final apply occurs inside `apply_procurement_update_review` RPC (optimistic concurrency check, conditional revision increment, atomic lock).
    - Any failure before or during apply leaves `bids.procurement_revision` untouched.
-2. Human-Review Gate & Zero Auto-Approval (PCI-A.2.1):
+2. Human-Review Gate & Zero Auto-Approval:
    - Changes with `HUMAN_REVIEW_REQUIRED`, `PENDING`, `REJECTED`, or `CHANGE_CONFLICTS_WITH`, and revisions with `chronology_unresolved=True`, are NEVER auto-approved.
    - Governed Apply Gate is All-or-Nothing: If any material change remains unapproved or chronology is unresolved, `apply_procurement_update_review` is NOT called. The review remains in `'ready_for_review'`, `bids.procurement_revision` does not advance, and canonical truth is untouched (no partial apply).
    - Unapplied reviews and pending conflicts survive manager restart and rehydration from storage across instances.
-3. Exact Source Provenance (Fail-Closed, PCI-A.2.1):
+3. Exact Source Provenance (Fail-Closed):
    - Every `FactChange` must provide a genuine integer `source_document_id` matching an input document in the revision.
    - `source_hash` must match the content hash of that specific document.
    - Missing, non-integer, or mismatched document IDs fail closed (`ValueError`). No fallback to primary document ID.
-4. Multi-Document Buyer Updates:
-   - Compound updates spanning multiple physical files (e.g. Addendum letter + Replacement Pricing Form) are supported.
-   - Exactly one `primary` document role is enforced per review (`primary`, `replacement`, `supporting`).
-5. Two Distinct Sequences:
-   - Buyer Update Event: Every legitimate buyer-issued document set creates a durable review record.
-   - Canonical Procurement Revision: `bids.procurement_revision` advances only when approved canonical changes exist. Non-semantic notices create durable events with `no_canonical_change=True` without bumping canonical revision.
-6. Durable Buyer Chronology:
-   - Reconstructed deterministically from persisted document metadata (`extract_chronology_metadata` on primary document name + buyer issued date).
-   - Ambiguous documents are flagged with `chronology_unresolved=True`, routing changes to `pending_conflicts` with `REVIEW_STATUS_HUMAN_REVIEW_REQUIRED`. Never falls back to revision numbers.
+
+Impact Routing & Intelligence Dependency Model (PCI-B1):
+1. Strict Authority Boundary:
+   - Consumes ONLY applied, approved canonical changes.
+   - Unapplied reviews, pending changes, rejected changes, `CHANGE_CONFLICTS_WITH`, and revisions with `chronology_unresolved=True` are strictly excluded from specialist invalidation.
+   - Existing UNDERSTAND specialist intelligence remains valid on the last applied revision until new canonical truth is applied.
+2. Closed Specialist Domain Vocabulary:
+   - Reuses existing 6 Full Analysis specialist domains:
+     `PROCUREMENT_STRUCTURE`, `REQUIREMENTS_COMPLIANCE`, `EVALUATION_INTELLIGENCE`, `SCOPE_DELIVERABLES`, `COMMERCIAL_CONTRACTUAL`, `SCHEDULE_SUBMISSION`.
+3. Deterministic Domain Router:
+   - Pure deterministic table `DOMAIN_ROUTING_RULES` mapping changes to affected domains with compact reasons (`DomainRoutingReason`: `domain`, `rule`).
+   - Bounded cross-domain rules:
+     - Evaluation threshold -> `EVALUATION_INTELLIGENCE` + `REQUIREMENTS_COMPLIANCE`
+     - Staffing / personnel credentials -> `REQUIREMENTS_COMPLIANCE` + `SCOPE_DELIVERABLES`
+     - Pricing structure -> `COMMERCIAL_CONTRACTUAL` + `REQUIREMENTS_COMPLIANCE`
+     - Pricing artifact replacement -> `COMMERCIAL_CONTRACTUAL` + `REQUIREMENTS_COMPLIANCE` + `SCHEDULE_SUBMISSION`
+     - Scope delivery restriction -> `SCOPE_DELIVERABLES` + `COMMERCIAL_CONTRACTUAL`
+   - Zero-Impact Administrative Updates:
+     - Buyer contact typo, administrative notice, document metadata, or `CHANGE_UNCHANGED` route to 0 domains and stale 0 findings.
+4. Finding Dependency & Staleness Model:
+   - Closed PCI finding statuses: `RETAINED`, `STALE`, `UNRESOLVED`.
+   - Derives dependencies from existing finding fields: `canonical_ids`, `dependencies`, `artifact_ids`, `source_refs`.
+   - Staleness is strictly dependency-based: new revisions do not invalidate unrelated findings.
+   - A finding is `STALE` if any dependency matches an authoritative changed entity, fact_type, canonical_id, or replaced artifact.
+   - A finding is `RETAINED` if its dependencies are unaffected.
+   - A finding is `UNRESOLVED` if dependency metadata is insufficient (empty citations and dependencies) — never silently retained.
+5. Deterministic Impact Plan Contract:
+   - `RevisionImpactPlan` dataclass provides the contract consumed by PCI-B2.
+   - Stable SHA-256 fingerprint based strictly on semantic inputs (change_set_fingerprint, state_fingerprint, affected_domains, finding_impacts).
+   - Excludes timestamps, DB row IDs, execution time, and ordering noise.
+   - 100% idempotent with zero provider/model calls.
 
 Schema reused/changed:
 REUSE_EXISTING_SCHEMA.
 No new database migration or DDL was introduced.
-Reuses existing migration 010 schema primitives:
-- `bids.procurement_revision`
-- `bids.procurement_truth_status`
-- `documents.id`, `documents.name`, `documents.content_hash`
-- `requirements.lifecycle_status` ('active', 'superseded', 'removed')
-- `requirements.retired_at_procurement_revision`
-- `procurement_update_reviews` (`document_set_digest`, `buyer_update_type`, `buyer_issued_date`, `status`, `base_procurement_revision`, `resulting_procurement_revision`, `idempotency_key`, `no_canonical_change`)
-- `procurement_update_review_documents` (`role`, `document_hash`, `document_id`)
-- `procurement_changes` (`review_decision`, `change_type`, `canonical_effect`, `entity_type`, `entity_id`, `previous_value`, `new_value`, `source_document_id`, `source_document_hash`, `physical_source_ref`)
-- `procurement_conflicts` (`unresolved`, `resolved`)
+Reuses existing migration 010 schema primitives.
 
 Entry manifest for next phase (maximum 5 files):
-1. `procurement_change_intelligence.py` — Core revision manager, durable storage adapters, rehydration, state replay, governed apply, human-review gating, and source provenance
-2. `tests/test_procurement_change_intelligence.py` — Test fixtures A-J, durability, concurrency, schema mapping, and PCI-A.2 / PCI-A.2.1 regression tests
-3. `migrations/010_procurement_revision_governance.sql` — Existing revision governance schema and trigger immutability contract
-4. `database.py` — Procurement revision governance query methods and RPC wrappers
-5. `canonical_procurement.py` — Semantic typing, closed vocabularies, and field-level authority definitions
+1. `procurement_change_intelligence.py` — Revision impact plan, domain router, finding dependency resolver
+2. `full_analysis.py` — Specialist runner, specialist inputs, finding validator, reconciliation
+3. `full_analysis_service.py` — Durable execution service & DB persistence
+4. `tests/test_procurement_change_intelligence.py` — Impact routing tests & fixtures A-J
+5. `canonical_procurement.py` — Canonical procurement intelligence definitions
 
 Durable objects:
 - `FactChange`: Bounded fact-level mutation with change_type, review_status, before/after values, verified source hash, and required integer `source_document_id`
@@ -72,6 +84,8 @@ Durable objects:
 - `ProcurementRevision`: Immutable revision node in chronological chain with parent pointer, separating system revision from buyer chronology, with `chronology_unresolved` and `no_canonical_change` flags
 - `AuthoritativeProcurementState`: Deterministically derived current state separating active facts, superseded facts, pending conflicts, and active artifacts
 - `PCIBaseStorage` / `InMemoryPCIStorage` / `PCIDatabaseStorage`: Durable adapters mapping PCI state to Migration 010 persistence, RPC lifecycle, and human review gating
+- `RevisionImpactPlan`: Deterministic routing and finding staleness contract for PCI-B2 incremental execution
+- `DomainRoutingReason` / `ChangeRoutingDecision`: Explainable deterministic routing decisions
 
 Key invariants:
 - Previous revisions are immutable
@@ -85,14 +99,17 @@ Key invariants:
 - Human review is strictly gated: pending, rejected, or conflicting changes are never auto-approved
 - Apply is all-or-nothing: unapproved changes or unresolved chronology block canonical revision advance
 - Exact source provenance: every fact change must trace to a verified document ID and matching hash
-- Semantic fingerprints change only when facts change; revision fingerprints change on every revision
-- Tenancy boundaries hold across bid and organization boundaries against persisted storage
-- Revision creation is concurrency safe via database-level optimistic locking
-- Real document content hashes and integer document IDs are strictly required
-- Governed apply is transactional via Migration 010 RPC
+- Routing consumes ONLY applied authoritative changes; unapplied updates do not invalidate canonical intelligence
+- Domain routing uses the closed vocabulary of 6 existing specialist domains
+- Staleness is strictly dependency-based; new revisions do not stale unrelated findings
+- Replaced artifacts invalidate only findings citing that artifact
+- Findings with insufficient dependency metadata fail safely to UNRESOLVED (never silently RETAINED)
+- Zero-impact administrative updates affect 0 domains and stale 0 findings
+- Revision impact plans are 100% deterministic and idempotent
+- Pure application-layer routing with zero external model calls and zero database migrations
 
 Tests:
-`tests/test_procurement_change_intelligence.py` (46 passed, 0 failed):
+`tests/test_procurement_change_intelligence.py` (60 passed, 0 failed):
 - Fixtures A through J (10 tests)
 - Concurrency and optimistic locking (3 tests)
 - Invariant verification (4 tests)
@@ -102,10 +119,11 @@ Tests:
 - Production storage wiring proof: default `PCIDatabaseStorage` (1 test)
 - Atomic optimistic database concurrency proof across independent instances (1 test)
 - PCI-A.2 Governed Apply & Durable Chronology regression tests (5 tests)
-- PCI-A.2.1 Human-Review Gate & Source Provenance tests (6 tests: A-F)
+- PCI-A.2.1 Human-Review Gate & Source Provenance tests (6 tests)
+- PCI-B1 Impact Routing & Intelligence Dependency tests (14 tests: Fixtures A-J, domain vocabulary parity, zero-impact administrative, idempotency, manager integration)
 
 Open issues:
-None for PCI-A.2.1. Human-review gate and exact source provenance fully closed.
+None for PCI-B1. Impact routing and finding dependency model fully closed.
 
 Next phase:
-PCI-B Impact Routing + Incremental Intelligence
+PCI-B2 — Incremental Specialist Execution + Delta Reconciliation
