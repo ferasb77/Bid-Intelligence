@@ -306,10 +306,10 @@ def _render_unified_progress(opp_state: dict) -> None:
     s3_detail = f"{spec_complete}/6 specialists complete" if (s3_active or (s3_done and not s4_done)) else ""
     html = '<div style="background:#111118;border:1px solid #292832;border-radius:6px;padding:.85rem 1.15rem;margin:.5rem 0">'
     html += '<div style="font-size:.74rem;color:#C9A96E;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem;font-weight:700">Opportunity Intelligence Pipeline</div>'
-    html += _row(s1_done, s1_active, "Step 1: Structuring procurement package…")
-    html += _row(s2_done, s2_active, "Step 2: Establishing procurement baseline…")
-    html += _row(s3_done, s3_active, "Step 3: Running multi-specialist intelligence…", s3_detail)
-    html += _row(s4_done, s4_active, "Step 4: Reconciling bid intelligence…")
+    html += _row(s1_done, s1_active, "Step 1: Analyzing procurement documents…")
+    html += _row(s2_done, s2_active, "Step 2: Confirming procurement facts…")
+    html += _row(s3_done, s3_active, "Step 3: Analyzing opportunity across six intelligence lenses…", s3_detail)
+    html += _row(s4_done, s4_active, "Step 4: Reconciling opportunity intelligence…")
     html += '</div>'
     st.markdown(html, unsafe_allow_html=True)
 
@@ -400,10 +400,32 @@ def _render_unified_opportunity_analysis_panel(
                 st.rerun()
         return
 
+    # BASELINE_PRIMARY_AMBIGUOUS: Prompt user to choose primary solicitation document
+    if step == ua.STEP_BASELINE_PRIMARY_AMBIGUOUS:
+        st.markdown("### 📄 Select Main Solicitation Document")
+        st.caption("Multiple procurement documents were uploaded. Please confirm which document is the main solicitation.")
+        eligible_docs = opp_state.get("eligible_docs") or rfp_docs or docs
+        doc_options = {}
+        for d in eligible_docs:
+            d_id = d.get("id")
+            d_name = d.get("name") or d.get("filename") or f"Document {d_id}"
+            doc_options[d_name] = d_id
+
+        selected_name = st.radio(
+            "Which document is the main solicitation?",
+            options=list(doc_options.keys()),
+            key=f"primary_doc_select_{bid_id}"
+        )
+        selected_doc_id = doc_options.get(selected_name) if selected_name else None
+
+        if st.button("Confirm & Analyze Opportunity →", key=f"confirm_primary_{bid_id}", type="primary"):
+            _start_opportunity_analysis(bid_id, chosen_primary_doc_id=selected_doc_id)
+        return
+
     # BASELINE_REVIEW_REQUIRED: In-place baseline review
     if step == ua.STEP_BASELINE_REVIEW_REQUIRED:
-        st.markdown("### 🏛️ Review Procurement Baseline")
-        st.caption("Confirm the extracted procurement facts before finalizing bid intelligence. (Engine: Fast Analysis foundation + Multi-Agent Intelligence)")
+        st.markdown("### 🏛️ Confirm Procurement Facts")
+        st.caption("Confirm the extracted procurement facts before finalizing bid intelligence.")
         _render_unified_progress(opp_state)
         review = opp_state.get("baseline_review")
         if review:
@@ -417,7 +439,7 @@ def _render_unified_opportunity_analysis_panel(
         ua.STEP_BASELINE_APPLYING,
     ):
         st.markdown("### 💡 Analyzing Opportunity…")
-        st.caption("Extracting requirements, establishing baseline, and executing 6-specialist intelligence. (Engine: Fast Analysis foundation + Multi-Agent Intelligence)")
+        st.caption("Analyzing procurement documents, confirming procurement facts, and analyzing opportunity across six intelligence lenses.")
         _render_unified_progress(opp_state)
         full_status = opp_state.get("full_status")
         if full_status and full_status.get("specialists"):
@@ -441,7 +463,7 @@ def _render_unified_opportunity_analysis_panel(
 
     # READY: Prominent action card
     st.markdown("### 💡 Analyze Opportunity")
-    st.caption("Complete multi-lens intelligence: Procurement Structure, Evaluation, Requirements, Scope, Commercial, Submission & Reconciliation. (Engine: Fast Analysis foundation + Multi-Agent Intelligence)")
+    st.caption("Complete multi-lens intelligence across six specialist lenses with cross-domain reconciliation.")
     st.markdown(
         '<div style="background:#111118;border:1px solid #292832;border-radius:8px;padding:1.2rem 1.4rem;margin:.5rem 0 .9rem 0">'
         '<div style="font-size:.9rem;color:#EDEAE3;font-weight:600;margin-bottom:.4rem">'
@@ -451,7 +473,7 @@ def _render_unified_opportunity_analysis_panel(
         '<li><strong>Structured requirements & commercial terms</strong> — extracted from all RFP source documents</li>'
         '<li><strong>Governed procurement baseline</strong> — verified qualification gates, scoring criteria, and commercial terms</li>'
         '<li><strong>Multi-specialist intelligence & risk analysis</strong> — 6 specialist lenses with cross-domain reconciliation</li>'
-        '<li><strong>Canonical procurement foundation</strong> — authoritative basis for proposal generation</li>'
+        '<li><strong>Canonical procurement foundation</strong> — authoritative basis for response planning, evidence alignment and proposal assurance</li>'
         '</ul>'
         '</div>',
         unsafe_allow_html=True,
@@ -500,7 +522,11 @@ def _render_unified_opportunity_analysis_panel(
                             st.error(f"Deep verification failed: {e}")
 
 
-def _start_opportunity_analysis(bid_id: int, retry: bool = False):
+def _start_opportunity_analysis(
+    bid_id: int,
+    retry: bool = False,
+    chosen_primary_doc_id: int | None = None,
+):
     """Start or retry unified opportunity analysis via understand_analysis."""
     if not st.session_state.get("anthropic_api_key") and not api_key_configured():
         st.error("Add your Anthropic API key first (see New Bid page or Settings).")
@@ -514,6 +540,7 @@ def _start_opportunity_analysis(bid_id: int, retry: bool = False):
             created_by_user_id=_current_user_id(),
             retry=retry,
             execution="background",
+            chosen_primary_doc_id=chosen_primary_doc_id,
         )
         st.success("Opportunity analysis started.")
         st.rerun()

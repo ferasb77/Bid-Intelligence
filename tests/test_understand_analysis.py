@@ -40,6 +40,7 @@ class TestStartOpportunityAnalysis(unittest.TestCase):
         mock_access.assert_called_once_with(101, "org-test")
         self.assertEqual(res.get("outcome"), "CREATED")
 
+    @patch("understand_analysis.db.get_bid_procurement_state", return_value={"procurement_truth_status": "governed", "procurement_revision": 1})
     @patch("understand_analysis.db.list_analysis_runs", return_value=[
         {"id": 48, "analysis_mode": "FAST", "status": "COMPLETE"}
     ])
@@ -48,7 +49,7 @@ class TestStartOpportunityAnalysis(unittest.TestCase):
     @patch("understand_analysis.tenancy.require_bid_access")
     @patch("understand_analysis.tenancy.start_full_analysis_for_organization", return_value={"outcome": "CREATED"})
     def test_start_directly_launches_full_when_complete_fast_run_exists(
-        self, mock_start_full, mock_access, mock_docs, mock_full_status, mock_list_runs
+        self, mock_start_full, mock_access, mock_docs, mock_full_status, mock_list_runs, mock_proc_state
     ):
         res = ua.start_opportunity_analysis(101, "org-test", execution="background")
         mock_access.assert_called_once_with(101, "org-test")
@@ -169,6 +170,7 @@ class TestProductionReconBudget(unittest.TestCase):
             pass
         self.assertEqual(fa.RECONCILIATION_MAX_OUTPUT_TOKENS, original)
 
+    @patch("understand_analysis.db.get_bid_procurement_state", return_value={"procurement_truth_status": "governed", "procurement_revision": 1})
     @patch("understand_analysis.db.list_analysis_runs", return_value=[
         {"id": 48, "analysis_mode": "FAST", "status": "COMPLETE"}
     ])
@@ -177,7 +179,7 @@ class TestProductionReconBudget(unittest.TestCase):
     @patch("understand_analysis.tenancy.require_bid_access")
     @patch("understand_analysis.tenancy.start_full_analysis_for_organization", return_value={"outcome": "CREATED"})
     def test_analyze_opportunity_path_applies_production_budget(
-        self, mock_start_full, mock_access, mock_docs, mock_full_status, mock_list_runs
+        self, mock_start_full, mock_access, mock_docs, mock_full_status, mock_list_runs, mock_proc_state
     ):
         """When start_opportunity_analysis delegates to tenancy.start_full_analysis_for_organization,
         fa.RECONCILIATION_MAX_OUTPUT_TOKENS must equal the production budget at call time."""
@@ -199,6 +201,7 @@ class TestProductionReconBudget(unittest.TestCase):
             "fa.RECONCILIATION_MAX_OUTPUT_TOKENS must equal the production budget at call time",
         )
 
+    @patch("understand_analysis.db.get_bid_procurement_state", return_value={"procurement_truth_status": "governed", "procurement_revision": 1})
     @patch("understand_analysis.db.list_analysis_runs", return_value=[
         {"id": 48, "analysis_mode": "FAST", "status": "COMPLETE"}
     ])
@@ -207,7 +210,7 @@ class TestProductionReconBudget(unittest.TestCase):
     @patch("understand_analysis.tenancy.require_bid_access")
     @patch("understand_analysis.tenancy.start_full_analysis_for_organization", return_value={"outcome": "CREATED"})
     def test_fa_module_default_restored_after_analyze_opportunity(
-        self, mock_start_full, mock_access, mock_docs, mock_full_status, mock_list_runs
+        self, mock_start_full, mock_access, mock_docs, mock_full_status, mock_list_runs, mock_proc_state
     ):
         """After start_opportunity_analysis returns, fa.RECONCILIATION_MAX_OUTPUT_TOKENS
         must be restored to its original value."""
@@ -261,24 +264,45 @@ class TestResolveBaselineDocuments(unittest.TestCase):
         self.assertEqual(doc_ids, [1])
         self.assertEqual(doc_roles, ["primary"])
 
-    def test_multiple_documents_first_is_primary_rest_supporting(self):
+    def test_three_documents_one_explicit_primary_preserved(self):
+        docs = [
+            {"id": 1, "name": "annex_a.pdf", "doc_type": "RFP / Source"},
+            {"id": 2, "name": "main_rfp.pdf", "doc_type": "RFP / Source", "role": "primary"},
+            {"id": 3, "name": "pricing_table.xlsx", "doc_type": "RFP / Source"},
+        ]
+        doc_ids, doc_roles = ua.resolve_baseline_documents(docs)
+        self.assertEqual(doc_ids, [1, 2, 3])
+        self.assertEqual(doc_roles, ["supporting", "primary", "supporting"])
+
+    def test_three_documents_zero_primaries_fails_closed(self):
         docs = [
             {"id": 1, "name": "main_rfp.pdf", "doc_type": "RFP / Source"},
             {"id": 2, "name": "annex_a.pdf", "doc_type": "RFP / Source"},
             {"id": 3, "name": "pricing_table.xlsx", "doc_type": "RFP / Source"},
         ]
         doc_ids, doc_roles = ua.resolve_baseline_documents(docs)
-        self.assertEqual(doc_ids, [1, 2, 3])
-        self.assertEqual(doc_roles, ["primary", "supporting", "supporting"])
+        self.assertIsNone(doc_ids)
+        self.assertEqual(doc_roles, "AMBIGUOUS_NO_PRIMARY")
 
-    def test_metadata_primary_preserved(self):
+    def test_three_documents_two_primaries_fails_closed(self):
         docs = [
-            {"id": 1, "name": "annex.pdf", "doc_type": "RFP / Source", "role": "supporting"},
-            {"id": 2, "name": "main.pdf", "doc_type": "RFP / Source", "role": "primary"},
+            {"id": 1, "name": "main_rfp.pdf", "doc_type": "RFP / Source", "role": "primary"},
+            {"id": 2, "name": "annex_a.pdf", "doc_type": "RFP / Source", "role": "primary"},
+            {"id": 3, "name": "pricing_table.xlsx", "doc_type": "RFP / Source"},
         ]
         doc_ids, doc_roles = ua.resolve_baseline_documents(docs)
-        self.assertEqual(doc_ids, [1, 2])
-        self.assertEqual(doc_roles, ["supporting", "primary"])
+        self.assertIsNone(doc_ids)
+        self.assertEqual(doc_roles, "AMBIGUOUS_MULTIPLE_PRIMARIES")
+
+    def test_three_documents_zero_primaries_resolved_by_chosen_primary(self):
+        docs = [
+            {"id": 1, "name": "main_rfp.pdf", "doc_type": "RFP / Source"},
+            {"id": 2, "name": "annex_a.pdf", "doc_type": "RFP / Source"},
+            {"id": 3, "name": "pricing_table.xlsx", "doc_type": "RFP / Source"},
+        ]
+        doc_ids, doc_roles = ua.resolve_baseline_documents(docs, chosen_primary_id=2)
+        self.assertEqual(doc_ids, [1, 2, 3])
+        self.assertEqual(doc_roles, ["supporting", "primary", "supporting"])
 
     def test_empty_docs_returns_empty(self):
         doc_ids, doc_roles = ua.resolve_baseline_documents([])
@@ -339,6 +363,92 @@ class TestBaselineGovernanceOrchestration(unittest.TestCase):
         self.assertIn("still pending", str(ctx.exception))
 
 
+class TestFailedBaselineRecovery(unittest.TestCase):
+    """Prove recovery from a prior failed baseline review without mutating history."""
+
+    @patch("understand_analysis.tenancy.propose_procurement_changes_for_organization")
+    @patch("understand_analysis.tenancy.create_procurement_update_review_for_organization")
+    @patch("understand_analysis.db.get_procurement_update_reviews")
+    @patch("understand_analysis.tenancy.get_documents_authenticated")
+    @patch("understand_analysis.db.get_bid_procurement_state")
+    @patch("understand_analysis.db.list_analysis_runs")
+    @patch("understand_analysis.tenancy.get_full_analysis_status_for_organization")
+    @patch("understand_analysis.tenancy.require_bid_access")
+    def test_retry_creates_fresh_baseline_review_leaving_failed_review_intact(
+        self, mock_access, mock_full_status, mock_list_runs, mock_proc_state,
+        mock_docs, mock_reviews, mock_create_review, mock_propose
+    ):
+        mock_full_status.return_value = None
+        mock_list_runs.return_value = [{"id": 40, "analysis_mode": "FAST", "status": "COMPLETE"}]
+        mock_proc_state.return_value = {"procurement_truth_status": "ungoverned", "procurement_revision": 1}
+        mock_docs.return_value = [{"id": 1, "name": "rfp.pdf", "doc_type": "RFP / Source"}]
+
+        # Prior review failed
+        failed_review = {
+            "id": 99,
+            "review_kind": "baseline",
+            "status": "failed",
+            "review_note": "function digest(text, unknown) does not exist",
+        }
+        # First call: DB only has the failed review
+        mock_reviews.side_effect = [
+            [failed_review],
+            [failed_review],
+        ]
+        # New review created
+        mock_create_review.return_value = {"id": 100, "review_kind": "baseline", "status": "analyzing"}
+
+        res = ua.start_opportunity_analysis(101, "org-test", retry=True, execution="background")
+
+        # Proves a fresh review was created
+        mock_create_review.assert_called_once_with(
+            101, "org-test", "baseline", [1], ["primary"], buyer_update_type="Original RFP"
+        )
+        mock_propose.assert_called_once()
+        self.assertEqual(res.get("outcome"), "CREATED")
+        self.assertEqual(res.get("review_id"), 100)
+
+    @patch("understand_analysis.tenancy.propose_procurement_changes_for_organization")
+    @patch("understand_analysis.tenancy.create_procurement_update_review_for_organization")
+    @patch("understand_analysis.db.get_procurement_update_reviews")
+    @patch("understand_analysis.tenancy.get_documents_authenticated")
+    @patch("understand_analysis.db.get_bid_procurement_state")
+    @patch("understand_analysis.db.list_analysis_runs")
+    @patch("understand_analysis.tenancy.get_full_analysis_status_for_organization")
+    @patch("understand_analysis.tenancy.require_bid_access")
+    def test_repeated_clicks_do_not_create_duplicate_active_reviews(
+        self, mock_access, mock_full_status, mock_list_runs, mock_proc_state,
+        mock_docs, mock_reviews, mock_create_review, mock_propose
+    ):
+        mock_full_status.return_value = None
+        mock_list_runs.return_value = [{"id": 40, "analysis_mode": "FAST", "status": "COMPLETE"}]
+        mock_proc_state.return_value = {"procurement_truth_status": "ungoverned", "procurement_revision": 1}
+        mock_docs.return_value = [{"id": 1, "name": "rfp.pdf", "doc_type": "RFP / Source"}]
+
+        # An active baseline review already exists
+        active_review = {"id": 100, "review_kind": "baseline", "status": "analyzing"}
+        mock_reviews.return_value = [active_review]
+
+        res = ua.start_opportunity_analysis(101, "org-test", retry=True, execution="background")
+
+        mock_create_review.assert_not_called()
+        mock_propose.assert_not_called()
+        self.assertEqual(res.get("outcome"), "ACTIVE_RUN_EXISTS")
+        self.assertEqual(res.get("review_id"), 100)
+
+
+class TestNewBidOrchestratorDelegation(unittest.TestCase):
+    def test_new_bid_page_invokes_start_opportunity_analysis(self):
+        import pathlib
+        app_path = pathlib.Path(__file__).parent.parent / "app.py"
+        src = app_path.read_text(encoding="utf-8")
+        fn_start = src.index("def page_new_bid():")
+        fn_end = src.index("def _render_extraction_review():", fn_start)
+        body = src[fn_start:fn_end]
+        self.assertIn("_ua.start_opportunity_analysis(", body)
+        self.assertNotIn("_tenancy.start_fast_analysis_for_organization(", body)
+
+
 class TestCustomerFacingVocabulary(unittest.TestCase):
     def test_unified_opportunity_analysis_panel_does_not_expose_fast_analysis_card(self):
         import pages.stage_understand as stage_understand
@@ -347,6 +457,23 @@ class TestCustomerFacingVocabulary(unittest.TestCase):
         self.assertNotIn("### ⚡ Fast Analysis", source)
         self.assertNotIn("### 🏛️ Establish Procurement Baseline", source)
         self.assertIn("### 💡 Analyze Opportunity", source)
+
+    def test_no_engine_or_proposal_generation_in_stage_understand_panel(self):
+        import pages.stage_understand as stage_understand
+        import inspect
+        source = inspect.getsource(stage_understand._render_unified_opportunity_analysis_panel)
+        self.assertNotIn("(Engine:", source)
+        self.assertNotIn("authoritative basis for proposal generation", source)
+        self.assertIn("authoritative basis for response planning, evidence alignment and proposal assurance", source)
+
+    def test_progress_labels_use_customer_vocabulary(self):
+        import pages.stage_understand as stage_understand
+        import inspect
+        source = inspect.getsource(stage_understand._render_unified_progress)
+        self.assertIn("Step 1: Analyzing procurement documents…", source)
+        self.assertIn("Step 2: Confirming procurement facts…", source)
+        self.assertIn("Step 3: Analyzing opportunity across six intelligence lenses…", source)
+        self.assertIn("Step 4: Reconciling opportunity intelligence…", source)
 
 
 if __name__ == "__main__":

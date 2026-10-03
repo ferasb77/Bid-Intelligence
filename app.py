@@ -456,9 +456,11 @@ def page_new_bid():
                                 bid_id, _ctx.organization_id, fn, fb, doc_type="RFP / Source"
                             )
 
-                        # 3. Start deterministic procurement foundation via tenancy boundary
-                        _tenancy.start_fast_analysis_for_organization(
-                            bid_id, _ctx.organization_id, api_key, created_by="app-ui"
+                        # 3. Start unified opportunity analysis via orchestrator (UNDERSTAND-UX1.1)
+                        import understand_analysis as _ua
+                        _ua.start_opportunity_analysis(
+                            bid_id, _ctx.organization_id, api_key=api_key,
+                            created_by_user_id=_ctx.user_id, execution="background"
                         )
 
                         # 4. Navigate immediately to stage_understand to observe live progress

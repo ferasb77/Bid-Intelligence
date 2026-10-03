@@ -391,10 +391,10 @@ class TestNewRFPPipelineArchitecture(unittest.TestCase):
         # Must NOT call extract_procurement_package in the onboarding button handler
         self.assertNotIn("extract_procurement_package(pkg_files", body)
 
-        # Must call the tenancy authorized boundaries
+        # Must call the authorized boundaries
         self.assertIn("_tenancy.create_bid_for_organization(", body)
         self.assertIn("_tenancy.upload_document_for_organization(", body)
-        self.assertIn("_tenancy.start_fast_analysis_for_organization(", body)
+        self.assertIn("_ua.start_opportunity_analysis(", body)
 
         # Must navigate to stage_understand
         self.assertIn('go("stage_understand", bid_id)', body)
@@ -419,13 +419,13 @@ class TestNewRFPPipelineArchitecture(unittest.TestCase):
 class TestNewRFPPipelineBehavior(unittest.TestCase):
     """Behavioral unit tests for the onboarding logic."""
 
-    @patch("tenancy.start_fast_analysis_for_organization")
+    @patch("understand_analysis.start_opportunity_analysis")
     @patch("tenancy.upload_document_for_organization")
     @patch("tenancy.create_bid_for_organization")
-    def test_onboarding_execution_flow(self, mock_create_bid, mock_upload_doc, mock_start_fast):
+    def test_onboarding_execution_flow(self, mock_create_bid, mock_upload_doc, mock_start_opp):
         """Simulate the execution sequence of the new onboarding handler."""
         mock_create_bid.return_value = 999
-        mock_start_fast.return_value = {"id": 12, "status": "PENDING"}
+        mock_start_opp.return_value = {"outcome": "CREATED", "step": "FOUNDATION_RUNNING"}
 
         org_id = "test-org-123"
         pkg_files = [
@@ -453,10 +453,10 @@ class TestNewRFPPipelineBehavior(unittest.TestCase):
         mock_upload_doc.assert_any_call(999, org_id, "RFP_Master.pdf", b"%PDF-1.4 fake bytes", doc_type="RFP / Source")
         mock_upload_doc.assert_any_call(999, org_id, "Pricing_Table.xlsx", b"fake xlsx bytes", doc_type="RFP / Source")
 
-        # 3. Start Fast Analysis
-        run = mock_start_fast(bid_id, org_id, api_key, created_by="app-ui")
-        self.assertEqual(run["id"], 12)
-        mock_start_fast.assert_called_once_with(999, org_id, api_key, created_by="app-ui")
+        # 3. Start Unified Opportunity Analysis
+        res = mock_start_opp(bid_id, org_id, api_key=api_key, created_by_user_id="user-1", execution="background")
+        self.assertEqual(res["outcome"], "CREATED")
+        mock_start_opp.assert_called_once_with(999, org_id, api_key=api_key, created_by_user_id="user-1", execution="background")
 
 
 if __name__ == "__main__":
