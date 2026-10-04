@@ -1,7 +1,7 @@
 import streamlit as st
 import base64, json, re
 from datetime import date, datetime
-from database import (init_db, get_bid, update_bid, delete_bid,
+from database import (init_db, get_bid, update_bid,
                       get_deliverables, upsert_deliverable, delete_deliverable,
                       get_requirements, upsert_requirement, delete_requirement,
                       get_tasks, upsert_task, delete_task,
@@ -727,10 +727,39 @@ def page_bid_overview(bid_id):
                 "clarification_deadline":str(clar_dl) if clar_dl else None,"notes":notes})
             st.success("Saved.")
             st.rerun()
+        confirm_key = f"confirm_delete_{bid_id}"
         if dell:
-            delete_bid(bid_id)
-            st.session_state.active_bid = None
-            go("all_bids")
+            st.session_state[confirm_key] = True
+            st.rerun()
+
+        if st.session_state.get(confirm_key):
+            st.warning("This permanently deletes this opportunity, its analyses, reports and uploaded documents. This cannot be undone.")
+            c_conf, c_cancel = st.columns(2)
+            if c_conf.button("Confirm permanent deletion", type="primary", use_container_width=True, key=f"btn_conf_del_{bid_id}"):
+                try:
+                    _tenancy.delete_bid_for_organization(bid_id, _ctx.organization_id)
+                    st.session_state[confirm_key] = False
+                    st.session_state.active_bid = None
+                    go("all_bids")
+                except _tenancy.AccessDeniedError as e:
+                    st.error(f"Access denied: {e}")
+                except _tenancy.BidStorageCleanupError as e:
+                    st.session_state[confirm_key] = False
+                    st.session_state.active_bid = None
+                    st.warning(f"Bid deleted, but storage cleanup was incomplete: {e}")
+                    go("all_bids")
+                except RuntimeError as e:
+                    err_msg = str(e)
+                    if "active analysis run" in err_msg:
+                        st.error("This opportunity is currently being analyzed and cannot be deleted until the analysis finishes.")
+                    else:
+                        st.error(f"Cannot delete opportunity: {err_msg}")
+                except Exception as e:
+                    st.error(f"Failed to delete opportunity: {e}")
+
+            if c_cancel.button("Cancel", use_container_width=True, key=f"btn_cancel_del_{bid_id}"):
+                st.session_state[confirm_key] = False
+                st.rerun()
 
 # ═════════════════════════════════════════════════════════════════════════════
 # PAGE: COMPLIANCE MATRIX
