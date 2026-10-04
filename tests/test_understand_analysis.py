@@ -613,5 +613,306 @@ class TestCustomerFacingVocabulary(unittest.TestCase):
         self.assertIn("Step 4: Reconciling opportunity intelligence…", source)
 
 
+class TestSingleLiveProgressSurface(unittest.TestCase):
+    """UNDERSTAND-UX2: Single Live Progress Surface regressions."""
+
+    def test_format_started_ago(self):
+        import pages.stage_understand as su
+        from datetime import datetime, timezone, timedelta
+
+        self.assertEqual(su._format_started_ago(None), "")
+        self.assertEqual(su._format_started_ago(""), "")
+        self.assertEqual(su._format_started_ago("not-a-date"), "")
+
+        now = datetime.now(timezone.utc)
+        just_now = now.isoformat()
+        self.assertEqual(su._format_started_ago(just_now), "started just now")
+
+        two_mins_ago = (now - timedelta(minutes=2, seconds=5)).isoformat()
+        self.assertEqual(su._format_started_ago(two_mins_ago), "started 2m ago")
+
+    def test_should_poll_opportunity(self):
+        import pages.stage_understand as su
+        import understand_analysis as ua
+
+        self.assertFalse(su._should_poll_opportunity(None))
+        self.assertFalse(su._should_poll_opportunity({}))
+        self.assertFalse(su._should_poll_opportunity({"step": ua.STEP_COMPLETE}))
+        self.assertFalse(su._should_poll_opportunity({"step": ua.STEP_PARTIAL}))
+        self.assertFalse(su._should_poll_opportunity({"step": ua.STEP_FAILED}))
+        self.assertFalse(su._should_poll_opportunity({"step": ua.STEP_BASELINE_REVIEW_REQUIRED}))
+        self.assertFalse(su._should_poll_opportunity({"step": ua.STEP_BASELINE_PRIMARY_AMBIGUOUS}))
+
+        self.assertTrue(su._should_poll_opportunity({"step": ua.STEP_FOUNDATION_RUNNING}))
+        self.assertTrue(su._should_poll_opportunity({"step": ua.STEP_FULL_ANALYSIS_RUNNING}))
+        self.assertTrue(su._should_poll_opportunity({"step": ua.STEP_BASELINE_APPLYING}))
+
+    @patch("streamlit.markdown")
+    def test_live_screen_foundation_running_renders_single_surface_with_nested_milestones(self, mock_markdown):
+        import pages.stage_understand as su
+        import understand_analysis as ua
+        import analysis_service as svc
+
+        opp_state = {
+            "step": ua.STEP_FOUNDATION_RUNNING,
+            "procurement_state": {"procurement_truth_status": "ungoverned", "procurement_revision": 1},
+            "latest_fast_run": {
+                "id": 12,
+                "status": "ANALYZING",
+                "started_at": "2026-10-04T07:45:00+00:00",
+                "progress": {
+                    "milestones": [
+                        {"milestone": svc.MILESTONE_CORPUS_PREPARED, "reached_at": "t1"},
+                        {"milestone": svc.MILESTONE_OPPORTUNITY_IDENTIFIED, "reached_at": "t2"},
+                    ],
+                    "early_facts": {
+                        "title": "Bank Talent RFP",
+                        "buyer": "Bank of Canada",
+                        "submission_deadline": "2026-11-01",
+                    },
+                },
+            },
+            "full_status": None,
+        }
+
+        su._render_unified_progress(opp_state)
+
+        mock_markdown.assert_called_once()
+        rendered = mock_markdown.call_args[0][0]
+
+        # 1. Exactly ONE pipeline header
+        self.assertEqual(rendered.count("Opportunity Intelligence Pipeline"), 1)
+
+        # 2. Step 1 is active with proper customer wording
+        self.assertIn("Step 1: Analyzing procurement documents…", rendered)
+        self.assertNotIn("Step 1: Procurement documents analyzed", rendered)
+
+        # 3. Foundation milestones are nested under Step 1
+        self.assertIn("Preparing procurement documents", rendered)
+        self.assertIn("Understanding the opportunity", rendered)
+        self.assertIn("Identifying critical dates and requirements", rendered)
+        self.assertIn("Mapping procurement structure", rendered)
+
+        # 4. Early facts are nested
+        self.assertIn("What we know so far", rendered)
+        self.assertIn("Bank Talent RFP", rendered)
+        self.assertIn("Bank of Canada", rendered)
+
+        # 5. Subsequent steps are pending
+        self.assertIn("Step 2: Confirm procurement facts", rendered)
+        self.assertIn("Step 3: Analyze opportunity across six intelligence lenses", rendered)
+        self.assertIn("Step 4: Reconcile opportunity intelligence", rendered)
+
+        # 6. Must NOT contain internal or legacy labels
+        self.assertNotIn("Fast Analysis", rendered)
+        self.assertNotIn("Analyzing… typically 2–4 minutes", rendered)
+
+    @patch("streamlit.button", return_value=False)
+    @patch("streamlit.markdown")
+    @patch("pages.stage_understand._current_access_token_and_org", return_value=("tok", "org-1"))
+    @patch("understand_analysis.get_opportunity_analysis_state")
+    def test_live_opportunity_progress_renders_single_card_and_single_refresh(
+        self, mock_get_state, mock_tok_org, mock_markdown, mock_button
+    ):
+        import pages.stage_understand as su
+        import understand_analysis as ua
+
+        opp_state = {
+            "step": ua.STEP_FOUNDATION_RUNNING,
+            "procurement_state": {"procurement_truth_status": "ungoverned", "procurement_revision": 1},
+            "latest_fast_run": {
+                "id": 12,
+                "status": "ANALYZING",
+                "progress": {"milestones": []},
+            },
+            "full_status": None,
+        }
+        mock_get_state.return_value = opp_state
+
+        su._render_live_opportunity_progress(10)
+
+        # Exactly ONE call to render the pipeline markdown
+        mock_markdown.assert_called_once()
+        rendered = mock_markdown.call_args[0][0]
+        self.assertIn("Opportunity Intelligence Pipeline", rendered)
+        self.assertNotIn("Analyzing… typically 2–4 minutes", rendered)
+
+        # Exactly ONE button call for "Refresh status" (NOT "Refresh now")
+        self.assertEqual(mock_button.call_count, 1)
+        btn_label = mock_button.call_args[0][0]
+        self.assertIn("Refresh status", btn_label)
+        self.assertNotIn("Refresh now", btn_label)
+
+    @patch("streamlit.rerun")
+    @patch("pages.stage_understand._current_access_token_and_org", return_value=("tok", "org-1"))
+    @patch("understand_analysis.get_opportunity_analysis_state")
+    def test_live_opportunity_progress_reruns_when_state_transitions_out_of_running(
+        self, mock_get_state, mock_tok_org, mock_rerun
+    ):
+        import pages.stage_understand as su
+        import understand_analysis as ua
+
+        mock_get_state.return_value = {
+            "step": ua.STEP_BASELINE_REVIEW_REQUIRED,
+            "baseline_review": {"id": 1},
+        }
+
+        su._render_live_opportunity_progress(10)
+        mock_rerun.assert_called_once()
+
+
+class TestUnifiedProgressStageTransitions(unittest.TestCase):
+    """Verify each stage transition per Section 12."""
+
+    @patch("streamlit.markdown")
+    def test_stage_a_foundation_running(self, mock_markdown):
+        import pages.stage_understand as su
+        import understand_analysis as ua
+        import analysis_service as svc
+
+        opp_state = {
+            "step": ua.STEP_FOUNDATION_RUNNING,
+            "procurement_state": {"procurement_truth_status": "ungoverned", "procurement_revision": 1},
+            "latest_fast_run": {
+                "id": 1, "status": "ANALYZING",
+                "progress": {
+                    "milestones": [{"milestone": svc.MILESTONE_CORPUS_PREPARED}],
+                }
+            },
+        }
+        su._render_unified_progress(opp_state)
+        rendered = mock_markdown.call_args[0][0]
+        self.assertIn("Step 1: Analyzing procurement documents…", rendered)
+        self.assertIn("Preparing procurement documents", rendered)
+        self.assertIn("Step 2: Confirm procurement facts", rendered)
+
+    @patch("streamlit.markdown")
+    def test_stage_b_baseline_review_required(self, mock_markdown):
+        import pages.stage_understand as su
+        import understand_analysis as ua
+
+        opp_state = {
+            "step": ua.STEP_BASELINE_REVIEW_REQUIRED,
+            "procurement_state": {"procurement_truth_status": "ungoverned", "procurement_revision": 1},
+            "baseline_review": {"id": 5, "status": "ready_for_review"},
+        }
+        su._render_unified_progress(opp_state)
+        rendered = mock_markdown.call_args[0][0]
+        # Step 1 is done, sub-steps collapsed
+        self.assertIn("Step 1: Procurement documents analyzed", rendered)
+        self.assertNotIn("Preparing procurement documents", rendered)
+        # Step 2 is active
+        self.assertIn("Step 2: Confirming procurement facts…", rendered)
+        # Step 3 and 4 pending
+        self.assertIn("Step 3: Analyze opportunity across six intelligence lenses", rendered)
+
+    @patch("streamlit.markdown")
+    def test_stage_c_full_analysis_running(self, mock_markdown):
+        import pages.stage_understand as su
+        import understand_analysis as ua
+
+        opp_state = {
+            "step": ua.STEP_FULL_ANALYSIS_RUNNING,
+            "procurement_state": {"procurement_truth_status": "governed", "procurement_revision": 1},
+            "full_status": {
+                "specialists": {
+                    "legal": {"status": "COMPLETE"},
+                    "technical": {"status": "COMPLETE"},
+                    "commercial": {"status": "RUNNING"},
+                    "operations": {"status": "WAITING"},
+                    "governance": {"status": "WAITING"},
+                    "executive": {"status": "WAITING"},
+                }
+            },
+        }
+        su._render_unified_progress(opp_state)
+        rendered = mock_markdown.call_args[0][0]
+        # Step 1 and 2 done
+        self.assertIn("Step 1: Procurement documents analyzed", rendered)
+        self.assertIn("Step 2: Procurement facts confirmed", rendered)
+        # Step 3 active with x/6 specialists
+        self.assertIn("Step 3: Analyzing opportunity across six intelligence lenses…", rendered)
+        self.assertIn("2/6 intelligence lenses complete", rendered)
+        # Specialist sub-steps visible
+        self.assertIn("Legal & Compliance", rendered)
+        self.assertIn("Technical & Solution", rendered)
+        self.assertIn("Commercial & Pricing", rendered)
+        # No foundation progress
+        self.assertNotIn("Preparing procurement documents", rendered)
+
+    @patch("streamlit.markdown")
+    def test_stage_d_step_3_complete_step_4_active(self, mock_markdown):
+        import pages.stage_understand as su
+        import understand_analysis as ua
+
+        opp_state = {
+            "step": ua.STEP_FULL_ANALYSIS_RUNNING,
+            "procurement_state": {"procurement_truth_status": "governed", "procurement_revision": 1},
+            "full_status": {
+                "specialists": {
+                    "legal": {"status": "COMPLETE"},
+                    "technical": {"status": "COMPLETE"},
+                    "commercial": {"status": "COMPLETE"},
+                    "operations": {"status": "COMPLETE"},
+                    "governance": {"status": "COMPLETE"},
+                    "executive": {"status": "COMPLETE"},
+                }
+            },
+        }
+        su._render_unified_progress(opp_state)
+        rendered = mock_markdown.call_args[0][0]
+        # Step 3 is done, collapsed
+        self.assertIn("Step 3: Specialist analysis complete", rendered)
+        self.assertNotIn("Commercial & Pricing", rendered)
+        # Step 4 is active
+        self.assertIn("Step 4: Reconciling opportunity intelligence…", rendered)
+
+    @patch("streamlit.markdown")
+    def test_stage_e_complete(self, mock_markdown):
+        import pages.stage_understand as su
+        import understand_analysis as ua
+
+        opp_state = {
+            "step": ua.STEP_COMPLETE,
+            "procurement_state": {"procurement_truth_status": "governed", "procurement_revision": 1},
+        }
+        su._render_unified_progress(opp_state)
+        rendered = mock_markdown.call_args[0][0]
+        self.assertIn("Step 1: Procurement documents analyzed", rendered)
+        self.assertIn("Step 2: Procurement facts confirmed", rendered)
+        self.assertIn("Step 3: Specialist analysis complete", rendered)
+        self.assertIn("Step 4: Opportunity intelligence reconciled", rendered)
+        self.assertNotIn("Preparing procurement documents", rendered)
+
+    @patch("streamlit.button", return_value=False)
+    @patch("streamlit.markdown")
+    @patch("pages.stage_understand._start_opportunity_analysis")
+    @patch("pages.stage_understand._current_access_token_and_org", return_value=("tok", "org-1"))
+    @patch("understand_analysis.get_opportunity_analysis_state")
+    def test_stage_e_failed_panel(self, mock_get_state, mock_tok_org, mock_start, mock_markdown, mock_button):
+        import pages.stage_understand as su
+        import understand_analysis as ua
+
+        opp_state = {
+            "step": ua.STEP_FAILED,
+            "status_label": "Analysis failed unexpectedly",
+            "procurement_state": {"procurement_truth_status": "ungoverned", "procurement_revision": 1},
+        }
+        mock_get_state.return_value = opp_state
+
+        su._render_unified_opportunity_analysis_panel(
+            10, "org-1", [{"doc_type": "RFP / Source"}], opp_state["procurement_state"]
+        )
+
+        rendered = " ".join(str(c.args[0]) for c in mock_markdown.call_args_list if c.args)
+        self.assertIn("Analysis failed unexpectedly", rendered)
+        self.assertNotIn("Opportunity Intelligence Pipeline", rendered)
+        self.assertNotIn("Analyzing… typically 2–4 minutes", rendered)
+
+        # Retry button present
+        self.assertEqual(mock_button.call_count, 1)
+        self.assertIn("Retry Opportunity Analysis", mock_button.call_args[0][0])
+
+
 if __name__ == "__main__":
     unittest.main()

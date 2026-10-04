@@ -19,6 +19,7 @@ from components.ui import (stage_badge, days_until, days_label, metric_card,
 import analysis_service
 import auth_session
 import tenancy
+import understand_analysis
 from config import get_api_key, api_key_configured
 
 
@@ -251,8 +252,40 @@ def _render_fast_analysis_governance_note(run: dict, procurement_state: dict) ->
             unsafe_allow_html=True)
 
 
+def _format_started_ago(started_at_str: str | None) -> str:
+    """Formats an ISO timestamp into customer-friendly elapsed time without timezone leakage."""
+    if not started_at_str or not isinstance(started_at_str, str):
+        return ""
+    try:
+        from datetime import datetime, timezone
+        clean = started_at_str.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(clean)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        diff = max(0, int((now - dt).total_seconds()))
+        if diff < 60:
+            return "started just now"
+        mins = diff // 60
+        return f"started {mins}m ago"
+    except Exception:
+        return ""
+
+
+def _should_poll_opportunity(opp_state: dict | None) -> bool:
+    """True only while opportunity analysis is in an active running step."""
+    if not opp_state:
+        return False
+    import understand_analysis as ua
+    return opp_state.get("step") in (
+        ua.STEP_FOUNDATION_RUNNING,
+        ua.STEP_FULL_ANALYSIS_RUNNING,
+        ua.STEP_BASELINE_APPLYING,
+    )
+
+
 def _render_unified_progress(opp_state: dict) -> None:
-    """Renders the durable 4-step progress breakdown for live opportunity analysis (B4)."""
+    """Renders the single durable 4-step Opportunity Intelligence Pipeline (UNDERSTAND-UX2)."""
     import understand_analysis as ua
     step = opp_state.get("step")
     full_status = opp_state.get("full_status") or {}
@@ -290,6 +323,138 @@ def _render_unified_progress(opp_state: dict) -> None:
     s4_done = step in (ua.STEP_COMPLETE, ua.STEP_PARTIAL)
     s4_active = step == ua.STEP_FULL_ANALYSIS_RUNNING and s3_done and not s4_done
 
+    # Customer-facing labels (Section 8)
+    if s1_done:
+        s1_label = "Step 1: Procurement documents analyzed"
+    elif s1_active:
+        s1_label = "Step 1: Analyzing procurement documents…"
+    else:
+        s1_label = "Step 1: Analyze procurement documents"
+
+    if s2_done:
+        s2_label = "Step 2: Procurement facts confirmed"
+    elif s2_active:
+        s2_label = "Step 2: Confirming procurement facts…"
+    else:
+        s2_label = "Step 2: Confirm procurement facts"
+
+    if s3_done:
+        s3_label = "Step 3: Specialist analysis complete"
+    elif s3_active:
+        s3_label = "Step 3: Analyzing opportunity across six intelligence lenses…"
+    else:
+        s3_label = "Step 3: Analyze opportunity across six intelligence lenses"
+
+    if s4_done:
+        s4_label = "Step 4: Opportunity intelligence reconciled"
+    elif s4_active:
+        s4_label = "Step 4: Reconciling opportunity intelligence…"
+    else:
+        s4_label = "Step 4: Reconcile opportunity intelligence"
+
+    # Started info for Step 1
+    s1_detail = ""
+    if s1_active:
+        started_str = _format_started_ago((opp_state.get("latest_fast_run") or {}).get("started_at"))
+        if started_str:
+            s1_detail = started_str
+
+    # Step 1 nested sub-steps (active only; collapsed when done)
+    s1_substeps_html = ""
+    if s1_active:
+        latest_fast = opp_state.get("latest_fast_run") or {}
+        progress = latest_fast.get("progress") or {}
+        reached = {m.get("milestone") for m in (progress.get("milestones") or [])}
+        milestone_rows = []
+        found_current = False
+        for milestone in analysis_service.MILESTONE_ORDER:
+            mlabel = analysis_service.MILESTONE_UI_LABEL.get(milestone, milestone)
+            if milestone in reached:
+                m_icon = "✓"
+                m_color = "#27AE60"
+            elif not found_current:
+                m_icon = "⏳"
+                m_color = "#C9A96E"
+                found_current = True
+            else:
+                m_icon = "○"
+                m_color = "#6E6C66"
+            milestone_rows.append(
+                f'<div style="font-size:.8rem;padding:.12rem 0;color:{m_color}">'
+                f'<span style="display:inline-block;width:1.2rem;text-align:center">{m_icon}</span> {mlabel}'
+                f'</div>'
+            )
+
+        early = progress.get("early_facts") or {}
+        known = []
+        if early.get("title"):
+            known.append(f"<strong>{early['title']}</strong>")
+        if early.get("buyer"):
+            known.append(f"Buyer: {early['buyer']}")
+        if early.get("submission_deadline"):
+            known.append(f"Submission: {early['submission_deadline']}")
+        if early.get("procurement_mechanic"):
+            known.append(early["procurement_mechanic"])
+
+        early_html = ""
+        if known:
+            early_html = (
+                f'<div style="margin-top:.35rem;padding:.3rem .55rem;background:#181824;border-radius:4px;'
+                f'border-left:2px solid #C9A96E;font-size:.78rem;color:#EDEAE3">'
+                f'🔎 <strong>What we know so far:</strong><br>{" · ".join(known)}</div>'
+            )
+
+        s1_substeps_html = (
+            f'<div style="margin-left:1.3rem;margin-top:.2rem;margin-bottom:.45rem;'
+            f'padding-left:.6rem;border-left:1px solid #292838">'
+            f'{"".join(milestone_rows)}{early_html}</div>'
+        )
+
+    # Step 3 nested sub-steps (active only; collapsed when done)
+    s3_substeps_html = ""
+    s3_detail = f"{spec_complete}/6 intelligence lenses complete" if (s3_active or (s3_done and not s4_done)) else ""
+    if s3_active:
+        lens_order = [
+            ("legal", "Legal & Compliance"),
+            ("technical", "Technical & Solution"),
+            ("commercial", "Commercial & Pricing"),
+            ("operations", "Delivery & Operations"),
+            ("governance", "Risk & Governance"),
+            ("executive", "Strategic & Executive"),
+        ]
+        lens_rows = []
+        for lid, lname in lens_order:
+            lst = (specs.get(lid) or {}).get("status", "WAITING")
+            if lst == "COMPLETE":
+                l_icon = "✓"
+                l_color = "#27AE60"
+                l_tag = "Complete"
+            elif lst == "RUNNING":
+                l_icon = "⏳"
+                l_color = "#C9A96E"
+                l_tag = "Analyzing…"
+            elif lst == "FAILED":
+                l_icon = "❌"
+                l_color = "#EB5757"
+                l_tag = "Failed"
+            else:
+                l_icon = "○"
+                l_color = "#6E6C66"
+                l_tag = "Queued"
+            lens_rows.append(
+                f'<div style="font-size:.8rem;padding:.12rem 0;color:{l_color}">'
+                f'<span style="display:inline-block;width:1.2rem;text-align:center">{l_icon}</span> {lname}'
+                f' <span style="font-size:.72rem;color:#6E6C66">({l_tag})</span>'
+                f'</div>'
+            )
+        s3_substeps_html = (
+            f'<div style="margin-left:1.3rem;margin-top:.2rem;margin-bottom:.45rem;'
+            f'padding-left:.6rem;border-left:1px solid #292838">'
+            f'{"".join(lens_rows)}</div>'
+        )
+
+    s4_detail = "Cross-domain consistency & assurance" if s4_active else ""
+
     def _row(done, active, label, detail=""):
         if done:
             icon = "✅"
@@ -303,15 +468,67 @@ def _render_unified_progress(opp_state: dict) -> None:
         det_html = f' <span style="font-size:.76rem;color:#A9A69D">({detail})</span>' if detail else ''
         return f'<div style="font-size:.85rem;padding:.22rem 0;color:{color}">{icon} <strong>{label}</strong>{det_html}</div>'
 
-    s3_detail = f"{spec_complete}/6 specialists complete" if (s3_active or (s3_done and not s4_done)) else ""
     html = '<div style="background:#111118;border:1px solid #292832;border-radius:6px;padding:.85rem 1.15rem;margin:.5rem 0">'
-    html += '<div style="font-size:.74rem;color:#C9A96E;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem;font-weight:700">Opportunity Intelligence Pipeline</div>'
-    html += _row(s1_done, s1_active, "Step 1: Analyzing procurement documents…")
-    html += _row(s2_done, s2_active, "Step 2: Confirming procurement facts…")
-    html += _row(s3_done, s3_active, "Step 3: Analyzing opportunity across six intelligence lenses…", s3_detail)
-    html += _row(s4_done, s4_active, "Step 4: Reconciling opportunity intelligence…")
+    html += '<div style="font-size:.74rem;color:#C9A96E;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.5rem;font-weight:700">Opportunity Intelligence Pipeline</div>'
+    html += _row(s1_done, s1_active, s1_label, s1_detail)
+    html += s1_substeps_html
+    html += _row(s2_done, s2_active, s2_label)
+    html += _row(s3_done, s3_active, s3_label, s3_detail)
+    html += s3_substeps_html
+    html += _row(s4_done, s4_active, s4_label, s4_detail)
     html += '</div>'
     st.markdown(html, unsafe_allow_html=True)
+
+
+def _render_live_opportunity_progress(bid_id: int, opp_state: dict | None = None) -> None:
+    """The active opportunity progress rendering logic -- kept as a plain,
+    directly-testable function matching the pattern of _render_active_run_progress.
+    Re-fetches DB-truthful state fresh on every call. If the stage transitions out of
+    running (e.g. to BASELINE_REVIEW_REQUIRED, COMPLETE, or FAILED), triggers a full-page rerun."""
+    _token, org_id = _current_access_token_and_org()
+    import understand_analysis as ua
+    if opp_state is None:
+        opp_state = ua.get_opportunity_analysis_state(bid_id, org_id)
+
+    step = opp_state.get("step")
+    if not _should_poll_opportunity(opp_state):
+        st.rerun()
+        return
+
+    _render_unified_progress(opp_state)
+
+    # Stuck run safety net for Step 1
+    if step == ua.STEP_FOUNDATION_RUNNING:
+        latest_fast = opp_state.get("latest_fast_run") or {}
+        if analysis_service.is_run_stuck(latest_fast):
+            st.markdown(
+                '<div class="warn-box">⚠️ This analysis has been active far longer than expected '
+                'and may be stuck (for example, if the app process restarted while it was '
+                'running). You can mark it as failed to try again.</div>',
+                unsafe_allow_html=True,
+            )
+            if st.button("⚠️ Mark as Failed (stuck)", key=f"mark_stuck_{bid_id}"):
+                analysis_service.mark_run_failed_as_stuck(latest_fast["id"])
+                st.rerun()
+
+    # Progressive disclosure of specialist constellation when available in Step 3 / 4
+    full_status = opp_state.get("full_status")
+    if full_status and full_status.get("specialists"):
+        with st.expander("🧬 View Specialist Constellation & Details", expanded=False):
+            from components import full_analysis_view as fav
+            view = fav.build_view(full_status)
+            st.markdown(fav.render_constellation(view), unsafe_allow_html=True)
+
+    # Single refresh control
+    if st.button("🔄 Refresh status", key=f"refresh_opp_{bid_id}"):
+        st.rerun()
+
+
+@st.fragment(run_every=ANALYSIS_POLL_INTERVAL_SECONDS)
+def _poll_opportunity_analysis(bid_id: int) -> None:
+    """Unified Streamlit auto-refresh mechanism for the Opportunity Intelligence Pipeline.
+    Re-runs only this fragment every ANALYSIS_POLL_INTERVAL_SECONDS while active."""
+    _render_live_opportunity_progress(bid_id)
 
 
 def _render_unified_opportunity_analysis_panel(
@@ -432,7 +649,7 @@ def _render_unified_opportunity_analysis_panel(
             _render_review_decision_and_apply(bid_id, org_id, review, "baseline")
         return
 
-    # RUNNING: Active progress with auto-polling
+    # RUNNING: Active progress with auto-polling (UNDERSTAND-UX2)
     if step in (
         ua.STEP_FOUNDATION_RUNNING,
         ua.STEP_FULL_ANALYSIS_RUNNING,
@@ -440,15 +657,7 @@ def _render_unified_opportunity_analysis_panel(
     ):
         st.markdown("### 💡 Analyzing Opportunity…")
         st.caption("Analyzing procurement documents, confirming procurement facts, and analyzing opportunity across six intelligence lenses.")
-        _render_unified_progress(opp_state)
-        full_status = opp_state.get("full_status")
-        if full_status and full_status.get("specialists"):
-            from components import full_analysis_view as fav
-            view = fav.build_view(full_status)
-            st.markdown(fav.render_constellation(view), unsafe_allow_html=True)
-        if st.button("🔄 Refresh status", key=f"refresh_opp_{bid_id}"):
-            st.rerun()
-        _poll_active_analysis(bid_id)
+        _poll_opportunity_analysis(bid_id)
         return
 
     # FAILED:
