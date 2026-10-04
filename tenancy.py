@@ -246,15 +246,76 @@ def require_bid_access(bid_id: int, organization_id: str) -> None:
         )
 
 
-def delete_bid_for_organization(bid_id: int, organization_id: str) -> bool:
-    """Safely delete a bid and rely on database cascades for all child history.
+class BidStorageCleanupError(RuntimeError):
+    """Raised when the database bid was successfully deleted, but
+    subsequent Supabase Storage cleanup failed or left files behind.
 
-    Maintenance and customer deletion service boundary.
-    1. Verify bid ownership (raises AccessDeniedError if unowned).
-    2. Fail if any analysis run is non-terminal (QUEUED, RUNNING, ANALYZING, etc.).
-    3. Delete ONLY the parent bid.
-    4. Rely on database ON DELETE CASCADE for all child rows.
-    5. Verify deletion afterward.
+    The database bid is gone; callers must NOT re-attempt database deletion.
+    Orphaned Storage cleanup remains required.
+    """
+    def __init__(self, bid_id: int, message: str, remaining_files: list[str] | None = None):
+        super().__init__(message)
+        self.bid_id = bid_id
+        self.remaining_files = remaining_files or []
+
+
+def list_bid_storage_objects(bid_id: int, client=None, bucket: str = "bid-documents") -> list[str]:
+    """Recursively list all Supabase Storage file paths under the exact prefix '{bid_id}/'.
+
+    Guarantees:
+    - Never returns paths outside prefix '{bid_id}/'.
+    - Recursively traverses subfolders (such as '{bid_id}/analysis_reports/...').
+    - Filters out empty folder placeholders.
+    """
+    if client is None:
+        client = db.get_client()
+
+    prefix_root = str(bid_id)
+
+    def _recurse(subpath: str) -> list[str]:
+        folder = f"{prefix_root}/{subpath}".rstrip("/") if subpath else prefix_root
+        try:
+            items = client.storage.from_(bucket).list(folder) or []
+        except Exception:
+            return []
+        files = []
+        for item in items:
+            name = item.get("name")
+            if not name or name == ".emptyFolderPlaceholder":
+                continue
+            item_rel = f"{subpath}/{name}".lstrip("/") if subpath else name
+            if item.get("id") is None:
+                # Subdirectory
+                files.extend(_recurse(item_rel))
+            else:
+                files.append(f"{prefix_root}/{item_rel}")
+        return files
+
+    all_files = _recurse("")
+    for p in all_files:
+        if not p.startswith(f"{prefix_root}/"):
+            raise RuntimeError(f"Storage path {p} violates prefix boundary {prefix_root}/")
+    return all_files
+
+
+def delete_bid_for_organization(bid_id: int, organization_id: str) -> dict:
+    """Safely delete a bid, its cascaded database relations, and its Supabase Storage files.
+
+    Authoritative maintenance and customer deletion service boundary.
+    Executes in strict safe order:
+    1. Verify organization owns bid (raises AccessDeniedError if unowned).
+    2. Verify no active/non-terminal analysis runs (raises RuntimeError if non-terminal).
+    3. Inventory all bid-owned Storage objects under exact prefix '{bid_id}/' (recursive).
+    4. Delete parent bid from database (ON DELETE CASCADE removes child rows).
+    5. Verify bid row is gone.
+    6. Verify bid-scoped database children are gone via cascade.
+    7. Delete previously inventoried Storage objects.
+    8. Verify bid Storage prefix is empty.
+
+    Failure semantics:
+    - If DB deletion fails: Storage remains untouched.
+    - If DB deletion succeeds but Storage deletion fails: raises BidStorageCleanupError.
+      The DB bid is gone; callers must NOT re-attempt DB deletion.
     """
     if not organization_id:
         raise ValueError("delete_bid_for_organization requires an explicit organization_id")
@@ -277,7 +338,10 @@ def delete_bid_for_organization(bid_id: int, organization_id: str) -> bool:
                 f"Cannot delete bid {bid_id}: active analysis run {r.get('id')} has status '{status}'"
             )
 
-    # 3. Delete ONLY the parent bid
+    # 3. Inventory all bid-owned Storage objects under {bid_id}/ (recursive)
+    storage_files = list_bid_storage_objects(bid_id, client=sb, bucket=db.BUCKET)
+
+    # 4. Delete parent bid from database
     sb.table("bids").delete().eq("id", bid_id).eq("organization_id", organization_id).execute()
 
     # 5. Verify deletion afterward
@@ -291,7 +355,53 @@ def delete_bid_for_organization(bid_id: int, organization_id: str) -> bool:
     if remaining:
         raise RuntimeError(f"Deletion failed: bid {bid_id} still exists after delete operation")
 
-    return True
+    # 6. Verify bid-scoped database children are gone via cascade
+    child_runs = (
+        sb.table("analysis_runs")
+        .select("id")
+        .eq("bid_id", bid_id)
+        .execute()
+        .data
+    )
+    if child_runs:
+        raise RuntimeError(
+            f"Cascade verification failed: {len(child_runs)} analysis runs remain for deleted bid {bid_id}"
+        )
+
+    # 7. Delete previously inventoried Storage objects
+    deleted_storage_count = 0
+    if storage_files:
+        try:
+            sb.storage.from_(db.BUCKET).remove(storage_files)
+            deleted_storage_count = len(storage_files)
+        except Exception as err:
+            raise BidStorageCleanupError(
+                bid_id=bid_id,
+                message=(
+                    f"Bid {bid_id} was deleted from database, but Supabase Storage removal failed: {err}. "
+                    "Orphaned Storage cleanup is required."
+                ),
+                remaining_files=storage_files,
+            ) from err
+
+    # 8. Verify bid Storage prefix is empty
+    remaining_storage = list_bid_storage_objects(bid_id, client=sb, bucket=db.BUCKET)
+    if remaining_storage:
+        raise BidStorageCleanupError(
+            bid_id=bid_id,
+            message=(
+                f"Bid {bid_id} was deleted from database, but {len(remaining_storage)} Storage object(s) remain. "
+                "Orphaned Storage cleanup is required."
+            ),
+            remaining_files=remaining_storage,
+        )
+
+    return {
+        "bid_id": bid_id,
+        "organization_id": organization_id,
+        "deleted_db": True,
+        "deleted_storage_files": deleted_storage_count,
+    }
 
 
 def start_fast_analysis_for_organization(

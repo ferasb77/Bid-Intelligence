@@ -850,7 +850,7 @@ class TestMigrationAndRegression:
 
     def test_migrations_001_to_021_unmodified(self):
         files = [f"migrations/{p.name}" for p in sorted((ROOT / "migrations").glob("0[0-2][0-9]_*.sql"))
-                 if not p.name.startswith(("022", "023"))]
+                 if int(p.name[:3]) <= 21]
         assert _git_diff(*files) == ""
 
     def test_migration_widens_modes_without_touching_canonical_tables(self):

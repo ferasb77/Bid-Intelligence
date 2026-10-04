@@ -140,13 +140,22 @@ def update_bid(bid_id, data):
         return
     get_client().table("bids").update(clean).eq("id", bid_id).execute()
 
-def delete_bid(bid_id):
-    """Unscoped maintenance primitive. Callers in tenant context should prefer
-    delete_bid_for_organization(bid_id, organization_id)."""
+def _delete_bid_unscoped_for_test(bid_id: int) -> None:
+    """Internal unscoped primitive strictly for isolated test fixtures.
+    Normal production or tenant-scoped code must never call this.
+    """
     get_client().table("bids").delete().eq("id", bid_id).execute()
 
 
-def delete_bid_for_organization(bid_id: int, organization_id: str) -> bool:
+def delete_bid(bid_id: int) -> None:
+    """Deprecated unscoped primitive. Callers must use
+    tenancy.delete_bid_for_organization(bid_id, organization_id).
+    Retained solely for backward compatibility with isolated test fixtures.
+    """
+    _delete_bid_unscoped_for_test(bid_id)
+
+
+def delete_bid_for_organization(bid_id: int, organization_id: str) -> dict:
     """Safely delete a bid for an organization. Delegates to
     tenancy.delete_bid_for_organization."""
     import tenancy
