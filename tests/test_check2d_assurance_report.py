@@ -537,7 +537,11 @@ class TestDiscipline:
 
     def test_no_new_migration(self):
         migs = sorted(p.name for p in (ROOT / "migrations").glob("*.sql"))
-        assert migs[-1] in ("022_check_runs.sql", "023_fix_procurement_document_digest_schema.sql")
+        assert migs[-1] in (
+            "022_check_runs.sql",
+            "023_fix_procurement_document_digest_schema.sql",
+            "024_fix_bid_cascade_immutability.sql",
+        )
 
     def test_status_vocabulary_pinned_to_check_coverage(self):
         assert (crm.ADDRESSED, crm.PARTIAL, crm.NOT_ADDRESSED, crm.NOT_VERIFIABLE, crm.HUMAN_REVIEW,

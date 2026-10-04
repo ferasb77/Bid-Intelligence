@@ -141,7 +141,17 @@ def update_bid(bid_id, data):
     get_client().table("bids").update(clean).eq("id", bid_id).execute()
 
 def delete_bid(bid_id):
+    """Unscoped maintenance primitive. Callers in tenant context should prefer
+    delete_bid_for_organization(bid_id, organization_id)."""
     get_client().table("bids").delete().eq("id", bid_id).execute()
+
+
+def delete_bid_for_organization(bid_id: int, organization_id: str) -> bool:
+    """Safely delete a bid for an organization. Delegates to
+    tenancy.delete_bid_for_organization."""
+    import tenancy
+    return tenancy.delete_bid_for_organization(bid_id, organization_id)
+
 
 # ── Requirements ──────────────────────────────────────────────────────────────
 def get_requirements(bid_id, include_retired: bool = False):
