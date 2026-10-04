@@ -39,7 +39,8 @@ def _ensure_dict(val):
         return val
     if isinstance(val, str):
         try:
-            return json.loads(val)
+            parsed = json.loads(val)
+            return parsed if isinstance(parsed, dict) else {}
         except Exception:
             pass
     return {}
@@ -1566,7 +1567,7 @@ def page_understand(bid_id: int):
         st.markdown(f"**RFP Documents in Registry ({len(docs)} files):**")
         for d in docs:
             st.markdown(f"📄 **{d['name']}** ({d.get('doc_type','Document')}) — v{d.get('version',1)} [{d.get('status','Expected')}]")
-        if citations:
+        if isinstance(citations, dict) and citations:
             st.markdown("**Key Section Citations:**")
             for k, v in citations.items():
                 st.markdown(f"• `{k}`: {v}")

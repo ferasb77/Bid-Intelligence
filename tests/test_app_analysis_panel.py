@@ -215,5 +215,146 @@ class TestFastAnalysisPanelReachability(unittest.TestCase):
         self.assertIn("Analyze Opportunity", rendered)
 
 
+class TestEnsureDictContract(unittest.TestCase):
+    """UNDERSTAND-HOTFIX-3: Ensure _ensure_dict strictly returns a dict and rejects non-dict shapes."""
+
+    def test_ensure_dict_preserved(self):
+        d = {"key": "val", "num": 1}
+        self.assertIs(understand._ensure_dict(d), d)
+
+    def test_ensure_dict_json_object_string(self):
+        self.assertEqual(
+            understand._ensure_dict('{"Section 1": "p. 5", "Section 2": "p. 10"}'),
+            {"Section 1": "p. 5", "Section 2": "p. 10"}
+        )
+
+    def test_ensure_dict_json_array_string(self):
+        # Array of strings or objects must NOT coerce to a list or crash
+        self.assertEqual(understand._ensure_dict('["citation one", "citation two"]'), {})
+        self.assertEqual(understand._ensure_dict('[{"role": "established", "document_id": 225}]'), {})
+
+    def test_ensure_dict_json_scalar_string(self):
+        self.assertEqual(understand._ensure_dict('"a string"'), {})
+        self.assertEqual(understand._ensure_dict('123'), {})
+        self.assertEqual(understand._ensure_dict('true'), {})
+        self.assertEqual(understand._ensure_dict('null'), {})
+
+    def test_ensure_dict_invalid_json(self):
+        self.assertEqual(understand._ensure_dict('not valid json {['), {})
+        self.assertEqual(understand._ensure_dict(''), {})
+
+    def test_ensure_dict_none(self):
+        self.assertEqual(understand._ensure_dict(None), {})
+
+    def test_ensure_dict_native_list(self):
+        self.assertEqual(understand._ensure_dict(["one", "two"]), {})
+        self.assertEqual(understand._ensure_dict([{"a": 1}]), {})
+
+    def test_ensure_dict_other_scalars(self):
+        self.assertEqual(understand._ensure_dict(123), {})
+        self.assertEqual(understand._ensure_dict(45.6), {})
+        self.assertEqual(understand._ensure_dict(True), {})
+
+
+class TestStageUnderstandSourceCitationsShape(unittest.TestCase):
+    """UNDERSTAND-HOTFIX-3: Page rendering regression with malformed or non-dict source_citations."""
+
+    @patch("streamlit.markdown")
+    @patch("streamlit.expander")
+    @patch("streamlit.file_uploader", return_value=None)
+    @patch("streamlit.button", return_value=False)
+    @patch("streamlit.columns", side_effect=lambda spec, *a, **k: [unittest.mock.MagicMock()
+                                                                     for _ in range(spec if isinstance(spec, int) else len(spec))])
+    @patch("pages.stage_understand.tenancy.get_procurement_update_reviews_for_organization", return_value=[])
+    @patch("pages.stage_understand.tenancy.get_procurement_state_for_organization",
+           return_value={"procurement_revision": 2, "procurement_truth_status": "governed"})
+    @patch("pages.stage_understand.tenancy.get_latest_analysis_result_authenticated", return_value=None)
+    @patch("pages.stage_understand.tenancy.get_latest_analysis_run_authenticated", return_value=None)
+    @patch("pages.stage_understand.tenancy.get_documents_authenticated")
+    @patch("pages.stage_understand.tenancy.get_requirements_authenticated", return_value=[])
+    @patch("pages.stage_understand.tenancy.get_bid_brief_authenticated")
+    @patch("pages.stage_understand.tenancy.get_bid_authenticated")
+    @patch("pages.stage_understand._current_access_token_and_org", return_value=_FAKE_TOKEN_AND_ORG)
+    def test_json_array_source_citations_does_not_crash_page(
+            self, mock_token_org, mock_get_bid, mock_get_brief, mock_get_reqs, mock_get_docs,
+            mock_get_run, mock_get_result, mock_procurement_state, mock_procurement_reviews,
+            mock_columns, mock_button, mock_file_uploader, mock_expander, mock_markdown):
+        """Exact live acceptance defect: brief_row['source_citations'] is a JSON-array string.
+        Page must render without raising AttributeError / .items() crash, omitting citation summary safely."""
+        mock_get_bid.return_value = {
+            "id": 1522, "client": "York University", "title": "P27 070 Sales and AI Training",
+            "stage": "Understand", "sensitivity": "Standard", "submission_deadline": None,
+            "clarification_deadline": None, "value_cad": None, "owner": None,
+        }
+        mock_get_docs.return_value = [
+            {"id": 225, "name": "rfp_main.pdf", "doc_type": "RFP / Source", "storage_path": "1522/x.pdf", "version": 1},
+        ]
+        # Live bid 1522 shape that caused AttributeError: 'list' object has no attribute 'items'
+        mock_get_brief.return_value = {
+            "id": 88,
+            "bid_id": 1522,
+            "summary": "AI training program",
+            "source_citations": '[{"role": "established", "document_id": 225, "document_hash": "30a22265", "procurement_revision": 2}]',
+        }
+        mock_expander.return_value.__enter__.return_value = unittest.mock.MagicMock()
+        mock_expander.return_value.__exit__.return_value = False
+
+        # Must not raise AttributeError
+        understand.page_understand(1522)
+
+        rendered = " ".join(str(c.args[0]) for c in mock_markdown.call_args_list if c.args)
+        # Verify citation summary header and loop are omitted safely
+        self.assertNotIn("Key Section Citations:", rendered)
+        # Verify remaining page content continues to render
+        self.assertIn("York University", rendered)
+        self.assertIn("P27 070 Sales and AI Training", rendered)
+        self.assertIn("rfp_main.pdf", rendered)
+
+    @patch("streamlit.markdown")
+    @patch("streamlit.expander")
+    @patch("streamlit.file_uploader", return_value=None)
+    @patch("streamlit.button", return_value=False)
+    @patch("streamlit.columns", side_effect=lambda spec, *a, **k: [unittest.mock.MagicMock()
+                                                                     for _ in range(spec if isinstance(spec, int) else len(spec))])
+    @patch("pages.stage_understand.tenancy.get_procurement_update_reviews_for_organization", return_value=[])
+    @patch("pages.stage_understand.tenancy.get_procurement_state_for_organization",
+           return_value={"procurement_revision": 2, "procurement_truth_status": "governed"})
+    @patch("pages.stage_understand.tenancy.get_latest_analysis_result_authenticated", return_value=None)
+    @patch("pages.stage_understand.tenancy.get_latest_analysis_run_authenticated", return_value=None)
+    @patch("pages.stage_understand.tenancy.get_documents_authenticated")
+    @patch("pages.stage_understand.tenancy.get_requirements_authenticated", return_value=[])
+    @patch("pages.stage_understand.tenancy.get_bid_brief_authenticated")
+    @patch("pages.stage_understand.tenancy.get_bid_authenticated")
+    @patch("pages.stage_understand._current_access_token_and_org", return_value=_FAKE_TOKEN_AND_ORG)
+    def test_valid_dict_source_citations_renders_citations_summary(
+            self, mock_token_org, mock_get_bid, mock_get_brief, mock_get_reqs, mock_get_docs,
+            mock_get_run, mock_get_result, mock_procurement_state, mock_procurement_reviews,
+            mock_columns, mock_button, mock_file_uploader, mock_expander, mock_markdown):
+        """When source_citations is a valid dict, Key Section Citations must render."""
+        mock_get_bid.return_value = {
+            "id": 1522, "client": "York University", "title": "P27 070 Sales and AI Training",
+            "stage": "Understand", "sensitivity": "Standard", "submission_deadline": None,
+            "clarification_deadline": None, "value_cad": None, "owner": None,
+        }
+        mock_get_docs.return_value = [
+            {"id": 225, "name": "rfp_main.pdf", "doc_type": "RFP / Source", "storage_path": "1522/x.pdf", "version": 1},
+        ]
+        mock_get_brief.return_value = {
+            "id": 88,
+            "bid_id": 1522,
+            "summary": "AI training program",
+            "source_citations": {"Section 3.1": "Page 12", "Appendix B": "Page 45"},
+        }
+        mock_expander.return_value.__enter__.return_value = unittest.mock.MagicMock()
+        mock_expander.return_value.__exit__.return_value = False
+
+        understand.page_understand(1522)
+
+        rendered = " ".join(str(c.args[0]) for c in mock_markdown.call_args_list if c.args)
+        self.assertIn("Key Section Citations:", rendered)
+        self.assertIn("Section 3.1", rendered)
+        self.assertIn("Appendix B", rendered)
+
+
 if __name__ == "__main__":
     unittest.main()
