@@ -862,11 +862,18 @@ class TestMigrationAndRegression:
                           "drop index if exists public.idx_analysis_runs_one_active"):
             assert forbidden not in sql
 
-    def test_check1_frozen_and_full_analysis_untouched(self):
-        # CHECK-1 files remain frozen; full analysis is governed by its own test suite.
+    def test_check1_frozen_files_untouched(self):
+        # CHECK-1 files remain frozen against base
         assert _git_diff("submission_package.py",
                          "canonical_procurement.py", "procurement_normalization.py", "fast_analysis.py",
                          "extractor.py") == ""
+
+    def test_full_analysis_frozen_since_understand_hotfix4(self):
+        assert _git_diff(
+            "full_analysis.py",
+            "full_analysis_service.py",
+            base="987b61b510b353bddfcc8ca5926cd8a53aee2abe",
+        ) == ""
 
     def test_check2a_result_identical_with_and_without_the_durability_hook(self):
         inputs = make_inputs()
