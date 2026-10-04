@@ -246,6 +246,54 @@ def require_bid_access(bid_id: int, organization_id: str) -> None:
         )
 
 
+def delete_bid_for_organization(bid_id: int, organization_id: str) -> bool:
+    """Safely delete a bid and rely on database cascades for all child history.
+
+    Maintenance and customer deletion service boundary.
+    1. Verify bid ownership (raises AccessDeniedError if unowned).
+    2. Fail if any analysis run is non-terminal (QUEUED, RUNNING, ANALYZING, etc.).
+    3. Delete ONLY the parent bid.
+    4. Rely on database ON DELETE CASCADE for all child rows.
+    5. Verify deletion afterward.
+    """
+    if not organization_id:
+        raise ValueError("delete_bid_for_organization requires an explicit organization_id")
+    require_bid_access(bid_id, organization_id)
+
+    sb = db.get_client()
+
+    # 2. Fail if any analysis run is non-terminal
+    runs = (
+        sb.table("analysis_runs")
+        .select("id, status")
+        .eq("bid_id", bid_id)
+        .execute()
+        .data
+    ) or []
+    for r in runs:
+        status = r.get("status")
+        if status not in ("COMPLETE", "PARTIAL", "FAILED", "STOPPED"):
+            raise RuntimeError(
+                f"Cannot delete bid {bid_id}: active analysis run {r.get('id')} has status '{status}'"
+            )
+
+    # 3. Delete ONLY the parent bid
+    sb.table("bids").delete().eq("id", bid_id).eq("organization_id", organization_id).execute()
+
+    # 5. Verify deletion afterward
+    remaining = (
+        sb.table("bids")
+        .select("id")
+        .eq("id", bid_id)
+        .execute()
+        .data
+    )
+    if remaining:
+        raise RuntimeError(f"Deletion failed: bid {bid_id} still exists after delete operation")
+
+    return True
+
+
 def start_fast_analysis_for_organization(
     bid_id: int, organization_id: str, api_key: str, created_by: str | None = None
 ) -> dict:
