@@ -5,6 +5,8 @@ A live acceptance audit of York University RFP P27-070 (*Instructor for Sales an
 
 While the multi-agent analysis pipelines executed successfully and extracted critical procurement facts, the synthesis and rendering layer ([`understand_brief.py`](file:///c:/Users/feras/Documents/Projects/Bid-Intelligence/understand_brief.py) and [`understand_brief_report.py`](file:///c:/Users/feras/Documents/Projects/Bid-Intelligence/understand_brief_report.py)) systematically filtered out, deprioritized, or discarded the core technical capabilities, evaluation drivers, and strategic context that a bid decision-maker needs to evaluate the opportunity. The delivered brief degenerated into an administrative summary of submission deadlines, portal links, and boilerplate commercial terms.
 
+Furthermore, post-audit analysis revealed that initial benchmark iterations risked an **Epistemic Synthesis Gap**—converting supported source facts into stronger unsupported predictive assertions, inventing specific vendor brands, or asserting unretrieved external facts without provenance.
+
 This document systematically analyzes every identified gap against the authoritative specification in [`YORK_P27_070_DECISION_BRIEF_BENCHMARK.md`](file:///c:/Users/feras/Documents/Projects/Bid-Intelligence/docs/current/YORK_P27_070_DECISION_BRIEF_BENCHMARK.md), classifying each by failure type.
 
 ---
@@ -79,7 +81,7 @@ This document systematically analyzes every identified gap against the authorita
 - **Benchmark Section**: Section C (*Buyer Intelligence*)
 - **Code Reference**: [`buyer_evidence_acquisition.py#L1-L80`](file:///c:/Users/feras/Documents/Projects/Bid-Intelligence/buyer_evidence_acquisition.py#L1-L80), [`buyer_intelligence.py#L1-L50`](file:///c:/Users/feras/Documents/Projects/Bid-Intelligence/buyer_intelligence.py#L1-L50)
 - **Observed Defect**: Strong, governed data contracts for `BuyerDomainContext` and `BuyerEvidence` exist in the codebase. However, `buyer_evidence_acquisition.py` only adapts pre-existing, already-fetched documents. There is **no automated retrieval or web discovery mechanism** anywhere in the runtime pipeline.
-- **Impact**: In live Bid 1522, the "Buyer Intelligence" section in the primary brief was either completely empty or simply stated *"Buyer: York University"*. The report failed to surface York's BPS public mandate, regional incubator context (YSpace), or small-business growth initiatives.
+- **Impact**: In live Bid 1522, the "Buyer Intelligence" section in the primary brief was either completely empty or simply stated *"Buyer: York University"*. The report failed to surface York's institutional context or regional small-business growth initiatives.
 
 ---
 
@@ -110,7 +112,7 @@ This document systematically analyzes every identified gap against the authorita
   - Six generic commercial categories (Insurance, Governing Law, Assignment, Business Registration)
   - Submission mechanics (PDF upload rules, Bonfire links, portal notes)
   While allocating **zero dedicated pages or structured tables to Technical Capability Requirements**.
-- **Impact**: Violates Report Quality Gate 6: *"A contract clause may not take more primary-report space than a material technical capability requirement merely because it is easier to extract."*
+- **Impact**: Violates Report Quality Gate 7: *"A contract clause may not take more primary-report space than a material technical capability requirement merely because it is easier to extract."*
 
 ### Gap 5.2: Generic and Low-Value "Bid-Team Priorities"
 - **Classification**: **SELECTION GAP**
@@ -126,17 +128,45 @@ This document systematically analyzes every identified gap against the authorita
 
 ## 6. Document Intake & Identity Extraction (UX GAP)
 
-### Gap 6.1: Mandatory Manual Form-Filling Before Document Upload
+### Gap 6.1: Mandatory Manual Form-Filling Before Opportunity Creation
 - **Classification**: **UX GAP**
 - **Benchmark Section**: Section M (*Upload / Identity UX Contract*)
 - **Code Reference**: [`app.py#L430-L442`](file:///c:/Users/feras/Documents/Projects/Bid-Intelligence/app.py#L430-L442)
-- **Observed Defect**: In `app.py`, creating a new opportunity requires the customer to manually enter:
-  - `Opportunity Title *` (Mandatory text input)
-  - `Client / Organization *` (Mandatory text input)
-  - `Solicitation Number` (Optional text input)
-  - `Submission Deadline` (Optional date input)
-  before the RFP document package can be uploaded.
-- **Contradiction with Product Contract**: The procurement package itself (e.g., the title page and Section 1.0 of the York RFP) authoritatively declares the Buyer Name (*York University*), Opportunity Title (*Instructor for Sales and AI Training and Mentorship Program*), and Solicitation Number (*P27-070*). Forcing the customer to re-type these fields upfront creates unnecessary cognitive friction, introduces typos, and violates the zero-friction intake vision.
+- **Observed Defect**: In `app.py`, the user selects and uploads documents into browser memory, but the UI then blocks them with mandatory form fields requiring `Opportunity Title *` and `Client / Organization *` before the opportunity row can be created in the database and analysis triggered.
+- **Contradiction with Product Contract**: The procurement package itself (e.g., the title page and Section 1.0 of the York RFP) authoritatively declares the Buyer Name (*York University*), Opportunity Title (*Instructor for Sales and AI Training and Mentorship Program*), and Solicitation Number (*P27-070*). Forcing the customer to manually re-type these fields upfront creates unnecessary cognitive friction, introduces typos, and violates the zero-friction intake vision.
+
+---
+
+## 7. Epistemic Blurring & Over-Interpretation (EPISTEMIC SYNTHESIS GAP)
+
+### Definition
+An **EPISTEMIC SYNTHESIS GAP** occurs when the system or benchmark turns a supported source fact into a stronger unsupported conclusion, predictive guarantee, or unsolicited recommendation without preserving the distinction between source truth and inference.
+
+This is fundamentally different from an extraction failure: in an extraction failure, the system misses facts present in the text; in an epistemic synthesis gap, the system takes a real fact and stretches it beyond what the evidence supports.
+
+### Gap 7.1: Predictive Evaluator Claims Masquerading as Objective Rules
+- **Classification**: **EPISTEMIC SYNTHESIS GAP**
+- **Benchmark Section**: Section B (*Decision Snapshot*) & Section E (*Technical Capabilities*)
+- **Observed Defect**: Translating RFP requirements into absolute predictive assertions (e.g., *"Evaluators will reject solo practitioners"*, *"Theoretical courseware will fail"*, *"Massive scoring edge"*).
+- **Correction**: Reframe as bounded interpretations explicitly identifying their supporting buyer facts (e.g., *"The RFP's explicit requirement for a deep bench with no single point of failure and named CVs indicates an organizational preference for multi-person delivery capacity rather than solo practitioners"*).
+
+### Gap 7.2: Inventing Specific Third-Party Technology Brands
+- **Classification**: **EPISTEMIC SYNTHESIS GAP**
+- **Benchmark Section**: Section G (*What the Bidder Must Prove*)
+- **Observed Defect**: Inserting specific unmentioned commercial technology brands (e.g., *Claude, ChatGPT, Apollo, Clay*) into the benchmark as examples of what the bidder must prove for AI enablement.
+- **Correction**: Restrict recommendations to functional technology categories (e.g., *AI-assisted research, automated messaging generation, sales workflow automation, and responsible AI governance*) unless explicitly named in the RFP.
+
+### Gap 7.3: Inventing Unstated Evaluation Thresholds
+- **Classification**: **EPISTEMIC SYNTHESIS GAP**
+- **Benchmark Section**: Section F (*Evaluation Intelligence*)
+- **Observed Defect**: Assuming or inferring an unstated minimum passing technical threshold (e.g., *"typically 75% or 60/80 points"*) when the buyer documents reviewed state no numerical passing threshold.
+- **Correction**: Explicitly declare the minimum threshold as **UNKNOWN / NONE STATED IN REVIEWED DOCUMENTS**, preferring truthfulness over invention.
+
+### Gap 7.4: Blurring Buyer Requirements with Strategic Proof Recommendations
+- **Classification**: **EPISTEMIC SYNTHESIS GAP**
+- **Benchmark Section**: Section G (*What the Bidder Must Prove*)
+- **Observed Defect**: Conflating what the RFP explicitly mandates (e.g., 3 references, sample framework, named CVs) with what Bid Intelligence recommends submitting as good capture strategy (e.g., organizational bench diagrams, milestone sprint tables).
+- **Correction**: Enforce strict bifurcation between **BUYER REQUIRES (RFP FACT)** and **BID INTELLIGENCE RECOMMENDS EVIDENCING WITH (BID STRATEGY / PROOF RECOMMENDATION)**.
 
 ---
 
@@ -154,3 +184,4 @@ This document systematically analyzes every identified gap against the authorita
 | **Evaluation Math & Duplication** | **DATA MODEL GAP & SELECTION GAP** | `fast_analysis.py`, `understand_brief.py` | **BI-VALUE-3** |
 | **Report Layout Inversion** | **SELECTION GAP** | `understand_brief_report.py` | **BI-VALUE-3** |
 | **Generic Bid Priorities** | **SELECTION GAP** | `understand_brief.py` | **BI-VALUE-3** |
+| **Epistemic Synthesis & Over-Interpretation** | **EPISTEMIC SYNTHESIS GAP** | `understand_brief.py`, benchmark specification | **BI-VALUE-1.1 & BI-VALUE-3** |
