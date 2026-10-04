@@ -367,7 +367,8 @@ class _EventRecorder:
 
 def _execute_full_analysis_run(run: dict, package, *, fingerprint: str,
                                fingerprint_inputs: dict, api_key: str | None,
-                               client=None) -> None:
+                               client=None,
+                               reconciliation_max_output_tokens: int | None = None) -> None:
     """Execute one already-created FULL run to a terminal state. Never
     raises: every failure is persisted as a FAILED run (with whatever
     specialist work already finished still durable in
@@ -386,7 +387,8 @@ def _execute_full_analysis_run(run: dict, package, *, fingerprint: str,
         }
         result = fa.run_full_analysis(package, api_key, client=client,
                                       telemetry_context=telemetry_context,
-                                      on_event=recorder)
+                                      on_event=recorder,
+                                      reconciliation_max_output_tokens=reconciliation_max_output_tokens)
         if recorder.aborted:
             return  # run was made terminal externally (e.g. marked stuck)
         status = _terminal_status_for(result.completeness_status)
@@ -434,7 +436,8 @@ def start_full_analysis(bid_id: int, api_key: str | None = None, *,
                         retry: bool = False,
                         execution: str = EXECUTION_BACKGROUND,
                         client=None,
-                        package_builder=None) -> dict:
+                        package_builder=None,
+                        reconciliation_max_output_tokens: int | None = None) -> dict:
     """Start (or reuse) the canonical Full Analysis for a bid.
 
     Authorization is NOT performed here -- call it only through
@@ -457,8 +460,10 @@ def start_full_analysis(bid_id: int, api_key: str | None = None, *,
     source = _resolve_source_run(bid_id, source_run_id)
     builder = package_builder or _default_package_builder
     package = builder(int(source["id"]))
-    fingerprint_inputs = fa.full_analysis_fingerprint_inputs(package)
-    fingerprint = fa.compute_full_analysis_fingerprint(package)
+    fingerprint_inputs = fa.full_analysis_fingerprint_inputs(
+        package, reconciliation_max_output_tokens=reconciliation_max_output_tokens)
+    fingerprint = fa.compute_full_analysis_fingerprint(
+        package, reconciliation_max_output_tokens=reconciliation_max_output_tokens)
 
     response = db.start_full_analysis_run(
         bid_id, int(source["id"]), fingerprint, FULL_ANALYSIS_ENGINE_VERSION,
@@ -482,7 +487,8 @@ def start_full_analysis(bid_id: int, api_key: str | None = None, *,
         return out
 
     kwargs = dict(fingerprint=fingerprint, fingerprint_inputs=fingerprint_inputs,
-                  api_key=api_key, client=client)
+                  api_key=api_key, client=client,
+                  reconciliation_max_output_tokens=reconciliation_max_output_tokens)
     if execution == EXECUTION_INLINE:
         _execute_full_analysis_run(run, package, **kwargs)
     else:

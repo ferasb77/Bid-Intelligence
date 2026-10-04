@@ -79,12 +79,13 @@ def _production_recon_budget():
     """Context manager: set fa.RECONCILIATION_MAX_OUTPUT_TOKENS to the
     production ceiling for the duration of a service call, then restore it.
 
-    Thread-safety note: fa.RECONCILIATION_MAX_OUTPUT_TOKENS is a module-level
-    integer. For background (threaded) execution this is set in the spawned
-    thread before the service call, which is safe because each analysis run
-    owns its own thread and the module-level value is read at call time.
-    For inline execution the caller holds the GIL during the assignment and
-    the service call is synchronous.
+    NOTE: For background (threaded) execution, mutating this module-level
+    integer is insufficient because the launching caller restores the original
+    value as soon as start_full_analysis returns, before the background thread
+    executes. The authoritative mechanism is passing `reconciliation_max_output_tokens`
+    explicitly through start_full_analysis -> _execute_full_analysis_run ->
+    fa.run_full_analysis. This context manager is retained for backward
+    compatibility and synchronous/inline callers.
     """
     original = fa.RECONCILIATION_MAX_OUTPUT_TOKENS
     fa.RECONCILIATION_MAX_OUTPUT_TOKENS = PRODUCTION_RECONCILIATION_MAX_OUTPUT_TOKENS
@@ -330,6 +331,7 @@ def _continue_orchestration_after_fast(
             created_by_user_id=created_by_user_id,
             retry=retry,
             execution=execution,
+            reconciliation_max_output_tokens=PRODUCTION_RECONCILIATION_MAX_OUTPUT_TOKENS,
         )
         if isinstance(res, dict) and "step" not in res:
             out = res.get("outcome")
@@ -337,6 +339,10 @@ def _continue_orchestration_after_fast(
                 res["step"] = STEP_FULL_ANALYSIS_RUNNING
             elif out == "REUSED_COMPLETE":
                 res["step"] = STEP_COMPLETE
+            elif out == "EXISTING_PARTIAL":
+                res["step"] = STEP_PARTIAL
+            elif out == "EXISTING_FAILED":
+                res["step"] = STEP_FAILED
         return res
 
 
@@ -689,7 +695,7 @@ def get_opportunity_analysis_state(bid_id: int, organization_id: str) -> dict[st
             elif raw_status == "PARTIAL":
                 is_partial = True
                 step = STEP_PARTIAL
-                status_label = "Opportunity intelligence complete (partial notices)"
+                status_label = "Opportunity intelligence partially complete"
             elif raw_status == "FAILED":
                 is_failed = True
                 step = STEP_FAILED
@@ -709,6 +715,20 @@ def get_opportunity_analysis_state(bid_id: int, organization_id: str) -> dict[st
         else:
             step = STEP_READY
             status_label = "Ready to analyze opportunity"
+
+    partial_reason = None
+    if is_partial and full_status:
+        rec_info = full_status.get("reconciliation") or {}
+        rec_summary = rec_info.get("failure_summary")
+        run_failure = full_status.get("failure_reason")
+        if rec_summary and "max_tokens" in rec_summary:
+            partial_reason = rec_summary
+        elif run_failure:
+            partial_reason = run_failure
+        elif rec_summary:
+            partial_reason = rec_summary
+        else:
+            partial_reason = "Reconciliation output truncated at token limit; partial intelligence preserved."
 
     # Lens progression
     lenses_state = []
@@ -755,6 +775,7 @@ def get_opportunity_analysis_state(bid_id: int, organization_id: str) -> dict[st
         "is_live": is_live,
         "is_complete": is_complete,
         "is_partial": is_partial,
+        "partial_reason": partial_reason,
         "is_failed": is_failed,
         "is_stuck": is_stuck,
         "full_status": full_status if truth_status == "governed" else None,

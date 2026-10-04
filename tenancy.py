@@ -264,6 +264,7 @@ def start_fast_analysis_for_organization(
 def start_full_analysis_for_organization(
     bid_id: int, organization_id: str, api_key: str, *, source_run_id: int | None = None,
     created_by_user_id: str | None = None, retry: bool = False, execution: str = "background",
+    reconciliation_max_output_tokens: int | None = None,
 ) -> dict:
     """MA-2A authorization boundary in front of full_analysis_service.
     start_full_analysis(). Organization ownership of bid_id is verified
@@ -275,7 +276,8 @@ def start_full_analysis_for_organization(
     import full_analysis_service
     return full_analysis_service.start_full_analysis(
         bid_id, api_key, source_run_id=source_run_id,
-        created_by_user_id=created_by_user_id, retry=retry, execution=execution)
+        created_by_user_id=created_by_user_id, retry=retry, execution=execution,
+        reconciliation_max_output_tokens=reconciliation_max_output_tokens)
 
 
 def get_full_analysis_status_for_organization(

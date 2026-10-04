@@ -1039,6 +1039,166 @@ class TestUnifiedProgressStageTransitions(unittest.TestCase):
         self.assertEqual(mock_button.call_count, 1)
         self.assertIn("Retry Opportunity Analysis", mock_button.call_args[0][0])
 
+    @patch("streamlit.markdown")
+    @patch("pages.stage_understand._current_access_token_and_org", return_value=("tok", "org-1"))
+    @patch("understand_analysis.get_opportunity_analysis_state")
+    def test_stage_e_partial_progress_and_panel(self, mock_get_state, mock_tok_org, mock_markdown):
+        import pages.stage_understand as su
+        import understand_analysis as ua
+
+        # 1. Progress bar reflects partially reconciled
+        opp_state = {
+            "step": ua.STEP_PARTIAL,
+            "status_label": "Opportunity intelligence partially complete",
+            "partial_reason": "provider stop_reason=max_tokens at 3000 output tokens",
+            "procurement_state": {"procurement_truth_status": "governed", "procurement_revision": 2},
+            "full_status": {
+                "run_id": 56,
+                "status": "PARTIAL",
+                "failure_reason": "incomplete domains: RECONCILIATION (output truncated)",
+                "specialists": {
+                    "legal": {"status": "COMPLETE"},
+                    "technical": {"status": "COMPLETE"},
+                    "commercial": {"status": "COMPLETE"},
+                    "operations": {"status": "COMPLETE"},
+                    "governance": {"status": "COMPLETE"},
+                    "executive": {"status": "COMPLETE"},
+                },
+            },
+        }
+        mock_get_state.return_value = opp_state
+
+        su._render_unified_progress(opp_state)
+        rendered_progress = mock_markdown.call_args[0][0]
+        self.assertIn("Step 4: Opportunity intelligence partially reconciled", rendered_progress)
+        self.assertNotIn("Step 4: Opportunity intelligence reconciled\n", rendered_progress)
+
+        # 2. Panel renders warning banner, not green check
+        mock_markdown.reset_mock()
+        with patch("streamlit.columns", return_value=(MagicMock(), MagicMock())), \
+             patch("streamlit.expander", return_value=MagicMock()), \
+             patch("tenancy.export_bid_intelligence_brief_for_organization", return_value=b"fake-pdf"):
+            su._render_unified_opportunity_analysis_panel(
+                1522, "00000000-0000-0000-0000-000000000001", [{"doc_type": "RFP / Source"}], opp_state["procurement_state"]
+            )
+        rendered_panel = " ".join(str(c.args[0]) for c in mock_markdown.call_args_list if c.args)
+        self.assertIn("⚠ Opportunity intelligence partially complete", rendered_panel)
+        self.assertIn("provider stop_reason=max_tokens at 3000 output tokens", rendered_panel)
+        self.assertNotIn("✓ Opportunity intelligence current", rendered_panel)
+
+
+class TestReconciliationBudgetIntegrity(unittest.TestCase):
+    def test_reconciliation_contract_digest_parameterization(self):
+        d_default = fa.reconciliation_contract_digest()
+        d_3000 = fa.reconciliation_contract_digest(3000)
+        d_8192 = fa.reconciliation_contract_digest(8192)
+        self.assertEqual(d_default, d_3000)
+        self.assertNotEqual(d_3000, d_8192)
+
+    def test_fingerprint_budget_parameterization(self):
+        pkg = MagicMock(spec=fa.CanonicalPackage)
+        pkg.package_digest = "test-pkg-digest"
+        pkg.objects_of_type.return_value = []
+        fp_3000 = fa.compute_full_analysis_fingerprint(pkg, reconciliation_max_output_tokens=3000)
+        fp_8192 = fa.compute_full_analysis_fingerprint(pkg, reconciliation_max_output_tokens=8192)
+        fp_default = fa.compute_full_analysis_fingerprint(pkg)
+        self.assertEqual(fp_default, fp_3000)
+        self.assertNotEqual(fp_3000, fp_8192)
+
+    @patch("understand_analysis.db.get_bid_procurement_state", return_value={"procurement_truth_status": "governed", "procurement_revision": 2})
+    @patch("understand_analysis.db.list_analysis_runs", return_value=[{"id": 48, "analysis_mode": "FAST", "status": "COMPLETE"}])
+    @patch("understand_analysis.tenancy.get_full_analysis_status_for_organization", return_value=None)
+    @patch("understand_analysis.tenancy.get_documents_authenticated", return_value=[])
+    @patch("understand_analysis.tenancy.require_bid_access")
+    @patch("understand_analysis.tenancy.start_full_analysis_for_organization")
+    def test_start_opportunity_analysis_passes_production_recon_budget(
+        self, mock_start_full, mock_access, mock_docs, mock_status, mock_runs, mock_proc
+    ):
+        mock_start_full.return_value = {"outcome": "CREATED"}
+        ua.start_opportunity_analysis(1522, "org-test", execution="background")
+        mock_start_full.assert_called_once()
+        kwargs = mock_start_full.call_args.kwargs
+        self.assertEqual(kwargs.get("reconciliation_max_output_tokens"), 8192)
+
+    @patch("full_analysis_service._resolve_source_run", return_value={"id": 48, "corpus_digest": "cd"})
+    @patch("full_analysis_service.db.start_full_analysis_run", return_value={"outcome": "CREATED", "run": {"id": 57, "bid_id": 1522, "source_analysis_run_id": 48}})
+    @patch("full_analysis_service.fa.run_full_analysis")
+    @patch("full_analysis_service.db.finalize_full_analysis_run")
+    @patch("full_analysis_service.db.record_full_analysis_event")
+    def test_background_thread_receives_budget_after_launcher_returns(
+        self, mock_record, mock_finalize, mock_run_full, mock_db_start, mock_resolve
+    ):
+        import time
+        import full_analysis_service as fas
+
+        pkg = MagicMock(spec=fa.CanonicalPackage)
+        pkg.package_digest = "test-pkg-digest"
+        pkg.objects_of_type.return_value = []
+
+        fake_res = MagicMock(spec=fa.FullAnalysisResult)
+        fake_res.completeness_status = fa.COMPLETENESS_COMPLETE
+        fake_res.specialist_statuses = {}
+        fake_res.specialist_results = []
+        fake_res.reconciliation = {"status": fa.STATUS_COMPLETE}
+        fake_res.reconciled_findings = []
+        fake_res.unresolved_gaps = []
+        fake_res.cross_domain_risks = []
+        fake_res.ambiguities = []
+        fake_res.human_confirmation_required = []
+        fake_res.wall_seconds = 1.0
+        fake_res.usage = {}
+        fake_res.as_dict.return_value = {}
+        mock_run_full.return_value = fake_res
+
+        # Set default module global to 3000
+        fa.RECONCILIATION_MAX_OUTPUT_TOKENS = 3000
+
+        # Launch in background with budget=8192 inside launcher context
+        with ua._production_recon_budget():
+            out = fas.start_full_analysis(
+                bid_id=1522,
+                source_run_id=48,
+                execution="background",
+                package_builder=lambda _: pkg,
+                reconciliation_max_output_tokens=8192,
+            )
+
+        # Context manager exited! Main thread restored to 3000:
+        self.assertEqual(fa.RECONCILIATION_MAX_OUTPUT_TOKENS, 3000)
+        self.assertTrue(out.get("executing"))
+
+        # Wait briefly for background thread to execute
+        deadline = time.time() + 3.0
+        while time.time() < deadline and not mock_run_full.called:
+            time.sleep(0.05)
+
+        self.assertTrue(mock_run_full.called)
+        call_kwargs = mock_run_full.call_args.kwargs
+        self.assertEqual(call_kwargs.get("reconciliation_max_output_tokens"), 8192)
+
+    @patch("understand_analysis.tenancy.get_procurement_state_for_organization", return_value={"procurement_truth_status": "governed", "procurement_revision": 2})
+    @patch("understand_analysis.db.list_analysis_runs", return_value=[])
+    @patch("understand_analysis.tenancy.get_full_analysis_status_for_organization")
+    def test_get_opportunity_analysis_state_partial_state_and_reason(
+        self, mock_full_status, mock_list_runs, mock_proc
+    ):
+        mock_full_status.return_value = {
+            "run_id": 56,
+            "status": "PARTIAL",
+            "failure_reason": "incomplete domains: RECONCILIATION (output truncated)",
+            "specialists": {},
+            "reconciliation": {
+                "status": "PARTIAL",
+                "failure_summary": "OUTPUT_TRUNCATED: provider stop_reason=max_tokens at 3000 output tokens",
+            },
+        }
+        state = ua.get_opportunity_analysis_state(1522, "org-test")
+        self.assertTrue(state.get("is_partial"))
+        self.assertFalse(state.get("is_complete"))
+        self.assertEqual(state.get("step"), ua.STEP_PARTIAL)
+        self.assertEqual(state.get("status_label"), "Opportunity intelligence partially complete")
+        self.assertIn("stop_reason=max_tokens at 3000 output tokens", state.get("partial_reason") or "")
+
 
 if __name__ == "__main__":
     unittest.main()

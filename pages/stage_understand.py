@@ -347,7 +347,10 @@ def _render_unified_progress(opp_state: dict) -> None:
         s3_label = "Step 3: Analyze opportunity across six intelligence lenses"
 
     if s4_done:
-        s4_label = "Step 4: Opportunity intelligence reconciled"
+        if step == ua.STEP_PARTIAL:
+            s4_label = "Step 4: Opportunity intelligence partially reconciled"
+        else:
+            s4_label = "Step 4: Opportunity intelligence reconciled"
     elif s4_active:
         s4_label = "Step 4: Reconciling opportunity intelligence…"
     else:
@@ -562,14 +565,27 @@ def _render_unified_opportunity_analysis_panel(
         dur_str = f" in {duration:.0f}s" if isinstance(duration, (int, float)) else ""
         time_str = f" | Last analyzed: {completed_at[:19].replace('T', ' ')}" if completed_at else ""
 
-        st.markdown(
-            f'<div style="background:#0F1A12;border:1px solid #1E3A25;border-radius:6px;padding:.7rem 1.1rem;margin-bottom:.7rem;'
-            f'display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">'
-            f'<div><span style="color:#27AE60;font-weight:700">✓ Opportunity intelligence current</span>'
-            f'<span style="color:#A9A69D;font-size:.82rem"> | Procurement revision: Baseline (v{rev}){time_str}{dur_str}</span></div>'
-            f'</div>',
-            unsafe_allow_html=True
-        )
+        if step == ua.STEP_PARTIAL:
+            partial_reason = opp_state.get("partial_reason") or "Reconciliation output truncated at token limit; partial intelligence preserved."
+            st.markdown(
+                f'<div style="background:#2A1F0B;border:1px solid #784712;border-radius:6px;padding:.7rem 1.1rem;margin-bottom:.7rem;'
+                f'display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">'
+                f'<div><span style="color:#F2994A;font-weight:700">⚠ Opportunity intelligence partially complete</span>'
+                f'<span style="color:#A9A69D;font-size:.82rem"> | Procurement revision: Baseline (v{rev}){time_str}{dur_str}</span>'
+                f'<div style="color:#D8A868;font-size:.8rem;margin-top:.25rem">{partial_reason}</div>'
+                f'</div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+        else:
+            st.markdown(
+                f'<div style="background:#0F1A12;border:1px solid #1E3A25;border-radius:6px;padding:.7rem 1.1rem;margin-bottom:.7rem;'
+                f'display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">'
+                f'<div><span style="color:#27AE60;font-weight:700">✓ Opportunity intelligence current</span>'
+                f'<span style="color:#A9A69D;font-size:.82rem"> | Procurement revision: Baseline (v{rev}){time_str}{dur_str}</span></div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
         _render_fast_analysis_governance_note(opp_state.get("latest_fast_run") or full_status, procurement_state)
         c1, c2 = st.columns(2)
         try:

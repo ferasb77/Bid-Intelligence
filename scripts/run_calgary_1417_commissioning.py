@@ -66,6 +66,7 @@ def main():
             source_run_id=48,  # Use latest complete fast analysis run 48
             retry=True,
             execution="inline",
+            reconciliation_max_output_tokens=ua.PRODUCTION_RECONCILIATION_MAX_OUTPUT_TOKENS,
         )
 
     wall_seconds = round(time.monotonic() - start_time, 2)

@@ -1502,13 +1502,19 @@ def _validated_index_items(items, permitted_ids: set, *, keep_finding_ids: set) 
 
 
 def run_reconciliation(package: CanonicalPackage, specialist_results: list, *, client,
-                       telemetry: list, telemetry_context: dict | None = None
+                       telemetry: list, telemetry_context: dict | None = None,
+                       reconciliation_max_output_tokens: int | None = None,
                        ) -> ReconciliationResult:
     """The single bounded reconciliation stage. Deterministic cross-domain
     checks run FIRST (and stand on their own even if the model call
     fails); the model call then adds cross-domain contradictions, risks
     and dependencies over the specialists' structured outputs plus the
     minimal canonical index."""
+    effective_max_tokens = (
+        int(reconciliation_max_output_tokens)
+        if (reconciliation_max_output_tokens and reconciliation_max_output_tokens > 0)
+        else RECONCILIATION_MAX_OUTPUT_TOKENS
+    )
     t0 = time.monotonic()
     out = ReconciliationResult()
     out.incomplete_domains = [
@@ -1538,7 +1544,7 @@ def run_reconciliation(package: CanonicalPackage, specialist_results: list, *, c
     try:
         before = len(telemetry)
         data = _call_model(prompt, client=client, call_label="reconciliation",
-                           max_tokens=RECONCILIATION_MAX_OUTPUT_TOKENS, telemetry=telemetry,
+                           max_tokens=effective_max_tokens, telemetry=telemetry,
                            telemetry_context=telemetry_context)
         rows = telemetry[before:]
         out.usage = {
@@ -1547,6 +1553,7 @@ def run_reconciliation(package: CanonicalPackage, specialist_results: list, *, c
             "output_tokens": sum(r.get("output_tokens") or 0 for r in rows),
             "request_bytes": sum(r.get("request_bytes") or 0 for r in rows),
             "model": FULL_ANALYSIS_MODEL,
+            "max_tokens": effective_max_tokens,
         }
         out.cross_domain_risks = _validated_index_items(
             data.get("cross_domain_risks"), set(package.canonical_ids), keep_finding_ids=finding_ids)
@@ -1565,7 +1572,7 @@ def run_reconciliation(package: CanonicalPackage, specialist_results: list, *, c
             out.status = STATUS_PARTIAL
             out.failure_reason = (
                 f"{OUTPUT_TRUNCATED_REASON}: provider stop_reason=max_tokens at "
-                f"{RECONCILIATION_MAX_OUTPUT_TOKENS} output tokens; recovered reconciliation "
+                f"{effective_max_tokens} output tokens; recovered reconciliation "
                 f"output preserved, further output may be missing")
         else:
             out.status = STATUS_COMPLETE
@@ -1619,7 +1626,8 @@ def run_full_analysis(package: CanonicalPackage, api_key: str | None = None, *,
                       specialists: tuple = SPECIALIST_IDS,
                       telemetry_context: dict | None = None,
                       on_specialist_done=None,
-                      on_event=None) -> FullAnalysisResult:
+                      on_event=None,
+                      reconciliation_max_output_tokens: int | None = None) -> FullAnalysisResult:
     """Run the six bounded specialists (concurrently, bounded) over one
     canonical package, then the single reconciliation stage.
 
@@ -1699,7 +1707,8 @@ def run_full_analysis(package: CanonicalPackage, api_key: str | None = None, *,
                                if r.status != STATUS_COMPLETE]})
     reconciliation = run_reconciliation(package, specialist_results, client=client,
                                         telemetry=telemetry,
-                                        telemetry_context=telemetry_context)
+                                        telemetry_context=telemetry_context,
+                                        reconciliation_max_output_tokens=reconciliation_max_output_tokens)
     _emit(EVENT_RECONCILIATION_COMPLETED if reconciliation.status in USABLE_STATUSES
           else EVENT_RECONCILIATION_FAILED, {"reconciliation": reconciliation})
 
@@ -1816,13 +1825,19 @@ def specialist_contract_digests() -> dict:
     }
 
 
-def reconciliation_contract_digest() -> str:
+def reconciliation_contract_digest(max_output_tokens: int | None = None) -> str:
+    effective_max_tokens = (
+        int(max_output_tokens)
+        if (max_output_tokens and max_output_tokens > 0)
+        else RECONCILIATION_MAX_OUTPUT_TOKENS
+    )
     return _digest({"version": RECONCILIATION_VERSION, "rules": _RECONCILIATION_RULES,
                     "model": FULL_ANALYSIS_MODEL,
-                    "max_tokens": RECONCILIATION_MAX_OUTPUT_TOKENS})
+                    "max_tokens": effective_max_tokens})
 
 
-def full_analysis_fingerprint_inputs(package: CanonicalPackage) -> dict:
+def full_analysis_fingerprint_inputs(package: CanonicalPackage, *,
+                                     reconciliation_max_output_tokens: int | None = None) -> dict:
     """Exactly what a Full Analysis result depends on -- and nothing else
     (no bid/run ids, no timestamps, no UI state)."""
     return {
@@ -1832,13 +1847,17 @@ def full_analysis_fingerprint_inputs(package: CanonicalPackage) -> dict:
         "canonical_content_digest": canonical_content_digest(package),
         "specialists": specialist_contract_digests(),
         "reconciliation": {"reconciliation_version": RECONCILIATION_VERSION,
-                           "contract_digest": reconciliation_contract_digest()},
+                           "contract_digest": reconciliation_contract_digest(max_output_tokens=reconciliation_max_output_tokens)},
     }
 
 
-def compute_full_analysis_fingerprint(package: CanonicalPackage) -> str:
+def compute_full_analysis_fingerprint(package: CanonicalPackage, *,
+                                      reconciliation_max_output_tokens: int | None = None) -> str:
     """Deterministic sha256 (same sorted-key JSON convention as
     proposal_intelligence.compute_package_digest / evidence_strengthening.
     compute_input_fingerprint). A persisted Full Analysis result is reusable
     only when this matches exactly."""
-    return _digest(full_analysis_fingerprint_inputs(package))
+    return _digest(full_analysis_fingerprint_inputs(
+        package,
+        reconciliation_max_output_tokens=reconciliation_max_output_tokens,
+    ))
