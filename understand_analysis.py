@@ -298,7 +298,7 @@ def _continue_orchestration_after_fast(
                         tenancy.apply_procurement_update_review_for_organization(
                             bid_id, organization_id, baseline_review["id"],
                             expected_base_revision=base_rev,
-                            applied_by_user_id=created_by_user_id,
+                            actor_user_id=created_by_user_id,
                         )
                     except Exception as exc:
                         logger.error("Failed to apply baseline review %s: %s", baseline_review["id"], exc)
@@ -382,7 +382,7 @@ def apply_baseline_and_resume_analysis(
     apply_result = tenancy.apply_procurement_update_review_for_organization(
         bid_id, organization_id, review_id,
         expected_base_revision=base_rev,
-        applied_by_user_id=user_id,
+        actor_user_id=user_id,
     )
 
     # Immediately launch/resume Full Analysis!

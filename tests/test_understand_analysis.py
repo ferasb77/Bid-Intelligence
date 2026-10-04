@@ -3,10 +3,12 @@ tests/test_understand_analysis.py -- Deterministic tests for understand_analysis
 """
 from __future__ import annotations
 
+import inspect
 import unittest
 from unittest.mock import MagicMock, patch
 
 import full_analysis as fa
+import tenancy
 import understand_analysis as ua
 
 
@@ -475,7 +477,7 @@ class TestBaselineGovernanceOrchestration(unittest.TestCase):
             1, "org-test", 101, "approved", "user-1"
         )
         mock_apply.assert_called_once_with(
-            1, "org-test", 10, expected_base_revision=1, applied_by_user_id="user-1"
+            1, "org-test", 10, expected_base_revision=1, actor_user_id="user-1"
         )
         mock_start_opp.assert_called_once()
         self.assertEqual(res.get("step"), ua.STEP_FULL_ANALYSIS_RUNNING)
@@ -498,6 +500,130 @@ class TestBaselineGovernanceOrchestration(unittest.TestCase):
                 1, "org-test", 10, user_id="user-1", approve_all_pending=False
             )
         self.assertIn("still pending", str(ctx.exception))
+
+
+class TestApplyInterfaceContract(unittest.TestCase):
+    """GOVERNANCE-HOTFIX-2: Regression suite for tenancy apply interface contract."""
+
+    def test_tenancy_apply_signature_contract(self):
+        """Authoritative tenancy signature must have actor_user_id and NOT applied_by_user_id."""
+        sig = inspect.signature(tenancy.apply_procurement_update_review_for_organization)
+        param_names = list(sig.parameters.keys())
+        self.assertEqual(
+            param_names,
+            ["bid_id", "organization_id", "review_id", "expected_base_revision", "actor_user_id"],
+            "Authoritative parameters must be (bid_id, organization_id, review_id, expected_base_revision, actor_user_id)",
+        )
+        self.assertNotIn("applied_by_user_id", param_names)
+
+    @patch("tenancy.db.apply_procurement_update_review")
+    @patch("tenancy.db.get_procurement_update_reviews")
+    @patch("tenancy.require_bid_access")
+    def test_real_tenancy_wrapper_accepts_actor_user_id_contract(
+        self, mock_access, mock_reviews, mock_db_apply
+    ):
+        """Test C: Real tenancy wrapper accepts actor_user_id through mocked DB boundary without TypeError."""
+        mock_reviews.return_value = [{"id": 42, "bid_id": 7, "base_procurement_revision": 1, "status": "ready_for_review"}]
+        mock_db_apply.return_value = {"status": "applied", "resulting_revision": 2}
+
+        # Call with exact keyword contract used by understand_analysis
+        res = tenancy.apply_procurement_update_review_for_organization(
+            bid_id=7,
+            organization_id="org-c",
+            review_id=42,
+            expected_base_revision=1,
+            actor_user_id="user-c",
+        )
+        self.assertEqual(res.get("status"), "applied")
+        mock_db_apply.assert_called_once_with(42, 1, "user-c")
+
+    @patch("tenancy.db.apply_procurement_update_review")
+    @patch("tenancy.db.get_procurement_update_reviews")
+    @patch("tenancy.require_bid_access")
+    def test_zero_mutation_on_invalid_keyword(
+        self, mock_access, mock_reviews, mock_db_apply
+    ):
+        """Prior bad keyword applied_by_user_id fails immediately at the Python boundary before any DB mutation."""
+        mock_reviews.return_value = [{"id": 42, "bid_id": 7}]
+        with self.assertRaises(TypeError) as ctx:
+            tenancy.apply_procurement_update_review_for_organization(
+                bid_id=7,
+                organization_id="org-c",
+                review_id=42,
+                expected_base_revision=1,
+                applied_by_user_id="user-c",
+            )
+        self.assertIn("unexpected keyword argument 'applied_by_user_id'", str(ctx.exception))
+        # Critical safety guarantee: zero database mutation occurred
+        mock_db_apply.assert_not_called()
+        mock_access.assert_not_called()
+
+    @patch("understand_analysis.start_opportunity_analysis")
+    @patch("tenancy.db.apply_procurement_update_review")
+    @patch("tenancy.db.get_procurement_update_reviews")
+    @patch("tenancy.require_bid_access")
+    @patch("understand_analysis.tenancy.get_procurement_changes_for_organization")
+    @patch("understand_analysis.tenancy.get_procurement_update_reviews_for_organization")
+    def test_test_a_explicit_baseline_apply_executes_real_tenancy_contract(
+        self, mock_ua_reviews, mock_ua_changes, mock_access, mock_tenancy_reviews, mock_db_apply, mock_start_opp
+    ):
+        """Test A: apply_baseline_and_resume_analysis calls real tenancy wrapper with actor_user_id and resumes."""
+        mock_ua_reviews.return_value = [
+            {"id": 10, "review_kind": "baseline", "status": "ready_for_review", "base_procurement_revision": 1}
+        ]
+        mock_ua_changes.return_value = [
+            {"id": 101, "review_decision": "approved"},
+            {"id": 102, "review_decision": "approved"},
+        ]
+        mock_tenancy_reviews.return_value = [
+            {"id": 10, "bid_id": 1, "base_procurement_revision": 1, "status": "ready_for_review"}
+        ]
+        mock_db_apply.return_value = {"resulting_revision": 2, "applied_change_count": 2}
+        mock_start_opp.return_value = {"outcome": "CREATED", "step": ua.STEP_FULL_ANALYSIS_RUNNING}
+
+        # Do NOT mock tenancy.apply_procurement_update_review_for_organization.
+        # Let the real function run so Python enforces the keyword contract!
+        res = ua.apply_baseline_and_resume_analysis(
+            1, "org-test", 10, user_id="user-explicit-1", api_key="test-api-key", approve_all_pending=False
+        )
+
+        # Real tenancy wrapper validated arguments and forwarded to db
+        mock_db_apply.assert_called_once_with(10, 1, "user-explicit-1")
+        mock_start_opp.assert_called_once_with(
+            1, "org-test", api_key="test-api-key", created_by_user_id="user-explicit-1", execution="background"
+        )
+        self.assertEqual(res.get("step"), ua.STEP_FULL_ANALYSIS_RUNNING)
+
+    @patch("understand_analysis.tenancy.start_full_analysis_for_organization")
+    @patch("database.apply_procurement_update_review")
+    @patch("database.get_procurement_update_reviews")
+    @patch("tenancy.require_bid_access")
+    @patch("database.get_procurement_changes")
+    @patch("database.list_analysis_runs", return_value=[{"id": 1, "analysis_mode": "FAST", "status": "COMPLETE"}])
+    @patch("database.get_bid_procurement_state", return_value={"procurement_truth_status": "ungoverned", "procurement_revision": 1})
+    def test_test_b_orchestrator_auto_apply_executes_real_tenancy_contract(
+        self, mock_proc_state, mock_runs, mock_db_changes,
+        mock_access, mock_db_reviews, mock_db_apply, mock_start_full
+    ):
+        """Test B: start_opportunity_analysis with ready/reviewed baseline (0 pending, >=1 approved)
+        auto-applies via real tenancy wrapper with actor_user_id and proceeds to Full Analysis."""
+        mock_db_reviews.return_value = [
+            {"id": 20, "bid_id": 1, "review_kind": "baseline", "status": "ready_for_review", "base_procurement_revision": 1}
+        ]
+        mock_db_changes.return_value = [
+            {"id": 201, "review_decision": "approved"},
+            {"id": 202, "review_decision": "approved"},
+        ]
+        mock_db_apply.return_value = {"resulting_revision": 2, "applied_change_count": 2}
+        mock_start_full.return_value = {"outcome": "CREATED", "run_id": 99}
+
+        # Run start_opportunity_analysis through the real tenancy apply wrapper
+        res = ua.start_opportunity_analysis(1, "org-test", created_by_user_id="user-auto-2")
+
+        # Proves real tenancy contract was called with actor_user_id="user-auto-2" without TypeError
+        mock_db_apply.assert_called_once_with(20, 1, "user-auto-2")
+        mock_start_full.assert_called_once()
+        self.assertEqual(res.get("outcome"), "CREATED")
 
 
 class TestFailedBaselineRecovery(unittest.TestCase):
