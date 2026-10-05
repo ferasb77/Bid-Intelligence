@@ -403,6 +403,14 @@ class TestAppBidDeleteRegression(unittest.TestCase):
     def setUp(self):
         self.app_path = Path(__file__).resolve().parent.parent / "app.py"
         self.app_source = self.app_path.read_text(encoding="utf-8")
+        # Extract page_all_bids function body
+        all_bids_start = self.app_source.index("def page_all_bids():")
+        all_bids_end = self.app_source.index("def page_new_bid():", all_bids_start)
+        self.all_bids_body = self.app_source[all_bids_start:all_bids_end]
+        # Extract page_bid_overview function body
+        ov_start = self.app_source.index("def page_bid_overview(bid_id):")
+        ov_end = self.app_source.index("def page_compliance(bid_id):", ov_start)
+        self.bid_overview_body = self.app_source[ov_start:ov_end]
 
     def test_app_does_not_import_or_call_delete_bid(self):
         # Assert delete_bid is not imported from database
@@ -418,44 +426,113 @@ class TestAppBidDeleteRegression(unittest.TestCase):
             "app.py must not call delete_bid()",
         )
 
-    def test_app_delete_ui_routes_through_tenancy_with_confirmation(self):
-        # Must call _tenancy.delete_bid_for_organization
+    def test_bids_directory_row_exposes_delete_action_with_inline_confirmation(self):
+        # Must expose Delete button in each row
         self.assertIn(
-            "_tenancy.delete_bid_for_organization(bid_id, _ctx.organization_id)",
-            self.app_source,
-            "app.py must route bid deletion through _tenancy.delete_bid_for_organization",
+            'c6.button("🗑 Delete"',
+            self.all_bids_body,
+            "Bids Directory rows must expose Delete action",
         )
-        # Must include two-step confirmation copy
+        # First click sets bid-scoped confirmation state and does not call deletion
+        self.assertIn(
+            'st.session_state[confirm_key] = True',
+            self.all_bids_body,
+            "Delete button click must set bid-scoped confirmation state",
+        )
+        # Two-step confirmation copy must be present in directory
         self.assertIn(
             "This permanently deletes this opportunity, its analyses, reports and uploaded documents. This cannot be undone.",
-            self.app_source,
-            "app.py must display required confirmation warning copy",
+            self.all_bids_body,
+            "Bids Directory must display required confirmation warning copy",
         )
-        # Must include friendly active-analysis error message
-        self.assertIn(
-            "This opportunity is currently being analyzed and cannot be deleted until the analysis finishes.",
-            self.app_source,
-            "app.py must display friendly active-analysis refusal copy",
-        )
-        # Must have Confirm permanent deletion button
+        # Must have Confirm permanent deletion button in directory
         self.assertIn(
             "Confirm permanent deletion",
-            self.app_source,
+            self.all_bids_body,
+            "Bids Directory must have Confirm permanent deletion button",
+        )
+        # Must have Cancel button in directory
+        self.assertIn(
+            'c_cancel.button("Cancel"',
+            self.all_bids_body,
+            "Bids Directory must have Cancel button",
         )
 
-    def test_app_catches_bid_storage_inventory_error_and_keeps_state(self):
-        # Must catch BidStorageInventoryError
+    def test_directory_confirm_deletion_calls_service_with_authenticated_context(self):
+        # Confirm calls delete_bid_for_organization with bid_id and _ctx.organization_id
+        self.assertIn(
+            "_tenancy.delete_bid_for_organization(bid_id, _ctx.organization_id)",
+            self.all_bids_body,
+            "Bids Directory must route deletion through _tenancy.delete_bid_for_organization",
+        )
+
+    def test_directory_cancel_clears_confirmation_state_only(self):
+        # Cancel sets confirm_key to False and reruns
+        self.assertIn(
+            'st.session_state[confirm_key] = False',
+            self.all_bids_body,
+            "Cancel must clear confirmation state",
+        )
+
+    def test_directory_error_handling_active_run_inventory_and_cleanup(self):
+        # Active analysis friendly refusal
+        self.assertIn(
+            "This opportunity is currently being analyzed and cannot be deleted until the analysis finishes.",
+            self.all_bids_body,
+            "Must display friendly active analysis error message",
+        )
+        # Storage inventory failure
         self.assertIn(
             "except _tenancy.BidStorageInventoryError",
-            self.app_source,
-            "app.py must catch BidStorageInventoryError separately",
+            self.all_bids_body,
+            "Must catch BidStorageInventoryError",
         )
-        # Must display user-friendly message
         self.assertIn(
             "Storage could not be verified, so the opportunity was not deleted. Please try again.",
-            self.app_source,
-            "app.py must show friendly storage inventory error message",
+            self.all_bids_body,
+            "Must display storage inventory failure message",
         )
+        # Partial storage cleanup error
+        self.assertIn(
+            "except _tenancy.BidStorageCleanupError",
+            self.all_bids_body,
+            "Must catch BidStorageCleanupError",
+        )
+        self.assertIn(
+            "Opportunity deleted, but document storage cleanup could not be fully completed.",
+            self.all_bids_body,
+            "Must display partial cleanup message",
+        )
+        # Access denied error
+        self.assertIn(
+            "except _tenancy.AccessDeniedError",
+            self.all_bids_body,
+            "Must catch AccessDeniedError",
+        )
+
+    def test_app_no_longer_depends_on_unreachable_page_bid_overview_for_customer_deletion(self):
+        # page_bid_overview must not contain customer delete controls
+        self.assertNotIn(
+            "_tenancy.delete_bid_for_organization",
+            self.bid_overview_body,
+            "page_bid_overview must not contain delete service calls",
+        )
+        self.assertNotIn(
+            "Confirm permanent deletion",
+            self.bid_overview_body,
+            "page_bid_overview must not contain deletion confirmation controls",
+        )
+        self.assertNotIn(
+            "🗑 Delete Bid",
+            self.bid_overview_body,
+            "page_bid_overview must not contain Delete Bid button",
+        )
+        # Router must route stage_understand and bid_overview to page_understand
+        router_start = self.app_source.index("# ROUTER")
+        router_body = self.app_source[router_start:]
+        self.assertIn('page in ("stage_understand", "bid_overview"):', router_body)
+        self.assertIn('page_understand(bid_id)', router_body)
+        self.assertNotIn('page_bid_overview(bid_id)', router_body)
 
 
 

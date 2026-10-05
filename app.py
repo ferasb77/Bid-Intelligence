@@ -351,16 +351,56 @@ def page_all_bids():
         st.markdown('<div class="empty-state">No bids yet.</div>', unsafe_allow_html=True)
         return
     for b in bids:
+        bid_id = b["id"]
         pct = (b["req_done"]/b["req_count"]*100) if b["req_count"] else 0
-        c1,c2,c3,c4,c5 = st.columns([3.5,1.5,1.5,2,1])
+        c1,c2,c3,c4,c5,c6 = st.columns([3.0, 1.3, 1.4, 1.7, 1.3, 1.3])
         c1.markdown(f"**{b['client']}**")
         c1.markdown(f'<span style="color:#A9A69D;font-size:.8rem">{b["title"]}</span>', unsafe_allow_html=True)
         c2.markdown(stage_badge(b["stage"]), unsafe_allow_html=True)
         c3.markdown(_deadline_label(b), unsafe_allow_html=True)
         c3.markdown(f'<span style="color:#6E6C66;font-size:.72rem">{b.get("submission_deadline") or "—"}</span>', unsafe_allow_html=True)
         c4.markdown(readiness_bar(pct) if b["req_count"] else '<span style="color:#6E6C66;font-size:.75rem">No requirements</span>', unsafe_allow_html=True)
-        if c5.button("Open →", key=f"all_{b['id']}"):
-            go("stage_understand", b["id"])
+        if c5.button("Open →", key=f"all_{bid_id}", use_container_width=True):
+            go("stage_understand", bid_id)
+        confirm_key = f"confirm_delete_{bid_id}"
+        if c6.button("🗑 Delete", key=f"del_btn_{bid_id}", use_container_width=True):
+            st.session_state[confirm_key] = True
+            st.rerun()
+
+        if st.session_state.get(confirm_key):
+            st.warning("This permanently deletes this opportunity, its analyses, reports and uploaded documents. This cannot be undone.")
+            c_conf, c_cancel = st.columns([2, 1])
+            if c_conf.button("Confirm permanent deletion", type="primary", use_container_width=True, key=f"btn_conf_del_{bid_id}"):
+                try:
+                    _tenancy.delete_bid_for_organization(bid_id, _ctx.organization_id)
+                    st.session_state[confirm_key] = False
+                    if st.session_state.get("active_bid") == bid_id:
+                        st.session_state.active_bid = None
+                    st.success("Opportunity permanently deleted.")
+                    st.rerun()
+                except _tenancy.AccessDeniedError as e:
+                    st.error(f"Access denied: {e}")
+                except _tenancy.BidStorageInventoryError as e:
+                    st.error("Storage could not be verified, so the opportunity was not deleted. Please try again.")
+                except _tenancy.BidStorageCleanupError as e:
+                    st.session_state[confirm_key] = False
+                    if st.session_state.get("active_bid") == bid_id:
+                        st.session_state.active_bid = None
+                    st.warning("Opportunity deleted, but document storage cleanup could not be fully completed.")
+                    st.rerun()
+                except RuntimeError as e:
+                    err_msg = str(e)
+                    if "active analysis run" in err_msg:
+                        st.error("This opportunity is currently being analyzed and cannot be deleted until the analysis finishes.")
+                    else:
+                        st.error(f"Cannot delete opportunity: {err_msg}")
+                except Exception as e:
+                    st.error(f"Failed to delete opportunity: {e}")
+
+            if c_cancel.button("Cancel", use_container_width=True, key=f"btn_cancel_del_{bid_id}"):
+                st.session_state[confirm_key] = False
+                st.rerun()
+
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -623,8 +663,10 @@ def _render_extraction_review():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# PAGE: BID OVERVIEW
+# PAGE: BID OVERVIEW (LEGACY / UNROUTED)
 # ═════════════════════════════════════════════════════════════════════════════
+# Note: Unreachable from router; live opportunity deletion is situated directly
+# on the Bids Directory (page_all_bids).
 def page_bid_overview(bid_id):
     bid = get_bid(bid_id)
     if not bid:
@@ -717,9 +759,7 @@ def page_bid_overview(bid_id):
             sub_dl  = c1.date_input("Submission Deadline",    value=_parse_date(bid.get("submission_deadline")))
             clar_dl = c2.date_input("Clarification Deadline", value=_parse_date(bid.get("clarification_deadline")))
             notes = st.text_area("Notes", value=bid.get("notes") or "", height=80)
-            c1,c2 = st.columns([3,1])
-            save = c1.form_submit_button("Save Changes", use_container_width=True)
-            dell = c2.form_submit_button("🗑 Delete Bid", use_container_width=True)
+            save = st.form_submit_button("Save Changes", use_container_width=True)
         if save:
             update_bid(bid_id,{"title":title,"client":client,"file_number":file_no,"stage":stage,
                 "sensitivity":sens,"owner":owner,"value_cad":val or None,
@@ -727,41 +767,6 @@ def page_bid_overview(bid_id):
                 "clarification_deadline":str(clar_dl) if clar_dl else None,"notes":notes})
             st.success("Saved.")
             st.rerun()
-        confirm_key = f"confirm_delete_{bid_id}"
-        if dell:
-            st.session_state[confirm_key] = True
-            st.rerun()
-
-        if st.session_state.get(confirm_key):
-            st.warning("This permanently deletes this opportunity, its analyses, reports and uploaded documents. This cannot be undone.")
-            c_conf, c_cancel = st.columns(2)
-            if c_conf.button("Confirm permanent deletion", type="primary", use_container_width=True, key=f"btn_conf_del_{bid_id}"):
-                try:
-                    _tenancy.delete_bid_for_organization(bid_id, _ctx.organization_id)
-                    st.session_state[confirm_key] = False
-                    st.session_state.active_bid = None
-                    go("all_bids")
-                except _tenancy.AccessDeniedError as e:
-                    st.error(f"Access denied: {e}")
-                except _tenancy.BidStorageInventoryError as e:
-                    st.error("Storage could not be verified, so the opportunity was not deleted. Please try again.")
-                except _tenancy.BidStorageCleanupError as e:
-                    st.session_state[confirm_key] = False
-                    st.session_state.active_bid = None
-                    st.warning(f"Bid deleted, but storage cleanup was incomplete: {e}")
-                    go("all_bids")
-                except RuntimeError as e:
-                    err_msg = str(e)
-                    if "active analysis run" in err_msg:
-                        st.error("This opportunity is currently being analyzed and cannot be deleted until the analysis finishes.")
-                    else:
-                        st.error(f"Cannot delete opportunity: {err_msg}")
-                except Exception as e:
-                    st.error(f"Failed to delete opportunity: {e}")
-
-            if c_cancel.button("Cancel", use_container_width=True, key=f"btn_cancel_del_{bid_id}"):
-                st.session_state[confirm_key] = False
-                st.rerun()
 
 # ═════════════════════════════════════════════════════════════════════════════
 # PAGE: COMPLIANCE MATRIX
