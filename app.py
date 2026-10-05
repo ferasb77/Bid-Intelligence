@@ -743,6 +743,8 @@ def page_bid_overview(bid_id):
                     go("all_bids")
                 except _tenancy.AccessDeniedError as e:
                     st.error(f"Access denied: {e}")
+                except _tenancy.BidStorageInventoryError as e:
+                    st.error("Storage could not be verified, so the opportunity was not deleted. Please try again.")
                 except _tenancy.BidStorageCleanupError as e:
                     st.session_state[confirm_key] = False
                     st.session_state.active_bid = None

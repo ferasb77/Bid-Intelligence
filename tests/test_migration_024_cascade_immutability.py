@@ -21,11 +21,15 @@ from unittest.mock import MagicMock, patch
 
 import database
 import tenancy
-from tenancy import AccessDeniedError, BidStorageCleanupError
+from tenancy import (
+    AccessDeniedError,
+    BidStorageCleanupError,
+    BidStorageInventoryError,
+)
 
 
 class TestListBidStorageObjects(unittest.TestCase):
-    """Tests for recursive, prefix-guarded Supabase Storage listing."""
+    """Tests for recursive, prefix-guarded Supabase Storage listing with fail-closed semantics."""
 
     def test_list_empty_folder(self):
         client = MagicMock()
@@ -75,6 +79,32 @@ class TestListBidStorageObjects(unittest.TestCase):
             ],
         )
 
+    def test_list_root_failure_raises_inventory_error(self):
+        client = MagicMock()
+        client.storage.from_.return_value.list.side_effect = Exception("Storage API unavailable")
+        with self.assertRaises(BidStorageInventoryError) as ctx:
+            tenancy.list_bid_storage_objects(123, client=client, bucket="bid-documents")
+        self.assertEqual(ctx.exception.bid_id, 123)
+        self.assertIn("Failed to list Supabase Storage objects", str(ctx.exception))
+        self.assertIn("Storage API unavailable", str(ctx.exception))
+
+    def test_list_nested_failure_raises_inventory_error(self):
+        client = MagicMock()
+
+        def mock_list(folder):
+            if folder == "123":
+                return [{"name": "analysis_reports", "id": None}]
+            elif folder == "123/analysis_reports":
+                raise Exception("Storage 500 on nested folder")
+            return []
+
+        client.storage.from_.return_value.list.side_effect = mock_list
+        with self.assertRaises(BidStorageInventoryError) as ctx:
+            tenancy.list_bid_storage_objects(123, client=client, bucket="bid-documents")
+        self.assertEqual(ctx.exception.bid_id, 123)
+        self.assertIn("folder '123/analysis_reports'", str(ctx.exception))
+        self.assertIn("Storage 500 on nested folder", str(ctx.exception))
+
 
 class TestDeleteBidForOrganization(unittest.TestCase):
     """Unit tests for the delete_bid_for_organization service boundary."""
@@ -84,51 +114,219 @@ class TestDeleteBidForOrganization(unittest.TestCase):
             tenancy.delete_bid_for_organization(123, "")
         self.assertIn("explicit organization_id", str(ctx.exception))
 
+    @patch("database.get_client")
     @patch("tenancy.authorize_bid_access")
-    def test_b_wrong_org_access_denied(self, mock_auth):
+    def test_a_root_storage_list_failure_aborts_deletion(self, mock_auth, mock_client):
+        mock_auth.return_value = True
+        sb = MagicMock()
+        mock_client.return_value = sb
+
+        # Terminal runs
+        sb.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(
+            data=[{"id": 1, "status": "COMPLETE"}]
+        )
+        # Storage listing fails at root
+        sb.storage.from_.return_value.list.side_effect = Exception("Root storage timeout")
+
+        with self.assertRaises(BidStorageInventoryError) as ctx:
+            tenancy.delete_bid_for_organization(123, "org-test")
+
+        self.assertEqual(ctx.exception.bid_id, 123)
+        # DB delete must NOT be called
+        sb.table.return_value.delete.assert_not_called()
+        # Storage remove must NOT be called
+        sb.storage.from_.return_value.remove.assert_not_called()
+
+    @patch("database.get_client")
+    @patch("tenancy.authorize_bid_access")
+    def test_b_nested_storage_list_failure_aborts_deletion(self, mock_auth, mock_client):
+        mock_auth.return_value = True
+        sb = MagicMock()
+        mock_client.return_value = sb
+
+        # Terminal runs
+        sb.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(
+            data=[{"id": 1, "status": "COMPLETE"}]
+        )
+        # Root lists subfolder, subfolder fails
+        def mock_list(folder):
+            if folder == "123":
+                return [{"name": "analysis_reports", "id": None}]
+            raise Exception("Nested folder storage failure")
+
+        sb.storage.from_.return_value.list.side_effect = mock_list
+
+        with self.assertRaises(BidStorageInventoryError) as ctx:
+            tenancy.delete_bid_for_organization(123, "org-test")
+
+        self.assertEqual(ctx.exception.bid_id, 123)
+        # DB delete must NOT be called
+        sb.table.return_value.delete.assert_not_called()
+        # Storage remove must NOT be called
+        sb.storage.from_.return_value.remove.assert_not_called()
+
+    @patch("database.get_client")
+    @patch("tenancy.authorize_bid_access")
+    def test_c_successful_empty_prefix_allows_db_deletion(self, mock_auth, mock_client):
+        mock_auth.return_value = True
+        sb = MagicMock()
+        mock_client.return_value = sb
+
+        runs_response = MagicMock(data=[{"id": 1, "status": "COMPLETE"}])
+        post_delete_bid = MagicMock(data=[])
+        child_runs_response = MagicMock(data=[])
+
+        sb.table.return_value.select.return_value.eq.return_value.execute.side_effect = [
+            runs_response,
+            post_delete_bid,
+            child_runs_response,
+        ]
+        # Empty prefix on pre-inventory and post-delete verification
+        sb.storage.from_.return_value.list.return_value = []
+
+        result = tenancy.delete_bid_for_organization(123, "org-test")
+        self.assertEqual(
+            result,
+            {
+                "bid_id": 123,
+                "organization_id": "org-test",
+                "deleted_db": True,
+                "deleted_storage_files": 0,
+            },
+        )
+        # DB delete was called with org scope
+        sb.table.assert_any_call("bids")
+        sb.table.return_value.delete.return_value.eq.return_value.eq.assert_called_with(
+            "organization_id", "org-test"
+        )
+        # Storage remove was not called (nothing to remove)
+        sb.storage.from_.return_value.remove.assert_not_called()
+
+    @patch("database.get_client")
+    @patch("tenancy.authorize_bid_access")
+    def test_d_db_succeeds_storage_remove_succeeds_verification_fails(self, mock_auth, mock_client):
+        mock_auth.return_value = True
+        sb = MagicMock()
+        mock_client.return_value = sb
+
+        runs_response = MagicMock(data=[{"id": 1, "status": "COMPLETE"}])
+        post_delete_bid = MagicMock(data=[])
+        child_runs_response = MagicMock(data=[])
+
+        sb.table.return_value.select.return_value.eq.return_value.execute.side_effect = [
+            runs_response,
+            post_delete_bid,
+            child_runs_response,
+        ]
+
+        # First list (pre-inventory) succeeds; second list (post-delete verification) throws
+        sb.storage.from_.return_value.list.side_effect = [
+            [{"name": "doc.pdf", "id": "uuid-1"}],
+            Exception("Verification connection timeout"),
+        ]
+
+        with self.assertRaises(BidStorageCleanupError) as ctx:
+            tenancy.delete_bid_for_organization(123, "org-test")
+
+        self.assertEqual(ctx.exception.bid_id, 123)
+        self.assertIn("post-delete Storage verification failed", str(ctx.exception))
+        # Ensure DB delete was called once (no retry)
+        self.assertEqual(sb.table.return_value.delete.call_count, 1)
+
+    @patch("database.get_client")
+    @patch("tenancy.authorize_bid_access")
+    def test_e_normal_recursive_inventory_delete_verification(self, mock_auth, mock_client):
+        mock_auth.return_value = True
+        sb = MagicMock()
+        mock_client.return_value = sb
+
+        runs_response = MagicMock(data=[
+            {"id": 1, "status": "COMPLETE"},
+            {"id": 2, "status": "FAILED"},
+            {"id": 3, "status": "PARTIAL"},
+            {"id": 4, "status": "STOPPED"},
+        ])
+        post_delete_bid = MagicMock(data=[])
+        child_runs_response = MagicMock(data=[])
+
+        sb.table.return_value.select.return_value.eq.return_value.execute.side_effect = [
+            runs_response,
+            post_delete_bid,
+            child_runs_response,
+        ]
+
+        def mock_list(folder):
+            if folder == "123":
+                return [
+                    {"name": "root.pdf", "id": "uuid-1"},
+                    {"name": "analysis_reports", "id": None},
+                ]
+            elif folder == "123/analysis_reports":
+                return [{"name": "report.pdf", "id": "uuid-2"}]
+            return []
+
+        # First pre-inventory traversal, then post-delete verification (empty)
+        sb.storage.from_.return_value.list.side_effect = [
+            mock_list("123"),
+            mock_list("123/analysis_reports"),
+            [],  # post-delete verification
+        ]
+
+        result = tenancy.delete_bid_for_organization(123, "org-test")
+        self.assertEqual(
+            result,
+            {
+                "bid_id": 123,
+                "organization_id": "org-test",
+                "deleted_db": True,
+                "deleted_storage_files": 2,
+            },
+        )
+        sb.storage.from_.return_value.remove.assert_called_once_with(
+            ["123/root.pdf", "123/analysis_reports/report.pdf"]
+        )
+
+    @patch("tenancy.authorize_bid_access")
+    def test_f_wrong_tenant_never_attempts_storage_listing(self, mock_auth):
         mock_auth.return_value = False
         with patch("database.get_client") as mock_client:
             sb = MagicMock()
             mock_client.return_value = sb
             with self.assertRaises(AccessDeniedError):
                 tenancy.delete_bid_for_organization(123, "org-other")
-            # Verify DB and Storage were never touched
-            sb.table.assert_not_called()
+            # Storage listing is NEVER attempted
             sb.storage.assert_not_called()
+            sb.table.assert_not_called()
 
     @patch("database.get_client")
     @patch("tenancy.authorize_bid_access")
-    def test_c_active_analysis_rejected(self, mock_auth, mock_client):
+    def test_g_active_run_never_attempts_storage_listing(self, mock_auth, mock_client):
         mock_auth.return_value = True
         sb = MagicMock()
         mock_client.return_value = sb
 
-        # Active run with status ANALYZING
+        # Active run with status RUNNING
         sb.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(
-            data=[{"id": 42, "status": "ANALYZING"}]
+            data=[{"id": 42, "status": "RUNNING"}]
         )
 
         with self.assertRaises(RuntimeError) as ctx:
             tenancy.delete_bid_for_organization(123, "org-test")
-        self.assertIn("active analysis run 42 has status 'ANALYZING'", str(ctx.exception))
-        # Verify parent bid delete and storage removal were never called
+        self.assertIn("active analysis run 42 has status 'RUNNING'", str(ctx.exception))
+        # Storage listing is NEVER attempted
+        sb.storage.assert_not_called()
         sb.table.return_value.delete.assert_not_called()
-        sb.storage.from_.return_value.remove.assert_not_called()
 
     @patch("database.get_client")
     @patch("tenancy.authorize_bid_access")
-    def test_d_db_cascade_failure_storage_untouched(self, mock_auth, mock_client):
+    def test_h_db_cascade_failure_storage_untouched(self, mock_auth, mock_client):
         mock_auth.return_value = True
         sb = MagicMock()
         mock_client.return_value = sb
 
-        # 1. Runs check: terminal run
         runs_response = MagicMock(data=[{"id": 1, "status": "COMPLETE"}])
-        # 2. Storage listing: 1 file
         sb.storage.from_.return_value.list.return_value = [{"name": "file.pdf", "id": "uuid"}]
-        # 3. Post-delete bid check: gone
         post_delete_bid = MagicMock(data=[])
-        # 4. Cascade child runs check: still has 1 run!
         cascade_child_runs = MagicMock(data=[{"id": 1}])
 
         sb.table.return_value.select.return_value.eq.return_value.execute.side_effect = [
@@ -140,72 +338,18 @@ class TestDeleteBidForOrganization(unittest.TestCase):
         with self.assertRaises(RuntimeError) as ctx:
             tenancy.delete_bid_for_organization(123, "org-test")
         self.assertIn("Cascade verification failed", str(ctx.exception))
-        # Storage remove must NOT be called if cascade verification failed
         sb.storage.from_.return_value.remove.assert_not_called()
 
     @patch("database.get_client")
     @patch("tenancy.authorize_bid_access")
-    def test_e_db_delete_and_storage_succeed(self, mock_auth, mock_client):
+    def test_i_db_succeeds_storage_remove_fails_raises_cleanup_error(self, mock_auth, mock_client):
         mock_auth.return_value = True
         sb = MagicMock()
         mock_client.return_value = sb
 
-        # 1. Runs check: terminal runs
-        runs_response = MagicMock(data=[
-            {"id": 1, "status": "COMPLETE"},
-            {"id": 2, "status": "FAILED"},
-            {"id": 3, "status": "PARTIAL"},
-            {"id": 4, "status": "STOPPED"},
-        ])
-        # 2. Storage listing: initial inventory has 1 file, post-delete listing is empty
-        sb.storage.from_.return_value.list.side_effect = [
-            [{"name": "rfp.pdf", "id": "uuid-1"}],
-            [],  # post-delete verification
-        ]
-        # 3. Post-delete check response: empty (bid gone)
-        post_delete_bid = MagicMock(data=[])
-        # 4. Post-delete child runs: empty
-        child_runs_response = MagicMock(data=[])
-
-        sb.table.return_value.select.return_value.eq.return_value.execute.side_effect = [
-            runs_response,
-            post_delete_bid,
-            child_runs_response,
-        ]
-
-        result = tenancy.delete_bid_for_organization(123, "org-test")
-        self.assertEqual(
-            result,
-            {
-                "bid_id": 123,
-                "organization_id": "org-test",
-                "deleted_db": True,
-                "deleted_storage_files": 1,
-            },
-        )
-
-        # Verify parent bid delete was executed with organization scope
-        sb.table.assert_any_call("bids")
-        sb.table.return_value.delete.return_value.eq.return_value.eq.assert_called_with(
-            "organization_id", "org-test"
-        )
-        # Verify storage remove was called with inventoried files
-        sb.storage.from_.return_value.remove.assert_called_once_with(["123/rfp.pdf"])
-
-    @patch("database.get_client")
-    @patch("tenancy.authorize_bid_access")
-    def test_f_db_succeeds_storage_fails_raises_cleanup_error(self, mock_auth, mock_client):
-        mock_auth.return_value = True
-        sb = MagicMock()
-        mock_client.return_value = sb
-
-        # 1. Runs check: terminal run
         runs_response = MagicMock(data=[{"id": 1, "status": "COMPLETE"}])
-        # 2. Storage inventory
         sb.storage.from_.return_value.list.return_value = [{"name": "rfp.pdf", "id": "uuid-1"}]
-        # 3. Post-delete bid check: gone
         post_delete_bid = MagicMock(data=[])
-        # 4. Post-delete child runs: gone
         child_runs_response = MagicMock(data=[])
 
         sb.table.return_value.select.return_value.eq.return_value.execute.side_effect = [
@@ -214,7 +358,6 @@ class TestDeleteBidForOrganization(unittest.TestCase):
             child_runs_response,
         ]
 
-        # Storage remove raises network error
         sb.storage.from_.return_value.remove.side_effect = Exception("Storage connection error")
 
         with self.assertRaises(BidStorageCleanupError) as ctx:
@@ -223,19 +366,16 @@ class TestDeleteBidForOrganization(unittest.TestCase):
         self.assertEqual(ctx.exception.bid_id, 123)
         self.assertEqual(ctx.exception.remaining_files, ["123/rfp.pdf"])
         self.assertIn("Supabase Storage removal failed", str(ctx.exception))
-        # Ensure database delete was called only once (no retry)
         self.assertEqual(sb.table.return_value.delete.call_count, 1)
 
     @patch("database.get_client")
     @patch("tenancy.authorize_bid_access")
-    def test_g_fails_if_post_delete_verification_detects_bid_remains(self, mock_auth, mock_client):
+    def test_j_fails_if_post_delete_verification_detects_bid_remains(self, mock_auth, mock_client):
         mock_auth.return_value = True
         sb = MagicMock()
         mock_client.return_value = sb
 
-        # Terminal runs
         runs_response = MagicMock(data=[{"id": 1, "status": "COMPLETE"}])
-        # Post-delete check response: bid still exists!
         post_delete_response = MagicMock(data=[{"id": 123}])
 
         sb.table.return_value.select.return_value.eq.return_value.execute.side_effect = [
@@ -302,6 +442,21 @@ class TestAppBidDeleteRegression(unittest.TestCase):
             "Confirm permanent deletion",
             self.app_source,
         )
+
+    def test_app_catches_bid_storage_inventory_error_and_keeps_state(self):
+        # Must catch BidStorageInventoryError
+        self.assertIn(
+            "except _tenancy.BidStorageInventoryError",
+            self.app_source,
+            "app.py must catch BidStorageInventoryError separately",
+        )
+        # Must display user-friendly message
+        self.assertIn(
+            "Storage could not be verified, so the opportunity was not deleted. Please try again.",
+            self.app_source,
+            "app.py must show friendly storage inventory error message",
+        )
+
 
 
 MIGRATION_024_PATH = (

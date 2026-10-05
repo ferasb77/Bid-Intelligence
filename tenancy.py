@@ -246,9 +246,22 @@ def require_bid_access(bid_id: int, organization_id: str) -> None:
         )
 
 
+class BidStorageInventoryError(RuntimeError):
+    """Raised when Supabase Storage object listing/inventory fails during
+    bid deletion pre-flight or recursive traversal.
+
+    The database bid is NOT deleted and must remain untouched.
+    """
+    def __init__(self, bid_id: int, message: str, original_error: Exception | None = None):
+        super().__init__(message)
+        self.bid_id = bid_id
+        self.original_error = original_error
+
+
 class BidStorageCleanupError(RuntimeError):
     """Raised when the database bid was successfully deleted, but
-    subsequent Supabase Storage cleanup failed or left files behind.
+    subsequent Supabase Storage cleanup failed, left files behind, or could
+    not be verified.
 
     The database bid is gone; callers must NOT re-attempt database deletion.
     Orphaned Storage cleanup remains required.
@@ -266,6 +279,7 @@ def list_bid_storage_objects(bid_id: int, client=None, bucket: str = "bid-docume
     - Never returns paths outside prefix '{bid_id}/'.
     - Recursively traverses subfolders (such as '{bid_id}/analysis_reports/...').
     - Filters out empty folder placeholders.
+    - Fails closed: raises BidStorageInventoryError if any storage list operation fails.
     """
     if client is None:
         client = db.get_client()
@@ -275,9 +289,16 @@ def list_bid_storage_objects(bid_id: int, client=None, bucket: str = "bid-docume
     def _recurse(subpath: str) -> list[str]:
         folder = f"{prefix_root}/{subpath}".rstrip("/") if subpath else prefix_root
         try:
-            items = client.storage.from_(bucket).list(folder) or []
-        except Exception:
-            return []
+            items = client.storage.from_(bucket).list(folder)
+            if items is None:
+                items = []
+        except Exception as err:
+            raise BidStorageInventoryError(
+                bid_id=bid_id,
+                message=f"Failed to list Supabase Storage objects for bid {bid_id} at folder '{folder}': {err}",
+                original_error=err,
+            ) from err
+
         files = []
         for item in items:
             name = item.get("name")
@@ -285,7 +306,7 @@ def list_bid_storage_objects(bid_id: int, client=None, bucket: str = "bid-docume
                 continue
             item_rel = f"{subpath}/{name}".lstrip("/") if subpath else name
             if item.get("id") is None:
-                # Subdirectory
+                # Subdirectory: recurse, any nested listing failure raises BidStorageInventoryError immediately
                 files.extend(_recurse(item_rel))
             else:
                 files.append(f"{prefix_root}/{item_rel}")
@@ -385,7 +406,18 @@ def delete_bid_for_organization(bid_id: int, organization_id: str) -> dict:
             ) from err
 
     # 8. Verify bid Storage prefix is empty
-    remaining_storage = list_bid_storage_objects(bid_id, client=sb, bucket=db.BUCKET)
+    try:
+        remaining_storage = list_bid_storage_objects(bid_id, client=sb, bucket=db.BUCKET)
+    except Exception as err:
+        raise BidStorageCleanupError(
+            bid_id=bid_id,
+            message=(
+                f"Bid {bid_id} was deleted from database, but post-delete Storage verification failed: {err}. "
+                "Storage cleanup state could not be verified; orphaned Storage cleanup may still be required."
+            ),
+            remaining_files=None,
+        ) from err
+
     if remaining_storage:
         raise BidStorageCleanupError(
             bid_id=bid_id,
