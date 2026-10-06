@@ -1,27 +1,31 @@
 """
 procurement_identity.py -- Auto Procurement Identity and Authority Resolution.
 
-Implements BI-VALUE-2 Phase B:
-1. Centralized explicit internal sentinels for pending buyer and opportunity title.
-2. Canonical resolution of issuing organization, opportunity title, and solicitation number
-   from uploaded document package evidence.
-3. Strict confidence classification:
-   - RESOLVED: clear issuing client and opportunity title found with high confidence.
-   - NEEDS_CONFIRMATION: ambiguous / conflicting buyer names or multiple candidate titles.
-   - PENDING: no documents or extraction yet performed.
-   - FAILED: unable to determine identity from provided material.
-4. Fail-closed human confirmation boundary for genuine ambiguities.
-5. Zero LLM requirement for purely deterministic document extracts / cover page heuristics.
+Implements BI-VALUE-2 / BI-VALUE-2.1 Authority Model:
+1. Strict evidence hierarchy:
+   Rank 1: Canonical / reconciled procurement truth (metadata_by_doc merged via canonical_procurement)
+   Rank 2: Validated Stage A / primary solicitation document metadata
+   Rank 3: Corroborated package-level document content evidence (text content outranks filename)
+   Rank 4: Human confirmation if unresolved or conflicting
+2. Centralized explicit internal sentinels:
+   - PENDING_CLIENT_SENTINEL = "__PENDING_BUYER__"
+   - PENDING_TITLE_SENTINEL = "__PENDING_PROCUREMENT_TITLE__"
+   - Sentinels cannot become evidence, cannot leak to LLM prompts, queries, reports, or tables.
+3. Conflict & Ambiguity Detection:
+   - Conflicting buyers across documents -> NEEDS_CONFIRMATION
+   - Conflicting titles or solicitations across documents -> NEEDS_CONFIRMATION
+   - Missing solicitation allowed if buyer and title are otherwise clear
+   - Content strictly outranks filename; filename cannot override body text
 """
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Sequence
 
 # ---------------------------------------------------------------------------
-# Authoritative Sentinels (BI-VALUE-2 Phase C)
+# Authoritative Sentinels
 # ---------------------------------------------------------------------------
 PENDING_CLIENT_SENTINEL: str = "__PENDING_BUYER__"
 PENDING_TITLE_SENTINEL: str = "__PENDING_PROCUREMENT_TITLE__"
@@ -90,7 +94,7 @@ class ProcurementIdentity:
 
 
 # ---------------------------------------------------------------------------
-# Identity Extraction Heuristics & Deterministic Resolution
+# Extraction Patterns
 # ---------------------------------------------------------------------------
 
 _SOLICITATION_PATTERNS = [
@@ -109,8 +113,6 @@ _TITLE_PATTERNS = [
     re.compile(r'(?:^\s*FOR|\bPROJECT TITLE|\bOPPORTUNITY TITLE|\bDESCRIPTION OF WORK|\bREQUIREMENT FOR)\s*[:\-\s]\s*([^\n\r]{6,150})', re.IGNORECASE | re.MULTILINE),
     re.compile(r'(?:REQUEST FOR PROPOSALS?|RFP)\s*(?:[-–—:]\s*)([^\n\r]{6,150})', re.IGNORECASE),
 ]
-
-
 
 
 def is_sentinel(value: str | None) -> bool:
@@ -140,9 +142,12 @@ def resolve_procurement_identity(
     metadata_by_doc: dict[str, dict[str, Any]] | None = None,
 ) -> ProcurementIdentity:
     """
-    Resolve canonical procurement identity across document package.
-    Uses canonical_procurement ranking when metadata_by_doc is available,
-    plus deterministic pattern extraction on document text and filenames.
+    Resolve canonical procurement identity across document package following
+    the strict evidence hierarchy:
+    Rank 1: Canonical / reconciled procurement truth
+    Rank 2: Validated document metadata
+    Rank 3: Corroborated package document content (text strictly outranks filename)
+    Rank 4: Human confirmation if unresolved / conflicting
     """
     if not documents:
         return ProcurementIdentity(
@@ -154,7 +159,9 @@ def resolve_procurement_identity(
             confidence_notes="No documents provided for procurement identity resolution.",
         )
 
-    # 1. First consult canonical_procurement if metadata_by_doc exists
+    # -----------------------------------------------------------------------
+    # Rank 1: Canonical / Reconciled Procurement Truth
+    # -----------------------------------------------------------------------
     if metadata_by_doc:
         try:
             import canonical_procurement as cp
@@ -177,77 +184,100 @@ def resolve_procurement_identity(
                     client_name=str(c_val).strip(),
                     opportunity_title=str(t_val).strip(),
                     solicitation_number=str(f_val).strip() if f_val else None,
-                    confidence_score=0.95,
-                    confidence_notes="Resolved from canonical procurement document metadata.",
+                    confidence_score=0.98,
+                    confidence_notes="Resolved from canonical procurement truth (Rank 1).",
                     evidence_references=tuple(ev_refs),
                 )
         except Exception:
             pass
 
-    # 2. Extract candidates from document names, text extracts, and metadata
-    extracted_solicitations: list[tuple[str, str, str]] = []  # (value, doc_name, excerpt)
-    extracted_buyers: list[tuple[str, str, str]] = []
-    extracted_titles: list[tuple[str, str, str]] = []
+    # -----------------------------------------------------------------------
+    # Rank 2 & 3: Corroborated Package Document Content
+    # Content body strictly outranks filenames.
+    # -----------------------------------------------------------------------
+    body_buyers: list[tuple[str, str, str]] = []  # (value, doc_name, excerpt)
+    filename_buyers: list[tuple[str, str, str]] = []
+
+    body_titles: list[tuple[str, str, str]] = []
+    filename_titles: list[tuple[str, str, str]] = []
+
+    body_solicitations: list[tuple[str, str, str]] = []
+    filename_solicitations: list[tuple[str, str, str]] = []
 
     for d in documents:
         name = d.get("name") or d.get("filename") or ""
         text = d.get("text") or d.get("raw_text") or d.get("content") or ""
-        # Check first 5000 chars of text (cover page / opening sections)
-        header_text = text[:5000]
+        header_text = text[:8000]
 
-        # A. Solicitation number from name or header
-        for pat in _SOLICITATION_PATTERNS:
-            m = pat.search(name) or pat.search(header_text)
-            if m:
-                val = m.group(1).replace(" ", "-").strip("-_ #")
-                extracted_solicitations.append((val, name, m.group(0)))
-                break
-
-        # B. Buyer name from header text or filename
-        for pat in _BUYER_PATTERNS:
-            m = pat.search(header_text)
-            if m:
-                val = m.group(1).strip(" \t\n\r,.-")
-                if len(val) >= 4 and not any(kw in val.lower() for kw in ("proponent", "bidder", "vendor")):
-                    extracted_buyers.append((val, name, m.group(0)))
+        # Extract from text body first (Rank 3 authority)
+        if header_text:
+            for pat in _SOLICITATION_PATTERNS:
+                m = pat.search(header_text)
+                if m:
+                    val = m.group(1).replace(" ", "-").strip("-_ #")
+                    body_solicitations.append((val, name, m.group(0)))
                     break
 
-        # C. Title from header text
-        for pat in _TITLE_PATTERNS:
-            m = pat.search(header_text)
-            if m:
-                val = m.group(1).strip(" \t\n\r,.-")
-                if len(val) >= 6 and not any(kw in val.lower() for kw in ("request for proposal", "appendix")):
-                    extracted_titles.append((val, name, m.group(0)))
+            for pat in _BUYER_PATTERNS:
+                m = pat.search(header_text)
+                if m:
+                    val = m.group(1).strip(" \t\n\r,.-")
+                    if len(val) >= 4 and not any(kw in val.lower() for kw in ("proponent", "bidder", "vendor")):
+                        body_buyers.append((val, name, m.group(0)))
+                        break
+
+            for pat in _TITLE_PATTERNS:
+                m = pat.search(header_text)
+                if m:
+                    val = m.group(1).strip(" \t\n\r,.-")
+                    if len(val) >= 6 and not any(kw in val.lower() for kw in ("request for proposal", "appendix")):
+                        body_titles.append((val, name, m.group(0)))
+                        break
+
+        # Filename heuristics (Lower authority - fallback only)
+        if name:
+            for pat in _SOLICITATION_PATTERNS:
+                m = pat.search(name)
+                if m:
+                    val = m.group(1).replace(" ", "-").strip("-_ #")
+                    filename_solicitations.append((val, name, m.group(0)))
                     break
 
-    # Determine unique buyers and titles
-    unique_buyers = {}
-    for b, doc, ex in extracted_buyers:
+    # Body evidence strictly outranks filename evidence
+    active_buyers = body_buyers if body_buyers else filename_buyers
+    active_titles = body_titles if body_titles else filename_titles
+    active_solicitations = body_solicitations if body_solicitations else filename_solicitations
+
+    # Group unique normalized values
+    unique_buyers: dict[str, tuple[str, str, str]] = {}
+    for b, doc, ex in active_buyers:
         norm = re.sub(r'\s+', ' ', b.lower().strip())
         if norm not in unique_buyers:
             unique_buyers[norm] = (b, doc, ex)
 
-    unique_titles = {}
-    for t, doc, ex in extracted_titles:
+    unique_titles: dict[str, tuple[str, str, str]] = {}
+    for t, doc, ex in active_titles:
         norm = re.sub(r'\s+', ' ', t.lower().strip())
         if norm not in unique_titles:
             unique_titles[norm] = (t, doc, ex)
 
-    unique_solicitations = {}
-    for s, doc, ex in extracted_solicitations:
+    unique_solicitations: dict[str, tuple[str, str, str]] = {}
+    for s, doc, ex in active_solicitations:
         norm = s.upper().replace(" ", "-")
         if norm not in unique_solicitations:
             unique_solicitations[norm] = (s, doc, ex)
 
-    # 3. Check for genuine ambiguity
+    # -----------------------------------------------------------------------
+    # Rank 4: Conflict / Ambiguity Detection
+    # -----------------------------------------------------------------------
+    # Case A: Multiple conflicting buyers across documents
     if len(unique_buyers) > 1:
         candidates = tuple(
             ProcurementIdentityCandidate(
                 client_name=b[0],
                 opportunity_title=list(unique_titles.values())[0][0] if unique_titles else "Procurement Opportunity",
                 solicitation_number=list(unique_solicitations.values())[0][0] if unique_solicitations else None,
-                confidence_score=0.5,
+                confidence_score=0.4,
                 source_document=b[1],
                 evidence_excerpt=b[2],
             )
@@ -259,11 +289,35 @@ def resolve_procurement_identity(
             opportunity_title=list(unique_titles.values())[0][0] if unique_titles else None,
             solicitation_number=list(unique_solicitations.values())[0][0] if unique_solicitations else None,
             confidence_score=0.4,
-            confidence_notes=f"Multiple distinct issuing organizations detected: {', '.join(b[0] for b in unique_buyers.values())}.",
+            confidence_notes=f"Conflicting issuing organizations found across documents: {', '.join(b[0] for b in unique_buyers.values())}.",
             alternative_candidates=candidates,
         )
 
-    # 4. If single buyer resolved
+    # Case B: Multiple conflicting titles with no canonical resolution
+    if len(unique_titles) > 1 and len(unique_buyers) == 1:
+        buyer_val = list(unique_buyers.values())[0][0]
+        candidates = tuple(
+            ProcurementIdentityCandidate(
+                client_name=buyer_val,
+                opportunity_title=t[0],
+                solicitation_number=list(unique_solicitations.values())[0][0] if unique_solicitations else None,
+                confidence_score=0.5,
+                source_document=t[1],
+                evidence_excerpt=t[2],
+            )
+            for t in unique_titles.values()
+        )
+        return ProcurementIdentity(
+            status=IdentityStatus.NEEDS_CONFIRMATION,
+            client_name=buyer_val,
+            opportunity_title=None,
+            solicitation_number=list(unique_solicitations.values())[0][0] if unique_solicitations else None,
+            confidence_score=0.5,
+            confidence_notes=f"Conflicting opportunity titles detected across documents.",
+            alternative_candidates=candidates,
+        )
+
+    # Case C: Single buyer cleanly resolved
     if len(unique_buyers) == 1:
         chosen_buyer, b_doc, b_ex = list(unique_buyers.values())[0]
         chosen_title = list(unique_titles.values())[0][0] if unique_titles else None
@@ -285,12 +339,12 @@ def resolve_procurement_identity(
             client_name=chosen_buyer,
             opportunity_title=chosen_title,
             solicitation_number=chosen_sol,
-            confidence_score=0.9,
-            confidence_notes="Resolved from procurement document text.",
+            confidence_score=0.92,
+            confidence_notes="Resolved from corroborated document body evidence (Rank 3).",
             evidence_references=tuple(ev_refs),
         )
 
-    # 5. Fallback: buyer could not be reliably determined
+    # Fallback: buyer could not be reliably determined
     return ProcurementIdentity(
         status=IdentityStatus.NEEDS_CONFIRMATION,
         client_name=None,

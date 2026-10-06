@@ -331,8 +331,16 @@ def _continue_orchestration_after_fast(
         bid_row = tenancy.get_bid_for_organization(bid_id, organization_id) or {}
         resolved_client = bid_row.get("client")
         if resolved_client and not _pi.is_sentinel(resolved_client):
-            # Check or run bounded research (uses cache if available)
-            _br.run_governed_buyer_research(resolved_client)
+            # Check or run bounded research with durable tenant persistence
+            sol_num = bid_row.get("file_number")
+            title = bid_row.get("title") or ""
+            _br.run_governed_buyer_research(
+                resolved_client,
+                bid_id=bid_id,
+                organization_id=organization_id,
+                solicitation_number=sol_num,
+                context_anchors=title,
+            )
     except Exception as exc:
         logger.warning("Buyer research execution skipped/deferred for bid %s: %s", bid_id, exc)
 
@@ -461,12 +469,16 @@ def start_opportunity_analysis(
 
     # 1.5. Auto Procurement Identity Resolution (BI-VALUE-2 Phase B & D)
     import procurement_identity as _pi
-    bid_row = tenancy.get_bid_for_organization(bid_id, organization_id) or {}
+    try:
+        bid_row = tenancy.get_bid_for_organization(bid_id, organization_id) or {}
+    except Exception:
+        bid_row = {}
     curr_client = bid_row.get("client")
     curr_title = bid_row.get("title")
     curr_file_num = bid_row.get("file_number")
 
-    if _pi.is_sentinel(curr_client) or _pi.is_sentinel(curr_title) or not curr_client or not curr_title:
+    # Only trigger auto-identity resolution if bid has explicit pending sentinels
+    if _pi.is_sentinel(curr_client) or _pi.is_sentinel(curr_title):
         identity = _pi.resolve_procurement_identity(rfp_docs or docs)
         if identity.is_resolved:
             tenancy.update_bid_identity_for_organization(
@@ -675,13 +687,17 @@ def get_opportunity_analysis_state(bid_id: int, organization_id: str) -> dict[st
     approved_changes_count = 0
 
     import procurement_identity as _pi
-    bid_row = tenancy.get_bid_for_organization(bid_id, organization_id) or {}
+    try:
+        bid_row = tenancy.get_bid_for_organization(bid_id, organization_id) or {}
+    except Exception:
+        bid_row = {}
     curr_client = bid_row.get("client")
     curr_title = bid_row.get("title")
     curr_file_num = bid_row.get("file_number")
 
     identity_info = None
-    if _pi.is_sentinel(curr_client) or _pi.is_sentinel(curr_title) or not curr_client or not curr_title:
+    # Only trigger auto-identity resolution if bid has explicit pending sentinels
+    if _pi.is_sentinel(curr_client) or _pi.is_sentinel(curr_title):
         identity_obj = _pi.resolve_procurement_identity(target_docs)
         identity_info = identity_obj.to_dict()
         if identity_obj.is_resolved:

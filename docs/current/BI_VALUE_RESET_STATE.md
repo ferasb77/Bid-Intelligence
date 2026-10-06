@@ -20,12 +20,13 @@ This document records the baseline state of the Bid Intelligence Value Reset (BI
 - **BI-VALUE-1**: **COMPLETE** (York Decision-Brief Benchmark & Product Contract)
 - **BI-VALUE-1.1**: **COMPLETE** (Benchmark Evidence Discipline & Truth Boundary Classification)
 - **BI-VALUE-2**: **COMPLETE** (Auto Procurement Identity + Governed Buyer Research)
+- **BI-VALUE-2.1**: **ACCEPTANCE COMPLETE / MIGRATION 026 WRITTEN** (Durable Research Persistence, SSRF Defense & Provider Governance)
 - **BI-VALUE-3**: **NEXT** (Decision-Brief Synthesis Engine & Output Delivery)
 
-## Epistemic Grounding Contract (BI-VALUE-1.1 & BI-VALUE-2)
+## Epistemic Grounding Contract (BI-VALUE-1.1, BI-VALUE-2, BI-VALUE-2.1)
 The benchmark strictly enforces separation of truth classes across every section:
 1. `RFP FACT`: Explicitly stated facts grounded in buyer-issued documents with exact locators.
-2. `EXTERNAL BUYER FACT`: Factual intelligence regarding the buyer verified from public records outside the RFP via bounded, governed buyer research (Max 3 searches, Max 6 accepted official pages, verbatim extract verification).
+2. `EXTERNAL BUYER FACT`: Factual intelligence regarding the buyer verified from public records outside the RFP via bounded, governed buyer research (Max 3 searches, Max 6 accepted official pages, verbatim extract verification, durable database persistence).
 3. `BID INTELLIGENCE INTERPRETATION`: Analytical inferences derived by Bid Intelligence specialists from facts.
 4. `BID STRATEGY / PROOF RECOMMENDATION`: Actionable advisory recommendations for proposal teams.
 5. `UNKNOWN / UNSTATED`: Topics where information was not provided in RFP documents.
@@ -34,10 +35,12 @@ The benchmark strictly enforces separation of truth classes across every section
 - Benchmark Document: `docs/current/YORK_P27_070_DECISION_BRIEF_BENCHMARK.md`
 - Gap Analysis: `docs/current/YORK_P27_070_CURRENT_REPORT_GAP_ANALYSIS.md`
 - Benchmark Test Suite: `tests/test_york_decision_brief_benchmark.py` (21 deterministic tests)
-- Auto Identity Test Suite: `tests/test_procurement_identity.py` (9 deterministic tests)
-- Governed Buyer Research Test Suite: `tests/test_buyer_research.py` (7 deterministic tests)
+- Auto Identity Test Suite: `tests/test_procurement_identity.py` (12 deterministic tests)
+- Governed Buyer Research Test Suite: `tests/test_buyer_research.py` (15 deterministic tests)
+- Migration: `migrations/026_buyer_research_runs.sql` (UNAPPLIED; durable buyer research runs table)
 
 ## Verification Status
 - Branch: `feature/bi-value-reset-v2`.
-- Test Suite: 37/37 value reset tests passing; repository test suite passing with zero failures and zero provider calls during tests.
+- Test Suite: 48/48 targeted value reset tests passing; repository test suite (3911 passed, 0 failures, 0 provider calls in automated test runs).
 - Live Commissioning: Isolated live check of York University official procurement sources verified (Max 2 searches, Max 2 pages, 6 verbatim signals, 0 searches on exact cache reuse). Bid 1522 verified untouched.
+- Migration 026: UNAPPLIED (requires manual execution via Supabase dashboard before live durable persistence commissioning).
