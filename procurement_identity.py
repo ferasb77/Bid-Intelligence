@@ -49,6 +49,8 @@ class ProcurementIdentityCandidate:
     authority_rank: int = 4
     source_document: str | None = None
     evidence_excerpt: str | None = None
+    jurisdiction_country: str | None = None
+    jurisdiction_subdivision: str | None = None
 
 
 @dataclass(frozen=True)
@@ -61,6 +63,8 @@ class ProcurementIdentity:
     resolution_basis: str
     evidence_count: int
     conflict_present: bool
+    jurisdiction_country: str | None = None
+    jurisdiction_subdivision: str | None = None
     evidence_references: tuple[dict[str, Any], ...] = ()
     alternative_candidates: tuple[ProcurementIdentityCandidate, ...] = ()
 
@@ -82,6 +86,8 @@ class ProcurementIdentity:
             "resolution_basis": self.resolution_basis,
             "evidence_count": self.evidence_count,
             "conflict_present": self.conflict_present,
+            "jurisdiction_country": self.jurisdiction_country,
+            "jurisdiction_subdivision": self.jurisdiction_subdivision,
             "evidence_references": list(self.evidence_references),
             "alternative_candidates": [
                 {
@@ -91,6 +97,8 @@ class ProcurementIdentity:
                     "authority_rank": c.authority_rank,
                     "source_document": c.source_document,
                     "evidence_excerpt": c.evidence_excerpt,
+                    "jurisdiction_country": c.jurisdiction_country,
+                    "jurisdiction_subdivision": c.jurisdiction_subdivision,
                 }
                 for c in self.alternative_candidates
             ],
@@ -257,6 +265,31 @@ def resolve_procurement_identity(
     active_solicitations = body_solicitations if body_solicitations else filename_solicitations
 
     # Group unique normalized values
+    body_jurisdictions: list[tuple[str, str, str]] = []  # (country, subdivision, excerpt)
+    _JURISDICTION_PATTERNS = [
+        (re.compile(r'\b(Ontario|Toronto|Ottawa|Hamilton|London, Ontario|Waterloo)\b', re.IGNORECASE), "CA", "CA-ON"),
+        (re.compile(r'\b(Alberta|Calgary|Edmonton)\b', re.IGNORECASE), "CA", "CA-AB"),
+        (re.compile(r'\b(British Columbia|Vancouver|Victoria, BC)\b', re.IGNORECASE), "CA", "CA-BC"),
+        (re.compile(r'\b(Quebec|Montreal)\b', re.IGNORECASE), "CA", "CA-QC"),
+        (re.compile(r'\b(Canada|Canadian)\b', re.IGNORECASE), "CA", None),
+        (re.compile(r'\b(United Kingdom|England|London, UK|Yorkshire|Scotland)\b', re.IGNORECASE), "GB", None),
+        (re.compile(r'\b(United States|USA|U\.S\.A\.|Nebraska|California|New York|Texas)\b', re.IGNORECASE), "US", None),
+    ]
+
+    for d in documents:
+        text = d.get("text") or d.get("raw_text") or d.get("content") or ""
+        header_text = text[:8000]
+        if header_text:
+            for pat, ctry, subdiv in _JURISDICTION_PATTERNS:
+                m = pat.search(header_text)
+                if m:
+                    body_jurisdictions.append((ctry, subdiv or "", m.group(0)))
+                    break
+
+    resolved_country = body_jurisdictions[0][0] if body_jurisdictions else None
+    resolved_subdiv = body_jurisdictions[0][1] if (body_jurisdictions and body_jurisdictions[0][1]) else None
+
+    # Group unique normalized values
     unique_buyers: dict[str, tuple[str, str, str]] = {}
     for b, doc, ex in active_buyers:
         norm = re.sub(r'\s+', ' ', b.lower().strip())
@@ -355,6 +388,8 @@ def resolve_procurement_identity(
             resolution_basis="Corroborated package document content evidence (Rank 3)",
             evidence_count=len(ev_refs),
             conflict_present=False,
+            jurisdiction_country=resolved_country,
+            jurisdiction_subdivision=resolved_subdiv,
             evidence_references=tuple(ev_refs),
         )
 

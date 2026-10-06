@@ -40,20 +40,21 @@ from buyer_intelligence import FactClass, FactKind
 
 logger = logging.getLogger(__name__)
 
-# Hard limits (BI-VALUE-2 Phase G)
+# Hard limits (BI-VALUE-2 / BI-VALUE-2.3)
 MAX_SEARCHES: int = 3
 MAX_ACCEPTED_OFFICIAL_PAGES: int = 6
-RESEARCH_CONTRACT_VERSION: str = "buyer-research/1"
+RESEARCH_CONTRACT_VERSION: str = "buyer-research/2"
+
+import buyer_source_authority as bsa
+from buyer_source_authority import (
+    SOURCE_AUTHORITY_POLICY_VERSION,
+    SourceAuthorityClass, SourceAuthorityStatus, VerifiedOfficialDomain,
+    classify_government_domain, is_adversarial_or_disallowed_domain,
+    normalize_domain, verify_buyer_domain_content,
+)
 
 # Disallowed domains (aggregators, social media, blogs, forums, commercial registries)
-DISALLOWED_DOMAINS = {
-    "wikipedia.org", "wikimedia.org", "linkedin.com", "twitter.com", "x.com",
-    "facebook.com", "instagram.com", "youtube.com", "tiktok.com", "reddit.com",
-    "quora.com", "medium.com", "substack.com", "glassdoor.com", "indeed.com",
-    "crunchbase.com", "zoominfo.com", "yelp.com", "merx.com", "biddingo.com",
-    "bonfirehub.com", "buyandsell.gc.ca", "news.google.com", "cbc.ca",
-    "theglobeandmail.com", "thestar.com", "bloomberg.com", "forbes.com"
-}
+DISALLOWED_DOMAINS = bsa.DISALLOWED_DOMAINS
 
 
 class ResearchStatus(str, Enum):
@@ -75,6 +76,7 @@ class ResearchSignal:
     verbatim_quote: str = ""
     evidence_id: str | None = None
     content_hash: str | None = None
+    authority_class: str = SourceAuthorityClass.OFFICIAL_BUYER.value
 
 
 @dataclass(frozen=True)
@@ -91,6 +93,7 @@ class BuyerResearchResult:
     cached_reuse: bool = False
     run_id: int | None = None
     error: str | None = None
+    verified_buyer_domain: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -106,6 +109,7 @@ class BuyerResearchResult:
             "cached_reuse": self.cached_reuse,
             "run_id": self.run_id,
             "error": self.error,
+            "verified_buyer_domain": self.verified_buyer_domain,
         }
 
 
@@ -114,26 +118,33 @@ def compute_research_fingerprint(
     solicitation_number: str | None = None,
     context_anchors: str = "",
     contract_version: str = RESEARCH_CONTRACT_VERSION,
+    authority_policy_version: str = bsa.SOURCE_AUTHORITY_POLICY_VERSION,
 ) -> str:
-    """Compute deterministic cache fingerprint for buyer research."""
+    """Compute deterministic cache fingerprint for buyer research including authority policy version."""
     norm_buyer = re.sub(r'\s+', ' ', (buyer_name or "").strip().lower())
     norm_sol = re.sub(r'\s+', ' ', (solicitation_number or "").strip().lower())
     norm_anchors = re.sub(r'\s+', ' ', (context_anchors or "").strip().lower())
-    payload = f"buyer_research:{contract_version}:{norm_buyer}:{norm_sol}:{norm_anchors}"
+    payload = f"buyer_research:{contract_version}:{authority_policy_version}:{norm_buyer}:{norm_sol}:{norm_anchors}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def is_official_source_allowed(url: str, buyer_name: str) -> bool:
+def is_official_source_allowed(
+    url: str,
+    buyer_name: str,
+    verified_buyer_domain: str | None = None,
+    jurisdiction_country: str | None = None,
+) -> bool:
     """
-    Validate whether URL meets the strict official source boundary.
+    Validate whether URL meets the strict verified source authority boundary (BI-VALUE-2.3).
     Rules:
     1. HTTP/HTTPS only.
     2. Hostname must NOT match any disallowed generic aggregator/social/news domain.
     3. Hostname cannot be an adversarial fake containing hyphens with arbitrary tlds (e.g. fake-yorku.ca).
     4. Allowable authority:
-       a. Buyer's known official domain (exact token/slug alignment e.g. yorku.ca for York University).
-       b. Official government / procurement authority domains (.gc.ca, .gov.on.ca, .gov.ab.ca, .gov).
-    5. Arbitrary .edu/.org domains that do not belong to buyer are rejected.
+       a. Verified official buyer domain or subdomain of it (e.g. yorku.ca -> *.yorku.ca).
+       b. Official government authority domains (.gc.ca, .gov.on.ca, .gov.ab.ca, ontario.ca, canada.ca).
+    5. Token-based matching without domain verification is PROHIBITED.
+       Arbitrary .edu/.org/.uk domains (e.g., york.ac.uk, york.edu) are REJECTED for Canadian York University.
     """
     if not url or not isinstance(url, str):
         return False
@@ -141,61 +152,23 @@ def is_official_source_allowed(url: str, buyer_name: str) -> bool:
     if not u.startswith("http://") and not u.startswith("https://"):
         return False
 
-    parts = urlsplit(u)
-    domain = parts.netloc.lower()
-    if ":" in domain:
-        domain = domain.split(":")[0]
-
-    # Check disallowed list (including subdomains)
-    for bad in DISALLOWED_DOMAINS:
-        if domain == bad or domain.endswith("." + bad):
-            return False
-
-    # Check for adversarial fake patterns (e.g. fake-yorku.ca)
-    if "fake-" in domain or "-fake" in domain or "example.com" in domain or domain.endswith(".example.com"):
+    domain = normalize_domain(u)
+    if not domain or is_adversarial_or_disallowed_domain(domain):
         return False
 
     # Check government authority
-    is_gov_authority = (
-        domain.endswith(".gc.ca") or
-        domain.endswith(".gov.on.ca") or
-        domain.endswith(".gov.ab.ca") or
-        domain.endswith(".gov.bc.ca") or
-        domain == "ontario.ca" or domain.endswith(".ontario.ca") or
-        domain == "canada.ca" or domain.endswith(".canada.ca") or
-        domain == "alberta.ca" or domain.endswith(".alberta.ca") or
-        (domain.endswith(".gov") and not domain.endswith(".fake.gov"))
-    )
-
-    # Check buyer domain match
-    norm_buyer = re.sub(r'[^a-z0-9]+', ' ', buyer_name.lower()).strip()
-    buyer_tokens = [tok for tok in norm_buyer.split() if len(tok) >= 4 and tok not in ("university", "college", "city", "town", "corporation", "department", "ministry", "board")]
-
-    # Match token abbreviation / slug e.g. "yorku" in "yorku.ca" or "bankofcanada"
-    buyer_slug = "".join([tok[0] for tok in norm_buyer.split() if tok])  # e.g. yu, boc
-    expanded_slug = re.sub(r'\s+', '', norm_buyer)
-
-    # Strip www. or subdomains if present to inspect organization domain
-    labels = [l for l in domain.split(".") if l not in ("www", "ca", "com", "org", "edu", "gov", "net")]
-    is_buyer_domain = False
-
-    for label in labels:
-        if any(tok in label for tok in buyer_tokens):
-            is_buyer_domain = True
-            break
-        elif buyer_slug and len(buyer_slug) >= 3 and buyer_slug in label:
-            is_buyer_domain = True
-            break
-        elif expanded_slug and expanded_slug in label:
-            is_buyer_domain = True
-            break
-
-    if is_buyer_domain:
+    gov = classify_government_domain(domain, buyer_jurisdiction=jurisdiction_country)
+    if gov and gov.is_government_authority:
         return True
 
-    if is_gov_authority:
-        return True
+    # If a verified official buyer domain exists, accept exact match or subdomain
+    if verified_buyer_domain:
+        norm_vbd = normalize_domain(verified_buyer_domain)
+        if domain == norm_vbd or domain.endswith("." + norm_vbd):
+            return True
+        return False
 
+    # Without a verified buyer domain, unverified candidate domains cannot be admitted
     return False
 
 
@@ -275,6 +248,7 @@ def _load_durable_research_run(
             buyer_id=payload.get("buyer_id", ""),
             cached_reuse=True,
             run_id=row.get("id"),
+            verified_buyer_domain=payload.get("verified_buyer_domain"),
         )
     except Exception as exc:
         logger.debug("Durable buyer research lookup skipped or table absent: %s", exc)
@@ -303,6 +277,7 @@ def _persist_durable_research_run(
             "evidence_ids": list(result.evidence_ids),
             "official_website": result.official_website,
             "buyer_id": result.buyer_id,
+            "verified_buyer_domain": result.verified_buyer_domain,
         }
 
         row_data = {
@@ -339,6 +314,9 @@ def run_governed_buyer_research(
     organization_id: str | None = None,
     solicitation_number: str | None = None,
     context_anchors: str = "",
+    jurisdiction_country: str | None = None,
+    jurisdiction_subdivision: str | None = None,
+    verified_buyer_domain: str | None = None,
     search_fn: Callable[[str], list[dict[str, str]]] | None = None,
     fetch_fn: Callable[[str], str] | None = None,
     max_searches: int = MAX_SEARCHES,
@@ -346,12 +324,14 @@ def run_governed_buyer_research(
     provider: str = "anthropic_server_tools",
 ) -> BuyerResearchResult:
     """
-    Executes bounded, governed buyer research.
+    Executes bounded, governed buyer research with source-authority closure (BI-VALUE-2.3):
     1. Checks durable persistence first (survives process restart with 0 calls).
     2. Checks in-memory cache as secondary layer.
-    3. Enforces Max 3 searches and Max 6 accepted official pages.
-    4. Verifies every extract verbatim against fetched page text.
-    5. Yields structured BuyerResearchResult.
+    3. Performs bounded domain discovery and identity verification if verified_buyer_domain not supplied.
+    4. Constrains buyer-specific research queries to the verified buyer domain.
+    5. Enforces Max 3 searches and Max 6 accepted official pages.
+    6. Verifies every extract verbatim against fetched page text.
+    7. Yields structured BuyerResearchResult.
     """
     if not resolved_buyer or not resolved_buyer.strip():
         return BuyerResearchResult(
@@ -393,6 +373,7 @@ def run_governed_buyer_research(
             buyer_id=cached.buyer_id,
             cached_reuse=True,
             run_id=cached.run_id,
+            verified_buyer_domain=cached.verified_buyer_domain,
         )
 
     # 3. If no search/fetch functions supplied, default to Anthropic server-side tools
@@ -403,32 +384,84 @@ def run_governed_buyer_research(
         if provider == "live_direct_http":
             provider = "anthropic_server_tools"
 
+    # 4. Search & Domain Verification Orchestration (Phase E & F)
     searches_executed = 0
+    known_verified_domain = verified_buyer_domain
+
     pages_accepted = 0
     accepted_pages: list[bea.FetchedPage] = []
     signals: list[ResearchSignal] = []
 
-    # Queries designed to target institutional mandate, continuing education, and procurement policy
     clean_anchor = re.sub(r'[^a-zA-Z0-9\s]', ' ', context_anchors)[:60].strip()
-    queries = [
-        f"{resolved_buyer} {clean_anchor} strategic priorities mandate".strip(),
-        f"{resolved_buyer} procurement policy guidelines Ontario",
-        f"{resolved_buyer} continuing education innovation ecosystem",
-    ]
 
     candidate_urls: list[dict[str, str]] = []
     seen_urls: set[str] = set()
 
-    for q in queries[:max_searches]:
+    # Query definitions
+    if known_verified_domain:
+        queries = [
+            f"site:{known_verified_domain} {clean_anchor} strategic priorities mandate".strip(),
+            f"site:{known_verified_domain} procurement policy guidelines".strip(),
+            f"site:{known_verified_domain} continuing education training".strip(),
+        ]
+    else:
+        # Initial queries search broadly, but first result triggers domain verification
+        queries = [
+            f"{resolved_buyer} {clean_anchor} strategic priorities mandate".strip(),
+            f"{resolved_buyer} procurement policy guidelines",
+            f"{resolved_buyer} continuing education training",
+        ]
+
+    candidate_texts: dict[str, str] = {}
+
+    for q in queries:
         if searches_executed >= max_searches:
             break
         try:
             results = search_fn(q)
             searches_executed += 1
+
+            # If we don't have a verified domain yet, discover and verify from search candidates
+            if not known_verified_domain:
+                for cand in results:
+                    u = cand.get("url") or ""
+                    d = normalize_domain(u)
+                    if not d or is_adversarial_or_disallowed_domain(d):
+                        continue
+                    # Attempt verification by fetching candidate page
+                    try:
+                        c_text = fetch_fn(u)
+                        candidate_texts[u] = c_text
+                    except Exception:
+                        c_text = ""
+                    ver = bsa.verify_buyer_domain_content(
+                        d,
+                        resolved_buyer,
+                        c_text,
+                        jurisdiction_country=jurisdiction_country,
+                        jurisdiction_subdivision=jurisdiction_subdivision,
+                    )
+                    if ver.is_official_buyer:
+                        known_verified_domain = ver.domain
+                        logger.info("Verified official buyer domain from candidate: %s", known_verified_domain)
+                        # Dynamically constrain remaining queries to site:<verified_domain>
+                        remaining_queries = [
+                            f"site:{known_verified_domain} {clean_anchor} strategic priorities mandate".strip(),
+                            f"site:{known_verified_domain} procurement policy guidelines".strip(),
+                            f"site:{known_verified_domain} continuing education training".strip(),
+                        ]
+                        queries = queries[:searches_executed] + remaining_queries[searches_executed:]
+                        break
+
             for res in results:
                 url = res.get("url") or ""
                 title = res.get("title") or ""
-                if url and url not in seen_urls and is_official_source_allowed(url, resolved_buyer):
+                if url and url not in seen_urls and is_official_source_allowed(
+                    url,
+                    resolved_buyer,
+                    verified_buyer_domain=known_verified_domain,
+                    jurisdiction_country=jurisdiction_country,
+                ):
                     seen_urls.add(url)
                     candidate_urls.append({"url": url, "title": title})
         except Exception as exc:
@@ -444,7 +477,9 @@ def run_governed_buyer_research(
         u = cand["url"]
         t = cand["title"] or f"{resolved_buyer} Official Page"
         try:
-            full_text = fetch_fn(u)
+            full_text = candidate_texts.get(u)
+            if full_text is None:
+                full_text = fetch_fn(u)
             if not full_text or len(full_text.strip()) < 50:
                 continue
 
@@ -536,6 +571,7 @@ def run_governed_buyer_research(
         official_website=official_website,
         buyer_id=buyer_id,
         cached_reuse=False,
+        verified_buyer_domain=known_verified_domain,
     )
 
     # Cache and persist
@@ -556,6 +592,7 @@ def run_governed_buyer_research(
                     official_website=res.official_website,
                     buyer_id=res.buyer_id,
                     cached_reuse=False,
+                    verified_buyer_domain=known_verified_domain,
                     error="Buyer research completed but durable persistence failed.",
                 )
             res = BuyerResearchResult(
@@ -570,6 +607,7 @@ def run_governed_buyer_research(
                 buyer_id=res.buyer_id,
                 cached_reuse=res.cached_reuse,
                 run_id=run_id,
+                verified_buyer_domain=known_verified_domain,
             )
 
     return res

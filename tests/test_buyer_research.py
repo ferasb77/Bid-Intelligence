@@ -80,14 +80,14 @@ class TestBuyerResearchBudgetsAndSources(unittest.TestCase):
 
     def test_15_adversarial_fake_official_domain_rejected(self):
         # Fake or deceptive domains targeting York University
-        self.assertFalse(br.is_official_source_allowed("https://fake-yorku.ca/procurement", "York University"))
-        self.assertFalse(br.is_official_source_allowed("https://yorku-fake.com/policy", "York University"))
-        self.assertFalse(br.is_official_source_allowed("https://yorku.example.com/bids", "York University"))
-        self.assertFalse(br.is_official_source_allowed("https://random-university.edu/about", "York University"))
+        self.assertFalse(br.is_official_source_allowed("https://fake-yorku.ca/procurement", "York University", verified_buyer_domain="yorku.ca"))
+        self.assertFalse(br.is_official_source_allowed("https://yorku-fake.com/policy", "York University", verified_buyer_domain="yorku.ca"))
+        self.assertFalse(br.is_official_source_allowed("https://yorku.example.com/bids", "York University", verified_buyer_domain="yorku.ca"))
+        self.assertFalse(br.is_official_source_allowed("https://random-university.edu/about", "York University", verified_buyer_domain="yorku.ca"))
 
         # Real official buyer domains
-        self.assertTrue(br.is_official_source_allowed("https://www.yorku.ca/procurement/policies", "York University"))
-        self.assertTrue(br.is_official_source_allowed("https://www.ontario.ca/page/public-procurement", "York University"))
+        self.assertTrue(br.is_official_source_allowed("https://www.yorku.ca/procurement/policies", "York University", verified_buyer_domain="yorku.ca"))
+        self.assertTrue(br.is_official_source_allowed("https://www.ontario.ca/page/public-procurement", "York University", verified_buyer_domain="yorku.ca"))
 
     def test_17_actual_fetched_content_verification_required(self):
         page_text = "York University provides comprehensive undergraduate and graduate programs across diverse faculties."

@@ -22,12 +22,16 @@ This document records the baseline state of the Bid Intelligence Value Reset (BI
 - **BI-VALUE-2**: **COMPLETE** (Auto Procurement Identity + Governed Buyer Research)
 - **BI-VALUE-2.1**: **COMPLETE** (Durable Research Persistence, SSRF Defense & Provider Governance)
 - **BI-VALUE-2.2**: **COMPLETE & ACCEPTED** (Live Durability Commissioning, Anthropic Defaults, Deterministic Identity Metadata & Final Product Boundary)
+- **BI-VALUE-2.3**: **COMPLETE & ACCEPTED** (Buyer Source Authority & Disambiguation Closure: Eliminated token-based matching, content-driven domain verification, strict jurisdiction defense against same-name cross-country entities, cache invalidation via source-authority-policy/2 and buyer-research/2)
 - **BI-VALUE-3**: **NEXT** (Decision-Brief Synthesis Engine & Output Delivery)
 
-## Epistemic Grounding Contract (BI-VALUE-1.1, BI-VALUE-2, BI-VALUE-2.1, BI-VALUE-2.2)
+## Epistemic Grounding Contract (BI-VALUE-1.1 through BI-VALUE-2.3)
 The benchmark strictly enforces separation of truth classes across every section:
 1. `RFP FACT`: Explicitly stated facts grounded in buyer-issued documents with exact locators.
 2. `EXTERNAL BUYER FACT`: Factual intelligence regarding the buyer verified from public records outside the RFP via bounded, governed buyer research (Max 3 searches, Max 6 accepted official pages, verbatim extract verification, durable database persistence in `buyer_research_runs`). Strictly factual; evaluative advice, strategy, or win probabilities are strictly prohibited.
+   - **Source Authority & Identity Discipline**: Official buyer domains must be verified against resolved buyer identity, institutional domain ownership, and jurisdiction alignment (`buyer_source_authority.py`).
+   - **Cross-Jurisdiction Disambiguation**: Unrelated institutions with identical or similar names (e.g. `york.ac.uk` in the UK or `york.edu` in Nebraska) are rejected as `DIFFERENT_ORGANIZATION` when researching Canadian entities (`yorku.ca`).
+   - **Government Oversight Authority**: Domains like `ontario.ca` and `canada.ca` are classified as `GOVERNMENT_AUTHORITY`, strictly distinguished from `OFFICIAL_BUYER`.
 3. `BID INTELLIGENCE INTERPRETATION`: Analytical inferences derived by Bid Intelligence specialists from facts.
 4. `BID STRATEGY / PROOF RECOMMENDATION`: Actionable advisory recommendations for proposal teams.
 5. `UNKNOWN / UNSTATED`: Topics where information was not provided in RFP documents.
@@ -38,13 +42,14 @@ The benchmark strictly enforces separation of truth classes across every section
 - Benchmark Test Suite: `tests/test_york_decision_brief_benchmark.py` (21 deterministic tests)
 - Auto Identity Test Suite: `tests/test_procurement_identity.py` (13 deterministic tests)
 - Governed Buyer Research Test Suite: `tests/test_buyer_research.py` (17 deterministic tests)
+- Buyer Source Authority Test Suite: `tests/test_buyer_source_authority.py` (20 deterministic tests)
 - Migration: `migrations/026_buyer_research_runs.sql` (APPLIED LIVE; durable buyer research runs table)
 
 ## Verification Status
 - Branch: `feature/bi-value-reset-v2`.
-- Test Suite: 51/51 targeted value reset tests passing; full repository test suite (3914 passed, 0 failures, 0 provider calls in automated test runs).
-- Live Commissioning: Verified on live disposable Bid 1600. Auto-identity cleanly resolved York University; governed buyer research executed via Anthropic tools (3 searches, 6 accepted pages, 18 signals); durable row persisted in `buyer_research_runs` (ID 3, status `COMPLETE`).
-- New-Process Exact Reuse: Verified in independent Python process executing with 0 searches, 0 fetches, 0 provider calls (`REUSED_COMPLETE`, `cached_reuse=True`, `run_id=3`).
-- Cascade Deletion & Cleanup: Disposable Bid 1600 deleted via `tenancy.delete_bid_for_organization(...)`; verified 100% cascade cleanup across `bids`, `buyer_research_runs`, and Supabase Storage.
-- Benchmark Integrity: Bid 1522 verified 100% untouched and preserved (governed rev 2, Run 57 COMPLETE, 46 events, 12 specialist results, 2 storage objects in `bid-documents`).
+- Test Suite: 71/71 targeted value reset tests passing; full repository test suite (3934 passed, 16 skipped, 0 failures, 0 provider calls in automated test runs).
+- Live Commissioning: Verified on live disposable Bid 1605. Auto-identity cleanly resolved York University with Canadian jurisdiction (`CA`, `CA-ON`); governed buyer research executed via Anthropic tools (3 searches, 2 accepted pages, 6 signals on verified domain `execed.schulich.yorku.ca`); zero contaminated pages from `york.ac.uk` or `york.edu`. Durable row persisted in `buyer_research_runs` (ID 4, status `COMPLETE`, contract `buyer-research/2`).
+- New-Process Exact Reuse: Verified in independent Python process executing with 0 searches, 0 fetches, 0 provider calls (`REUSED_COMPLETE`, `cached_reuse=True`, `run_id=4`).
+- Cascade Deletion & Cleanup: Disposable Bid 1605 deleted via `tenancy.delete_bid_for_organization(...)`; verified 100% cascade cleanup across `bids`, `buyer_research_runs`, and Supabase Storage (0 orphan records).
+- Benchmark Integrity: Bid 1522 verified 100% untouched and preserved (governed rev 2, Run 57 COMPLETE, 2 storage objects in `bid-documents`, 0 unverified mutations).
 - Migration 026: **APPLIED LIVE** to Supabase.
