@@ -541,6 +541,7 @@ class TestDiscipline:
             "022_check_runs.sql",
             "023_fix_procurement_document_digest_schema.sql",
             "024_fix_bid_cascade_immutability.sql",
+            "025_bid_purge_referential_closure.sql",
         )
 
     def test_status_vocabulary_pinned_to_check_coverage(self):
