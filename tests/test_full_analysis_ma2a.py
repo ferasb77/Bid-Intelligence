@@ -809,7 +809,8 @@ def test_committed_migrations_are_unmodified_and_020_is_next():
     assert names[i + 1:] in ([], ["021_submission_evidence_registry.sql"],
                              ["021_submission_evidence_registry.sql", "022_check_runs.sql"],
                              ["021_submission_evidence_registry.sql", "022_check_runs.sql", "023_fix_procurement_document_digest_schema.sql"],
-                             ["021_submission_evidence_registry.sql", "022_check_runs.sql", "023_fix_procurement_document_digest_schema.sql", "024_fix_bid_cascade_immutability.sql"])
+                             ["021_submission_evidence_registry.sql", "022_check_runs.sql", "023_fix_procurement_document_digest_schema.sql", "024_fix_bid_cascade_immutability.sql"],
+                             ["021_submission_evidence_registry.sql", "022_check_runs.sql", "023_fix_procurement_document_digest_schema.sql", "024_fix_bid_cascade_immutability.sql", "025_bid_purge_referential_closure.sql"])
 
 
 def test_model_results_never_write_canonical_layers(fake, monkeypatch):

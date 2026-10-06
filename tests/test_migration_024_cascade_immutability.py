@@ -618,7 +618,7 @@ class TestMigration024SchemaContract(unittest.TestCase):
 
 
 class TestRealPostgresCascadeExecution(unittest.TestCase):
-    """Executes the full 11-step matrix (A through K) in a real PostgreSQL engine."""
+    """Executes the full 15-step matrix (A through O) in a real PostgreSQL engine."""
 
     def test_real_postgresql_cascade_matrix(self):
         script_path = (
@@ -639,9 +639,12 @@ class TestRealPostgresCascadeExecution(unittest.TestCase):
             f"Real PostgreSQL test matrix failed:\nSTDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}",
         )
         self.assertIn(
-            "ALL 11 TESTS (A THROUGH K) PASSED ON REAL POSTGRESQL ENGINE!",
+            "ALL 15 TESTS (A THROUGH O) PASSED ON REAL POSTGRESQL ENGINE!",
             res.stdout,
         )
         # Verify specific tests reported PASS
-        for letter in ["A", "B", "C", "D", "E", "F", "G", "H", "I.1", "I.2", "J", "K"]:
+        for letter in [
+            "A", "B", "C", "D", "E", "F", "G", "H",
+            "I.1", "I.2", "I.3", "I.4", "J", "K", "L", "M", "N", "O"
+        ]:
             self.assertIn(f"PASS Test {letter}:", res.stdout)
