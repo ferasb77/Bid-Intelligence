@@ -197,6 +197,36 @@ def create_bid_for_organization(data: dict, organization_id: str) -> int | None:
     return int(row["id"]) if row else None
 
 
+def update_bid_identity_for_organization(
+    bid_id: int,
+    organization_id: str,
+    *,
+    title: str | None = None,
+    client: str | None = None,
+    file_number: str | None = None,
+) -> None:
+    """Update auto-resolved or human-confirmed identity for a bid, strictly
+    scoped to organization_id. Refuses to overwrite non-sentinel values with
+    empty or sentinel values."""
+    if not organization_id:
+        raise ValueError("update_bid_identity_for_organization requires an explicit organization_id")
+    require_bid_access(bid_id, organization_id)
+    update_data: dict[str, Any] = {}
+    if title is not None and title.strip():
+        update_data["title"] = title.strip()
+    if client is not None and client.strip():
+        update_data["client"] = client.strip()
+    if file_number is not None and file_number.strip():
+        update_data["file_number"] = file_number.strip()
+
+    if not update_data:
+        return
+
+    sb = db.get_client()
+    sb.table("bids").update(update_data).eq("id", bid_id).eq("organization_id", organization_id).execute()
+
+
+
 # ── Privileged-operation authorization boundary (Phase 8 remediation ────
 #    package 3, instructions 16-18) ──────────────────────────────────────
 # These functions are the application-layer authorization gate in front of

@@ -634,8 +634,52 @@ def _render_unified_opportunity_analysis_panel(
                 st.rerun()
         return
 
+    # IDENTITY_CONFIRMATION_REQUIRED: Prompt user to confirm ambiguous buyer identity (BI-VALUE-2 Phase E)
+    if step == ua.STEP_IDENTITY_CONFIRMATION_REQUIRED:
+        st.markdown("### 🏛️ Confirm Issuing Organization & Title")
+        st.caption("Multiple candidate buyers or titles were found in the uploaded documents. Please select or confirm the authoritative procurement identity.")
+        identity_data = opp_state.get("identity") or {}
+        candidates = identity_data.get("alternative_candidates") or []
+
+        candidate_options = {}
+        for c in candidates:
+            label = f"{c.get('client_name')} — {c.get('opportunity_title')}"
+            candidate_options[label] = c
+
+        selected_label = None
+        if candidate_options:
+            selected_label = st.radio(
+                "Detected Candidates:",
+                options=list(candidate_options.keys()),
+                key=f"identity_candidate_select_{bid_id}"
+            )
+
+        chosen_candidate = candidate_options.get(selected_label) if selected_label else None
+        default_client = chosen_candidate.get("client_name") if chosen_candidate else (identity_data.get("client_name") or "")
+        default_title = chosen_candidate.get("opportunity_title") if chosen_candidate else (identity_data.get("opportunity_title") or "")
+        default_sol = chosen_candidate.get("solicitation_number") if chosen_candidate else (identity_data.get("solicitation_number") or "")
+
+        c1, c2 = st.columns(2)
+        confirmed_client = c1.text_input("Buyer / Issuing Organization *", value=default_client, key=f"conf_client_{bid_id}")
+        confirmed_title = c2.text_input("Opportunity Title *", value=default_title, key=f"conf_title_{bid_id}")
+        confirmed_sol = st.text_input("Solicitation Number (optional)", value=default_sol, key=f"conf_sol_{bid_id}")
+
+        if st.button("Confirm Identity & Resume Analysis →", key=f"confirm_ident_{bid_id}", type="primary"):
+            if not confirmed_client or not confirmed_client.strip() or not confirmed_title or not confirmed_title.strip():
+                st.error("Both Buyer and Title must be specified.")
+            else:
+                tenancy.update_bid_identity_for_organization(
+                    bid_id, org_id,
+                    title=confirmed_title.strip(),
+                    client=confirmed_client.strip(),
+                    file_number=confirmed_sol.strip() if confirmed_sol else None,
+                )
+                _start_opportunity_analysis(bid_id)
+        return
+
     # BASELINE_PRIMARY_AMBIGUOUS: Prompt user to choose primary solicitation document
     if step == ua.STEP_BASELINE_PRIMARY_AMBIGUOUS:
+
         st.markdown("### 📄 Select Main Solicitation Document")
         st.caption("Multiple procurement documents were uploaded. Please confirm which document is the main solicitation.")
         eligible_docs = opp_state.get("eligible_docs") or rfp_docs or docs
@@ -1220,12 +1264,16 @@ def page_understand(bid_id: int):
     citations = _ensure_dict(brief_row.get("source_citations"))
 
     # ── HEADER & OPPORTUNITY IDENTITY ─────────────────────────────────────────
+    import procurement_identity as _pi
+    disp_client = _pi.clean_display_client(bid.get("client"))
+    disp_title = _pi.clean_display_title(bid.get("title"))
     st.markdown('<div style="font-size:.72rem;color:#C9A96E;text-transform:uppercase;letter-spacing:.12em;font-weight:600">STAGE 1 · UNDERSTAND</div>', unsafe_allow_html=True)
     c1, c2 = st.columns([4, 1.2])
-    c1.markdown(f"# {bid['client']}")
-    c1.markdown(f'<div style="font-size:1.15rem;color:#EDEAE3;font-weight:500;margin-top:-.3rem">{bid["title"]}</div>', unsafe_allow_html=True)
+    c1.markdown(f"# {disp_client}")
+    c1.markdown(f'<div style="font-size:1.15rem;color:#EDEAE3;font-weight:500;margin-top:-.3rem">{disp_title}</div>', unsafe_allow_html=True)
     if bid.get("file_number"):
         c1.markdown(f'<span style="font-size:.78rem;color:#6E6C66">Solicitation Ref: <strong>#{bid["file_number"]}</strong></span>', unsafe_allow_html=True)
+
 
     c2.markdown(f'<div style="text-align:right">{stage_badge(bid["stage"])}</div>', unsafe_allow_html=True)
     sc = "#C0392B" if bid.get("sensitivity") == "Sensitive" else "#27AE60"

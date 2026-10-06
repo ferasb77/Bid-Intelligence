@@ -350,18 +350,22 @@ def page_all_bids():
     if not bids:
         st.markdown('<div class="empty-state">No bids yet.</div>', unsafe_allow_html=True)
         return
+    import procurement_identity as _pi
     for b in bids:
         bid_id = b["id"]
         pct = (b["req_done"]/b["req_count"]*100) if b["req_count"] else 0
         c1,c2,c3,c4,c5,c6 = st.columns([3.0, 1.3, 1.4, 1.7, 1.3, 1.3])
-        c1.markdown(f"**{b['client']}**")
-        c1.markdown(f'<span style="color:#A9A69D;font-size:.8rem">{b["title"]}</span>', unsafe_allow_html=True)
+        disp_client = _pi.clean_display_client(b.get("client"))
+        disp_title = _pi.clean_display_title(b.get("title"))
+        c1.markdown(f"**{disp_client}**")
+        c1.markdown(f'<span style="color:#A9A69D;font-size:.8rem">{disp_title}</span>', unsafe_allow_html=True)
         c2.markdown(stage_badge(b["stage"]), unsafe_allow_html=True)
         c3.markdown(_deadline_label(b), unsafe_allow_html=True)
         c3.markdown(f'<span style="color:#6E6C66;font-size:.72rem">{b.get("submission_deadline") or "—"}</span>', unsafe_allow_html=True)
         c4.markdown(readiness_bar(pct) if b["req_count"] else '<span style="color:#6E6C66;font-size:.75rem">No requirements</span>', unsafe_allow_html=True)
         if c5.button("Open →", key=f"all_{bid_id}", use_container_width=True):
             go("stage_understand", bid_id)
+
         confirm_key = f"confirm_delete_{bid_id}"
         if c6.button("🗑 Delete", key=f"del_btn_{bid_id}", use_container_width=True):
             st.session_state[confirm_key] = True
@@ -465,11 +469,12 @@ def page_new_bid():
         for fn, fb in pkg_files:
             st.markdown(f'<span style="font-size:.78rem;color:#A9A69D">📄 <strong>{fn}</strong> ({len(fb)//1024} KB)</span>', unsafe_allow_html=True)
 
-        # Derive sensible default title from first uploaded document
+        # Optional title / client override; if left blank, Auto Procurement Identity resolves them
+        import procurement_identity as _pi
         first_stem = pkg_files[0][0].rsplit(".", 1)[0].replace("_", " ").replace("-", " ")
         c_t1, c_t2 = st.columns(2)
-        pkg_title = c_t1.text_input("Opportunity Title *", value=first_stem, key="pkg_bid_title")
-        pkg_client = c_t2.text_input("Client / Organization *", value="", placeholder="e.g. City of Calgary", key="pkg_bid_client")
+        pkg_title = c_t1.text_input("Opportunity Title (optional — auto-detected if blank)", value="", placeholder=f"Auto-detect or e.g. {first_stem}", key="pkg_bid_title")
+        pkg_client = c_t2.text_input("Client / Organization (optional — auto-detected if blank)", value="", placeholder="Auto-detect or e.g. City of Calgary", key="pkg_bid_client")
 
         st.markdown("")
         if st.button("⚡ Create Opportunity & Analyze →", use_container_width=True, type="primary"):
@@ -477,15 +482,16 @@ def page_new_bid():
             api_key = st.session_state.get("anthropic_api_key") or (_gak() if _akc() else None)
             if not api_key:
                 st.error("Add your Anthropic API key first (see above or Settings).")
-            elif not pkg_title or not pkg_client:
-                st.error("Opportunity Title and Client are required to create the bid.")
             else:
+                resolved_title = pkg_title.strip() if pkg_title and pkg_title.strip() else _pi.PENDING_TITLE_SENTINEL
+                resolved_client = pkg_client.strip() if pkg_client and pkg_client.strip() else _pi.PENDING_CLIENT_SENTINEL
+
                 with st.spinner(f"Creating opportunity and uploading {len(pkg_files)} procurement document(s)…"):
                     try:
                         # 1. Create bid in Supabase under caller's organization
                         bid_id = _tenancy.create_bid_for_organization({
-                            "title": pkg_title.strip(),
-                            "client": pkg_client.strip(),
+                            "title": resolved_title,
+                            "client": resolved_client,
                             "stage": "Understand",
                             "sensitivity": "Standard",
                         }, organization_id=_ctx.organization_id)

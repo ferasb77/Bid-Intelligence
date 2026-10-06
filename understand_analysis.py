@@ -98,6 +98,7 @@ def _production_recon_budget():
 # Unified opportunity analysis workflow steps (UNDERSTAND-UX1)
 # ---------------------------------------------------------------------------
 STEP_READY: str = "READY"
+STEP_IDENTITY_CONFIRMATION_REQUIRED: str = "IDENTITY_CONFIRMATION_REQUIRED"
 STEP_FOUNDATION_RUNNING: str = "FOUNDATION_RUNNING"
 STEP_BASELINE_PRIMARY_AMBIGUOUS: str = "BASELINE_PRIMARY_AMBIGUOUS"
 STEP_BASELINE_REVIEW_REQUIRED: str = "BASELINE_REVIEW_REQUIRED"
@@ -324,7 +325,18 @@ def _continue_orchestration_after_fast(
                     "error": baseline_review.get("review_note") or "Baseline analysis failed",
                 }
 
-    # Once baseline is applied (governed), proceed directly to Full Analysis!
+    # Once baseline is applied (governed), execute governed buyer research if not already present
+    try:
+        import buyer_research as _br
+        bid_row = tenancy.get_bid_for_organization(bid_id, organization_id) or {}
+        resolved_client = bid_row.get("client")
+        if resolved_client and not _pi.is_sentinel(resolved_client):
+            # Check or run bounded research (uses cache if available)
+            _br.run_governed_buyer_research(resolved_client)
+    except Exception as exc:
+        logger.warning("Buyer research execution skipped/deferred for bid %s: %s", bid_id, exc)
+
+    # Proceed directly to Full Analysis!
     with _production_recon_budget():
         res = tenancy.start_full_analysis_for_organization(
             bid_id, organization_id, key,
@@ -333,6 +345,7 @@ def _continue_orchestration_after_fast(
             execution=execution,
             reconciliation_max_output_tokens=PRODUCTION_RECONCILIATION_MAX_OUTPUT_TOKENS,
         )
+
         if isinstance(res, dict) and "step" not in res:
             out = res.get("outcome")
             if out in ("CREATED", "ACTIVE_RUN_EXISTS"):
@@ -446,6 +459,33 @@ def start_opportunity_analysis(
             except Exception as exc:
                 logger.warning("Duplicate detection skipped for bid %s: %s", bid_id, exc)
 
+    # 1.5. Auto Procurement Identity Resolution (BI-VALUE-2 Phase B & D)
+    import procurement_identity as _pi
+    bid_row = tenancy.get_bid_for_organization(bid_id, organization_id) or {}
+    curr_client = bid_row.get("client")
+    curr_title = bid_row.get("title")
+    curr_file_num = bid_row.get("file_number")
+
+    if _pi.is_sentinel(curr_client) or _pi.is_sentinel(curr_title) or not curr_client or not curr_title:
+        identity = _pi.resolve_procurement_identity(rfp_docs or docs)
+        if identity.is_resolved:
+            tenancy.update_bid_identity_for_organization(
+                bid_id, organization_id,
+                title=identity.opportunity_title,
+                client=identity.client_name,
+                file_number=identity.solicitation_number or curr_file_num,
+            )
+            logger.info("Bid %s auto-resolved identity: buyer='%s', title='%s', sol='%s'",
+                        bid_id, identity.client_name, identity.opportunity_title, identity.solicitation_number)
+        elif identity.needs_confirmation:
+            return {
+                "outcome": "IDENTITY_CONFIRMATION_REQUIRED",
+                "step": STEP_IDENTITY_CONFIRMATION_REQUIRED,
+                "identity": identity.to_dict(),
+                "status_label": "Procurement identity confirmation required",
+                "is_live": False,
+            }
+
     # 2. Check procurement governance status first.
     # Precedence rule: for an ungoverned bid, historical FULL runs never bypass baseline governance.
     try:
@@ -453,6 +493,7 @@ def start_opportunity_analysis(
     except Exception:
         proc_state = {"procurement_truth_status": "ungoverned", "procurement_revision": 1}
     truth_status = proc_state.get("procurement_truth_status", "ungoverned")
+
 
     if truth_status == "governed":
         status = tenancy.get_full_analysis_status_for_organization(bid_id, organization_id)
@@ -633,12 +674,35 @@ def get_opportunity_analysis_state(bid_id: int, organization_id: str) -> dict[st
     pending_changes_count = 0
     approved_changes_count = 0
 
+    import procurement_identity as _pi
+    bid_row = tenancy.get_bid_for_organization(bid_id, organization_id) or {}
+    curr_client = bid_row.get("client")
+    curr_title = bid_row.get("title")
+    curr_file_num = bid_row.get("file_number")
+
+    identity_info = None
+    if _pi.is_sentinel(curr_client) or _pi.is_sentinel(curr_title) or not curr_client or not curr_title:
+        identity_obj = _pi.resolve_procurement_identity(target_docs)
+        identity_info = identity_obj.to_dict()
+        if identity_obj.is_resolved:
+            tenancy.update_bid_identity_for_organization(
+                bid_id, organization_id,
+                title=identity_obj.opportunity_title,
+                client=identity_obj.client_name,
+                file_number=identity_obj.solicitation_number or curr_file_num,
+            )
+        elif identity_obj.needs_confirmation:
+            step = STEP_IDENTITY_CONFIRMATION_REQUIRED
+            status_label = "Procurement identity confirmation required"
+
     if truth_status != "governed":
-        # Precedence rule: for an ungoverned bid, historical FULL runs never bypass baseline governance.
-        if latest_fast_run and latest_fast_run.get("status") in ("QUEUED", "PREPARING", "ANALYZING", "ASSEMBLING"):
+        if step == STEP_IDENTITY_CONFIRMATION_REQUIRED:
+            pass  # remain in identity confirmation
+        elif latest_fast_run and latest_fast_run.get("status") in ("QUEUED", "PREPARING", "ANALYZING", "ASSEMBLING"):
             is_live = True
             step = STEP_FOUNDATION_RUNNING
             status_label = "Analyzing procurement documents…"
+
         elif active_baseline:
             b_status = active_baseline.get("status")
             if b_status == "analyzing":
@@ -793,4 +857,5 @@ def get_opportunity_analysis_state(bid_id: int, organization_id: str) -> dict[st
         "latest_fast_run": latest_fast_run,
         "eligible_docs": eligible_docs,
         "ambiguity_reason": doc_roles if doc_ids is None else None,
+        "identity": identity_info,
     }
