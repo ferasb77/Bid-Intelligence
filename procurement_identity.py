@@ -46,7 +46,7 @@ class ProcurementIdentityCandidate:
     client_name: str
     opportunity_title: str
     solicitation_number: str | None = None
-    confidence_score: float = 0.0
+    authority_rank: int = 4
     source_document: str | None = None
     evidence_excerpt: str | None = None
 
@@ -57,8 +57,10 @@ class ProcurementIdentity:
     client_name: str | None
     opportunity_title: str | None
     solicitation_number: str | None
-    confidence_score: float
-    confidence_notes: str
+    authority_rank: int
+    resolution_basis: str
+    evidence_count: int
+    conflict_present: bool
     evidence_references: tuple[dict[str, Any], ...] = ()
     alternative_candidates: tuple[ProcurementIdentityCandidate, ...] = ()
 
@@ -76,15 +78,17 @@ class ProcurementIdentity:
             "client_name": self.client_name,
             "opportunity_title": self.opportunity_title,
             "solicitation_number": self.solicitation_number,
-            "confidence_score": self.confidence_score,
-            "confidence_notes": self.confidence_notes,
+            "authority_rank": self.authority_rank,
+            "resolution_basis": self.resolution_basis,
+            "evidence_count": self.evidence_count,
+            "conflict_present": self.conflict_present,
             "evidence_references": list(self.evidence_references),
             "alternative_candidates": [
                 {
                     "client_name": c.client_name,
                     "opportunity_title": c.opportunity_title,
                     "solicitation_number": c.solicitation_number,
-                    "confidence_score": c.confidence_score,
+                    "authority_rank": c.authority_rank,
                     "source_document": c.source_document,
                     "evidence_excerpt": c.evidence_excerpt,
                 }
@@ -155,8 +159,10 @@ def resolve_procurement_identity(
             client_name=None,
             opportunity_title=None,
             solicitation_number=None,
-            confidence_score=0.0,
-            confidence_notes="No documents provided for procurement identity resolution.",
+            authority_rank=4,
+            resolution_basis="No documents provided for procurement identity resolution.",
+            evidence_count=0,
+            conflict_present=False,
         )
 
     # -----------------------------------------------------------------------
@@ -184,8 +190,10 @@ def resolve_procurement_identity(
                     client_name=str(c_val).strip(),
                     opportunity_title=str(t_val).strip(),
                     solicitation_number=str(f_val).strip() if f_val else None,
-                    confidence_score=0.98,
-                    confidence_notes="Resolved from canonical procurement truth (Rank 1).",
+                    authority_rank=1,
+                    resolution_basis="Canonical reconciled procurement truth (Rank 1)",
+                    evidence_count=len(ev_refs),
+                    conflict_present=False,
                     evidence_references=tuple(ev_refs),
                 )
         except Exception:
@@ -277,7 +285,7 @@ def resolve_procurement_identity(
                 client_name=b[0],
                 opportunity_title=list(unique_titles.values())[0][0] if unique_titles else "Procurement Opportunity",
                 solicitation_number=list(unique_solicitations.values())[0][0] if unique_solicitations else None,
-                confidence_score=0.4,
+                authority_rank=3,
                 source_document=b[1],
                 evidence_excerpt=b[2],
             )
@@ -288,8 +296,10 @@ def resolve_procurement_identity(
             client_name=None,
             opportunity_title=list(unique_titles.values())[0][0] if unique_titles else None,
             solicitation_number=list(unique_solicitations.values())[0][0] if unique_solicitations else None,
-            confidence_score=0.4,
-            confidence_notes=f"Conflicting issuing organizations found across documents: {', '.join(b[0] for b in unique_buyers.values())}.",
+            authority_rank=4,
+            resolution_basis=f"Conflicting issuing organizations found across documents: {', '.join(b[0] for b in unique_buyers.values())}.",
+            evidence_count=len(unique_buyers),
+            conflict_present=True,
             alternative_candidates=candidates,
         )
 
@@ -301,7 +311,7 @@ def resolve_procurement_identity(
                 client_name=buyer_val,
                 opportunity_title=t[0],
                 solicitation_number=list(unique_solicitations.values())[0][0] if unique_solicitations else None,
-                confidence_score=0.5,
+                authority_rank=3,
                 source_document=t[1],
                 evidence_excerpt=t[2],
             )
@@ -312,8 +322,10 @@ def resolve_procurement_identity(
             client_name=buyer_val,
             opportunity_title=None,
             solicitation_number=list(unique_solicitations.values())[0][0] if unique_solicitations else None,
-            confidence_score=0.5,
-            confidence_notes=f"Conflicting opportunity titles detected across documents.",
+            authority_rank=4,
+            resolution_basis="Conflicting opportunity titles detected across documents.",
+            evidence_count=len(unique_titles),
+            conflict_present=True,
             alternative_candidates=candidates,
         )
 
@@ -339,8 +351,10 @@ def resolve_procurement_identity(
             client_name=chosen_buyer,
             opportunity_title=chosen_title,
             solicitation_number=chosen_sol,
-            confidence_score=0.92,
-            confidence_notes="Resolved from corroborated document body evidence (Rank 3).",
+            authority_rank=3,
+            resolution_basis="Corroborated package document content evidence (Rank 3)",
+            evidence_count=len(ev_refs),
+            conflict_present=False,
             evidence_references=tuple(ev_refs),
         )
 
@@ -350,6 +364,8 @@ def resolve_procurement_identity(
         client_name=None,
         opportunity_title=list(unique_titles.values())[0][0] if unique_titles else None,
         solicitation_number=list(unique_solicitations.values())[0][0] if unique_solicitations else None,
-        confidence_score=0.2,
-        confidence_notes="Issuing organization could not be definitively extracted from provided document texts.",
+        authority_rank=4,
+        resolution_basis="Issuing organization could not be definitively extracted from provided document texts.",
+        evidence_count=0,
+        conflict_present=False,
     )

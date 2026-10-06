@@ -395,11 +395,13 @@ def run_governed_buyer_research(
             run_id=cached.run_id,
         )
 
-    # 3. If no search/fetch functions supplied, fall back to default providers
+    # 3. If no search/fetch functions supplied, default to Anthropic server-side tools
     if search_fn is None or fetch_fn is None:
         import buyer_research_provider as brp
-        search_fn = search_fn or brp.live_search
-        fetch_fn = fetch_fn or brp.live_fetch
+        search_fn = search_fn or brp.anthropic_search
+        fetch_fn = fetch_fn or brp.anthropic_fetch
+        if provider == "live_direct_http":
+            provider = "anthropic_server_tools"
 
     searches_executed = 0
     pages_accepted = 0
@@ -539,8 +541,23 @@ def run_governed_buyer_research(
     # Cache and persist
     if final_status == ResearchStatus.COMPLETE:
         cache_research(res)
-        run_id = _persist_durable_research_run(bid_id, organization_id, res, provider=provider)
-        if run_id:
+        if bid_id and organization_id:
+            run_id = _persist_durable_research_run(bid_id, organization_id, res, provider=provider)
+            if not run_id:
+                logger.error("Durable persistence failed for bid %s, org %s; downgrading status to PARTIAL", bid_id, organization_id)
+                return BuyerResearchResult(
+                    status=ResearchStatus.PARTIAL,
+                    resolved_buyer=res.resolved_buyer,
+                    query_fingerprint=res.query_fingerprint,
+                    searches_executed=res.searches_executed,
+                    pages_accepted=res.pages_accepted,
+                    signals=res.signals,
+                    evidence_ids=res.evidence_ids,
+                    official_website=res.official_website,
+                    buyer_id=res.buyer_id,
+                    cached_reuse=False,
+                    error="Buyer research completed but durable persistence failed.",
+                )
             res = BuyerResearchResult(
                 status=res.status,
                 resolved_buyer=res.resolved_buyer,

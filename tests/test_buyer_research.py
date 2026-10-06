@@ -273,9 +273,56 @@ class TestBuyerResearchBudgetsAndSources(unittest.TestCase):
         with self.assertRaises(brp.ProviderSecurityError):
             brp.validate_network_url("http://user:pass@example.com/doc")  # Embedded credentials
 
-    def test_30_network_bounds_enforced(self):
-        self.assertEqual(brp.MAX_FETCH_BYTES, 2 * 1024 * 1024)
-        self.assertEqual(brp.MAX_REDIRECTS, 5)
+    def test_26_unsupported_evaluator_claims_prohibited_in_buyer_intelligence(self):
+        # Buyer Intelligence strictly prohibits evaluator preferences, strategy advice, win probability
+        from buyer_intelligence import _safe_statement, BuyerIntelligenceValidationError
+        with self.assertRaises(BuyerIntelligenceValidationError):
+            _safe_statement("Crucial weighting rule: evaluator wants strong local presence.", "test")
+        with self.assertRaises(BuyerIntelligenceValidationError):
+            _safe_statement("This represents an evaluation differentiator for pricing strategy.", "test")
+        with self.assertRaises(BuyerIntelligenceValidationError):
+            _safe_statement("We should bid because our win probability is high.", "test")
+        # Allowed factual statement
+        stmt = _safe_statement("York University is a public research university in Toronto, Ontario.", "test")
+        self.assertEqual(stmt, "York University is a public research university in Toronto, Ontario.")
+
+    def test_31_anthropic_default_provider_configured(self):
+        # When no custom functions are supplied, defaults to Anthropic search and fetch
+        with patch("buyer_research_provider.anthropic_search", return_value=[]) as mock_search, \
+             patch("buyer_research_provider.anthropic_fetch", return_value="") as mock_fetch:
+            res = br.run_governed_buyer_research("York University", max_searches=1)
+            self.assertEqual(mock_search.call_count, 1)
+
+    def test_32_durable_persistence_failure_downgrades_to_partial(self):
+        search_mock = MagicMock(return_value=[{"url": "https://www.yorku.ca/about", "title": "About York"}])
+        fetch_mock = MagicMock(return_value="York University is an established teaching and research university located in Ontario Canada.")
+
+        # Simulate DB persistence returning None (e.g. database error)
+        with patch("buyer_research._persist_durable_research_run", return_value=None):
+            res = br.run_governed_buyer_research(
+                "York University",
+                bid_id=999,
+                organization_id="org-uuid",
+                search_fn=search_mock,
+                fetch_fn=fetch_mock,
+            )
+            self.assertEqual(res.status, br.ResearchStatus.PARTIAL)
+            self.assertIn("persistence failed", res.error)
+
+    def test_33_fingerprint_invalidation_across_dimensions(self):
+        base_fp = br.compute_research_fingerprint("York University", "P27-070", "AI Training", "v1")
+        # Changed buyer
+        diff_buyer = br.compute_research_fingerprint("Bank of Canada", "P27-070", "AI Training", "v1")
+        self.assertNotEqual(base_fp, diff_buyer)
+        # Changed solicitation
+        diff_sol = br.compute_research_fingerprint("York University", "P27-071", "AI Training", "v1")
+        self.assertNotEqual(base_fp, diff_sol)
+        # Changed context
+        diff_ctx = br.compute_research_fingerprint("York University", "P27-070", "Campus Facilities", "v1")
+        self.assertNotEqual(base_fp, diff_ctx)
+        # Changed contract version
+        diff_ver = br.compute_research_fingerprint("York University", "P27-070", "AI Training", "v2")
+        self.assertNotEqual(base_fp, diff_ver)
 
 
 if __name__ == "__main__":

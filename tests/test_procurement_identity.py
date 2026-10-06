@@ -73,7 +73,9 @@ class TestProcurementIdentityResolution(unittest.TestCase):
         self.assertEqual(res.client_name, "York University")
         self.assertIn("INSTRUCTOR FOR SALES AND AI TRAINING", res.opportunity_title)
         self.assertEqual(res.solicitation_number, "P27-070")
-        self.assertGreaterEqual(res.confidence_score, 0.8)
+        self.assertEqual(res.authority_rank, 3)
+        self.assertFalse(res.conflict_present)
+        self.assertGreaterEqual(res.evidence_count, 1)
         self.assertTrue(len(res.evidence_references) > 0)
 
     def test_2_corroborated_multi_doc_identity_resolved(self):
@@ -163,7 +165,9 @@ class TestProcurementIdentityResolution(unittest.TestCase):
         self.assertEqual(res.client_name, "York University")
         self.assertEqual(res.opportunity_title, "Instructor for Sales and AI Training and Mentorship Program")
         self.assertEqual(res.solicitation_number, "P27-070")
-        self.assertEqual(res.confidence_score, 0.98)
+        self.assertEqual(res.authority_rank, 1)
+        self.assertFalse(res.conflict_present)
+        self.assertIn("Canonical", res.resolution_basis)
 
 
 class TestTenancyIdentityUpdate(unittest.TestCase):
