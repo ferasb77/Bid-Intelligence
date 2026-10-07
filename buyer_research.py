@@ -317,6 +317,7 @@ def run_governed_buyer_research(
     jurisdiction_country: str | None = None,
     jurisdiction_subdivision: str | None = None,
     verified_buyer_domain: str | None = None,
+    procurement_document_domains: Sequence[str] = (),
     search_fn: Callable[[str], list[dict[str, str]]] | None = None,
     fetch_fn: Callable[[str], str] | None = None,
     max_searches: int = MAX_SEARCHES,
@@ -324,11 +325,11 @@ def run_governed_buyer_research(
     provider: str = "anthropic_server_tools",
 ) -> BuyerResearchResult:
     """
-    Executes bounded, governed buyer research with source-authority closure (BI-VALUE-2.3):
+    Executes bounded, governed buyer research with source-authority closure (BI-VALUE-2.4):
     1. Checks durable persistence first (survives process restart with 0 calls).
     2. Checks in-memory cache as secondary layer.
     3. Performs bounded domain discovery and identity verification if verified_buyer_domain not supplied.
-    4. Constrains buyer-specific research queries to the verified buyer domain.
+    4. Constrains buyer-specific research queries to the canonical verified buyer root domain.
     5. Enforces Max 3 searches and Max 6 accepted official pages.
     6. Verifies every extract verbatim against fetched page text.
     7. Yields structured BuyerResearchResult.
@@ -387,6 +388,8 @@ def run_governed_buyer_research(
     # 4. Search & Domain Verification Orchestration (Phase E & F)
     searches_executed = 0
     known_verified_domain = verified_buyer_domain
+    if known_verified_domain:
+        known_verified_domain = bsa.get_registrable_domain(known_verified_domain)
 
     pages_accepted = 0
     accepted_pages: list[bea.FetchedPage] = []
@@ -396,6 +399,32 @@ def run_governed_buyer_research(
 
     candidate_urls: list[dict[str, str]] = []
     seen_urls: set[str] = set()
+    candidate_texts: dict[str, str] = {}
+
+    # Check procurement document domains directly before searching
+    if not known_verified_domain and procurement_document_domains:
+        for p_dom in procurement_document_domains:
+            norm_p = normalize_domain(p_dom)
+            if not norm_p or is_adversarial_or_disallowed_domain(norm_p):
+                continue
+            try:
+                p_text = fetch_fn(f"https://{norm_p}")
+                candidate_texts[f"https://{norm_p}"] = p_text
+            except Exception:
+                p_text = ""
+            ver = bsa.verify_buyer_domain_content(
+                norm_p,
+                resolved_buyer,
+                p_text,
+                jurisdiction_country=jurisdiction_country,
+                jurisdiction_subdivision=jurisdiction_subdivision,
+                procurement_document_domains=procurement_document_domains,
+                fetch_root_fn=fetch_fn,
+            )
+            if ver.is_official_buyer:
+                known_verified_domain = ver.canonical_buyer_domain or ver.registrable_domain or ver.domain
+                logger.info("Verified official buyer domain from procurement document: %s", known_verified_domain)
+                break
 
     # Query definitions
     if known_verified_domain:
@@ -411,8 +440,6 @@ def run_governed_buyer_research(
             f"{resolved_buyer} procurement policy guidelines",
             f"{resolved_buyer} continuing education training",
         ]
-
-    candidate_texts: dict[str, str] = {}
 
     for q in queries:
         if searches_executed >= max_searches:
@@ -440,9 +467,11 @@ def run_governed_buyer_research(
                         c_text,
                         jurisdiction_country=jurisdiction_country,
                         jurisdiction_subdivision=jurisdiction_subdivision,
+                        procurement_document_domains=procurement_document_domains,
+                        fetch_root_fn=fetch_fn,
                     )
                     if ver.is_official_buyer:
-                        known_verified_domain = ver.domain
+                        known_verified_domain = ver.canonical_buyer_domain or ver.registrable_domain or ver.domain
                         logger.info("Verified official buyer domain from candidate: %s", known_verified_domain)
                         # Dynamically constrain remaining queries to site:<verified_domain>
                         remaining_queries = [

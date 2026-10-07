@@ -334,12 +334,27 @@ def _continue_orchestration_after_fast(
             # Check or run bounded research with durable tenant persistence
             sol_num = bid_row.get("file_number")
             title = bid_row.get("title") or ""
+            # Procurement-package domain evidence + jurisdiction (deterministic, no model calls)
+            pkg_domains: tuple[str, ...] = ()
+            pkg_country = pkg_subdiv = None
+            try:
+                _docs = _get_bid_documents(bid_id, organization_id)
+                _rfp = [d for d in _docs if isinstance(d, dict) and d.get("doc_type") == "RFP / Source"]
+                _pkg_ident = _pi.resolve_procurement_identity(_rfp or _docs)
+                pkg_domains = tuple(_pkg_ident.candidate_domains)
+                pkg_country = _pkg_ident.jurisdiction_country
+                pkg_subdiv = _pkg_ident.jurisdiction_subdivision
+            except Exception as exc:
+                logger.debug("Package domain extraction skipped for bid %s: %s", bid_id, exc)
             _br.run_governed_buyer_research(
                 resolved_client,
                 bid_id=bid_id,
                 organization_id=organization_id,
                 solicitation_number=sol_num,
                 context_anchors=title,
+                jurisdiction_country=pkg_country,
+                jurisdiction_subdivision=pkg_subdiv,
+                procurement_document_domains=pkg_domains,
             )
     except Exception as exc:
         logger.warning("Buyer research execution skipped/deferred for bid %s: %s", bid_id, exc)

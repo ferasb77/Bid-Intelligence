@@ -68,8 +68,13 @@ class TestBuyerResearchBudgetsAndSources(unittest.TestCase):
             max_searches=1,
             max_pages=6,
         )
-        self.assertLessEqual(fetch_mock.call_count, 6)
+        # Policy v3: one root-page identity verification fetch (https://yorku.ca) is
+        # required before any page is admitted; it is never itself accepted as evidence.
+        self.assertLessEqual(fetch_mock.call_count, 6 + 1)
+        root_calls = [c for c in fetch_mock.call_args_list if c.args and c.args[0] == "https://yorku.ca"]
+        self.assertEqual(len(root_calls), 1)
         self.assertEqual(res.pages_accepted, 6)
+        self.assertEqual(res.verified_buyer_domain, "yorku.ca")
 
     def test_14_unofficial_source_rejected(self):
         self.assertFalse(br.is_official_source_allowed("https://en.wikipedia.org/wiki/York_University", "York University"))
@@ -96,6 +101,7 @@ class TestBuyerResearchBudgetsAndSources(unittest.TestCase):
 
         res = br.run_governed_buyer_research(
             "York University",
+            procurement_document_domains=["https://www.yorku.ca"],
             search_fn=search_mock,
             fetch_fn=fetch_mock,
         )
@@ -244,6 +250,7 @@ class TestBuyerResearchBudgetsAndSources(unittest.TestCase):
 
         res = br.run_governed_buyer_research(
             "York University",
+            procurement_document_domains=["procurement@yorku.ca"],
             search_fn=search_mock,
             fetch_fn=fetch_mock,
         )

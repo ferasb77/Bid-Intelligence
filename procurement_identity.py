@@ -67,6 +67,7 @@ class ProcurementIdentity:
     jurisdiction_subdivision: str | None = None
     evidence_references: tuple[dict[str, Any], ...] = ()
     alternative_candidates: tuple[ProcurementIdentityCandidate, ...] = ()
+    candidate_domains: tuple[str, ...] = ()
 
     @property
     def is_resolved(self) -> bool:
@@ -89,6 +90,7 @@ class ProcurementIdentity:
             "jurisdiction_country": self.jurisdiction_country,
             "jurisdiction_subdivision": self.jurisdiction_subdivision,
             "evidence_references": list(self.evidence_references),
+            "candidate_domains": list(self.candidate_domains),
             "alternative_candidates": [
                 {
                     "client_name": c.client_name,
@@ -220,10 +222,32 @@ def resolve_procurement_identity(
     body_solicitations: list[tuple[str, str, str]] = []
     filename_solicitations: list[tuple[str, str, str]] = []
 
+    # Domain extraction from procurement documents (BI-VALUE-2.4)
+    extracted_doc_domains: list[str] = []
+    _URL_PATTERN = re.compile(r'https?://([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', re.IGNORECASE)
+    _EMAIL_DOMAIN_PATTERN = re.compile(r'[a-zA-Z0-9._%+-]+@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', re.IGNORECASE)
+    _EXCLUDED_DOC_DOMAINS = {
+        "merx.com", "biddingo.com", "bonfirehub.com", "buyandsell.gc.ca",
+        "canadabuys.canada.ca", "adobe.com", "microsoft.com", "google.com"
+    }
+
     for d in documents:
         name = d.get("name") or d.get("filename") or ""
         text = d.get("text") or d.get("raw_text") or d.get("content") or ""
         header_text = text[:8000]
+
+        # Extract URLs and emails for candidate domains
+        if text:
+            for m in _URL_PATTERN.finditer(text[:15000]):
+                dom = m.group(1).lower().strip('.')
+                if not any(dom == ex or dom.endswith('.' + ex) for ex in _EXCLUDED_DOC_DOMAINS):
+                    if dom not in extracted_doc_domains:
+                        extracted_doc_domains.append(dom)
+            for m in _EMAIL_DOMAIN_PATTERN.finditer(text[:15000]):
+                dom = m.group(1).lower().strip('.')
+                if not any(dom == ex or dom.endswith('.' + ex) for ex in _EXCLUDED_DOC_DOMAINS):
+                    if dom not in extracted_doc_domains:
+                        extracted_doc_domains.append(dom)
 
         # Extract from text body first (Rank 3 authority)
         if header_text:
@@ -391,6 +415,7 @@ def resolve_procurement_identity(
             jurisdiction_country=resolved_country,
             jurisdiction_subdivision=resolved_subdiv,
             evidence_references=tuple(ev_refs),
+            candidate_domains=tuple(extracted_doc_domains),
         )
 
     # Fallback: buyer could not be reliably determined
@@ -403,4 +428,5 @@ def resolve_procurement_identity(
         resolution_basis="Issuing organization could not be definitively extracted from provided document texts.",
         evidence_count=0,
         conflict_present=False,
+        candidate_domains=tuple(extracted_doc_domains),
     )
