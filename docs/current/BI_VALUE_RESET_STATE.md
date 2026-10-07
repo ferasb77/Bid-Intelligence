@@ -53,3 +53,8 @@ The benchmark strictly enforces separation of truth classes across every section
 - Cascade Deletion & Cleanup: Disposable Bid 1605 deleted via `tenancy.delete_bid_for_organization(...)`; verified 100% cascade cleanup across `bids`, `buyer_research_runs`, and Supabase Storage (0 orphan records).
 - Benchmark Integrity: Bid 1522 verified 100% untouched and preserved (governed rev 2, Run 57 COMPLETE, 2 storage objects in `bid-documents`, 0 unverified mutations).
 - Migration 026: **APPLIED LIVE** to Supabase.
+
+## BI-VALUE-2.4 (frozen)
+
+source-authority-policy/3: OFFICIAL_BUYER requires positive ownership proof (buyer-reflecting procurement-package domain, registrable-root page self-identity, copyright notice, or @domain contact email). Research constrained to site:<canonical root>. Foreign .gov rejected for Canadian buyers. Live York commissioning (disposable bid 1614, deleted): COMPLETE, 3 searches, 6 pages, 14 signals, verified domain yorku.ca, 0 york.ac.uk/york.edu hits; new-process reuse REUSED_COMPLETE with 0 provider calls; Bid 1522 snapshot unchanged. Full suite: 3934 passed.
+
