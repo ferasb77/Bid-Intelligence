@@ -57,6 +57,14 @@ def page_decide(bid_id: int):
     firm_profile = tenancy.get_firm_profile_authenticated(_token, _org_id)
     brief_row = tenancy.get_bid_brief_authenticated(_token, bid_id) or {}
 
+    latest_run = tenancy.get_latest_analysis_run_authenticated(_token, bid_id)
+    decision_brief = None
+    if latest_run and latest_run.get("status") in ("COMPLETE", "PARTIAL"):
+        try:
+            decision_brief = tenancy.get_decision_brief_for_organization(bid_id, int(latest_run["id"]), _org_id)
+        except Exception:
+            decision_brief = None
+
     st.markdown('<div style="font-size:.72rem;color:#C9A96E;text-transform:uppercase;letter-spacing:.12em;font-weight:600">STAGE 2 · DECIDE</div>', unsafe_allow_html=True)
     c1, c2 = st.columns([3.8, 1.4])
     c1.markdown(f"# Qualification & Bid Decision")
@@ -129,6 +137,38 @@ def page_decide(bid_id: int):
             '</div>',
             unsafe_allow_html=True
         )
+
+        proof_items = getattr(decision_brief, "proof_items", ()) if decision_brief else ()
+        if proof_items:
+            with st.expander(f"🛡️ Authoritative Proof Burden Register ({len(proof_items)} items from Decision Brief)", expanded=True):
+                st.markdown(
+                    '<div class="info-box">'
+                    '<strong>Epistemic Separation:</strong> Identifying an RFP requirement in procurement documents does NOT equal supplier compliance. '
+                    'Bidders must verify that actual corporate proof artifacts exist in company records before bidding.'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+                hcols = st.columns([1.8, 1.2, 2.6, 1.4])
+                for h, hc in zip(["Proof Item", "Nature", "Requirement & Source", "Supplier Evidence Readiness"], hcols):
+                    hc.markdown(f'<span style="font-size:.68rem;color:#6E6C66;font-weight:700;text-transform:uppercase">{h}</span>', unsafe_allow_html=True)
+                st.markdown('<hr class="section-divider" style="margin:.2rem 0">', unsafe_allow_html=True)
+
+                for pi in proof_items:
+                    c1, c2, c3, c4 = st.columns([1.8, 1.2, 2.6, 1.4])
+                    c1.markdown(f'<strong style="font-size:.82rem">{pi.title}</strong>', unsafe_allow_html=True)
+                    is_mand = pi.nature == "mandatory_requirement"
+                    n_col = "#C0392B" if is_mand else "#27AE60"
+                    n_lbl = "MANDATORY" if is_mand else "RECOMMENDED"
+                    c2.markdown(f'<span style="background:{n_col}22;color:{n_col};border:1px solid {n_col}55;padding:.1rem .4rem;border-radius:3px;font-size:.68rem;font-weight:700">{n_lbl}</span>', unsafe_allow_html=True)
+                    src_part = f' <span style="font-size:.70rem;color:#6E6C66">[{pi.source}]</span>' if pi.source else ""
+                    c3.markdown(f'<span style="font-size:.78rem;color:#EDEAE3">{pi.detail}{src_part}</span>', unsafe_allow_html=True)
+
+                    # Match against firm evidence / reqs: never falsely state READY if missing!
+                    matched_req = next((r for r in reqs if any(k in r.get("description","").lower() for k in pi.title.lower().split()[:2])), None)
+                    e_stat = matched_req.get("evidence_status", "MISSING") if matched_req else "MISSING"
+                    e_col = "#27AE60" if e_stat == "READY" else "#E67E22" if e_stat == "PARTIAL" else "#C0392B"
+                    c4.markdown(f'<span style="background:{e_col}22;color:{e_col};border:1px solid {e_col}55;padding:.1rem .4rem;border-radius:3px;font-size:.68rem;font-weight:700">Evidence: {e_stat}</span>', unsafe_allow_html=True)
+                    st.markdown('<hr class="section-divider" style="margin:.15rem 0">', unsafe_allow_html=True)
 
         # Filters
         c_f1, c_f2 = st.columns([2, 2])
@@ -230,6 +270,40 @@ def page_decide(bid_id: int):
                 unsafe_allow_html=True
             )
 
+        precomputed_qs = getattr(decision_brief, "clarification_questions", ()) if decision_brief else ()
+        if precomputed_qs:
+            st.markdown(f"#### 📋 Precomputed Strategic Clarifications ({len(precomputed_qs)} from Decision Brief)")
+            st.caption("Identified during opportunity analysis to resolve procurement package ambiguities before the enquiry deadline. No AI model calls required.")
+            existing_q_texts = {c.get("question", "").strip().lower() for c in clars}
+            for idx, q_text in enumerate(precomputed_qs, 1):
+                is_tracked = q_text.strip().lower() in existing_q_texts
+                c_q1, c_q2 = st.columns([3.8, 1.4])
+                with c_q1:
+                    st.markdown(
+                        f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;padding:.6rem .9rem;margin:.25rem 0;font-size:.82rem">'
+                        f'<strong style="color:#2980B9">CQ-{idx}:</strong> {q_text}'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+                with c_q2:
+                    if is_tracked:
+                        st.markdown('<div style="padding-top:.4rem"><span style="color:#27AE60;font-size:.76rem;font-weight:700">✓ Formally Tracked</span></div>', unsafe_allow_html=True)
+                    else:
+                        if st.button("➕ Adopt Question", key=f"btn_adopt_cq_{idx}", help="Adopt this precomputed question into formal clarification tracking"):
+                            tenancy.upsert_clarification_authenticated(_token, {
+                                "bid_id": bid_id,
+                                "question_id": f"CQ-{idx}",
+                                "question": q_text,
+                                "rfp_reference": "Decision Brief Ambiguity",
+                                "rationale": "Precomputed strategic clarification from opportunity analysis",
+                                "priority": "High",
+                                "category": "Scope / Commercial",
+                                "status": "Draft",
+                            })
+                            st.success(f"Adopted CQ-{idx} into formal tracking.")
+                            st.rerun()
+            st.markdown('<hr class="section-divider" style="margin:.8rem 0">', unsafe_allow_html=True)
+
         # AI Generator Button & Options
         with st.expander("🤖 AI Clarification Question Generator", expanded=not clars):
             st.markdown(
@@ -294,6 +368,38 @@ def page_decide(bid_id: int):
             '</div>',
             unsafe_allow_html=True
         )
+
+        if decision_brief:
+            st.markdown("#### 📊 Evidence-Backed Pursuit Baseline (From Decision Brief)")
+            st.caption("Factual constraints, mathematical evaluation model, and commercial blockers extracted directly from the procurement package.")
+
+            es = getattr(decision_brief, "evaluation_summary", None)
+            if es:
+                eb1, eb2, eb3 = st.columns(3)
+                eb1.markdown(metric_card("Evaluation Basis", f"{es.total_written_points:.0f} pts written", f"Tech: {es.technical_points:.0f} · Fin: {es.financial_points:.0f}"), unsafe_allow_html=True)
+                thresh_val = es.minimum_technical_threshold or "No stated threshold"
+                eb2.markdown(metric_card("Passing Threshold", thresh_val, "Ranking-based competition"), unsafe_allow_html=True)
+                eb3.markdown(metric_card("Shortlist Presentation", f"+{es.shortlist_presentation_points:.0f} pts", "Conditional stage", "#2980B9"), unsafe_allow_html=True)
+
+            imm_blockers = getattr(decision_brief, "immediate_blockers", ())
+            if imm_blockers:
+                for ib in imm_blockers:
+                    st.markdown(f'<div class="warn-box">⛔ <strong>Decision Watch-out:</strong> {ib}</div>', unsafe_allow_html=True)
+
+            disq_gates = getattr(decision_brief, "disqualification_gates", ())
+            if disq_gates:
+                with st.expander("⚠️ Review Disqualification Gates & Submission Mechanics"):
+                    for dg in disq_gates:
+                        st.markdown(f"• {dg}")
+
+            st.markdown(
+                '<div style="font-size:.75rem;color:#A9A69D;margin:.4rem 0">'
+                '<em>Governance Note:</em> Decision intelligence and analysis are strictly advisory. '
+                'Commercial pursuit determination (GO / NO-GO) is an exclusively accountable human decision.'
+                '</div>',
+                unsafe_allow_html=True
+            )
+            st.markdown('<hr class="section-divider" style="margin:.8rem 0">', unsafe_allow_html=True)
 
         c_dec_run, c_dec_space = st.columns([2, 2])
         if c_dec_run.button("🎯 Run AI Pursuit Evaluation", use_container_width=True, type="primary", key="btn_run_bn"):

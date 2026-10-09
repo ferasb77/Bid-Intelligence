@@ -49,6 +49,13 @@ EVIDENCE_COLOURS = {
     "MISSING":      "#C0392B",
     "NOT REQUIRED": "#6E6C66",
 }
+EPISTEMIC_COLOURS = {
+    "RFP FACT":                            "#C9A96E",
+    "EXTERNAL BUYER FACT":                 "#2980B9",
+    "BID INTELLIGENCE INTERPRETATION":     "#8E44AD",
+    "BID STRATEGY / PROOF RECOMMENDATION": "#27AE60",
+    "UNKNOWN":                             "#6E6C66",
+}
 
 CSS = """
 <style>
@@ -212,6 +219,10 @@ def qual_badge(status):
 def evidence_badge(status):
     c = EVIDENCE_COLOURS.get(status, "#6E6C66")
     return f'<span class="qual-badge" style="background:{c}22;color:{c};border:1px solid {c}55">Evidence: {status}</span>'
+
+def epistemic_badge(epistemic_class):
+    c = EPISTEMIC_COLOURS.get(epistemic_class, "#6E6C66")
+    return f'<span style="display:inline-block;background:{c}22;color:{c};border:1px solid {c}55;padding:.12rem .45rem;border-radius:3px;font-size:.68rem;font-weight:700;letter-spacing:.04em">{epistemic_class}</span>'
 
 def decision_badge(decision):
     colours = {

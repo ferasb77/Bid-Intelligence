@@ -15,7 +15,7 @@ import json
 import streamlit as st
 from database import download_file as _download_stored_file
 from components.ui import (stage_badge, days_until, days_label, metric_card,
-                           readiness_bar, STAGES, SENSITIVITY)
+                           readiness_bar, epistemic_badge, STAGES, SENSITIVITY)
 import analysis_service
 import auth_session
 import tenancy
@@ -1236,6 +1236,259 @@ def _resolve_customer_safe_summary(bid: dict, brief_row: dict, analysis_result: 
     return raw_summary or "Executive summary pending synthesis."
 
 
+def _render_interactive_decision_brief(brief, bid: dict):
+    st.markdown("### 📑 Bid Intelligence Decision Brief")
+    st.caption(
+        f"Executive Decision Intelligence Model ({brief.contract_version}) · "
+        "Authoritative baseline synchronized with primary PDF export"
+    )
+
+    # Opportunity Posture & Immediate Blockers
+    if getattr(brief, "opportunity_posture", None):
+        st.markdown(
+            f'<div style="background:#111118;border:1px solid #C9A96E44;border-left:4px solid #C9A96E;'
+            f'border-radius:0 6px 6px 0;padding:1rem 1.3rem;margin-bottom:.8rem;font-size:.92rem;line-height:1.6;color:#EDEAE3">'
+            f'<strong>Executive Strategic Posture:</strong> {brief.opportunity_posture}'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+
+    if getattr(brief, "immediate_blockers", None):
+        for blk in brief.immediate_blockers:
+            st.markdown(
+                f'<div class="warn-box">'
+                f'⛔ <strong>Immediate Commercial / Submission Blocker:</strong> {blk}'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
+    # Key Strategic Observations
+    if getattr(brief, "observations", None):
+        with st.expander("🔍 Strategic Observations & Key Findings", expanded=True):
+            for obs in brief.observations:
+                e_badge = epistemic_badge(obs.epistemic_class)
+                st.markdown(
+                    f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;padding:.65rem .9rem;margin:.35rem 0">'
+                    f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem">'
+                    f'<strong>{obs.title}</strong>'
+                    f'{e_badge}'
+                    f'</div>'
+                    f'<div style="font-size:.82rem;color:#A9A69D">{obs.detail}</div>'
+                    f'{"<div style=font-size:.72rem;color:#6E6C66;margin-top:.2rem>Supporting Source: " + obs.supporting_rfp_fact + "</div>" if obs.supporting_rfp_fact else ""}'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+
+    # 7 Progressive Disclosure Tabs
+    tab_scope, tab_buyer, tab_tech, tab_eval, tab_proof, tab_comm, tab_next = st.tabs([
+        "📦 1. Scope & Needs",
+        "🏛️ 2. Buyer Profile",
+        "⚡ 3. Technical Capabilities",
+        "⚖️ 4. Evaluation Model",
+        "🛡️ 5. Proof Burden",
+        "⚠️ 6. Risks & Commercial",
+        "📋 7. Action Priorities",
+    ])
+
+    with tab_scope:
+        st.markdown("#### What the Buyer Is Actually Buying")
+        if getattr(brief, "target_beneficiaries", None):
+            st.markdown(f"**Target Beneficiaries & Venture Ecosystem:** {brief.target_beneficiaries}")
+        if getattr(brief, "delivery_model", None):
+            st.markdown(f"**Delivery Model & Modality:** {brief.delivery_model}")
+        if getattr(brief, "expected_outcomes", None):
+            st.markdown(f"**Expected Business Outcomes:** {brief.expected_outcomes}")
+
+        if getattr(brief, "services_deliverables", None):
+            st.markdown("**Core Required Services & Scope:**")
+            for s in brief.services_deliverables:
+                st.markdown(f"• {s}")
+
+        if getattr(brief, "methodology_expectations", None):
+            st.markdown("**Methodology & Framework Expectations:**")
+            for m in brief.methodology_expectations:
+                st.markdown(f"• {m}")
+
+        if getattr(brief, "staffing_operational_expectations", None):
+            st.markdown("**Staffing & Capacity Requirements:**")
+            for so in brief.staffing_operational_expectations:
+                st.markdown(f"• {so}")
+
+        if getattr(brief, "unstated_scope_matters", None):
+            st.markdown(
+                '<div style="background:#1A0F00;border:1px solid #3A2A00;border-left:3px solid #E67E22;padding:.6rem .9rem;border-radius:0 4px 4px 0;margin:.5rem 0;font-size:.82rem">'
+                '<strong style="color:#E67E22">Unstated / Ambiguous Scope Matters in RFP:</strong><br>' +
+                "<br>".join(f"• {u}" for u in brief.unstated_scope_matters) +
+                '</div>',
+                unsafe_allow_html=True
+            )
+
+    with tab_buyer:
+        st.markdown("#### Governed Buyer Intelligence")
+        if getattr(brief, "verified_buyer_domain", None):
+            st.markdown(
+                f'<div style="background:#111118;border:1px solid #2980B944;border-radius:4px;padding:.6rem 1rem;margin-bottom:.6rem">'
+                f'🏛️ <strong>Verified Buyer Domain:</strong> <a href="https://{brief.verified_buyer_domain}" target="_blank" style="color:#2980B9;font-weight:700">{brief.verified_buyer_domain}</a>'
+                f'<span style="font-size:.72rem;color:#A9A69D;margin-left:.6rem">(Verified under source-authority-policy/3)</span>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+        else:
+            st.markdown('<div class="info-box">External buyer research unavailable or unverified for this opportunity.</div>', unsafe_allow_html=True)
+
+        if getattr(brief, "buyer_mandate_signals", None):
+            st.markdown("**Institutional Mandate & Procurement Context:**")
+            for bms in brief.buyer_mandate_signals:
+                url_part = f'<br><span style="font-size:.7rem;color:#2980B9"><a href="{bms["source_url"]}" target="_blank" style="color:#2980B9">{bms.get("source_title") or bms["source_url"]}</a></span>' if bms.get("source_url") else ""
+                st.markdown(
+                    f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;padding:.5rem .8rem;margin:.3rem 0;font-size:.82rem">'
+                    f'<strong>{bms.get("title","")}</strong>: {bms.get("detail","")}{url_part}'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+
+        if getattr(brief, "buyer_strategic_context", None):
+            st.markdown("**Strategic Priorities & Institutional Initiatives:**")
+            for bsc in brief.buyer_strategic_context:
+                url_part = f'<br><span style="font-size:.7rem;color:#2980B9"><a href="{bsc["source_url"]}" target="_blank" style="color:#2980B9">{bsc.get("source_title") or bsc["source_url"]}</a></span>' if bsc.get("source_url") else ""
+                st.markdown(
+                    f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;padding:.5rem .8rem;margin:.3rem 0;font-size:.82rem">'
+                    f'<strong>{bsc.get("title","")}</strong>: {bsc.get("detail","")}{url_part}'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+
+        if getattr(brief, "buyer_intelligence_interpretations", None):
+            st.markdown("**What This Context Means for Proposal Strategy:**")
+            for bii in brief.buyer_intelligence_interpretations:
+                st.markdown(
+                    f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;padding:.5rem .8rem;margin:.3rem 0;font-size:.82rem">'
+                    f'<span style="color:#8E44AD;font-weight:700">[INTERPRETATION]</span> <strong>{bii.title}</strong><br>'
+                    f'<span style="color:#A9A69D">{bii.detail}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+
+    with tab_tech:
+        tech_caps = getattr(brief, "technical_capabilities", ())
+        st.markdown(f"#### Substantive Technical Capabilities & Credentials ({len(tech_caps)})")
+        st.caption("Core technical capabilities, experience credentials, and delivery methodologies extracted from RFP requirements.")
+        for tc in tech_caps:
+            e_badge = epistemic_badge(tc.epistemic_class)
+            weight_tag = f'<span style="background:#C9A96E22;color:#C9A96E;border:1px solid #C9A96E55;padding:.1rem .4rem;border-radius:3px;font-size:.68rem;font-weight:700;margin-left:.4rem">{tc.scoring_weight}</span>' if tc.scoring_weight else ""
+            st.markdown(
+                f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;padding:.7rem 1rem;margin:.4rem 0">'
+                f'<div style="display:flex;justify-content:space-between;align-items:center">'
+                f'<div><strong>{tc.capability}</strong>{weight_tag}</div>'
+                f'{e_badge}'
+                f'</div>'
+                f'<div style="font-size:.82rem;color:#EDEAE3;margin-top:.35rem"><strong>What Buyer Requires:</strong> {tc.what_buyer_requires}</div>'
+                f'<div style="font-size:.80rem;color:#A9A69D;margin-top:.2rem"><strong>Why It Matters:</strong> {tc.why_it_matters}</div>'
+                f'<div style="font-size:.80rem;color:#27AE60;margin-top:.2rem">🎯 <strong>Required Evidence:</strong> {tc.evidence_to_present}</div>'
+                f'{"<div style=font-size:.70rem;color:#6E6C66;margin-top:.2rem>Source: " + tc.source + "</div>" if tc.source else ""}'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
+    with tab_eval:
+        st.markdown("#### Mathematical Evaluation Structure")
+        es = brief.evaluation_summary
+        e1, e2, e3, e4 = st.columns(4)
+        e1.markdown(metric_card("Written Total", f"{es.total_written_points:.0f} pts", "Base evaluation"), unsafe_allow_html=True)
+        e2.markdown(metric_card("Technical", f"{es.technical_points:.0f} pts", f"{round(es.technical_points/es.total_written_points*100):.0f}% of written" if es.total_written_points else ""), unsafe_allow_html=True)
+        e3.markdown(metric_card("Financial / Price", f"{es.financial_points:.0f} pts", f"{round(es.financial_points/es.total_written_points*100):.0f}% of written" if es.total_written_points else ""), unsafe_allow_html=True)
+        e4.markdown(metric_card("Shortlist Presentation", f"+{es.shortlist_presentation_points:.0f} pts", "Conditional stage", "#2980B9"), unsafe_allow_html=True)
+
+        thresh_text = es.minimum_technical_threshold or "No minimum passing score stated in RFP — ranking-based competitive evaluation"
+        st.markdown(
+            f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;padding:.6rem 1rem;margin:.5rem 0;font-size:.82rem">'
+            f'<strong>Passing Threshold:</strong> {thresh_text}<br>'
+            f'<strong>Tie-Break Rule:</strong> {es.tie_break_rule}'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+
+        crit_breakdown = getattr(brief, "evaluation_criteria_breakdown", ())
+        if crit_breakdown:
+            st.markdown("**Evaluation Breakdown Table:**")
+            for crit in crit_breakdown:
+                st.markdown(
+                    f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;padding:.5rem .9rem;margin:.25rem 0;font-size:.82rem;display:flex;justify-content:space-between;align-items:center">'
+                    f'<div><strong>{crit.get("criterion","")}</strong><br><span style="color:#A9A69D;font-size:.76rem">{crit.get("description","")}</span></div>'
+                    f'<div style="font-weight:700;color:#C9A96E;font-size:.9rem;white-space:nowrap;margin-left:1rem">{crit.get("points","")} pts</div>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+
+    with tab_proof:
+        proof_items = getattr(brief, "proof_items", ())
+        st.markdown(f"#### Authoritative Evidence & Proof Burden Register ({len(proof_items)})")
+        st.markdown(
+            '<div class="info-box">'
+            '<strong>Epistemic Separation:</strong> Distinguishes mandatory buyer-required proof artifacts (RFP FACT) '
+            'from recommended proposal evidence strategies (RECOMMENDATION).'
+            '</div>',
+            unsafe_allow_html=True
+        )
+        for pi in proof_items:
+            is_mand = pi.nature == "mandatory_requirement"
+            nature_badge = '<span style="background:#C0392B22;color:#C0392B;border:1px solid #C0392B55;padding:.1rem .45rem;border-radius:3px;font-size:.68rem;font-weight:700">MANDATORY REQUIREMENT</span>' if is_mand else '<span style="background:#27AE6022;color:#27AE60;border:1px solid #27AE6055;padding:.1rem .45rem;border-radius:3px;font-size:.68rem;font-weight:700">RECOMMENDATION</span>'
+            e_badge = epistemic_badge(pi.epistemic_class)
+            st.markdown(
+                f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;padding:.65rem 1rem;margin:.35rem 0">'
+                f'<div style="display:flex;justify-content:space-between;align-items:center">'
+                f'<div><strong>{pi.title}</strong> · {nature_badge}</div>'
+                f'{e_badge}'
+                f'</div>'
+                f'<div style="font-size:.82rem;color:#EDEAE3;margin-top:.3rem">{pi.detail}</div>'
+                f'{"<div style=font-size:.70rem;color:#6E6C66;margin-top:.2rem>Source: " + pi.source + "</div>" if pi.source else ""}'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
+    with tab_comm:
+        st.markdown("#### Commercial Structure, Submission Mechanics & Risks")
+        if getattr(brief, "disqualification_gates", None):
+            st.markdown("**Disqualification Hard Gates:**")
+            for dg in brief.disqualification_gates:
+                st.markdown(f'<div class="warn-box">⛔ <strong>Hard Gate:</strong> {dg}</div>', unsafe_allow_html=True)
+
+        if getattr(brief, "commercial_clauses", None):
+            st.markdown("**Material Commercial Clauses & Watch-outs:**")
+            for topic, text in brief.commercial_clauses:
+                st.markdown(
+                    f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;padding:.5rem .9rem;margin:.3rem 0;font-size:.82rem">'
+                    f'<strong style="color:#C9A96E">{topic}:</strong> {text}'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+
+    with tab_next:
+        st.markdown("#### Strategic Pre-Writing Resolutions & Clarifications")
+        top_pri = getattr(brief, "top_priorities", ())
+        if top_pri:
+            st.markdown("**Top Action Priorities Before Writing:**")
+            for idx, pri in enumerate(top_pri, 1):
+                st.markdown(
+                    f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;padding:.6rem 1rem;margin:.35rem 0;font-size:.84rem">'
+                    f'<span style="color:#C9A96E;font-weight:700">#{idx} {pri.title}</span><br>'
+                    f'<span style="color:#EDEAE3">{pri.action}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+
+        clar_qs = getattr(brief, "clarification_questions", ())
+        if clar_qs:
+            st.markdown("**Key Clarification Questions to Submit Before Enquiry Deadline:**")
+            for idx, q in enumerate(clar_qs, 1):
+                st.markdown(
+                    f'<div style="background:#1A0F00;border:1px solid #3A2A00;border-left:3px solid #2980B9;border-radius:0 4px 4px 0;padding:.55rem .9rem;margin:.3rem 0;font-size:.82rem">'
+                    f'<span style="color:#2980B9;font-weight:700">Q{idx}:</span> {q}'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+
+
 def page_understand(bid_id: int):
     _token, _org_id = _current_access_token_and_org()
     bid = tenancy.get_bid_authenticated(_token, bid_id)
@@ -1345,7 +1598,35 @@ def page_understand(bid_id: int):
             )
         st.markdown("")
 
-    # ── SECTION A: EXECUTIVE SUMMARY ──────────────────────────────────────────
+    # ── DECISION BRIEF INTERACTIVE PRESENTATION (BI-VALUE-4) ──────────────────
+    target_run_id = None
+    latest_run = tenancy.get_latest_analysis_run_authenticated(_token, bid_id)
+    if latest_run and latest_run.get("status") in ("COMPLETE", "PARTIAL"):
+        target_run_id = int(latest_run["id"])
+
+    decision_brief = None
+    if target_run_id:
+        try:
+            decision_brief = tenancy.get_decision_brief_for_organization(bid_id, target_run_id, _org_id)
+        except Exception:
+            decision_brief = None
+
+    if decision_brief:
+        _render_interactive_decision_brief(decision_brief, bid)
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        c1, c2 = st.columns([3, 1])
+        c1.markdown(
+            '<div style="color:#A9A69D;font-size:.85rem;padding-top:.4rem">'
+            'Ready to assess qualification gates, clarify ambiguities, and decide whether to pursue?'
+            '</div>',
+            unsafe_allow_html=True
+        )
+        if c2.button("Proceed to DECIDE →", use_container_width=True, type="primary", key="btn_proceed_decide_db"):
+            st.session_state.page = "stage_decide"
+            st.rerun()
+        return
+
+    # ── SECTION A: EXECUTIVE SUMMARY (LEGACY FALLBACK) ────────────────────────
     st.markdown("### 💡 Executive Synthesis: What Is the Buyer Procuring?")
     st.markdown(
         f'<div style="background:#111118;border:1px solid #292832;border-left:4px solid #C9A96E;'

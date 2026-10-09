@@ -726,6 +726,21 @@ def export_bid_intelligence_brief_for_organization(
     return analysis_service.generate_bid_intelligence_brief_from_raw_snapshot(run_id)
 
 
+def get_decision_brief_for_organization(
+    bid_id: int, run_id: int, organization_id: str,
+):
+    """Read-only, organization-scoped retrieval of the primary DecisionBrief object.
+    The raw snapshot is loaded only after ownership and bid/run association are proven;
+    zero model calls, zero database writes."""
+    require_bid_access(bid_id, organization_id)
+    run = db.get_analysis_run(run_id)
+    if not run or int(run.get("bid_id")) != int(bid_id):
+        raise AccessDeniedError(f"run {run_id} does not belong to bid {bid_id}")
+    import analysis_service
+    return analysis_service.load_decision_brief_for_run(run_id)
+
+
+
 def analyze_section_for_organization(
     bid_id: int, section_id: int, section_text: str, mapped_requirement_ids: list[int],
     organization_id: str, user_id: str | None = None,

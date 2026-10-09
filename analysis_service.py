@@ -714,12 +714,13 @@ FULL_ANALYSIS_PERSISTENCE_GAP = (
 )
 
 
-def _render_brief_snapshot_impl(run_id: int) -> bytes:
+def load_decision_brief_for_run(run_id: int):
+    """Load and construct the canonical DecisionBrief from a completed run's raw snapshot.
+    Zero model calls, zero extraction, no run mutation occurs on this path."""
     run = db.get_analysis_run(run_id)
     if not run or run.get("status") not in ("COMPLETE", "PARTIAL"):
-        raise ValueError(f"analysis run {run_id} is not usable; cannot export a Brief")
+        raise ValueError(f"analysis run {run_id} is not usable; cannot build DecisionBrief")
 
-    is_partial = run.get("status") == "PARTIAL"
     mode = run.get("analysis_mode", "FAST")
     bid_id = run.get("bid_id")
     full_result = None
@@ -745,12 +746,29 @@ def _render_brief_snapshot_impl(run_id: int) -> bytes:
             except Exception:
                 full_result = None
 
+    from decision_brief import build_decision_brief_from_analysis
+    return build_decision_brief_from_analysis(result, full_result=full_result, bid_id=bid_id)
+
+
+def _render_brief_snapshot_impl(run_id: int) -> bytes:
     try:
-        from decision_brief import build_decision_brief_from_analysis
+        brief = load_decision_brief_for_run(run_id)
         from decision_brief_report import render_decision_brief_bytes
-        brief = build_decision_brief_from_analysis(result, full_result=full_result, bid_id=bid_id)
         return render_decision_brief_bytes(brief)
     except Exception:
+        run = db.get_analysis_run(run_id)
+        if not run or run.get("status") not in ("COMPLETE", "PARTIAL"):
+            raise ValueError(f"analysis run {run_id} is not usable; cannot export a Brief")
+        is_partial = run.get("status") == "PARTIAL"
+        mode = run.get("analysis_mode", "FAST")
+        if mode == "FULL":
+            source_run_id = run.get("source_analysis_run_id")
+            result = load_raw_fast_analysis_result(source_run_id)
+            res_row = db.get_analysis_result(run_id)
+            full_result = (res_row.get("full_analysis_result") if res_row else None) or {}
+        else:
+            result = load_raw_fast_analysis_result(run_id)
+            full_result = None
         from understand_brief import build_bid_intelligence_brief
         from understand_brief_report import render_report
         return render_report(build_bid_intelligence_brief(result, full_result=full_result, analysis_partial=is_partial))
