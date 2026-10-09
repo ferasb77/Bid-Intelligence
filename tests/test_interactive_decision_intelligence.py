@@ -369,5 +369,106 @@ class TestInteractiveDecisionIntelligence(unittest.TestCase):
                 self.assertIsNone(pattern.search(obs.detail), f"Leaked ID in observation detail: {obs.detail}")
 
 
+    def test_boundary_understand_clarification_navigation_zero_database_writes(self):
+        """Boundary: Clicking 'Review in DECIDE →' in UNDERSTAND sets session state navigation
+        and NEVER calls any database insert, update, or upsert operations."""
+        import dataclasses
+        import streamlit as st
+
+        brief_with_q = dataclasses.replace(
+            self.brief,
+            clarification_questions=("Is remote delivery permitted for the AI mentorship sessions?",)
+        )
+
+        mock_tab = MagicMock()
+        mock_tab.__enter__.return_value = mock_tab
+
+        def fake_button(label, *a, **k):
+            key = k.get("key", "")
+            return "btn_review_cq_und_1" in key or "Review in DECIDE" in label
+
+        st.session_state.clear()
+
+        with patch("streamlit.markdown"), \
+             patch("streamlit.caption"), \
+             patch("streamlit.columns", side_effect=lambda spec, *a, **k: [MagicMock() for _ in range(spec if isinstance(spec, int) else len(spec))]), \
+             patch("streamlit.tabs", return_value=[mock_tab for _ in range(4)]), \
+             patch("streamlit.expander", return_value=mock_tab), \
+             patch("streamlit.button", side_effect=fake_button), \
+             patch("streamlit.rerun"), \
+             patch("tenancy.get_clarifications_authenticated", return_value=[]), \
+             patch("tenancy.upsert_clarification_authenticated") as mock_upsert, \
+             patch("database.get_client") as mock_db:
+
+            understand._render_interactive_decision_brief(
+                brief_with_q, {"id": 1522, "title": "York"}, token="fake_tok", org_id="org-test"
+            )
+
+            # 1. Zero database writes
+            mock_upsert.assert_not_called()
+            mock_db.assert_not_called()
+
+            # 2. Proper session state navigation handoff
+            self.assertEqual(st.session_state.get("page"), "stage_decide")
+            self.assertEqual(
+                st.session_state.get("review_clarification_question"),
+                "Is remote delivery permitted for the AI mentorship sessions?"
+            )
+
+    def test_positive_decide_explicit_clarification_adoption_contract(self):
+        """Positive: DECIDE requires explicit user action before creating clarification records,
+        and clears review_clarification_question from session state upon adoption."""
+        import dataclasses
+        import streamlit as st
+
+        brief_with_q = dataclasses.replace(
+            self.brief,
+            clarification_questions=("Is remote delivery permitted for the AI mentorship sessions?",)
+        )
+
+        st.session_state.clear()
+        st.session_state["review_clarification_question"] = "Is remote delivery permitted for the AI mentorship sessions?"
+
+        captured_info = []
+        mock_col = MagicMock()
+
+        def fake_button(label, *a, **k):
+            return "btn_adopt_cq_1" in k.get("key", "") or "Adopt Question" in label
+
+        with patch("pages.stage_decide._current_access_token_and_org", return_value=("fake_tok", "org-test")), \
+             patch("tenancy.get_bid_authenticated", return_value={"id": 1522, "title": "York", "client": "York University"}), \
+             patch("tenancy.get_procurement_state_for_organization", return_value={}), \
+             patch("tenancy.get_requirements_authenticated", return_value=[]), \
+             patch("tenancy.get_clarifications_authenticated", return_value=[]), \
+             patch("tenancy.get_bid_decision_authenticated", return_value=None), \
+             patch("tenancy.get_firm_profile_authenticated", return_value={}), \
+             patch("tenancy.get_bid_brief_authenticated", return_value={}), \
+             patch("tenancy.get_latest_analysis_run_authenticated", return_value={"id": 57, "status": "COMPLETE"}), \
+             patch("tenancy.get_decision_brief_for_organization", return_value=brief_with_q), \
+             patch("tenancy.upsert_clarification_authenticated") as mock_upsert, \
+             patch("streamlit.markdown"), \
+             patch("streamlit.caption"), \
+             patch("streamlit.info", side_effect=lambda x, *a, **k: captured_info.append(str(x))), \
+             patch("streamlit.columns", side_effect=lambda spec, *a, **k: [mock_col for _ in range(spec if isinstance(spec, int) else len(spec))]), \
+             patch("streamlit.tabs", return_value=[MagicMock(), MagicMock(), MagicMock()]), \
+             patch("streamlit.selectbox", return_value="All"), \
+             patch("streamlit.button", side_effect=fake_button), \
+             patch("streamlit.rerun"):
+
+            decide.page_decide(1522)
+
+            # Review banner presented in DECIDE
+            self.assertTrue(any("Question selected for review from UNDERSTAND" in msg for msg in captured_info))
+
+            # Explicit action adopted the record
+            mock_upsert.assert_called_once()
+            upsert_payload = mock_upsert.call_args[0][1]
+            self.assertEqual(upsert_payload["question_id"], "CQ-1")
+            self.assertEqual(upsert_payload["question"], "Is remote delivery permitted for the AI mentorship sessions?")
+
+            # Session state cleared after explicit adoption
+            self.assertNotIn("review_clarification_question", st.session_state)
+
+
 if __name__ == "__main__":
     unittest.main()

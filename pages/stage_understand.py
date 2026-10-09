@@ -1607,7 +1607,7 @@ def _render_interactive_decision_brief(brief, bid: dict, token: str | None = Non
         clar_qs = getattr(brief, "clarification_questions", ())
         if clar_qs:
             st.markdown("#### Key Clarification Questions to Submit Before Enquiry Deadline")
-            st.caption("Precomputed clarification questions ready to resolve procurement ambiguities. Adopt directly into DECIDE tracking.")
+            st.caption("Precomputed clarification questions ready to resolve procurement ambiguities. Review and adopt in DECIDE.")
 
             existing_clars = []
             if token and bid.get("id"):
@@ -1631,22 +1631,10 @@ def _render_interactive_decision_brief(brief, bid: dict, token: str | None = Non
                     if is_tracked:
                         st.markdown('<div style="padding-top:.4rem"><span style="color:#27AE60;font-size:.76rem;font-weight:700">✓ Tracked in DECIDE</span></div>', unsafe_allow_html=True)
                     else:
-                        if st.button("➕ Adopt Question", key=f"btn_adopt_cq_und_{idx}", help="Adopt this precomputed question into formal clarification tracking in DECIDE"):
-                            if token and bid.get("id"):
-                                tenancy.upsert_clarification_authenticated(token, {
-                                    "bid_id": bid["id"],
-                                    "question_id": f"CQ-{idx}",
-                                    "question": q,
-                                    "rfp_reference": "Decision Brief Ambiguity",
-                                    "rationale": "Precomputed strategic clarification from opportunity analysis",
-                                    "priority": "High",
-                                    "category": "Scope / Commercial",
-                                    "status": "Draft",
-                                })
-                                st.success(f"Adopted Q{idx} into DECIDE.")
-                                st.rerun()
-                            else:
-                                st.info("Question will be tracked in DECIDE stage.")
+                        if st.button("Review in DECIDE →", key=f"btn_review_cq_und_{idx}", help="Review this precomputed question in DECIDE before adopting"):
+                            st.session_state["review_clarification_question"] = q
+                            st.session_state.page = "stage_decide"
+                            st.rerun()
 
 
 def page_understand(bid_id: int):

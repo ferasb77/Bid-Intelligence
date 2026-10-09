@@ -273,6 +273,9 @@ def page_decide(bid_id: int):
 
         precomputed_qs = getattr(decision_brief, "clarification_questions", ()) if decision_brief else ()
         if precomputed_qs:
+            review_target_q = st.session_state.get("review_clarification_question")
+            if review_target_q:
+                st.info(f"💡 **Question selected for review from UNDERSTAND:** \"{review_target_q}\". Review below and click **➕ Adopt Question** to formally track.")
             st.markdown(f"#### 📋 Precomputed Strategic Clarifications ({len(precomputed_qs)} from Decision Brief)")
             st.caption("Identified during opportunity analysis to resolve procurement package ambiguities before the enquiry deadline. No AI model calls required.")
             existing_q_texts = {c.get("question", "").strip().lower() for c in clars}
@@ -301,6 +304,7 @@ def page_decide(bid_id: int):
                                 "category": "Scope / Commercial",
                                 "status": "Draft",
                             })
+                            st.session_state.pop("review_clarification_question", None)
                             st.success(f"Adopted CQ-{idx} into formal tracking.")
                             st.rerun()
             st.markdown('<hr class="section-divider" style="margin:.8rem 0">', unsafe_allow_html=True)
