@@ -1,66 +1,82 @@
-# Change Verification
+# Change Verification Runbook
 
-The repeatable workflow rules that used to be retyped into every task
-prompt (Phase 1 audit finding: none of this was structurally encoded
-anywhere — `py_compile`/`git diff --check` appeared only in prose
-*describing* past runs, never enforced by CI, a hook, or a Makefile; none
-exist in this repo). This file is that durable home. Reference it; don't
-copy it into a task prompt.
+This document defines the risk-tiered change verification framework for the
+Bid Intelligence repository, aligned with **AI Engineering Canon v1.1**
+(Verification Pyramid, Section 7).
 
-## Before work
+Reference this runbook; do not copy repetitive verification instructions into task prompts.
 
-- Verify current branch and HEAD: `git branch --show-current`,
-  `git rev-parse HEAD` (or `python scripts/agent_context.py`).
-- `git status --short` — read it before touching anything.
-- If uncommitted or untracked work exists that isn't yours, leave it alone.
-  Never `reset`/`clean`/`checkout --` over it without being told to.
+## 1. Before work
 
-## After code changes
+- **Deterministic preflight**: Always run `python scripts/agent_context.py` at task start.
+  It reports branch, HEAD, working-tree status, migration head, and key entry points with
+  zero model calls.
+- **Inspect working tree**: `git status --short`. If untracked or uncommitted work exists
+  that was not created by your task, leave it alone. Never use `git reset --hard` or
+  `git clean -fd` over pre-existing files without explicit human authorization.
 
-- `python -m py_compile <every touched .py file>` — cheap, always do this.
-- `git diff --check` — catches trailing whitespace/conflict markers, not a
-  style opinion.
-- Run the **targeted** test file(s) for what you touched.
-- Run the **full suite once** after a substantive change.
+## 2. Risk-tiered verification framework
+
+Rather than running the full monolithic test suite (~4.5 minutes, 3,954 tests) for every
+minor adjustment, select the verification tier corresponding to the highest risk touched:
+
+### Tier 1: Low Risk
+- **Qualifying Changes**: Documentation, prompt templates, comments, UI copy, isolated formatting changes, leaf helper functions with no side effects.
+- **Verification Protocol**:
+  1. `python -m py_compile <touched .py files>`
+  2. `git diff --check`
+  3. Targeted unit tests (e.g., `python -m pytest tests/test_leaf.py -q`).
+- **Standard**: Fast iteration loop (sub-5 seconds). Do NOT run the full regression suite.
+
+### Tier 2: Medium Risk
+- **Qualifying Changes**: Synthesis logic, data extraction transformers, report generation, schema serialization adapters, business rules.
+- **Verification Protocol**:
+  1. `python -m py_compile <touched .py files>`
+  2. `git diff --check`
+  3. **Acceptance Triad Tests**:
+     - **Positive**: Valid inputs produce expected structured models and outputs.
+     - **Negative**: Missing, null, or malformed inputs degrade gracefully without unhandled exceptions or hallucinated claims.
+     - **Boundary / Invariant**: Field limits, sorting orders, and tenant filters hold.
+  4. Targeted subsystem integration suite (e.g., `python -m pytest tests/test_decision_brief*.py -q`).
+
+### Tier 3: High Risk
+- **Qualifying Changes**: Tenancy boundaries (`tenancy.py`), authentication, database layer (`database.py`), migration scripts (`migrations/*.sql`), or benchmark bid handling.
+- **Verification Protocol**:
+  1. `python -m py_compile <touched .py files>`
+  2. `git diff --check`
+  3. Dedicated tenant isolation suite: `python -m pytest tests/test_tenancy.py -q`.
+  4. Benchmark immutability check: verify Bid 1522 rows, runs, and revisions are completely unchanged.
+  5. **Full regression suite once**: `python -m pytest -q` (all 3,954+ tests).
+
+### Tier 4: Release / Commissioning
+- **Qualifying Changes**: Production release candidate, live telemetry gate, external provider acceptance.
+- **Verification Protocol**:
+  1. Full regression suite once.
+  2. Follow `.agents/skills/release-acceptance/SKILL.md`:
+     - Exactly one real attempt against external provider.
+     - Smallest viable payload.
+     - No automatic retry loops upon failure; document genuine outcome immediately.
 
 ### On running the full suite twice
+Default is **once** for high-risk or release tasks. Run it a second time only when:
+- The task is an acceptance/commissioning deliverable that explicitly requires determinism proof.
+- The first run revealed an ordering-sensitive or flaky test that requires confirmation before diagnosis.
 
-Phase 1 found "run full suite twice" was never a repo rule — it appeared
-only because individual task prompts asked for it, case by case, usually
-for acceptance-grade commissioning work where flaky-vs-real failure needed
-to be ruled out.
+## 3. Database & migration discipline
 
-**Default: run the full suite once.** Run it a second time only when:
-- the task is an acceptance/commissioning deliverable that explicitly
-  needs to demonstrate determinism, or
-- the first run showed something inconsistent (a flake, an ordering-
-  sensitive failure) worth confirming before trusting either result.
+- Never rewrite an already-numbered migration file, whether applied or unapplied.
+- A migration file in `migrations/` is **not** evidence that it is applied to any live database.
+- Agents must never execute DDL. Migrations are applied manually via the Supabase dashboard.
+- Do not apply a migration without explicit task authorization.
 
-Don't spend a second full run's tokens as habit. If a task's own
-instructions ask for two runs, follow the task.
-
-## Database / migration discipline
-
-- Never rewrite an already-numbered migration file, applied or not.
-- A migration file existing in `migrations/` is **not** the same as it
-  being applied to any live database — always distinguish "written" from
-  "applied" explicitly, in code comments and in any report.
-- Do not apply a migration to any database (dev, staging, or otherwise)
-  without the task explicitly authorizing it. When authorized, prefer the
-  repo's established manual/dashboard-apply convention (every migration
-  file 001–013 documents this) unless told otherwise.
-
-## Deployment
+## 4. Deployment discipline
 
 - Never merge `main` unless explicitly instructed for that specific task.
-- Never deploy production unless explicitly instructed for that specific
-  task. A prior approval does not carry forward to a later task.
+- Never deploy production unless explicitly instructed for that specific task. Prior approvals do not carry forward.
 
-## Acceptance reporting
+## 5. Acceptance reporting
 
-- State only what you verified, and how. Mark inferred/estimated claims as
-  such.
-- If something is genuinely unknown or unmeasurable with available tools,
-  say so plainly (e.g. "PER-CALL TOKEN ATTRIBUTION UNAVAILABLE") rather
-  than approximating it into a false precision.
-- Never declare PASS on a claim you didn't actually check.
+- Report only verified facts.
+- Mark inferences as inferences and estimates as estimates.
+- If data is unavailable, state `UNAVAILABLE` rather than guessing.
+- Never report `PASS` on an unchecked criterion.
