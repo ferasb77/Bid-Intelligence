@@ -745,9 +745,16 @@ def _render_brief_snapshot_impl(run_id: int) -> bytes:
             except Exception:
                 full_result = None
 
-    from understand_brief import build_bid_intelligence_brief
-    from understand_brief_report import render_report
-    return render_report(build_bid_intelligence_brief(result, full_result=full_result, analysis_partial=is_partial))
+    try:
+        from decision_brief import build_decision_brief_from_analysis
+        from decision_brief_report import render_decision_brief_bytes
+        brief = build_decision_brief_from_analysis(result, full_result=full_result, bid_id=bid_id)
+        return render_decision_brief_bytes(brief)
+    except Exception:
+        from understand_brief import build_bid_intelligence_brief
+        from understand_brief_report import render_report
+        return render_report(build_bid_intelligence_brief(result, full_result=full_result, analysis_partial=is_partial))
+
 
 
 def run_full_analysis_for_run(run_id: int, api_key: str, *, include_documents: bool = True):
