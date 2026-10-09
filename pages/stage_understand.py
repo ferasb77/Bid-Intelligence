@@ -15,7 +15,8 @@ import json
 import streamlit as st
 from database import download_file as _download_stored_file
 from components.ui import (stage_badge, days_until, days_label, metric_card,
-                           readiness_bar, epistemic_badge, STAGES, SENSITIVITY)
+                           readiness_bar, epistemic_badge, resolve_evidence_display_status,
+                           STAGES, SENSITIVITY)
 import analysis_service
 import auth_session
 import tenancy
@@ -1375,16 +1376,16 @@ def _render_interactive_decision_brief(brief, bid: dict):
         st.caption("Core technical capabilities, experience credentials, and delivery methodologies extracted from RFP requirements.")
         for tc in tech_caps:
             e_badge = epistemic_badge(tc.epistemic_class)
-            weight_tag = f'<span style="background:#C9A96E22;color:#C9A96E;border:1px solid #C9A96E55;padding:.1rem .4rem;border-radius:3px;font-size:.68rem;font-weight:700;margin-left:.4rem">{tc.scoring_weight}</span>' if tc.scoring_weight else ""
+            priority_tag = f'<span style="background:#C9A96E22;color:#C9A96E;border:1px solid #C9A96E55;padding:.1rem .4rem;border-radius:3px;font-size:.68rem;font-weight:700;margin-left:.4rem">{tc.priority}</span>' if getattr(tc, "priority", None) else ""
             st.markdown(
                 f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;padding:.7rem 1rem;margin:.4rem 0">'
                 f'<div style="display:flex;justify-content:space-between;align-items:center">'
-                f'<div><strong>{tc.capability}</strong>{weight_tag}</div>'
+                f'<div><strong>{tc.capability}</strong>{priority_tag}</div>'
                 f'{e_badge}'
                 f'</div>'
                 f'<div style="font-size:.82rem;color:#EDEAE3;margin-top:.35rem"><strong>What Buyer Requires:</strong> {tc.what_buyer_requires}</div>'
                 f'<div style="font-size:.80rem;color:#A9A69D;margin-top:.2rem"><strong>Why It Matters:</strong> {tc.why_it_matters}</div>'
-                f'<div style="font-size:.80rem;color:#27AE60;margin-top:.2rem">🎯 <strong>Required Evidence:</strong> {tc.evidence_to_present}</div>'
+                f'<div style="font-size:.80rem;color:#27AE60;margin-top:.2rem">🎯 <strong>Required Evidence:</strong> {tc.proof_needed}</div>'
                 f'{"<div style=font-size:.70rem;color:#6E6C66;margin-top:.2rem>Source: " + tc.source + "</div>" if tc.source else ""}'
                 f'</div>',
                 unsafe_allow_html=True
@@ -1394,9 +1395,9 @@ def _render_interactive_decision_brief(brief, bid: dict):
         st.markdown("#### Mathematical Evaluation Structure")
         es = brief.evaluation_summary
         e1, e2, e3, e4 = st.columns(4)
-        e1.markdown(metric_card("Written Total", f"{es.total_written_points:.0f} pts", "Base evaluation"), unsafe_allow_html=True)
-        e2.markdown(metric_card("Technical", f"{es.technical_points:.0f} pts", f"{round(es.technical_points/es.total_written_points*100):.0f}% of written" if es.total_written_points else ""), unsafe_allow_html=True)
-        e3.markdown(metric_card("Financial / Price", f"{es.financial_points:.0f} pts", f"{round(es.financial_points/es.total_written_points*100):.0f}% of written" if es.total_written_points else ""), unsafe_allow_html=True)
+        e1.markdown(metric_card("Written Total", f"{es.written_proposal_total:.0f} pts", "Base evaluation"), unsafe_allow_html=True)
+        e2.markdown(metric_card("Technical", f"{es.technical_total:.0f} pts", f"{round(es.technical_total/es.written_proposal_total*100):.0f}% of written" if es.written_proposal_total else ""), unsafe_allow_html=True)
+        e3.markdown(metric_card("Financial / Price", f"{es.financial_total:.0f} pts", f"{round(es.financial_total/es.written_proposal_total*100):.0f}% of written" if es.written_proposal_total else ""), unsafe_allow_html=True)
         e4.markdown(metric_card("Shortlist Presentation", f"+{es.shortlist_presentation_points:.0f} pts", "Conditional stage", "#2980B9"), unsafe_allow_html=True)
 
         thresh_text = es.minimum_technical_threshold or "No minimum passing score stated in RFP — ranking-based competitive evaluation"
@@ -1692,7 +1693,7 @@ def page_understand(bid_id: int):
         for idx, r in enumerate(matched_qual_reqs, 1):
             ref_str = f' <span style="font-size:.72rem;color:#6E6C66">({r.get("rfso_ref","Gate")})</span>' if r.get("rfso_ref") else ""
             q_status = r.get("qual_status", "UNKNOWN")
-            e_status = r.get("evidence_status", "MISSING")
+            e_status = resolve_evidence_display_status(r)
             st.markdown(
                 f'<div style="background:#1A0F00;border:1px solid #3A2A00;border-left:3px solid #E67E22;'
                 f'border-radius:0 4px 4px 0;padding:.6rem 1rem;margin:.35rem 0;font-size:.85rem">'

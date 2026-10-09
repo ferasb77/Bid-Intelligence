@@ -13,7 +13,8 @@ from datetime import datetime
 from analyst import generate_clarification_questions, bid_no_bid_score
 from config import api_key_configured
 from components.ui import (qual_badge, evidence_badge, decision_badge, days_until, days_label,
-                           metric_card, procurement_staleness_banner, QUAL_STATUSES, EVIDENCE_STATUSES, CATEGORIES)
+                           metric_card, procurement_staleness_banner, resolve_evidence_display_status,
+                           QUAL_STATUSES, EVIDENCE_STATUSES, CATEGORIES)
 import auth_session
 import tenancy
 
@@ -163,10 +164,10 @@ def page_decide(bid_id: int):
                     src_part = f' <span style="font-size:.70rem;color:#6E6C66">[{pi.source}]</span>' if pi.source else ""
                     c3.markdown(f'<span style="font-size:.78rem;color:#EDEAE3">{pi.detail}{src_part}</span>', unsafe_allow_html=True)
 
-                    # Match against firm evidence / reqs: never falsely state READY if missing!
+                    # Match against firm evidence / reqs: distinguish unassessed from missing
                     matched_req = next((r for r in reqs if any(k in r.get("description","").lower() for k in pi.title.lower().split()[:2])), None)
-                    e_stat = matched_req.get("evidence_status", "MISSING") if matched_req else "MISSING"
-                    e_col = "#27AE60" if e_stat == "READY" else "#E67E22" if e_stat == "PARTIAL" else "#C0392B"
+                    e_stat = resolve_evidence_display_status(matched_req)
+                    e_col = "#27AE60" if e_stat == "READY" else "#E67E22" if e_stat == "PARTIAL" else "#C0392B" if e_stat == "MISSING" else "#6E6C66"
                     c4.markdown(f'<span style="background:{e_col}22;color:{e_col};border:1px solid {e_col}55;padding:.1rem .4rem;border-radius:3px;font-size:.68rem;font-weight:700">Evidence: {e_stat}</span>', unsafe_allow_html=True)
                     st.markdown('<hr class="section-divider" style="margin:.15rem 0">', unsafe_allow_html=True)
 
@@ -201,7 +202,7 @@ def page_decide(bid_id: int):
                 current_q = req.get("qual_status", "UNKNOWN")
                 c4.markdown(qual_badge(current_q), unsafe_allow_html=True)
 
-                current_e = req.get("evidence_status", "MISSING")
+                current_e = resolve_evidence_display_status(req)
                 c5.markdown(evidence_badge(current_e), unsafe_allow_html=True)
 
                 c6.markdown(f'<span style="font-size:.78rem;color:#A9A69D">{req.get("evidence") or "No evidence linked"}</span>', unsafe_allow_html=True)
@@ -376,7 +377,7 @@ def page_decide(bid_id: int):
             es = getattr(decision_brief, "evaluation_summary", None)
             if es:
                 eb1, eb2, eb3 = st.columns(3)
-                eb1.markdown(metric_card("Evaluation Basis", f"{es.total_written_points:.0f} pts written", f"Tech: {es.technical_points:.0f} · Fin: {es.financial_points:.0f}"), unsafe_allow_html=True)
+                eb1.markdown(metric_card("Evaluation Basis", f"{es.written_proposal_total:.0f} pts written", f"Tech: {es.technical_total:.0f} · Fin: {es.financial_total:.0f}"), unsafe_allow_html=True)
                 thresh_val = es.minimum_technical_threshold or "No stated threshold"
                 eb2.markdown(metric_card("Passing Threshold", thresh_val, "Ranking-based competition"), unsafe_allow_html=True)
                 eb3.markdown(metric_card("Shortlist Presentation", f"+{es.shortlist_presentation_points:.0f} pts", "Conditional stage", "#2980B9"), unsafe_allow_html=True)

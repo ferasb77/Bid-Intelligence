@@ -48,6 +48,8 @@ EVIDENCE_COLOURS = {
     "PARTIAL":      "#E67E22",
     "MISSING":      "#C0392B",
     "NOT REQUIRED": "#6E6C66",
+    "UNASSESSED":   "#6E6C66",
+    "NOT ASSESSED": "#6E6C66",
 }
 EPISTEMIC_COLOURS = {
     "RFP FACT":                            "#C9A96E",
@@ -219,6 +221,41 @@ def qual_badge(status):
 def evidence_badge(status):
     c = EVIDENCE_COLOURS.get(status, "#6E6C66")
     return f'<span class="qual-badge" style="background:{c}22;color:{c};border:1px solid {c}55">Evidence: {status}</span>'
+
+def resolve_evidence_display_status(req: dict | None) -> str:
+    """Resolve presentation-layer evidence readiness status.
+
+    Distinguishes unassessed evidence from confirmed MISSING evidence without
+    modifying database schemas, constraints, or enum values.
+
+    Rules:
+    - If req is None or empty: returns 'UNASSESSED'.
+    - If requirement has an explicit non-missing status ('READY', 'PARTIAL', 'NOT REQUIRED'):
+      respects that status.
+    - If requirement has raw status 'MISSING' or empty/None:
+      checks whether a user has actually evaluated the requirement (i.e. qual_status is set
+      to an evaluated value other than 'UNKNOWN', or evidence text, gap action, owner,
+      or notes have been entered). If not evaluated, returns 'UNASSESSED'.
+      If evaluated, returns 'MISSING'.
+    """
+    if not req:
+        return "UNASSESSED"
+    raw = req.get("evidence_status")
+    if raw in ("READY", "PARTIAL", "NOT REQUIRED"):
+        return raw
+    has_been_assessed = (
+        req.get("qual_status") not in (None, "", "UNKNOWN")
+        or bool(req.get("evidence"))
+        or bool(req.get("qual_notes"))
+        or bool(req.get("notes"))
+        or bool(req.get("gap_action"))
+        or bool(req.get("owner"))
+    )
+    if has_been_assessed and raw == "MISSING":
+        return "MISSING"
+    if not has_been_assessed:
+        return "UNASSESSED"
+    return raw or "UNASSESSED"
 
 def epistemic_badge(epistemic_class):
     c = EPISTEMIC_COLOURS.get(epistemic_class, "#6E6C66")

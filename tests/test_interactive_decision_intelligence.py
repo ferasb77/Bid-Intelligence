@@ -12,7 +12,9 @@ from unittest.mock import MagicMock, patch
 
 import analysis_service
 import decision_brief as db
-from components.ui import epistemic_badge, EPISTEMIC_COLOURS
+from components.ui import epistemic_badge, EPISTEMIC_COLOURS, resolve_evidence_display_status, evidence_badge
+import pages.stage_understand as understand
+import pages.stage_decide as decide
 import tenancy
 
 
@@ -105,19 +107,103 @@ class TestInteractiveDecisionIntelligence(unittest.TestCase):
             with self.assertRaises(tenancy.AccessDeniedError):
                 tenancy.get_decision_brief_for_organization(1522, 57, "org_test")
 
-    def test_negative_missing_evidence_defaults_to_missing(self):
-        """Negative: Proof item not matched to confirmed supplier record never displays as READY."""
-        # Verify that mandatory proof items have nature == mandatory_requirement
-        mandatory_proofs = [p for p in self.brief.proof_items if p.nature == "mandatory_requirement"]
-        self.assertTrue(len(mandatory_proofs) >= 4)
-        
-        # In a fresh or unreviewed bid, requirement evidence status is MISSING, not READY
-        dummy_reqs = [{"description": "Provide 3 client references", "evidence_status": "MISSING"}]
-        pi = mandatory_proofs[0]
-        matched = next((r for r in dummy_reqs if any(k in r.get("description","").lower() for k in pi.title.lower().split()[:2])), None)
-        status = matched.get("evidence_status", "MISSING") if matched else "MISSING"
-        self.assertEqual(status, "MISSING")
-        self.assertNotEqual(status, "READY")
+    def test_negative_unassessed_evidence_is_not_declared_missing(self):
+        """Negative: Unassessed supplier evidence must never be declared as confirmed MISSING or READY."""
+        # Fresh requirement with default DB status 'MISSING' but never reviewed by human
+        fresh_req = {"description": "Provide 3 client references", "qual_status": "UNKNOWN", "evidence_status": "MISSING"}
+        resolved = resolve_evidence_display_status(fresh_req)
+        self.assertEqual(resolved, "UNASSESSED")
+        self.assertNotEqual(resolved, "MISSING")
+        self.assertNotEqual(resolved, "READY")
+
+        # Unmatched proof item in register defaults to UNASSESSED
+        resolved_unmatched = resolve_evidence_display_status(None)
+        self.assertEqual(resolved_unmatched, "UNASSESSED")
+
+    def test_positive_evidence_readiness_states_projection(self):
+        """Positive: Test evidence readiness projection across unassessed, missing, ready, partial, not required."""
+        # 1. Unassessed (fresh from DB, qual_status unknown, no notes/evidence)
+        r_unassessed = {"qual_status": "UNKNOWN", "evidence_status": "MISSING"}
+        self.assertEqual(resolve_evidence_display_status(r_unassessed), "UNASSESSED")
+
+        # 2. Confirmed Missing (assessed by reviewer: non-UNKNOWN qual or has notes/gap)
+        r_missing = {"qual_status": "CONCERN", "evidence_status": "MISSING", "gap_action": "Need client signoff"}
+        self.assertEqual(resolve_evidence_display_status(r_missing), "MISSING")
+
+        # 3. Ready (supplier evidence attached)
+        r_ready = {"qual_status": "PASS", "evidence_status": "READY", "evidence": "Signed letters"}
+        self.assertEqual(resolve_evidence_display_status(r_ready), "READY")
+
+        # 4. Partial (partial supplier evidence)
+        r_partial = {"qual_status": "CONCERN", "evidence_status": "PARTIAL"}
+        self.assertEqual(resolve_evidence_display_status(r_partial), "PARTIAL")
+
+        # 5. Not Required
+        r_not_req = {"evidence_status": "NOT REQUIRED"}
+        self.assertEqual(resolve_evidence_display_status(r_not_req), "NOT REQUIRED")
+
+    def test_positive_understand_technical_capabilities_rendering(self):
+        """Positive: UNDERSTAND tab_tech renders with canonical priority and proof_needed without AttributeError."""
+        captured_md = []
+        mock_tab = MagicMock()
+        mock_tab.__enter__.return_value = mock_tab
+        with patch("streamlit.markdown", side_effect=lambda x, *a, **k: captured_md.append(str(x))), \
+             patch("streamlit.caption"), \
+             patch("streamlit.tabs", return_value=[mock_tab for _ in range(7)]), \
+             patch("streamlit.expander", return_value=mock_tab):
+
+            understand._render_interactive_decision_brief(self.brief, {"id": 1522, "title": "York"})
+            all_text = "\n".join(captured_md)
+
+            # Verify technical capabilities rendered with proof_needed and priority
+            self.assertIn("Substantive Technical Capabilities & Credentials", all_text)
+            self.assertIn("CRITICAL", all_text)
+            self.assertIn("🎯 <strong>Required Evidence:</strong>", all_text)
+
+    def test_positive_understand_evaluation_model_rendering(self):
+        """Positive: UNDERSTAND tab_eval renders written_proposal_total, technical_total, financial_total without AttributeError."""
+        captured_md = []
+        mock_tab = MagicMock()
+        mock_tab.__enter__.return_value = mock_tab
+        with patch("streamlit.markdown", side_effect=lambda x, *a, **k: captured_md.append(str(x))), \
+             patch("streamlit.columns", return_value=[MagicMock() for _ in range(4)]), \
+             patch("streamlit.tabs", return_value=[mock_tab for _ in range(7)]), \
+             patch("streamlit.expander", return_value=mock_tab):
+
+            understand._render_interactive_decision_brief(self.brief, {"id": 1522, "title": "York"})
+            all_text = "\n".join(captured_md)
+
+            # Verify evaluation breakdown metrics rendered
+            self.assertIn("Mathematical Evaluation Structure", all_text)
+            self.assertIn("Passing Threshold", all_text)
+            self.assertIn("Tie-Break Rule", all_text)
+
+    def test_positive_decide_pursuit_baseline_rendering(self):
+        """Positive: DECIDE pursuit baseline renders evaluation points without AttributeError."""
+        captured_md = []
+        mock_col = MagicMock()
+        with patch("pages.stage_decide._current_access_token_and_org", return_value=("fake_tok", "4326b564-8cc5-4463-9304-9a589f08cc91")), \
+             patch("tenancy.get_bid_authenticated", return_value={"id": 1522, "title": "York", "client": "York University"}), \
+             patch("tenancy.get_procurement_state_for_organization", return_value={}), \
+             patch("tenancy.get_requirements_authenticated", return_value=[]), \
+             patch("tenancy.get_clarifications_authenticated", return_value=[]), \
+             patch("tenancy.get_bid_decision_authenticated", return_value=None), \
+             patch("tenancy.get_firm_profile_authenticated", return_value={}), \
+             patch("tenancy.get_bid_brief_authenticated", return_value={}), \
+             patch("tenancy.get_latest_analysis_run_authenticated", return_value={"id": 57, "status": "COMPLETE"}), \
+             patch("tenancy.get_decision_brief_for_organization", return_value=self.brief), \
+             patch("streamlit.markdown", side_effect=lambda x, *a, **k: captured_md.append(str(x))), \
+             patch("streamlit.caption"), \
+             patch("streamlit.columns", side_effect=lambda spec, *a, **k: [MagicMock() for _ in range(spec if isinstance(spec, int) else len(spec))]), \
+             patch("streamlit.tabs", return_value=[MagicMock(), MagicMock(), MagicMock()]), \
+             patch("streamlit.selectbox", return_value="All"), \
+             patch("streamlit.button", return_value=False):
+
+            decide.page_decide(1522)
+            all_text = "\n".join(captured_md)
+
+            self.assertIn("Evidence-Backed Pursuit Baseline", all_text)
+            self.assertIn("accountable human decision", all_text)
 
     def test_boundary_zero_model_calls_in_retrieval_and_export(self):
         """Boundary: Resolving DecisionBrief or rendering PDF makes 0 LLM/provider calls."""
@@ -125,7 +211,7 @@ class TestInteractiveDecisionIntelligence(unittest.TestCase):
             # Deserialization and brief construction
             brief = db.build_decision_brief(self.input_model)
             self.assertIsNotNone(brief)
-            
+
             # Ensure no API clients were initialized or invoked
             mock_anthropic.assert_not_called()
 
