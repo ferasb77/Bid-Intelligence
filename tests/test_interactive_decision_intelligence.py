@@ -143,13 +143,13 @@ class TestInteractiveDecisionIntelligence(unittest.TestCase):
         self.assertEqual(resolve_evidence_display_status(r_not_req), "NOT REQUIRED")
 
     def test_positive_understand_technical_capabilities_rendering(self):
-        """Positive: UNDERSTAND tab_tech renders with canonical priority and proof_needed without AttributeError."""
+        """Positive: UNDERSTAND tab_caps renders with canonical priority and proof_needed without AttributeError."""
         captured_md = []
         mock_tab = MagicMock()
         mock_tab.__enter__.return_value = mock_tab
         with patch("streamlit.markdown", side_effect=lambda x, *a, **k: captured_md.append(str(x))), \
              patch("streamlit.caption"), \
-             patch("streamlit.tabs", return_value=[mock_tab for _ in range(7)]), \
+             patch("streamlit.tabs", return_value=[mock_tab for _ in range(4)]), \
              patch("streamlit.expander", return_value=mock_tab):
 
             understand._render_interactive_decision_brief(self.brief, {"id": 1522, "title": "York"})
@@ -166,8 +166,8 @@ class TestInteractiveDecisionIntelligence(unittest.TestCase):
         mock_tab = MagicMock()
         mock_tab.__enter__.return_value = mock_tab
         with patch("streamlit.markdown", side_effect=lambda x, *a, **k: captured_md.append(str(x))), \
-             patch("streamlit.columns", return_value=[MagicMock() for _ in range(4)]), \
-             patch("streamlit.tabs", return_value=[mock_tab for _ in range(7)]), \
+             patch("streamlit.columns", side_effect=lambda spec, *a, **k: [MagicMock() for _ in range(spec if isinstance(spec, int) else len(spec))]), \
+             patch("streamlit.tabs", return_value=[mock_tab for _ in range(4)]), \
              patch("streamlit.expander", return_value=mock_tab):
 
             understand._render_interactive_decision_brief(self.brief, {"id": 1522, "title": "York"})
@@ -177,6 +177,141 @@ class TestInteractiveDecisionIntelligence(unittest.TestCase):
             self.assertIn("Mathematical Evaluation Structure", all_text)
             self.assertIn("Passing Threshold", all_text)
             self.assertIn("Tie-Break Rule", all_text)
+
+    def test_positive_understand_consolidated_four_workspaces_preserves_all_seven_domains(self):
+        """Positive: Restructured UNDERSTAND renders exactly 4 workspaces containing all 7 canonical domains."""
+        captured_md = []
+        captured_tabs_args = []
+        mock_tab = MagicMock()
+        mock_tab.__enter__.return_value = mock_tab
+
+        def mock_tabs(tab_labels):
+            captured_tabs_args.append(list(tab_labels))
+            return [mock_tab for _ in range(len(tab_labels))]
+
+        mock_col = MagicMock()
+        mock_col.markdown.side_effect = lambda x, *a, **k: captured_md.append(str(x))
+
+        with patch("streamlit.markdown", side_effect=lambda x, *a, **k: captured_md.append(str(x))), \
+             patch("streamlit.caption"), \
+             patch("streamlit.columns", side_effect=lambda spec, *a, **k: [mock_col for _ in range(spec if isinstance(spec, int) else len(spec))]), \
+             patch("streamlit.tabs", side_effect=mock_tabs), \
+             patch("streamlit.expander", return_value=mock_tab):
+
+            understand._render_interactive_decision_brief(self.brief, {"id": 1522, "title": "York"})
+            all_text = "\n".join(captured_md)
+
+            # 1. Exactly 4 workspaces with canonical labels
+            self.assertEqual(len(captured_tabs_args), 1)
+            expected_tabs = [
+                "🎯 1. Opportunity & Buyer Need",
+                "⚖️ 2. Evaluation & Scoring",
+                "⚡ 3. Capabilities & Proof",
+                "🚨 4. Risks & Next Actions",
+            ]
+            self.assertEqual(captured_tabs_args[0], expected_tabs)
+
+            # 2. Scope & Needs (Domain 1) preserved in Tab 1
+            self.assertIn("What the Buyer Is Actually Buying", all_text)
+            self.assertIn("Delivery Model & Modality", all_text)
+            self.assertIn("Expected Business Outcomes", all_text)
+
+            # 3. Buyer Profile (Domain 2) preserved in Tab 1
+            self.assertIn("Governed Buyer Intelligence", all_text)
+            self.assertIn("yorku.ca", all_text)
+            self.assertIn("source-authority-policy/3", all_text)
+
+            # 4. Evaluation Model (Domain 3) preserved in Tab 2
+            self.assertIn("Mathematical Evaluation Structure", all_text)
+            self.assertIn("Written Total", all_text)
+            self.assertIn("Passing Threshold", all_text)
+
+            # 5. Technical Capabilities (Domain 4) preserved in Tab 3
+            self.assertIn("Substantive Technical Capabilities & Credentials", all_text)
+            self.assertIn("CRITICAL", all_text)
+            self.assertIn("Required Evidence:", all_text)
+
+            # 6. Proof Burden (Domain 5) preserved in Tab 3
+            self.assertIn("Authoritative Evidence & Proof Burden Register", all_text)
+            self.assertIn("MANDATORY REQUIREMENT", all_text)
+            self.assertIn("RECOMMENDATION", all_text)
+
+            # 7. Risks & Commercial (Domain 6) preserved in Tab 4
+            self.assertIn("Disqualification Hard Gates", all_text)
+            self.assertIn("Material Commercial Clauses & Watch-outs", all_text)
+
+            # 8. Action Priorities & Clarifications (Domain 7) preserved in Tab 4
+            self.assertIn("Top Action Priorities Before Writing", all_text)
+            self.assertIn("Key Clarification Questions to Submit", all_text)
+
+    def test_positive_consolidated_governance_status_distinguishes_states(self):
+        """Positive: Consolidated governance status clearly distinguishes ungoverned baseline,
+        governed current, stale revision basis, and never declares ungoverned as current."""
+        import understand_analysis as ua
+
+        # State 1: Complete analysis on ungoverned baseline
+        md_ungoverned = []
+        with patch("streamlit.markdown", side_effect=lambda x, *a, **k: md_ungoverned.append(str(x))):
+            understand._render_consolidated_governance_status(
+                opp_state={"step": ua.STEP_COMPLETE},
+                procurement_state={"procurement_truth_status": "ungoverned", "procurement_revision": 1},
+                bid_id=1522,
+                organization_id="org-test",
+                docs=[],
+                run={"based_on_procurement_revision": 1, "unreviewed_document_count": 0},
+            )
+        text_ungoverned = "\n".join(md_ungoverned)
+        self.assertIn("Advisory Initial Analysis Complete", text_ungoverned)
+        self.assertIn("Procurement truth has not yet been governed", text_ungoverned)
+        self.assertNotIn("✓ Opportunity intelligence current", text_ungoverned)
+
+        # State 2: Governed & current revision
+        md_governed = []
+        with patch("streamlit.markdown", side_effect=lambda x, *a, **k: md_governed.append(str(x))), \
+             patch("tenancy.get_procurement_update_reviews_for_organization", return_value=[]):
+            understand._render_consolidated_governance_status(
+                opp_state={"step": ua.STEP_COMPLETE},
+                procurement_state={"procurement_truth_status": "governed", "procurement_revision": 2},
+                bid_id=1522,
+                organization_id="org-test",
+                docs=[],
+                run={"based_on_procurement_revision": 2, "unreviewed_document_count": 0},
+            )
+        text_governed = "\n".join(md_governed)
+        self.assertIn("✓ Opportunity intelligence current", text_governed)
+        self.assertNotIn("Procurement truth has not yet been governed", text_governed)
+
+        # State 3: Governed but stale revision basis
+        md_stale = []
+        with patch("streamlit.markdown", side_effect=lambda x, *a, **k: md_stale.append(str(x))), \
+             patch("tenancy.get_procurement_update_reviews_for_organization", return_value=[]):
+            understand._render_consolidated_governance_status(
+                opp_state={"step": ua.STEP_COMPLETE},
+                procurement_state={"procurement_truth_status": "governed", "procurement_revision": 3},
+                bid_id=1522,
+                organization_id="org-test",
+                docs=[],
+                run={"based_on_procurement_revision": 1, "unreviewed_document_count": 0},
+            )
+        text_stale = "\n".join(md_stale)
+        self.assertIn("Opportunity Intelligence Outdated", text_stale)
+        self.assertNotIn("✓ Opportunity intelligence current", text_stale)
+
+        # State 4: Governed but revision basis unknown (predates revision tracking)
+        md_unknown = []
+        with patch("streamlit.markdown", side_effect=lambda x, *a, **k: md_unknown.append(str(x))), \
+             patch("tenancy.get_procurement_update_reviews_for_organization", return_value=[]):
+            understand._render_consolidated_governance_status(
+                opp_state={"step": ua.STEP_COMPLETE},
+                procurement_state={"procurement_truth_status": "governed", "procurement_revision": 1},
+                bid_id=1522,
+                organization_id="org-test",
+                docs=[],
+                run={"based_on_procurement_revision": None, "unreviewed_document_count": 0},
+            )
+        text_unknown = "\n".join(md_unknown)
+        self.assertIn("Procurement Revision Basis Unknown", text_unknown)
+        self.assertNotIn("✓ Opportunity intelligence current", text_unknown)
 
     def test_positive_decide_pursuit_baseline_rendering(self):
         """Positive: DECIDE pursuit baseline renders evaluation points without AttributeError."""

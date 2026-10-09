@@ -254,6 +254,138 @@ def _render_fast_analysis_governance_note(run: dict, procurement_state: dict) ->
             unsafe_allow_html=True)
 
 
+def _render_consolidated_governance_status(
+    opp_state: dict,
+    procurement_state: dict,
+    bid_id: int,
+    organization_id: str,
+    docs: list,
+    run: dict | None = None,
+) -> None:
+    """Unified governance and analysis currency status presentation.
+    Resolves contradictory and duplicated warnings by cleanly distinguishing:
+    1. Analysis completion (COMPLETE, PARTIAL, RUNNING, etc.)
+    2. Procurement governance state (governed vs ungoverned)
+    3. Revision alignment (based_on == current_revision)
+    Never displays '✓ Opportunity intelligence current' unless truth_status is 'governed'
+    AND analysis revision basis matches current procurement revision.
+    """
+    import understand_analysis as ua
+
+    step = opp_state.get("step")
+    truth_status = procurement_state.get("procurement_truth_status", "ungoverned")
+    current_rev = procurement_state.get("procurement_revision", 1)
+
+    full_status = opp_state.get("full_status") or {}
+    run = run or opp_state.get("latest_fast_run") or full_status or {}
+    based_on = run.get("based_on_procurement_revision")
+    unreviewed = run.get("unreviewed_document_count")
+
+    telemetry = full_status.get("telemetry") or {}
+    duration = telemetry.get("wall_seconds")
+    dur_str = f" in {duration:.0f}s" if isinstance(duration, (int, float)) else ""
+    completed_at = full_status.get("completed_at") or full_status.get("created_at") or ""
+    time_str = f" · Last analyzed: {completed_at[:19].replace('T', ' ')}" if completed_at else ""
+
+    if step in (ua.STEP_COMPLETE, ua.STEP_PARTIAL):
+        if truth_status != "governed":
+            st.markdown(
+                f'<div style="background:#2A1F0B;border:1px solid #784712;border-left:4px solid #F2994A;border-radius:6px;'
+                f'padding:.8rem 1.1rem;margin-bottom:.8rem">'
+                f'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem">'
+                f'<span style="color:#F2994A;font-weight:700">⚠ Advisory Initial Analysis Complete · Baseline (v{current_rev}){dur_str}{time_str}</span>'
+                f'<span style="font-size:.74rem;background:#78471244;color:#F2994A;padding:.15rem .5rem;border-radius:3px;font-weight:600">UNGOVERNED BASELINE</span>'
+                f'</div>'
+                f'<div style="color:#D8A868;font-size:.82rem;margin-top:.35rem">'
+                f'Procurement truth has not yet been governed — this intelligence is advisory and reflects an unverified initial extraction. '
+                f'Establish and confirm a governed baseline to lock canonical requirements.'
+                f'</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        elif based_on is None:
+            st.markdown(
+                f'<div class="warn-box">'
+                f'⚠️ <strong>Procurement Revision Basis Unknown:</strong> This analysis predates procurement-revision tracking. '
+                f'Re-analysis is required before treating findings as current.'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        elif based_on != current_rev:
+            st.markdown(
+                f'<div class="warn-box">'
+                f'⚠️ <strong>Opportunity Intelligence Outdated:</strong> This run was based on procurement revision {based_on}; '
+                f'the current governed revision is {current_rev}. Re-analyze opportunity to reflect the latest procurement truth.'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            if step == ua.STEP_PARTIAL:
+                partial_reason = opp_state.get("partial_reason") or "Reconciliation output truncated at token limit; partial intelligence preserved."
+                st.markdown(
+                    f'<div style="background:#2A1F0B;border:1px solid #784712;border-left:4px solid #F2994A;border-radius:6px;'
+                    f'padding:.8rem 1.1rem;margin-bottom:.8rem">'
+                    f'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem">'
+                    f'<span style="color:#F2994A;font-weight:700">⚠ Opportunity intelligence partially complete · Governed Revision {current_rev}{dur_str}{time_str}</span>'
+                    f'<span style="font-size:.74rem;background:#78471244;color:#F2994A;padding:.15rem .5rem;border-radius:3px;font-weight:600">GOVERNED</span>'
+                    f'</div>'
+                    f'<div style="color:#D8A868;font-size:.82rem;margin-top:.35rem">{partial_reason}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    f'<div style="background:#0F1A12;border:1px solid #1E3A25;border-left:4px solid #27AE60;border-radius:6px;'
+                    f'padding:.8rem 1.1rem;margin-bottom:.8rem">'
+                    f'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem">'
+                    f'<span style="color:#27AE60;font-weight:700">✓ Opportunity intelligence current · Governed Revision {current_rev}{dur_str}{time_str}</span>'
+                    f'<span style="font-size:.74rem;background:#1E3A25;color:#2ECC71;padding:.15rem .5rem;border-radius:3px;font-weight:600">GOVERNED</span>'
+                    f'</div>'
+                    f'<div style="color:#A9A69D;font-size:.82rem;margin-top:.25rem">'
+                    f'Synchronized with authoritative procurement truth and primary PDF brief.'
+                    f'</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+        if unreviewed is not None and unreviewed > 0:
+            st.markdown(
+                f'<div class="warn-box" style="margin-top:-.4rem;margin-bottom:.6rem">'
+                f'⚠️ {unreviewed} corpus document(s) have not yet been through a governed review — output is advisory only.'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+        if truth_status == "governed" and docs:
+            reviews = tenancy.get_procurement_update_reviews_for_organization(bid_id, organization_id)
+            active = next((r for r in reviews if r["review_kind"] == "buyer_update" and r["status"] in ("ready_for_review", "reviewed")), None)
+            if active:
+                st.markdown(
+                    f'<div style="font-size:.82rem;color:#A9A69D;margin-bottom:.4rem">Buyer update review #{active["id"]} awaiting human decision.</div>',
+                    unsafe_allow_html=True,
+                )
+                _render_review_decision_and_apply(bid_id, organization_id, active, "buyer_update")
+            else:
+                with st.expander("📬 Incorporate Buyer Addendum or Bulletin (Governed Truth)", expanded=False):
+                    update_type = st.selectbox("Update type", _GOVERNANCE_BUYER_UPDATE_TYPES, key=f"buyer_update_type_top_{bid_id}")
+                    picker = _render_document_role_picker(bid_id, organization_id, docs, "buyer_update")
+                    if picker:
+                        document_ids, document_roles = picker
+                        if _governance_llm_ready():
+                            if st.button("📬 Create Update Review & Analyze", key=f"buyer_update_create_top_{bid_id}", type="primary"):
+                                try:
+                                    created = tenancy.create_procurement_update_review_for_organization(
+                                        bid_id, organization_id, "buyer_update", document_ids, document_roles,
+                                        buyer_update_type=update_type,
+                                    )
+                                    review_id = created.get("review_id")
+                                    with st.spinner("Analyzing against CURRENT governed procurement truth…"):
+                                        tenancy.propose_procurement_changes_for_organization(bid_id, organization_id, review_id)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Could not create/analyze update review: {e}")
+
+
 def _format_started_ago(started_at_str: str | None) -> str:
     """Formats an ISO timestamp into customer-friendly elapsed time without timezone leakage."""
     if not started_at_str or not isinstance(started_at_str, str):
@@ -1237,7 +1369,7 @@ def _resolve_customer_safe_summary(bid: dict, brief_row: dict, analysis_result: 
     return raw_summary or "Executive summary pending synthesis."
 
 
-def _render_interactive_decision_brief(brief, bid: dict):
+def _render_interactive_decision_brief(brief, bid: dict, token: str | None = None, org_id: str | None = None):
     st.markdown("### 📑 Bid Intelligence Decision Brief")
     st.caption(
         f"Executive Decision Intelligence Model ({brief.contract_version}) · "
@@ -1280,18 +1412,15 @@ def _render_interactive_decision_brief(brief, bid: dict):
                     unsafe_allow_html=True
                 )
 
-    # 7 Progressive Disclosure Tabs
-    tab_scope, tab_buyer, tab_tech, tab_eval, tab_proof, tab_comm, tab_next = st.tabs([
-        "📦 1. Scope & Needs",
-        "🏛️ 2. Buyer Profile",
-        "⚡ 3. Technical Capabilities",
-        "⚖️ 4. Evaluation Model",
-        "🛡️ 5. Proof Burden",
-        "⚠️ 6. Risks & Commercial",
-        "📋 7. Action Priorities",
+    # 4 Consolidated Workspaces
+    tab_opp, tab_eval, tab_caps, tab_risks = st.tabs([
+        "🎯 1. Opportunity & Buyer Need",
+        "⚖️ 2. Evaluation & Scoring",
+        "⚡ 3. Capabilities & Proof",
+        "🚨 4. Risks & Next Actions",
     ])
 
-    with tab_scope:
+    with tab_opp:
         st.markdown("#### What the Buyer Is Actually Buying")
         if getattr(brief, "target_beneficiaries", None):
             st.markdown(f"**Target Beneficiaries & Venture Ecosystem:** {brief.target_beneficiaries}")
@@ -1324,7 +1453,7 @@ def _render_interactive_decision_brief(brief, bid: dict):
                 unsafe_allow_html=True
             )
 
-    with tab_buyer:
+        st.markdown('<hr class="section-divider" style="margin:1.2rem 0 .9rem 0">', unsafe_allow_html=True)
         st.markdown("#### Governed Buyer Intelligence")
         if getattr(brief, "verified_buyer_domain", None):
             st.markdown(
@@ -1370,27 +1499,6 @@ def _render_interactive_decision_brief(brief, bid: dict):
                     unsafe_allow_html=True
                 )
 
-    with tab_tech:
-        tech_caps = getattr(brief, "technical_capabilities", ())
-        st.markdown(f"#### Substantive Technical Capabilities & Credentials ({len(tech_caps)})")
-        st.caption("Core technical capabilities, experience credentials, and delivery methodologies extracted from RFP requirements.")
-        for tc in tech_caps:
-            e_badge = epistemic_badge(tc.epistemic_class)
-            priority_tag = f'<span style="background:#C9A96E22;color:#C9A96E;border:1px solid #C9A96E55;padding:.1rem .4rem;border-radius:3px;font-size:.68rem;font-weight:700;margin-left:.4rem">{tc.priority}</span>' if getattr(tc, "priority", None) else ""
-            st.markdown(
-                f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;padding:.7rem 1rem;margin:.4rem 0">'
-                f'<div style="display:flex;justify-content:space-between;align-items:center">'
-                f'<div><strong>{tc.capability}</strong>{priority_tag}</div>'
-                f'{e_badge}'
-                f'</div>'
-                f'<div style="font-size:.82rem;color:#EDEAE3;margin-top:.35rem"><strong>What Buyer Requires:</strong> {tc.what_buyer_requires}</div>'
-                f'<div style="font-size:.80rem;color:#A9A69D;margin-top:.2rem"><strong>Why It Matters:</strong> {tc.why_it_matters}</div>'
-                f'<div style="font-size:.80rem;color:#27AE60;margin-top:.2rem">🎯 <strong>Required Evidence:</strong> {tc.proof_needed}</div>'
-                f'{"<div style=font-size:.70rem;color:#6E6C66;margin-top:.2rem>Source: " + tc.source + "</div>" if tc.source else ""}'
-                f'</div>',
-                unsafe_allow_html=True
-            )
-
     with tab_eval:
         st.markdown("#### Mathematical Evaluation Structure")
         es = brief.evaluation_summary
@@ -1421,7 +1529,28 @@ def _render_interactive_decision_brief(brief, bid: dict):
                     unsafe_allow_html=True
                 )
 
-    with tab_proof:
+    with tab_caps:
+        tech_caps = getattr(brief, "technical_capabilities", ())
+        st.markdown(f"#### Substantive Technical Capabilities & Credentials ({len(tech_caps)})")
+        st.caption("Core technical capabilities, experience credentials, and delivery methodologies extracted from RFP requirements.")
+        for tc in tech_caps:
+            e_badge = epistemic_badge(tc.epistemic_class)
+            priority_tag = f'<span style="background:#C9A96E22;color:#C9A96E;border:1px solid #C9A96E55;padding:.1rem .4rem;border-radius:3px;font-size:.68rem;font-weight:700;margin-left:.4rem">{tc.priority}</span>' if getattr(tc, "priority", None) else ""
+            st.markdown(
+                f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;padding:.7rem 1rem;margin:.4rem 0">'
+                f'<div style="display:flex;justify-content:space-between;align-items:center">'
+                f'<div><strong>{tc.capability}</strong>{priority_tag}</div>'
+                f'{e_badge}'
+                f'</div>'
+                f'<div style="font-size:.82rem;color:#EDEAE3;margin-top:.35rem"><strong>What Buyer Requires:</strong> {tc.what_buyer_requires}</div>'
+                f'<div style="font-size:.80rem;color:#A9A69D;margin-top:.2rem"><strong>Why It Matters:</strong> {tc.why_it_matters}</div>'
+                f'<div style="font-size:.80rem;color:#27AE60;margin-top:.2rem">🎯 <strong>Required Evidence:</strong> {tc.proof_needed}</div>'
+                f'{"<div style=font-size:.70rem;color:#6E6C66;margin-top:.2rem>Source: " + tc.source + "</div>" if tc.source else ""}'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
+        st.markdown('<hr class="section-divider" style="margin:1.2rem 0 .9rem 0">', unsafe_allow_html=True)
         proof_items = getattr(brief, "proof_items", ())
         st.markdown(f"#### Authoritative Evidence & Proof Burden Register ({len(proof_items)})")
         st.markdown(
@@ -1447,15 +1576,14 @@ def _render_interactive_decision_brief(brief, bid: dict):
                 unsafe_allow_html=True
             )
 
-    with tab_comm:
-        st.markdown("#### Commercial Structure, Submission Mechanics & Risks")
+    with tab_risks:
         if getattr(brief, "disqualification_gates", None):
-            st.markdown("**Disqualification Hard Gates:**")
+            st.markdown("#### Disqualification Hard Gates")
             for dg in brief.disqualification_gates:
                 st.markdown(f'<div class="warn-box">⛔ <strong>Hard Gate:</strong> {dg}</div>', unsafe_allow_html=True)
 
         if getattr(brief, "commercial_clauses", None):
-            st.markdown("**Material Commercial Clauses & Watch-outs:**")
+            st.markdown("#### Material Commercial Clauses & Watch-outs")
             for topic, text in brief.commercial_clauses:
                 st.markdown(
                     f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;padding:.5rem .9rem;margin:.3rem 0;font-size:.82rem">'
@@ -1464,11 +1592,9 @@ def _render_interactive_decision_brief(brief, bid: dict):
                     unsafe_allow_html=True
                 )
 
-    with tab_next:
-        st.markdown("#### Strategic Pre-Writing Resolutions & Clarifications")
         top_pri = getattr(brief, "top_priorities", ())
         if top_pri:
-            st.markdown("**Top Action Priorities Before Writing:**")
+            st.markdown("#### Top Action Priorities Before Writing")
             for idx, pri in enumerate(top_pri, 1):
                 st.markdown(
                     f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;padding:.6rem 1rem;margin:.35rem 0;font-size:.84rem">'
@@ -1480,14 +1606,47 @@ def _render_interactive_decision_brief(brief, bid: dict):
 
         clar_qs = getattr(brief, "clarification_questions", ())
         if clar_qs:
-            st.markdown("**Key Clarification Questions to Submit Before Enquiry Deadline:**")
+            st.markdown("#### Key Clarification Questions to Submit Before Enquiry Deadline")
+            st.caption("Precomputed clarification questions ready to resolve procurement ambiguities. Adopt directly into DECIDE tracking.")
+
+            existing_clars = []
+            if token and bid.get("id"):
+                try:
+                    existing_clars = tenancy.get_clarifications_authenticated(token, bid["id"]) or []
+                except Exception:
+                    existing_clars = []
+            existing_q_texts = {c.get("question", "").strip().lower() for c in existing_clars}
+
             for idx, q in enumerate(clar_qs, 1):
-                st.markdown(
-                    f'<div style="background:#1A0F00;border:1px solid #3A2A00;border-left:3px solid #2980B9;border-radius:0 4px 4px 0;padding:.55rem .9rem;margin:.3rem 0;font-size:.82rem">'
-                    f'<span style="color:#2980B9;font-weight:700">Q{idx}:</span> {q}'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
+                is_tracked = q.strip().lower() in existing_q_texts
+                cq_col1, cq_col2 = st.columns([3.8, 1.4])
+                with cq_col1:
+                    st.markdown(
+                        f'<div style="background:#1A0F00;border:1px solid #3A2A00;border-left:3px solid #2980B9;border-radius:0 4px 4px 0;padding:.55rem .9rem;margin:.25rem 0;font-size:.82rem">'
+                        f'<span style="color:#2980B9;font-weight:700">Q{idx}:</span> {q}'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+                with cq_col2:
+                    if is_tracked:
+                        st.markdown('<div style="padding-top:.4rem"><span style="color:#27AE60;font-size:.76rem;font-weight:700">✓ Tracked in DECIDE</span></div>', unsafe_allow_html=True)
+                    else:
+                        if st.button("➕ Adopt Question", key=f"btn_adopt_cq_und_{idx}", help="Adopt this precomputed question into formal clarification tracking in DECIDE"):
+                            if token and bid.get("id"):
+                                tenancy.upsert_clarification_authenticated(token, {
+                                    "bid_id": bid["id"],
+                                    "question_id": f"CQ-{idx}",
+                                    "question": q,
+                                    "rfp_reference": "Decision Brief Ambiguity",
+                                    "rationale": "Precomputed strategic clarification from opportunity analysis",
+                                    "priority": "High",
+                                    "category": "Scope / Commercial",
+                                    "status": "Draft",
+                                })
+                                st.success(f"Adopted Q{idx} into DECIDE.")
+                                st.rerun()
+                            else:
+                                st.info("Question will be tracked in DECIDE stage.")
 
 
 def page_understand(bid_id: int):
@@ -1535,13 +1694,16 @@ def page_understand(bid_id: int):
 
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
 
+    # ── UNIFIED GOVERNANCE & CURRENCY STATUS (BI-VALUE-4.2) ───────────────────
+    import understand_analysis as ua
+    opp_state = ua.get_opportunity_analysis_state(bid_id, _org_id)
+    step = opp_state.get("step")
+
     # ── PROCUREMENT REVISION & ADDENDUM GOVERNANCE (migration 010) ───────────
-    # Rendered before everything else on this page: whether procurement
-    # truth is governed shapes how much trust the rest of the page's
-    # intelligence deserves (an ungoverned bid must never visually imply
-    # its revision 1 is verified truth).
-    procurement_state = _render_procurement_governance_panel(bid_id, _org_id, docs)
-    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+    if step not in (ua.STEP_COMPLETE, ua.STEP_PARTIAL):
+        procurement_state = _render_procurement_governance_panel(bid_id, _org_id, docs)
+    else:
+        procurement_state = tenancy.get_procurement_state_for_organization(bid_id, _org_id)
 
     # ── TOP KPI SUMMARY CARDS ──────────────────────────────────────────────────
     sub_deadline, clar_deadline = _resolve_canonical_deadlines(bid, brief_row, analysis_result)
@@ -1556,48 +1718,12 @@ def page_understand(bid_id: int):
     k4.markdown(metric_card("Procurement Model", proc_model[:22], f"Lead: {bid.get('owner') or 'Unassigned'}"), unsafe_allow_html=True)
     st.markdown("")
 
-    # ── OPPORTUNITY ANALYSIS: START / LIVE PROGRESS (UNDERSTAND-UX1) ───────────
-    # Unified single customer-facing workflow: Fast Analysis foundation ->
-    # baseline review governance -> Full Bid Intelligence.
-    _render_unified_opportunity_analysis_panel(bid_id, _org_id, docs, procurement_state)
-    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+    _render_consolidated_governance_status(opp_state, procurement_state, bid_id, _org_id, docs)
 
-    # ── SECTION A0: CROSS-DOCUMENT CONFLICTS & DISCREPANCIES ──────────────────
-    document_conflicts = _ensure_list(brief_row.get("document_conflicts"))
-    if document_conflicts:
-        st.markdown("### ⚠️ Document Discrepancies & Cross-Document Conflicts")
-        st.markdown(
-            '<div class="warn-box">'
-            '<strong>Discrepancies Detected Across Procurement Package:</strong> Contradictions or differing instructions were identified between source documents. '
-            'Review these discrepancies and submit formal clarification questions before the enquiry deadline.'
-            '</div>',
-            unsafe_allow_html=True
-        )
-        for dc in document_conflicts:
-            s_a = dc.get("source_a", {}) if isinstance(dc.get("source_a"), dict) else {"doc": "Source A", "text": str(dc.get("source_a",""))}
-            s_b = dc.get("source_b", {}) if isinstance(dc.get("source_b"), dict) else {"doc": "Source B", "text": str(dc.get("source_b",""))}
-            classification = dc.get("classification", "TRUE_CONFLICT" if dc.get("conflict_type") else "REVIEW_ITEM")
-            is_review = classification == "REVIEW_ITEM"
-            badge_col = "#E67E22" if is_review else "#C0392B"
-            badge_label = "REVIEW ITEM" if is_review else "TRUE CONFLICT"
-            
-            st.markdown(
-                f'<div style="background:#1A0F00;border:1px solid #3A2A00;border-left:4px solid {badge_col};'
-                f'border-radius:0 4px 4px 0;padding:.7rem 1.1rem;margin:.4rem 0">'
-                f'<span style="color:{badge_col};font-weight:700;font-size:.76rem">[{badge_label}]</span> '
-                f'<span style="color:#A9A69D;font-size:.74rem">[{dc.get("conflict_type","CONFLICT")}]</span> '
-                f'<strong>{dc.get("topic","Discrepancy")}</strong>'
-                f'<div style="font-size:.8rem;color:#EDEAE3;margin-top:.3rem">'
-                f'<strong>Source A ({s_a.get("doc","Doc A")}):</strong> {s_a.get("text","")}<br>'
-                f'<strong>Source B ({s_b.get("doc","Doc B")}):</strong> {s_b.get("text","")}'
-                f'</div>'
-                f'{"<div style=font-size:.76rem;color:#C9A96E;margin-top:.2rem><strong>Reason:</strong> " + dc.get("reason","") + "</div>" if dc.get("reason") else ""}'
-                f'<div style="font-size:.76rem;color:#E67E22;margin-top:.3rem"><strong>Assessment:</strong> {dc.get("assessment","")}</div>'
-                f'<div style="font-size:.76rem;color:#27AE60;margin-top:.2rem">💡 <strong>Action:</strong> {dc.get("recommended_action","Submit clarification question")}</div>'
-                f'</div>',
-                unsafe_allow_html=True
-            )
-        st.markdown("")
+    # ── ACTIVE PIPELINE / IN-PROGRESS / START WORKFLOW ─────────────────────────
+    if step not in (ua.STEP_COMPLETE, ua.STEP_PARTIAL):
+        _render_unified_opportunity_analysis_panel(bid_id, _org_id, docs, procurement_state)
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
     # ── DECISION BRIEF INTERACTIVE PRESENTATION (BI-VALUE-4) ──────────────────
     target_run_id = None
@@ -1613,18 +1739,103 @@ def page_understand(bid_id: int):
             decision_brief = None
 
     if decision_brief:
-        _render_interactive_decision_brief(decision_brief, bid)
+        # Cross-document conflicts if present
+        document_conflicts = _ensure_list(brief_row.get("document_conflicts"))
+        if document_conflicts:
+            with st.expander(f"⚠️ Document Discrepancies & Cross-Document Conflicts ({len(document_conflicts)})", expanded=False):
+                st.markdown(
+                    '<div class="warn-box">'
+                    '<strong>Discrepancies Detected Across Procurement Package:</strong> Contradictions or differing instructions were identified between source documents. '
+                    'Review these discrepancies and submit formal clarification questions before the enquiry deadline.'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+                for dc in document_conflicts:
+                    s_a = dc.get("source_a", {}) if isinstance(dc.get("source_a"), dict) else {"doc": "Source A", "text": str(dc.get("source_a",""))}
+                    s_b = dc.get("source_b", {}) if isinstance(dc.get("source_b"), dict) else {"doc": "Source B", "text": str(dc.get("source_b",""))}
+                    classification = dc.get("classification", "TRUE_CONFLICT" if dc.get("conflict_type") else "REVIEW_ITEM")
+                    is_review = classification == "REVIEW_ITEM"
+                    badge_col = "#E67E22" if is_review else "#C0392B"
+                    badge_label = "REVIEW ITEM" if is_review else "TRUE CONFLICT"
+
+                    st.markdown(
+                        f'<div style="background:#1A0F00;border:1px solid #3A2A00;border-left:4px solid {badge_col};'
+                        f'border-radius:0 4px 4px 0;padding:.7rem 1.1rem;margin:.4rem 0">'
+                        f'<span style="color:{badge_col};font-weight:700;font-size:.76rem">[{badge_label}]</span> '
+                        f'<span style="color:#A9A69D;font-size:.74rem">[{dc.get("conflict_type","CONFLICT")}]</span> '
+                        f'<strong>{dc.get("topic","Discrepancy")}</strong>'
+                        f'<div style="font-size:.8rem;color:#EDEAE3;margin-top:.3rem">'
+                        f'<strong>Source A ({s_a.get("doc","Doc A")}):</strong> {s_a.get("text","")}<br>'
+                        f'<strong>Source B ({s_b.get("doc","Doc B")}):</strong> {s_b.get("text","")}'
+                        f'</div>'
+                        f'{"<div style=font-size:.76rem;color:#C9A96E;margin-top:.2rem><strong>Reason:</strong> " + dc.get("reason","") + "</div>" if dc.get("reason") else ""}'
+                        f'<div style="font-size:.76rem;color:#E67E22;margin-top:.3rem"><strong>Assessment:</strong> {dc.get("assessment","")}</div>'
+                        f'<div style="font-size:.76rem;color:#27AE60;margin-top:.2rem">💡 <strong>Action:</strong> {dc.get("recommended_action","Submit clarification question")}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+
+        _render_interactive_decision_brief(decision_brief, bid, token=_token, org_id=_org_id)
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-        c1, c2 = st.columns([3, 1])
-        c1.markdown(
-            '<div style="color:#A9A69D;font-size:.85rem;padding-top:.4rem">'
-            'Ready to assess qualification gates, clarify ambiguities, and decide whether to pursue?'
-            '</div>',
-            unsafe_allow_html=True
-        )
-        if c2.button("Proceed to DECIDE →", use_container_width=True, type="primary", key="btn_proceed_decide_db"):
+
+        c_decide, c_dl1, c_dl2 = st.columns([2.5, 1.5, 1.2])
+        if c_decide.button("Proceed to DECIDE →", use_container_width=True, type="primary", key="btn_proceed_decide_db"):
             st.session_state.page = "stage_decide"
             st.rerun()
+
+        export_run_id = target_run_id
+        try:
+            brief_bytes = tenancy.export_bid_intelligence_brief_for_organization(
+                bid_id, export_run_id, _org_id
+            )
+            c_dl1.download_button(
+                "⬇ Download Decision Brief (PDF)",
+                data=brief_bytes,
+                file_name=f"bid_intelligence_brief_{bid_id}.pdf",
+                mime="application/pdf",
+                key=f"dl_brief_{bid_id}",
+                use_container_width=True,
+            )
+        except Exception as exc:
+            c_dl1.caption(f"Brief export unavailable: {exc}")
+
+        latest_fast = opp_state.get("latest_fast_run") or {}
+        if latest_fast.get("report_storage_path"):
+            appendix_bytes = _download_stored_file(latest_fast["report_storage_path"])
+            if appendix_bytes:
+                c_dl2.download_button(
+                    "Download Appendix",
+                    data=appendix_bytes,
+                    file_name=f"full_intelligence_appendix_{bid_id}.pdf",
+                    mime="application/pdf",
+                    key=f"dl_analysis_{bid_id}",
+                    use_container_width=True,
+                )
+
+        # ── COLLAPSED PROVENANCE & SPECIALIST EXPANDER (BI-VALUE-4.2) ───────────
+        full_status = opp_state.get("full_status") or {}
+        with st.expander("⚙️ Analysis Provenance, Re-run & Specialist Details", expanded=False):
+            p1, p2 = st.columns([3, 1])
+            with p1:
+                st.markdown(f"**Analysis Run ID:** `{export_run_id}`")
+                if full_status.get("completed_at"):
+                    st.caption(f"Completed at: {full_status['completed_at']}")
+            with p2:
+                if st.button("🔁 Re-analyze Opportunity", key=f"rerun_analysis_exp_{bid_id}", use_container_width=True):
+                    _start_opportunity_analysis(bid_id, retry=True)
+
+            if full_status.get("specialists"):
+                from components import full_analysis_view as fav
+                view = fav.build_view(full_status)
+                st.markdown(fav.render_constellation(view), unsafe_allow_html=True)
+            if opp_state.get("hub_counts"):
+                st.markdown("**Canonical Intelligence Summary:**")
+                for count_line in opp_state["hub_counts"]:
+                    st.markdown(f"• {count_line}")
+            if st.button("🔬 Open Full Specialist Debug View", key=f"open_full_analysis_exp_{bid_id}"):
+                st.session_state.page = "stage_full_analysis"
+                st.rerun()
+
         return
 
     # ── SECTION A: EXECUTIVE SUMMARY (LEGACY FALLBACK) ────────────────────────

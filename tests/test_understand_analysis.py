@@ -30,16 +30,18 @@ class TestUnderstandAnalysisLenses(unittest.TestCase):
 
 
 class TestStartOpportunityAnalysis(unittest.TestCase):
+    @patch("understand_analysis.threading.Thread")
     @patch("understand_analysis.db.list_analysis_runs", return_value=[])
     @patch("understand_analysis.tenancy.get_full_analysis_status_for_organization", return_value=None)
     @patch("understand_analysis.tenancy.get_documents_authenticated", return_value=[])
     @patch("understand_analysis.tenancy.require_bid_access")
     @patch("understand_analysis.tenancy.start_fast_analysis_for_organization")
     def test_start_chains_foundation_when_no_fast_run(
-        self, mock_start_fast, mock_access, mock_docs, mock_full_status, mock_list_runs
+        self, mock_start_fast, mock_access, mock_docs, mock_full_status, mock_list_runs, mock_thread
     ):
         res = ua.start_opportunity_analysis(101, "org-test", execution="background")
         mock_access.assert_called_once_with(101, "org-test")
+        mock_thread.assert_called_once()
         self.assertEqual(res.get("outcome"), "CREATED")
 
     @patch("understand_analysis.db.get_bid_procurement_state", return_value={"procurement_truth_status": "governed", "procurement_revision": 1})
