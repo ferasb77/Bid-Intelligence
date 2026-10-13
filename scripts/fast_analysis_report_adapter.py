@@ -268,6 +268,16 @@ def _fuzzy_word_set(text: str) -> frozenset:
     return frozenset(w for w in words if len(w) >= 4 and w not in _FUZZY_DEDUP_STOPWORDS)
 
 
+_TRIVIAL_ARTICLES = frozenset(("the", "a", "an", "that", "this"))
+
+
+def _normalize_clean_text(text: str) -> str:
+    """Normalize text by lowercasing, stripping punctuation, collapsing whitespace,
+    and removing trivial leading/trailing articles to prevent false conflicts on trivial variations."""
+    words = re.sub(r'[^a-z0-9]+', ' ', text.lower()).split()
+    return " ".join(w for w in words if w not in _TRIVIAL_ARTICLES)
+
+
 def _is_near_duplicate(text_a: str, words_a: frozenset, text_b: str, words_b: frozenset,
                        threshold: float = 0.7) -> bool:
     """Word-set overlap (not just leading-word matching): extraction
@@ -283,9 +293,16 @@ def _is_near_duplicate(text_a: str, words_a: frozenset, text_b: str, words_b: fr
     reduce to the same one or two words after stopword filtering (e.g.
     "Criterion A" vs. "Criterion B", both reducing to just {"criterion"})
     are compared by their actual text instead, never falsely collapsed
-    merely because their reduced word-sets coincide."""
+    merely because their reduced word-sets coincide.
+
+    Normalization step: strips punctuation, extra whitespace, case differences,
+    and trivial articles before falling back to exact matching for short tokens."""
+    norm_a = _normalize_clean_text(text_a)
+    norm_b = _normalize_clean_text(text_b)
+    if norm_a == norm_b:
+        return True
     if len(words_a) < 3 or len(words_b) < 3:
-        return text_a.strip().lower() == text_b.strip().lower()
+        return False
     smaller, larger = (words_a, words_b) if len(words_a) <= len(words_b) else (words_b, words_a)
     return len(smaller & larger) / len(smaller) >= threshold
 
@@ -1440,9 +1457,11 @@ def build_fast_report_content(result: FastAnalysisResult,
 
     proc_model = _procurement_model(result.typed_observations)
     if proc_model == _NOT_EXTRACTED:
-        # Check if single contract or call-off is indicated in requirements
+        # Check if single contract, standing offer, or call-off is indicated in requirements
         req_texts = " ".join(r.get("description", "") for r in result.requirements).lower()
-        if "statement of work" in req_texts or "sow" in req_texts:
+        if "standing offer" in req_texts:
+            proc_model = "Standing Offer"
+        elif "statement of work" in req_texts or "sow" in req_texts:
             proc_model = "Single-award services agreement with as-needed Statement of Work (SOW) call-offs"
         elif any(p in req_texts for p in ("single contract", "single supplier award", "single award", "single successful proponent", "single proponent award")):
             proc_model = "Single Contract"

@@ -119,6 +119,20 @@ styles = {
 }
 
 
+def escape_dynamic_text(val: Any) -> str:
+    """Escape untrusted dynamic values before embedding in ReportLab Paragraph markup.
+
+    Escapes all HTML/XML special characters (&, <, >, ", ') and converts newlines to <br/>.
+    Never interprets or preserves dynamic HTML tags from external/untrusted data.
+    """
+    if val is None:
+        return "—"
+    s = str(val)
+    if not s.strip():
+        return "—"
+    return html.escape(s, quote=True).replace("\n", "<br/>")
+
+
 _ALLOWED_REPORTLAB_TAGS = re.compile(
     r'(<b>|</b>|<i>|</i>|<br\s*/?>|<font\s+color=[\'"][#a-zA-Z0-9]+[\'"]>|</font>)',
     re.I,
@@ -126,10 +140,10 @@ _ALLOWED_REPORTLAB_TAGS = re.compile(
 
 
 def _sanitize_for_reportlab(text: str) -> str:
-    """Safely prepare text for ReportLab Paragraph rendering.
+    """Safely prepare trusted template strings for ReportLab Paragraph rendering.
 
-    Preserves trusted structural formatting tags (<b>, <i>, <br/>, <font color="...">)
-    while escaping all untrusted dynamic content (including &, <, > outside allowed tags).
+    Preserves authorized structural formatting tags (<b>, <i>, <br/>, <font color="...">)
+    while escaping any rogue unescaped entities outside allowed tags.
     Normalizes <br> to <br/> for ReportLab XML compliance.
     """
     if not text:
@@ -143,7 +157,15 @@ def _sanitize_for_reportlab(text: str) -> str:
             else:
                 out.append(token)
         else:
-            out.append(html.escape(token).replace("\n", "<br/>"))
+            # We escape bare ampersands/angles that weren't part of an existing entity
+            # but preserve already-escaped entities like &amp;, &lt;, &gt;, &quot;, &#x27;
+            # html.escape could double-escape if dynamic text was already escaped with escape_dynamic_text!
+            # So check if token has raw < or > or unescaped &
+            unescaped = token
+            # Replace raw & not followed by entity
+            unescaped = re.sub(r'&(?!(?:amp|lt|gt|quot|#39|#x27|[a-zA-Z0-9]+);)', '&amp;', unescaped)
+            unescaped = unescaped.replace('<', '&lt;').replace('>', '&gt;')
+            out.append(unescaped.replace("\n", "<br/>"))
     return "".join(out)
 
 
@@ -287,12 +309,12 @@ def render_decision_brief_pdf(brief: DecisionBrief, output_path: str | Path) -> 
     # PAGE 1: EXECUTIVE OPPORTUNITY SNAPSHOT
     # =========================================================================
     story.append(_p("ENABLE MY GROWTH · STRATEGIC BID INTELLIGENCE", "cover_tag"))
-    story.append(_p(brief.opportunity, "cover_title"))
-    story.append(_p(f"{brief.buyer}  |  Solicitation: {brief.solicitation}", "cover_sub"))
+    story.append(_p(escape_dynamic_text(brief.opportunity), "cover_title"))
+    story.append(_p(f"{escape_dynamic_text(brief.buyer)}  |  Solicitation: {escape_dynamic_text(brief.solicitation)}", "cover_sub"))
 
     # Posture Callout
     posture_table = Table([[
-        _p("<b>OPPORTUNITY POSTURE:</b> " + brief.opportunity_posture, "callout")
+        _p("<b>OPPORTUNITY POSTURE:</b> " + escape_dynamic_text(brief.opportunity_posture), "callout")
     ]], colWidths=[USABLE_WIDTH])
     posture_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), GOLD_BG),
@@ -310,7 +332,7 @@ def render_decision_brief_pdf(brief: DecisionBrief, output_path: str | Path) -> 
     story.append(_p("Key Procurement Parameters", "h2"))
     story.append(_table(
         ["Procurement Parameter", "Buyer-Issued Detail"],
-        [[label, val] for label, val in brief.snapshot_rows[:8]],
+        [[escape_dynamic_text(label), escape_dynamic_text(val)] for label, val in brief.snapshot_rows[:8]],
         [1.85 * inch, USABLE_WIDTH - 1.85 * inch],
     ))
     story.append(Spacer(1, 4))
@@ -319,8 +341,8 @@ def render_decision_brief_pdf(brief: DecisionBrief, output_path: str | Path) -> 
     story.append(_p("Decision-Driving Strategic Observations", "h2"))
     for obs in brief.observations[:3]:
         story.append(_card(
-            obs.title,
-            f"{obs.detail}  <i>[Grounding: {obs.supporting_rfp_fact}]</i>",
+            escape_dynamic_text(obs.title),
+            f"{escape_dynamic_text(obs.detail)}  <i>[Grounding: {escape_dynamic_text(obs.supporting_rfp_fact)}]</i>",
             badge_class=obs.epistemic_class,
         ))
         story.append(Spacer(1, 2))
@@ -328,7 +350,7 @@ def render_decision_brief_pdf(brief: DecisionBrief, output_path: str | Path) -> 
     # Immediate Blockers
     story.append(Spacer(1, 2))
     story.append(_p("Immediate Compliance Blockers & Gates", "h2"))
-    blocker_items = [_p(f"• <b>GATE:</b> {b}", "bullet") for b in brief.immediate_blockers]
+    blocker_items = [_p(f"• <b>GATE:</b> {escape_dynamic_text(b)}", "bullet") for b in brief.immediate_blockers]
     blocker_table = Table([[blocker_items]], colWidths=[USABLE_WIDTH])
     blocker_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), TAG_AMBER_BG),
@@ -351,20 +373,20 @@ def render_decision_brief_pdf(brief: DecisionBrief, output_path: str | Path) -> 
     story.append(Spacer(1, 4))
 
     story.append(_p("Target Audience & Ecosystem Beneficiaries", "h2"))
-    story.append(_p(brief.target_beneficiaries, "body"))
+    story.append(_p(escape_dynamic_text(brief.target_beneficiaries), "body"))
     story.append(Spacer(1, 3))
 
     story.append(_p("Core Services & Deliverables", "h2"))
     for s in brief.services_deliverables:
-        story.append(_p(f"• <b>Deliverable:</b> {s}", "bullet"))
+        story.append(_p(f"• <b>Deliverable:</b> {escape_dynamic_text(s)}", "bullet"))
     story.append(Spacer(1, 3))
 
     story.append(_p("Delivery Model & Operational Expectations", "h2"))
     story.append(_table(
         ["Operational Dimension", "Buyer Requirement / Expectation"],
         [
-            ["Delivery Model", brief.delivery_model],
-            ["Expected Outcomes", brief.expected_outcomes],
+            ["Delivery Model", escape_dynamic_text(brief.delivery_model)],
+            ["Expected Outcomes", escape_dynamic_text(brief.expected_outcomes)],
             ["Staffing Structure", "Named senior lead instructor + designated secondary backup mentors with verified CVs."],
             ["Availability", "Immediate availability upon contract award; zero lead-time hiring permitted."],
         ],
@@ -374,12 +396,12 @@ def render_decision_brief_pdf(brief: DecisionBrief, output_path: str | Path) -> 
 
     story.append(_p("Methodology & Curriculum Framework Expectations", "h2"))
     for m in brief.methodology_expectations:
-        story.append(_p(f"• {m}", "bullet"))
+        story.append(_p(f"• {escape_dynamic_text(m)}", "bullet"))
     story.append(Spacer(1, 4))
 
     story.append(_p("Unstated / Ambiguous Scope Matters [UNKNOWN]", "h2"))
     for u in brief.unstated_scope_matters:
-        story.append(_p(f"• <i>{u}</i>", "bullet"))
+        story.append(_p(f"• <i>{escape_dynamic_text(u)}</i>", "bullet"))
 
     # =========================================================================
     # PAGE 3: BUYER INTELLIGENCE & STRATEGIC CONTEXT
@@ -387,12 +409,12 @@ def render_decision_brief_pdf(brief: DecisionBrief, output_path: str | Path) -> 
     story.append(PageBreak())
     story.append(_p("SECTION 2", "section_num"))
     story.append(_p("Buyer Intelligence & Strategic Context", "section_h1"))
-    story.append(_p(f"Verified external intelligence grounded exclusively in official buyer domains ({brief.verified_buyer_domain or 'yorku.ca'}) under source-authority-policy/3.", "note"))
+    story.append(_p(f"Verified external intelligence grounded exclusively in official buyer domains ({escape_dynamic_text(brief.verified_buyer_domain or 'yorku.ca')}) under source-authority-policy/3.", "note"))
     story.append(Spacer(1, 4))
 
     story.append(_p("Verified Institutional Mandate & Policy Signals", "h2"))
     mandate_rows = [
-        [s["title"], f"{s['detail']}<br/><font color='#64748B'><i>Source: {s['source_title']} ({s['source_url']})</i></font>"]
+        [escape_dynamic_text(s["title"]), f"{escape_dynamic_text(s['detail'])}<br/><font color='#64748B'><i>Source: {escape_dynamic_text(s['source_title'])} ({escape_dynamic_text(s['source_url'])})</i></font>"]
         for s in brief.buyer_mandate_signals
     ]
     story.append(_table(
@@ -404,7 +426,7 @@ def render_decision_brief_pdf(brief: DecisionBrief, output_path: str | Path) -> 
 
     story.append(_p("Strategic Program Context & Ecosystem Initiatives", "h2"))
     strat_rows = [
-        [s["title"], f"{s['detail']}<br/><font color='#64748B'><i>Source: {s['source_title']} ({s['source_url']})</i></font>"]
+        [escape_dynamic_text(s["title"]), f"{escape_dynamic_text(s['detail'])}<br/><font color='#64748B'><i>Source: {escape_dynamic_text(s['source_title'])} ({escape_dynamic_text(s['source_url'])})</i></font>"]
         for s in brief.buyer_strategic_context
     ]
     story.append(_table(
@@ -417,8 +439,8 @@ def render_decision_brief_pdf(brief: DecisionBrief, output_path: str | Path) -> 
     story.append(_p("Bid Intelligence Interpretations: Why This External Context Matters", "h2"))
     for bi in brief.buyer_intelligence_interpretations:
         story.append(_card(
-            bi.title,
-            f"{bi.detail}  <i>[Evidence Grounding: {bi.supporting_rfp_fact}]</i>",
+            escape_dynamic_text(bi.title),
+            f"{escape_dynamic_text(bi.detail)}  <i>[Evidence Grounding: {escape_dynamic_text(bi.supporting_rfp_fact)}]</i>",
             badge_class=bi.epistemic_class,
         ))
         story.append(Spacer(1, 2))
@@ -434,9 +456,9 @@ def render_decision_brief_pdf(brief: DecisionBrief, output_path: str | Path) -> 
 
     tech_table_rows_1 = []
     for tc in brief.technical_capabilities[:7]:
-        req_cell = _p(f"<b>{tc.capability}</b><br/><font color='#64748B'>{tc.source}</font>", "table_cell_bold")
-        detail_cell = _p(f"{tc.what_buyer_requires}<br/><b>Proof needed:</b> {tc.proof_needed}", "table_cell")
-        why_cell = _p(tc.why_it_matters, "table_cell")
+        req_cell = _p(f"<b>{escape_dynamic_text(tc.capability)}</b><br/><font color='#64748B'>{escape_dynamic_text(tc.source)}</font>", "table_cell_bold")
+        detail_cell = _p(f"{escape_dynamic_text(tc.what_buyer_requires)}<br/><b>Proof needed:</b> {escape_dynamic_text(tc.proof_needed)}", "table_cell")
+        why_cell = _p(escape_dynamic_text(tc.why_it_matters), "table_cell")
         tech_table_rows_1.append([req_cell, detail_cell, why_cell])
 
     story.append(_table(
@@ -456,9 +478,9 @@ def render_decision_brief_pdf(brief: DecisionBrief, output_path: str | Path) -> 
 
     tech_table_rows_2 = []
     for tc in brief.technical_capabilities[7:]:
-        req_cell = _p(f"<b>{tc.capability}</b><br/><font color='#64748B'>{tc.source}</font>", "table_cell_bold")
-        detail_cell = _p(f"{tc.what_buyer_requires}<br/><b>Proof needed:</b> {tc.proof_needed}", "table_cell")
-        why_cell = _p(tc.why_it_matters, "table_cell")
+        req_cell = _p(f"<b>{escape_dynamic_text(tc.capability)}</b><br/><font color='#64748B'>{escape_dynamic_text(tc.source)}</font>", "table_cell_bold")
+        detail_cell = _p(f"{escape_dynamic_text(tc.what_buyer_requires)}<br/><b>Proof needed:</b> {escape_dynamic_text(tc.proof_needed)}", "table_cell")
+        why_cell = _p(escape_dynamic_text(tc.why_it_matters), "table_cell")
         tech_table_rows_2.append([req_cell, detail_cell, why_cell])
 
     story.append(_table(
@@ -471,7 +493,7 @@ def render_decision_brief_pdf(brief: DecisionBrief, output_path: str | Path) -> 
     # Practitioner Profile Takeaway Card
     story.append(_card(
         "Provider Profile Synthesis & Evaluation Focus",
-        "The 13 technical requirements demonstrate that York University is seeking an established commercial B2B sales practitioner with pre-existing curriculum assets and demonstrable AI fluency. Theoretical courseware and academic lecture formats will be heavily penalized under the 45-point Methodology criterion. Bidders must present named practitioners with attached resumes and verified Canadian venture references.",
+        "The 13 technical requirements demonstrate that York University is seeking an established commercial B2B sales practitioner with pre-existing curriculum assets and demonstrable AI fluency. The evaluation weighting places substantial emphasis on practical methodology and workplan procedures under the 45-point Methodology criterion. Bidders must present named practitioners with attached resumes and verified Canadian venture references.",
         badge_class=EpistemicClass.BID_INTELLIGENCE_INTERPRETATION.value,
     ))
 
@@ -508,9 +530,9 @@ def render_decision_brief_pdf(brief: DecisionBrief, output_path: str | Path) -> 
     criteria_rows = []
     for c in brief.evaluation_criteria_breakdown:
         criteria_rows.append([
-            c["name"],
-            c["weight"],
-            c["details"],
+            escape_dynamic_text(c["name"]),
+            escape_dynamic_text(c["weight"]),
+            escape_dynamic_text(c["details"]),
         ])
     story.append(_table(
         ["Evaluation Category / Stage", "Points & Weight Allocation", "Subcriteria & Response Focus"],
@@ -521,14 +543,15 @@ def render_decision_brief_pdf(brief: DecisionBrief, output_path: str | Path) -> 
 
     story.append(_p("Evaluation Rules & Threshold Disclosures", "h2"))
     tie_rule_text = brief.evaluation_summary.tie_break_rule
+    safe_tie_text = escape_dynamic_text(tie_rule_text)
     if "no tie-break" in tie_rule_text.lower():
-        tie_rule_cell = f"<b>NO RULE IDENTIFIED:</b> {tie_rule_text}"
+        tie_rule_cell = f"<b>NO RULE IDENTIFIED:</b> {safe_tie_text}"
     elif "conflicting" in tie_rule_text.lower():
-        tie_rule_cell = f"<b>CONFLICTING EVIDENCE:</b> {tie_rule_text}"
+        tie_rule_cell = f"<b>CONFLICTING EVIDENCE:</b> {safe_tie_text}"
     elif "unverified" in tie_rule_text.lower():
-        tie_rule_cell = f"<b>UNVERIFIED MENTION:</b> {tie_rule_text}"
+        tie_rule_cell = f"<b>UNVERIFIED MENTION:</b> {safe_tie_text}"
     else:
-        tie_rule_cell = f"<b>STATED TIE-BREAK SEQUENCE:</b> {tie_rule_text}"
+        tie_rule_cell = f"<b>STATED TIE-BREAK SEQUENCE:</b> {safe_tie_text}"
 
     story.append(_table(
         ["Evaluation Rule", "Stated RFP Provision / Fact"],
@@ -554,9 +577,9 @@ def render_decision_brief_pdf(brief: DecisionBrief, output_path: str | Path) -> 
     for pi in brief.proof_items:
         if pi.nature == "mandatory_requirement":
             mand_rows.append([
-                _p(f"<b>{pi.title}</b>", "table_cell_bold"),
-                _p(pi.detail, "table_cell"),
-                _p(pi.source, "table_cell"),
+                _p(f"<b>{escape_dynamic_text(pi.title)}</b>", "table_cell_bold"),
+                _p(escape_dynamic_text(pi.detail), "table_cell"),
+                _p(escape_dynamic_text(pi.source), "table_cell"),
                 _badge(pi.epistemic_class),
             ])
     story.append(_table(
@@ -571,9 +594,9 @@ def render_decision_brief_pdf(brief: DecisionBrief, output_path: str | Path) -> 
     for pi in brief.proof_items:
         if pi.nature == "recommendation":
             rec_rows.append([
-                _p(f"<b>{pi.title}</b>", "table_cell_bold"),
-                _p(pi.detail, "table_cell"),
-                _p(pi.source, "table_cell"),
+                _p(f"<b>{escape_dynamic_text(pi.title)}</b>", "table_cell_bold"),
+                _p(escape_dynamic_text(pi.detail), "table_cell"),
+                _p(escape_dynamic_text(pi.source), "table_cell"),
                 _badge(pi.epistemic_class),
             ])
     story.append(_table(
@@ -595,13 +618,13 @@ def render_decision_brief_pdf(brief: DecisionBrief, output_path: str | Path) -> 
     story.append(_p("Material Commercial & Contractual Terms", "h2"))
     story.append(_table(
         ["Commercial Clause / Topic", "Material Buyer Term & Contractual Impact"],
-        [[topic, term] for topic, term in brief.commercial_clauses[:4]],
+        [[escape_dynamic_text(topic), escape_dynamic_text(term)] for topic, term in brief.commercial_clauses[:4]],
         [1.85 * inch, USABLE_WIDTH - 1.85 * inch],
     ))
     story.append(Spacer(1, 3))
 
     # Compliance Blockers
-    gate_bullets = [_p(f"• <b>GATE:</b> {g}", "bullet") for g in brief.disqualification_gates[:3]]
+    gate_bullets = [_p(f"• <b>GATE:</b> {escape_dynamic_text(g)}", "bullet") for g in brief.disqualification_gates[:3]]
     story.append(Table([[gate_bullets]], colWidths=[USABLE_WIDTH], style=[
         ("BACKGROUND", (0, 0), (-1, -1), TAG_AMBER_BG),
         ("BOX", (0, 0), (-1, -1), 0.5, TAG_AMBER_TXT),
@@ -619,8 +642,8 @@ def render_decision_brief_pdf(brief: DecisionBrief, output_path: str | Path) -> 
     for idx, prio in enumerate(brief.top_priorities[:5], 1):
         priority_rows.append([
             f"Priority {idx}",
-            prio.title,
-            prio.action,
+            escape_dynamic_text(prio.title),
+            escape_dynamic_text(prio.action),
         ])
     story.append(_table(
         ["#", "Action Priority", "What the Bid Team Must Execute"],
@@ -631,7 +654,7 @@ def render_decision_brief_pdf(brief: DecisionBrief, output_path: str | Path) -> 
     story.append(Spacer(1, 3))
 
     # Clarifications Box
-    clarif_bullets = [_p(f"• <b>INQUIRY:</b> {q}", "bullet") for q in brief.clarification_questions[:2]]
+    clarif_bullets = [_p(f"• <b>INQUIRY:</b> {escape_dynamic_text(q)}", "bullet") for q in brief.clarification_questions[:2]]
     story.append(_p("Recommended Pre-Bid Clarification Inquiries (Submit via Bonfire)", "h2"))
     story.append(Table([[clarif_bullets]], colWidths=[USABLE_WIDTH], style=[
         ("BACKGROUND", (0, 0), (-1, -1), BAND),
@@ -645,9 +668,12 @@ def render_decision_brief_pdf(brief: DecisionBrief, output_path: str | Path) -> 
     story.append(Spacer(1, 4))
 
     # Executive Decision Sign-off Box
+    safe_opp = escape_dynamic_text(brief.opportunity)
+    safe_sol = escape_dynamic_text(brief.solicitation)
+    safe_buyer = escape_dynamic_text(brief.buyer)
     signoff_html = (
         "<b>EXECUTIVE BID / NO-BID DECISION RECORD</b><br/>"
-        "Opportunity: <b>" + brief.opportunity + "</b> (" + brief.solicitation + ") &nbsp;|&nbsp; Buyer: <b>" + brief.buyer + "</b><br/>"
+        f"Opportunity: <b>{safe_opp}</b> ({safe_sol}) &nbsp;|&nbsp; Buyer: <b>{safe_buyer}</b><br/>"
         "[ &nbsp; ] &nbsp; <b>BID:</b> Proceed with full proposal preparation. Lead Instructor assigned.<br/>"
         "[ &nbsp; ] &nbsp; <b>NO-BID:</b> Archive opportunity.<br/>"
         "Decision Authority: ___________________________________ &nbsp;&nbsp;&nbsp;&nbsp; Date: ________________________"

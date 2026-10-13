@@ -1369,13 +1369,29 @@ def _resolve_procurement_term_and_model(
 
     # 2. Check Fast Analysis snapshot / typed_observations
     if (not contract_term or not proc_model) and analysis_result:
-        snap = analysis_result.get("fast_analysis_result_snapshot") or {}
-        r_snap = snap.get("result") or {}
-        typed_obs = r_snap.get("typed_observations") or []
-        if not typed_obs:
-            oi = analysis_result.get("structured_intelligence") or {}
-            dm = oi.get("dates_and_mechanics") or {}
-            typed_obs = dm.get("typed_observations") or []
+        if isinstance(analysis_result, dict):
+            snap = analysis_result.get("fast_analysis_result_snapshot") or {}
+            r_snap = snap.get("result") or {}
+            typed_obs = r_snap.get("typed_observations") or []
+            if not typed_obs:
+                oi = analysis_result.get("structured_intelligence") or {}
+                dm = oi.get("dates_and_mechanics") or {}
+                typed_obs = dm.get("typed_observations") or []
+        else:
+            # Object or adapter content with SNAPSHOT_FACTS or typed_observations
+            snap_facts = getattr(analysis_result, "SNAPSHOT_FACTS", None)
+            if snap_facts:
+                for label, val in snap_facts:
+                    label_lower = (label or "").strip().lower()
+                    if not contract_term and any(term_lbl in label_lower for term_lbl in ("contract term", "duration")):
+                        val_str = str(val or "").strip()
+                        if val_str and val_str.lower() not in ("not stated", "not extracted", "none", "n/a"):
+                            contract_term = val_str
+                    if not proc_model and any(model_lbl in label_lower for model_lbl in ("procurement model", "award structure", "contract model")):
+                        val_str = str(val or "").strip()
+                        if val_str and val_str.lower() not in ("not classified", "not stated", "not extracted", "none", "n/a"):
+                            proc_model = val_str
+            typed_obs = getattr(analysis_result, "typed_observations", [])
 
         if typed_obs:
             try:

@@ -672,30 +672,29 @@ def build_decision_brief(input_data: DecisionBriefInput) -> DecisionBrief:
     # Page 2: What the Buyer is Buying
     target_beneficiaries = (
         "Early-stage venture founders, business leaders, and commercialization teams within the York University "
-        "and regional Ontario innovation ecosystem (specifically ventures supported by YSpace, Schulich ExecEd, "
-        "and affiliated accelerator initiatives)."
+        "and regional Ontario innovation ecosystem (including ventures affiliated with YSpace and regional innovation partners)."
     )
     services_deliverables = (
-        "Cohort-based instructional workshops covering B2B outbound prospecting, discovery, pipeline management, and closing.",
-        "Hands-on applied AI curriculum integrating modern generative AI and sales automation tools into daily sales workflows.",
-        "Tailored one-on-one mentorship and tactical advisory sessions for individual venture leaders.",
-        "Comprehensive training frameworks, milestone reporting, and participant progress assessments.",
+        "Cohort-based instructional workshops delivering B2B sales and applied AI training for venture founders and commercialization teams.",
+        "Applied artificial intelligence training integrated into practical venture commercialization workflows.",
+        "One-on-one mentorship and tactical advisory sessions for participating ventures.",
+        "Curriculum frameworks, structured workplan delivery, and participant progress milestones.",
     )
-    delivery_model = "Blended interactive cohort training combined with intensive one-on-one executive and founder mentorship sessions."
-    expected_outcomes = "Measurable sales pipeline velocity, increased conversion rates for participating ventures, and practical mastery of modern AI sales tooling."
+    delivery_model = "Cohort-based workshops combined with one-on-one mentorship sessions."
+    expected_outcomes = "Enhanced sales capabilities, practical applied AI adoption, and commercial milestone achievement for participating ventures."
     methodology_expectations = (
-        "Structured step-by-step curriculum detailing cohort sessions, practical exercises, and tactical takeaways.",
-        "Demonstrated pedagogical approach blending real-world B2B sales frameworks with ethical, applied AI integration.",
-        "Clear timetable and activity schedule aligning cohort workshops with individual venture coaching milestones.",
+        "Structured step-by-step methodology describing key elements of the proposed approach and activity schedule.",
+        "Demonstrated understanding of project requirements blending practical sales execution with applied AI training.",
+        "Clear timetable and activity schedule detailing delivery procedures and milestones.",
     )
     staffing_operational_expectations = (
-        "Named senior lead instructor supported by experienced co-instructors and mentors.",
-        "Demonstrated organizational bench ensuring uninterrupted delivery with no single point of failure.",
-        "Immediate availability upon contract award with dedicated administrative coordination.",
+        "Named professional staff assigned to the project with attached curriculum vitae.",
+        "Demonstrated deep bench showing organizational capacity with no single point of failure.",
+        "Immediate availability of proposed staff upon contract award to commence the project.",
     )
     unstated_scope_matters = (
-        "Exact number of participating cohorts and cohort sizes per semester (unstated in RFP).",
-        "Ratio between virtual interactive sessions and on-campus in-person workshops (unstated in RFP).",
+        "Exact number of participating cohorts and cohort sizes across the term (unstated in RFP).",
+        "Expected balance, if any, between virtual remote delivery and on-campus in-person workshops (unstated in RFP).",
     )
 
     # Page 3: Buyer Intelligence (Governed Signals on yorku.ca)
@@ -719,7 +718,7 @@ def build_decision_brief(input_data: DecisionBriefInput) -> DecisionBrief:
         mandate_signals = [
             {
                 "title": "York University Institutional Procurement Policy",
-                "detail": "York University operates under governed Broader Public Sector procurement accountability guidelines, requiring strict competitive transparency, verifiable deliverables, and clear conflict-of-interest disclosures.",
+                "detail": "York University operates under governed Broader Public Sector procurement accountability guidelines, requiring competitive transparency, verifiable deliverables, and clear conflict-of-interest disclosures.",
                 "source_url": "https://www.yorku.ca/secretariat/policies/procurement-policy/",
                 "source_title": "York University Procurement and Tendering Guidelines",
             },
@@ -733,30 +732,30 @@ def build_decision_brief(input_data: DecisionBriefInput) -> DecisionBrief:
         strategic_signals = [
             {
                 "title": "YSpace Innovation Hub & Entrepreneurship Mandate",
-                "detail": "York University's YSpace initiative drives venture commercialization, tech incubator programs, and specialized training for high-growth Canadian startups and small-to-medium enterprises across the GTA.",
+                "detail": "York University's YSpace initiative serves as an entrepreneurship hub supporting startup incubation, accelerator programs, and commercialization ventures across the regional ecosystem.",
                 "source_url": "https://www.yorku.ca/yspace/programs/",
                 "source_title": "YSpace Innovation Hub Venture Programs",
             },
             {
-                "title": "Schulich Executive Education & Applied Skills Priorities",
-                "detail": "Strategic institutional focus on practical, workforce-ready skills in digital technologies, leadership development, and applied artificial intelligence for professionals and founders.",
-                "source_url": "https://execed.schulich.yorku.ca/about-us/",
-                "source_title": "Schulich ExecEd Professional Development Framework",
+                "title": "York Institutional Innovation & Applied Skills Context",
+                "detail": "York University emphasizes experiential education, technology innovation, and practical workforce-ready skills across its entrepreneurship and community initiatives.",
+                "source_url": "https://www.yorku.ca/about/",
+                "source_title": "York University Academic and Innovation Priorities",
             },
         ]
 
     buyer_interpretations = (
         BriefObservation(
             title="Alignment with Ecosystem Venture Needs",
-            detail="External research into YSpace and Schulich ExecEd initiatives confirms that participants are active commercial founders. Theoretical university lectures will not meet buyer objectives; hands-on commercial playbooks and active founder mentorship are paramount.",
+            detail="Public context from YSpace programs indicates participants are active commercial ventures. Grounding curriculum in practical commercial execution and direct venture mentorship directly serves this audience.",
             epistemic_class=EpistemicClass.BID_INTELLIGENCE_INTERPRETATION.value,
-            supporting_rfp_fact="Section 4.1 Company Profile & YSpace Public Venture Portfolio",
+            supporting_rfp_fact="Section 4.1 Company Profile & YSpace Entrepreneurship Programs",
         ),
         BriefObservation(
             title="Public Accountability & BPS Compliance",
-            detail="As a Broader Public Sector entity, York enforces zero-tolerance compliance on non-reimbursable travel expenses and strict audit-ready milestone deliverables.",
+            detail="As a Broader Public Sector entity, York enforces strict compliance on non-reimbursable travel expenses and requires auditable milestone deliverables.",
             epistemic_class=EpistemicClass.BID_INTELLIGENCE_INTERPRETATION.value,
-            supporting_rfp_fact="Section 5.0 Commercial Terms & Broader Public Sector Accountability Directives",
+            supporting_rfp_fact="Section 5.0 Commercial Terms & Broader Public Sector Directives",
         ),
     )
 
@@ -764,117 +763,117 @@ def build_decision_brief(input_data: DecisionBriefInput) -> DecisionBrief:
     technical_capabilities = (
         TechnicalCapability(
             capability="Canadian SME and Start-up Ecosystem Knowledge",
-            what_buyer_requires="Deep understanding of Canadian venture landscape, startup growth stages, seed-to-scale funding, and sector-specific commercialization hurdles.",
-            why_it_matters="Ensures workshop scenarios and mentoring advice reflect Canadian market realities, regional procurement, and domestic grant/financing frameworks.",
-            proof_needed="Profiles of Canadian startup cohorts trained, case studies with domestic tech ventures, and references from Canadian accelerator ecosystems.",
+            what_buyer_requires="Demonstrated knowledge of the Canadian SME and start-up ecosystem, including nuances between different sectors, cities, and regions.",
+            why_it_matters="Directly evaluated under Section 4.1 Company Profile within the 35-point Qualifications & Experience category.",
+            proof_needed="REQUIRED: Profile describing Canadian SME/startup ecosystem knowledge across sectors and regions. RECOMMENDED: Cohort summaries and relevant domestic case studies.",
             source="RFP Section 4.1",
             epistemic_class=EpistemicClass.RFP_FACT.value,
             priority=PriorityLevel.CRITICAL.value,
         ),
         TechnicalCapability(
             capability="Extensive SME & Start-up Training Delivery Experience",
-            what_buyer_requires="Demonstrated multi-year track record facilitating practical B2B commercial training programs specifically designed for small and medium-sized ventures.",
-            why_it_matters="Founders have limited time and require immediate, practical tools rather than abstract corporate enterprise training modules.",
-            proof_needed="Documentation of prior venture cohort programs, participant retention rates, and direct founder feedback testimonials.",
+            what_buyer_requires="Previous and extensive experience in creating and delivering training and programs for SME and start-up ventures.",
+            why_it_matters="Evaluated under Section 4.1 Company Profile; confirms extensive track record facilitating practical programs for ventures.",
+            proof_needed="REQUIRED: Detailed descriptions of previous SME and start-up training programs created and delivered. RECOMMENDED: Program outcomes and participant feedback.",
             source="RFP Section 4.1",
             epistemic_class=EpistemicClass.RFP_FACT.value,
             priority=PriorityLevel.CRITICAL.value,
         ),
         TechnicalCapability(
             capability="Deep Bench and Operational Resilience",
-            what_buyer_requires="Multi-person instructor and mentor roster demonstrating deep bench capacity with no single point of failure and verified backup instructors.",
-            why_it_matters="Protects program continuity against illness, scheduling conflicts, or lead instructor turnover across multi-month cohorts.",
-            proof_needed="Delivery team roster with designated lead and backup instructors, role descriptions, and cross-coverage availability commitments.",
+            what_buyer_requires="Demonstrated deep bench showing organizational capacity with no single point of failure.",
+            why_it_matters="Evaluated within Qualifications (Section 4.2) as a core capability requirement protecting project continuity.",
+            proof_needed="REQUIRED: Staffing structure demonstrating team depth and backup coverage. RECOMMENDED: Clear cross-coverage matrix across modules.",
             source="RFP Section 4.2",
             epistemic_class=EpistemicClass.RFP_FACT.value,
             priority=PriorityLevel.CRITICAL.value,
         ),
         TechnicalCapability(
             capability="Named Professional Staff & Attached CVs",
-            what_buyer_requires="Detailed CVs and profiles for each named instructor and mentor detailing direct sales leadership and training experience.",
-            why_it_matters="Evaluators explicitly score proposed personnel credentials (accounting for a significant portion of the 35 qualification points).",
-            proof_needed="Comprehensive CVs emphasizing direct B2B sales execution, applied AI credentials, and adult education facilitation experience.",
+            what_buyer_requires="Identification of the professional staff assigned to the project and provision of their curriculum vitae as an attachment.",
+            why_it_matters="Evaluated under Section 4.2 Qualifications of Proposed Personnel within the 35-point Qualifications & Experience score.",
+            proof_needed="REQUIRED: Attached CVs for all professional staff assigned to the project. RECOMMENDED: Clear role alignment to sales and AI training scopes.",
             source="RFP Section 4.2",
             epistemic_class=EpistemicClass.RFP_FACT.value,
             priority=PriorityLevel.CRITICAL.value,
         ),
         TechnicalCapability(
             capability="Immediate Instructor & Mentor Availability",
-            what_buyer_requires="Firm commitment of immediate personnel availability upon contract award to commence curriculum finalization and cohort scheduling.",
-            why_it_matters="York requires immediate launch alignment for upcoming seasonal venture cohorts without lead-time hiring delays.",
-            proof_needed="Staff availability matrix confirming immediate commencement and dedicated weekly hours per instructor.",
+            what_buyer_requires="Availability of the proposed staff to immediately commence this project upon contract award.",
+            why_it_matters="Evaluated under Section 4.2 Qualifications of Proposed Personnel; ensures timely program launch without staffing delays.",
+            proof_needed="REQUIRED: Statement confirming immediate availability of proposed staff. RECOMMENDED: Proposed kickoff timeline and onboarding availability.",
             source="RFP Section 4.2",
             epistemic_class=EpistemicClass.RFP_FACT.value,
             priority=PriorityLevel.HIGH.value,
         ),
         TechnicalCapability(
             capability="B2B Sales Playbook Methodology",
-            what_buyer_requires="Systematic, repeatable methodology covering outbound prospecting, value proposition messaging, pipeline qualification, and closing techniques.",
-            why_it_matters="Methodology accounts for 45 out of 80 technical points (56.3% of technical score); a comprehensive framework is the single biggest scoring driver.",
-            proof_needed="Detailed curriculum outline, workshop module breakdowns, template sales playbooks, and step-by-step prospecting frameworks.",
+            what_buyer_requires="Detailed methodology describing key elements of the proposed approach to deliver sales playbook and sales training services.",
+            why_it_matters="The Methodology category carries 45 of 80 technical points (56.3% of technical score); a rigorous step-by-step approach is the primary scoring driver.",
+            proof_needed="REQUIRED: Step-by-step procedures and activity schedule for sales methodology. RECOMMENDED: Illustrative playbook frameworks and module topics.",
             source="RFP Section 4.3",
             epistemic_class=EpistemicClass.RFP_FACT.value,
             priority=PriorityLevel.CRITICAL.value,
         ),
         TechnicalCapability(
             capability="Applied AI Integration into Sales Workflows",
-            what_buyer_requires="Hands-on instruction demonstrating how founders can leverage practical generative AI tools for prospect research, email personalization, and CRM efficiency.",
-            why_it_matters="RFP explicitly demands applied AI mastery to modernize venture sales operations; generic legacy sales training will score poorly.",
-            proof_needed="Applied AI module descriptions, workflow prompts, tool demonstration outlines, and practical automation exercises.",
+            what_buyer_requires="Instructional approach integrating applied artificial intelligence training into venture sales processes.",
+            why_it_matters="Scope explicitly specifies sales and AI training; evaluators assess the quality of the technical integration under Section 4.3.",
+            proof_needed="REQUIRED: Detailed methodology covering AI training content and approach. RECOMMENDED: Practical workflow examples, tool categories, and hands-on exercises.",
             source="RFP Section 4.3",
             epistemic_class=EpistemicClass.RFP_FACT.value,
             priority=PriorityLevel.CRITICAL.value,
         ),
         TechnicalCapability(
-            capability="Executive & Founder Mentorship Capability",
-            what_buyer_requires="Structured 1-on-1 coaching methodology to guide venture founders through individual commercial blockers and pipeline negotiations.",
-            why_it_matters="Cohort learning must be reinforced through individualized mentorship to ensure real venture revenue growth.",
-            proof_needed="Mentorship intake process, founder coaching cadence, milestone tracking templates, and confidential feedback mechanisms.",
+            capability="Executive Mentorship & Founder Coaching",
+            what_buyer_requires="Approach to delivering executive mentorship and coaching services supporting participating venture founders alongside instructional training.",
+            why_it_matters="Evaluated across Section 4.1 experience and Section 4.3 methodology as part of the combined training and mentorship scope.",
+            proof_needed="REQUIRED: Methodology describing mentorship approach and deliverables. RECOMMENDED: Structure for scheduling, goal-setting, and founder support sessions.",
             source="RFP Section 4.1 / 4.3",
             epistemic_class=EpistemicClass.RFP_FACT.value,
             priority=PriorityLevel.HIGH.value,
         ),
         TechnicalCapability(
             capability="Sample Training Framework & Existing Curriculum",
-            what_buyer_requires="Submission of a sample framework produced previously for SME and startup training programs demonstrating curriculum depth.",
-            why_it_matters="Explicit submission requirement (Section 4.6) evaluated under Methodology; confirms proponent does not need to build from scratch.",
-            proof_needed="Actual pre-existing training framework document, syllabus sample, participant workbook excerpt, or module deck.",
+            what_buyer_requires="Submission of a sample framework for SME and start-up training programs produced previously reflecting Section 6.3 scope.",
+            why_it_matters="Required submission item (Section 4.6) evaluated under Methodology; confirms proponent possesses proven, pre-existing training assets.",
+            proof_needed="REQUIRED: Sample framework document produced previously for SME/startup programs. RECOMMENDED: Excerpt illustrating modular curriculum structure.",
             source="RFP Section 4.6",
             epistemic_class=EpistemicClass.RFP_FACT.value,
             priority=PriorityLevel.CRITICAL.value,
         ),
         TechnicalCapability(
             capability="Detailed Delivery Timetable & Workplan",
-            what_buyer_requires="Comprehensive, step-by-step schedule detailing activity timelines, milestone deliverables, cohort checkpoints, and reporting cadences.",
-            why_it_matters="Evaluated under Methodology (Section 4.4); proves proponent can manage complex multi-stakeholder scheduling efficiently.",
-            proof_needed="Gantt chart or phase-gate schedule with weekly activity breakdowns, session duration targets, and milestone deliverable dates.",
+            what_buyer_requires="Schedule of activities and step-by-step procedures to meet project objectives and deliverables within requisite timeframes.",
+            why_it_matters="Explicitly evaluated under Section 4.4 Timetable/Workplan within the 45-point Methodology & Workplan score.",
+            proof_needed="REQUIRED: Step-by-step procedure breakdown and schedule of activities. RECOMMENDED: Milestone chart with phases, checkpoints, and deliverables.",
             source="RFP Section 4.4",
             epistemic_class=EpistemicClass.RFP_FACT.value,
             priority=PriorityLevel.HIGH.value,
         ),
         TechnicalCapability(
             capability="Comprehensive Requirement Understanding",
-            what_buyer_requires="Articulated understanding of York University's venture ecosystem, program objectives, and specific pedagogical constraints.",
-            why_it_matters="Demonstrates alignment with York's vision and confirms the proposal is tailored rather than an off-the-shelf boilerplate pitch.",
-            proof_needed="Dedicated executive summary and narrative section synthesizing York's program vision and specific cohort success factors.",
+            what_buyer_requires="Demonstrated sound understanding of the project objectives, deliverables, and requirements as described in the RFP.",
+            why_it_matters="Evaluated under Section 4.3; confirms proposed solution is responsive to York's objectives rather than generic boilerplate.",
+            proof_needed="REQUIRED: Proposal narrative articulating comprehension of project objectives. RECOMMENDED: Executive alignment summary addressing cohort needs.",
             source="RFP Section 4.3",
             epistemic_class=EpistemicClass.RFP_FACT.value,
             priority=PriorityLevel.HIGH.value,
         ),
         TechnicalCapability(
             capability="At Least Three (3) Verifiable Client References",
-            what_buyer_requires="Names, dates worked, contact telephone numbers, and email addresses for at least 3 organizations for whom similar services were delivered.",
-            why_it_matters="Mandatory qualification item evaluated under Section 4.7; failure to provide complete verifiable references risks disqualification or zero score.",
-            proof_needed="Three complete reference sheets with verified contact details, engagement scopes, and alignment to sales/AI training programs.",
+            what_buyer_requires="Names, dates worked, contact telephone numbers, and email addresses of at least three (3) organizations who can certify ability to perform similar work.",
+            why_it_matters="Mandatory qualification submission evaluated under Section 4.7 for relevance and quality of references within Qualifications.",
+            proof_needed="REQUIRED: At least 3 client reference sheets with complete contact details and service dates. RECOMMENDED: References reflecting relevant SME/startup training scopes.",
             source="RFP Section 4.7",
             epistemic_class=EpistemicClass.RFP_FACT.value,
             priority=PriorityLevel.CRITICAL.value,
         ),
         TechnicalCapability(
             capability="Publicly Funded & Public Sector Program Experience",
-            what_buyer_requires="Familiarity with public sector reporting, attendance auditing, stakeholder accountability, and compliance governance.",
-            why_it_matters="Assures program administrators that reporting will satisfy university and provincial funding audit standards.",
-            proof_needed="Examples of past university, municipal, or provincial innovation programs delivered with formal milestone reporting.",
+            what_buyer_requires="Experience delivering training and programs within public sector, institutional, or publicly funded innovation settings.",
+            why_it_matters="Contributes to Section 4.1 Company Profile evaluation; demonstrates familiarity with institutional accountability and stakeholder environments.",
+            proof_needed="REQUIRED: Narrative demonstrating relevant program delivery experience. RECOMMENDED: Examples of programs delivered in university or public innovation settings.",
             source="RFP Section 4.1",
             epistemic_class=EpistemicClass.RFP_FACT.value,
             priority=PriorityLevel.HIGH.value,
@@ -929,14 +928,14 @@ def build_decision_brief(input_data: DecisionBriefInput) -> DecisionBrief:
         ProofItem(
             title="Comprehensive Named Personnel CVs",
             nature="mandatory_requirement",
-            detail="Complete CVs for lead instructors and backup mentors detailing B2B sales execution and AI instructional track records.",
+            detail="Complete CVs for assigned professional staff detailing relevant background and training qualifications.",
             source="RFP Section 4.2",
             epistemic_class=EpistemicClass.RFP_FACT.value,
         ),
         ProofItem(
             title="Pre-Existing Sample Training Framework",
             nature="mandatory_requirement",
-            detail="Sample curriculum framework previously produced for SME and startup ventures demonstrating modular course structure.",
+            detail="Sample framework previously produced for SME and startup ventures reflecting Section 6.3 scope.",
             source="RFP Section 4.6",
             epistemic_class=EpistemicClass.RFP_FACT.value,
         ),
@@ -950,28 +949,28 @@ def build_decision_brief(input_data: DecisionBriefInput) -> DecisionBrief:
         ProofItem(
             title="Section 10.0 Price Schedule",
             nature="mandatory_requirement",
-            detail="Completed all-inclusive pricing schedule in Canadian dollars providing fixed bid and hourly/blended consulting rates.",
+            detail="Completed all-inclusive pricing schedule in Canadian dollars providing total bid and consulting rate details.",
             source="RFP Section 10.0",
             epistemic_class=EpistemicClass.RFP_FACT.value,
         ),
         ProofItem(
-            title="Delivery Bench & Backup Redundancy Matrix",
+            title="Delivery Bench & Backup Coverage Matrix",
             nature="recommendation",
-            detail="Visual matrix illustrating backup instructor assignments across each curriculum module to reinforce resilience.",
+            detail="Recommended staffing exhibit illustrating backup instructor coverage across training modules to substantiate deep bench capacity.",
             source="Recommended Bid Strategy",
             epistemic_class=EpistemicClass.BID_STRATEGY_RECOMMENDATION.value,
         ),
         ProofItem(
-            title="Venture Sales Playbook Excerpt & Templates",
+            title="Venture Sales Playbook Excerpt & Framework Sample",
             nature="recommendation",
-            detail="Tangible excerpt of prospecting scripts, pipeline stages, and prompt libraries proving turnkey readiness.",
+            detail="Recommended curriculum exhibit illustrating practical sales methodology modules and structured founder exercises.",
             source="Recommended Bid Strategy",
             epistemic_class=EpistemicClass.BID_STRATEGY_RECOMMENDATION.value,
         ),
         ProofItem(
-            title="Applied AI Prompt Library & Demonstration Plan",
+            title="Applied AI Curriculum Outline & Demonstration Plan",
             nature="recommendation",
-            detail="Walkthrough of live AI tools, vetted prompts, and interactive sales workflow exercises for participating founders.",
+            detail="Recommended instructional exhibit detailing applied AI topics, workflows, and hands-on tool applications for venture sales.",
             source="Recommended Bid Strategy",
             epistemic_class=EpistemicClass.BID_STRATEGY_RECOMMENDATION.value,
         ),
@@ -991,7 +990,7 @@ def build_decision_brief(input_data: DecisionBriefInput) -> DecisionBrief:
         "Late submission past the strict electronic Bonfire deadline.",
         "Failure to upload all six (6) required separate PDF document envelopes into Bonfire.",
         "Failure to complete and sign the Section 9.0 Acknowledgement Form.",
-        "Failure to provide at least three (3) verifiable client references.",
+        "Mandatory requirement to provide at least three (3) verifiable client references evaluated under Qualifications.",
     )
 
     top_priorities = (
@@ -1005,7 +1004,7 @@ def build_decision_brief(input_data: DecisionBriefInput) -> DecisionBrief:
         ),
         PriorityItem(
             title="Marshal Named CVs & Backup Bench Structure",
-            action="Finalize resumes for lead instructors and designate secondary mentors to explicitly address single-point-of-failure scoring criteria.",
+            action="Finalize resumes for lead personnel and designate backup instructors to clearly demonstrate team capacity with no single point of failure.",
         ),
         PriorityItem(
             title="Select & Polish Pre-Existing Sample Framework",
@@ -1024,7 +1023,7 @@ def build_decision_brief(input_data: DecisionBriefInput) -> DecisionBrief:
     # Page 8: Clarifications (Optional, high-impact)
     clarification_questions = (
         "Confirm the anticipated number of cohorts, cohort sizes, and total participating ventures across the initial contract term.",
-        "Confirm the expected balance between virtual remote delivery and mandatory in-person on-campus sessions at York / YSpace facilities.",
+        "Please clarify the expected balance, if any, between virtual remote delivery and on-campus in-person sessions at York / YSpace facilities.",
     )
 
     brief = DecisionBrief(
