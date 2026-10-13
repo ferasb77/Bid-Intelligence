@@ -58,12 +58,12 @@ Zero-call gates (production-path run):
 ## UNDERSTAND customer export
 
 
-**Bid Intelligence Brief** is the primary customer-facing UNDERSTAND export.
-It is a concise, normally 6-8-page (preferred maximum 10) selection over a
-completed Fast Analysis raw snapshot, not a new analysis mode: rendering is
-deterministic and requires zero provider/model calls. The historical long
-Fast Analysis PDF remains available as the secondary **Full Intelligence
-Appendix**.
+**Bid Intelligence Brief / Decision Brief** is the primary authoritative customer-facing UNDERSTAND export.
+It is a concise 8-page deterministic synthesis over a completed analysis run and governed procurement facts,
+requiring zero provider/model calls. Historical Fast Analysis PDFs (such as Run 55) are superseded legacy
+artifacts that are explicitly labeled as `Historical Appendix (Superseded)` to prevent them from masquerading
+as the current authoritative output. Historical artifacts remain byte-for-byte immutable in storage and are
+never rewritten.
 
 The Brief has a strict presentation boundary: `understand_brief.py` is pure
 selection/reconciliation and `understand_brief_report.py` is ReportLab-only

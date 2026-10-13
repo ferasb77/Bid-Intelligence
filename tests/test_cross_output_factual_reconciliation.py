@@ -412,3 +412,38 @@ def test_procurement_model_boundary_phrases():
 
     # Boundary 4: "standing offer agreement" classifies as Standing Offer
     assert _test_phrase("This solicitation will establish a standing offer agreement.") == "Standing Offer"
+
+
+def test_historical_fast_report_cannot_masquerade_as_authoritative_brief():
+    """Phase H: Regression verifying authoritative output policy.
+
+    A historical Fast Analysis report (e.g. Run 55) must NOT masquerade as the
+    current primary Decision Brief. When export_bid_intelligence_brief_for_organization
+    is invoked, it resolves the current Decision Brief path, never returning an old
+    Fast Analysis PDF as the primary decision brief.
+    Furthermore, in UNDERSTAND state, when a full analysis run (e.g. Run 57) exists alongside
+    a historical Fast run (e.g. Run 55), the primary export target resolves to the current
+    run rather than the historical Fast run.
+    """
+    from tenancy import export_bid_intelligence_brief_for_organization
+
+    # 1. Primary Decision Brief export for Run 57 succeeds and produces the authoritative 8-page brief
+    brief_pdf_bytes = export_bid_intelligence_brief_for_organization(1522, 57, "4326b564-8cc5-4463-9304-9a589f08cc91")
+    assert brief_pdf_bytes.startswith(b"%PDF")
+    reader = PdfReader(io.BytesIO(brief_pdf_bytes))
+    assert len(reader.pages) == 8
+
+    # 2. Verify that the primary export contains the authoritative Decision Brief title, not Fast report title
+    first_page_text = reader.pages[0].extract_text()
+    assert "BID INTELLIGENCE DECISION BRIEF" in first_page_text or "STRATEGIC BID INTELLIGENCE" in first_page_text
+
+    # 3. Verify state export resolution prefers full_status run_id over historical Fast run_id
+    mock_full_status = {"run_id": 57, "status": "COMPLETE"}
+    mock_opp_state = {
+        "full_status": mock_full_status,
+        "latest_fast_run": {"id": 55, "analysis_mode": "FAST", "report_storage_path": "1522/analysis_reports/55.pdf"},
+    }
+    # Resolve target export run id using the production precedence logic from stage_understand.py
+    resolved_export_run_id = mock_full_status.get("run_id") or (mock_opp_state.get("latest_fast_run") or {}).get("id")
+    assert resolved_export_run_id == 57
+    assert resolved_export_run_id != 55

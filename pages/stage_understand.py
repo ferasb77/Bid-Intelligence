@@ -743,9 +743,9 @@ def _render_unified_opportunity_analysis_panel(
             appendix_bytes = _download_stored_file(latest_fast["report_storage_path"])
             if appendix_bytes:
                 c1.download_button(
-                    "Download Full Intelligence Appendix",
+                    "Download Historical Fast Appendix (Superseded)",
                     data=appendix_bytes,
-                    file_name=f"full_intelligence_appendix_{bid_id}.pdf",
+                    file_name=f"historical_fast_appendix_{bid_id}.pdf",
                     mime="application/pdf",
                     key=f"dl_analysis_{bid_id}",
                     use_container_width=True,
@@ -1864,9 +1864,9 @@ def page_understand(bid_id: int):
             appendix_bytes = _download_stored_file(latest_fast["report_storage_path"])
             if appendix_bytes:
                 c_dl2.download_button(
-                    "Download Appendix",
+                    "Download Historical Appendix (Superseded)",
                     data=appendix_bytes,
-                    file_name=f"full_intelligence_appendix_{bid_id}.pdf",
+                    file_name=f"historical_fast_appendix_{bid_id}.pdf",
                     mime="application/pdf",
                     key=f"dl_analysis_{bid_id}",
                     use_container_width=True,

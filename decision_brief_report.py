@@ -382,13 +382,29 @@ def render_decision_brief_pdf(brief: DecisionBrief, output_path: str | Path) -> 
     story.append(Spacer(1, 3))
 
     story.append(_p("Delivery Model & Operational Expectations", "h2"))
+    staffing_desc = (
+        escape_dynamic_text(brief.staffing_operational_expectations[0])
+        if getattr(brief, "staffing_operational_expectations", None) and len(brief.staffing_operational_expectations) > 0
+        else "Named professional staff with CVs, supported by sufficient bench depth to avoid a single point of failure."
+    )
+    if getattr(brief, "staffing_operational_expectations", None) and len(brief.staffing_operational_expectations) > 1:
+        staffing_desc = escape_dynamic_text(
+            f"{brief.staffing_operational_expectations[0]} Supported by sufficient bench depth to avoid a single point of failure."
+        )
+
+    avail_desc = (
+        escape_dynamic_text(brief.staffing_operational_expectations[2])
+        if getattr(brief, "staffing_operational_expectations", None) and len(brief.staffing_operational_expectations) > 2
+        else "Proposed staff must be available to immediately commence the project upon contract award."
+    )
+
     story.append(_table(
         ["Operational Dimension", "Buyer Requirement / Expectation"],
         [
             ["Delivery Model", escape_dynamic_text(brief.delivery_model)],
             ["Expected Outcomes", escape_dynamic_text(brief.expected_outcomes)],
-            ["Staffing Structure", "Named senior lead instructor + designated secondary backup mentors with verified CVs."],
-            ["Availability", "Immediate availability upon contract award; zero lead-time hiring permitted."],
+            ["Staffing Structure", staffing_desc],
+            ["Availability", avail_desc],
         ],
         [1.75 * inch, USABLE_WIDTH - 1.75 * inch],
     ))
