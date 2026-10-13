@@ -30,8 +30,11 @@ from fast_analysis import FastAnalysisResult
 from scripts.fast_analysis_report_adapter import (
     _clarification_deadline_text,
     _contract_term,
+    _fuzzy_word_set,
+    _is_near_duplicate,
     _merged_doc_metadata,
     _submission_deadline_text,
+    _tie_break_rules,
 )
 
 # ---------------------------------------------------------------------------
@@ -211,6 +214,7 @@ class DecisionBriefInput:
     submission_mechanics: SubmissionMechanicInput
     specialist_findings: tuple[SpecialistFindingInput, ...] = ()
     unresolved_questions: tuple[str, ...] = ()
+    tie_break_rule: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -250,7 +254,7 @@ class EvaluationSummary:
     shortlist_presentation_points: float = 20.0
     shortlist_is_conditional: bool = True
     minimum_technical_threshold: str | None = None  # None for York!
-    tie_break_rule: str = "If scores are tied, the proposal with the highest technical score will be ranked first."
+    tie_break_rule: str = "No tie-break rule identified in reviewed documents."
 
 
 @dataclass(frozen=True)
@@ -878,7 +882,8 @@ def build_decision_brief(input_data: DecisionBriefInput) -> DecisionBrief:
     )
 
     # Page 5: Evaluation Intelligence
-    eval_summary = EvaluationSummary()
+    tie_rule = input_data.tie_break_rule or "No tie-break rule identified in reviewed documents."
+    eval_summary = EvaluationSummary(tie_break_rule=tie_rule)
     eval_criteria_breakdown = (
         {
             "name": "Methodology & Workplan",
@@ -1065,6 +1070,82 @@ def build_decision_brief(input_data: DecisionBriefInput) -> DecisionBrief:
 # Analysis Adapter Factory (Wiring FastAnalysisResult + FullAnalysisResult)
 # ---------------------------------------------------------------------------
 
+def _resolve_tie_break_rule(
+    typed_observations: Sequence[dict] | None = None,
+    requirements: Sequence[dict] | None = None,
+    commercial_clauses: Sequence[dict] | None = None,
+) -> str:
+    """Deterministically derive the tie-breaking sequence from source observations.
+
+    Distinguishes:
+    1. Verified structured rule: ordered steps from TIE_BREAK_RULE observations.
+    2. Conflicting evidence: contradictory rankings or observations for the same rank.
+    3. Unverified mention: tie-breaking procedure referenced in procurement text without
+       structured sequence.
+    4. Missing / not identified: no tie-breaking rule identified in reviewed material.
+    """
+    obs = list(typed_observations or [])
+    tie_obs = [o for o in obs if isinstance(o, dict) and o.get("family") == "TIE_BREAK_RULE"]
+
+    if tie_obs:
+        by_rank: dict[float, list[str]] = {}
+        for o in tie_obs:
+            rank = o.get("rank")
+            val = (o.get("original_value") or "").strip()
+            if not val or rank is None:
+                continue
+            try:
+                r_num = float(rank)
+            except (ValueError, TypeError):
+                continue
+            by_rank.setdefault(r_num, []).append(val)
+
+        has_conflict = False
+        for r_num, vals in by_rank.items():
+            if len(vals) > 1:
+                w0 = _fuzzy_word_set(vals[0])
+                for v in vals[1:]:
+                    wv = _fuzzy_word_set(v)
+                    if not _is_near_duplicate(vals[0], w0, v, wv):
+                        has_conflict = True
+                        break
+            if has_conflict:
+                break
+
+        if has_conflict:
+            return "Conflicting tie-break rules identified in reviewed documents."
+
+        rules = _tie_break_rules(obs)
+        if rules:
+            if len(rules) == 1:
+                return f"In the event of identical scores, ties are resolved strictly by: {rules[0].strip()}."
+            seq = "; then ".join(f"({i}) {r.strip()}" for i, r in enumerate(rules, 1))
+            return f"In the event of identical scores, ties are resolved strictly by: {seq}."
+
+    # Check for mention in requirements or commercial clauses
+    _tie_break_phrases = ("tie-break", "tie break", "in the event of a tie", "tied proponent")
+    has_mention = False
+    for r in (requirements or []):
+        desc = (r.get("description") or "") + " " + (r.get("source_doc") or "")
+        if any(phrase in desc.lower() for phrase in _tie_break_phrases):
+            has_mention = True
+            break
+    if not has_mention:
+        for c in (commercial_clauses or []):
+            text = (c.get("detail") or c.get("source_fact") or c.get("topic") or "")
+            if any(phrase in text.lower() for phrase in _tie_break_phrases):
+                has_mention = True
+                break
+
+    if has_mention:
+        return (
+            "Tie-break procedure referenced in procurement text, but specific ranking order "
+            "is unverified in reviewed documents."
+        )
+
+    return "No tie-break rule identified in reviewed documents."
+
+
 def build_decision_brief_from_analysis(
     fast_result: FastAnalysisResult,
     *,
@@ -1122,6 +1203,12 @@ def build_decision_brief_from_analysis(
         signals=tuple(signals_input),
     )
 
+    tie_rule = _resolve_tie_break_rule(
+        getattr(fast_result, "typed_observations", ()),
+        getattr(fast_result, "requirements", ()),
+        getattr(fast_result, "commercial_clauses", ()),
+    )
+
     # Build input and invoke synthesis engine
     brief_input = DecisionBriefInput(
         identity=identity,
@@ -1135,6 +1222,7 @@ def build_decision_brief_from_analysis(
             file_structure="Six (6) separate PDF files",
             registration_gate="MERX registration and direct document acquisition",
         ),
+        tie_break_rule=tie_rule,
     )
 
     return build_decision_brief(brief_input)

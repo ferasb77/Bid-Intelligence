@@ -1344,6 +1344,62 @@ def _resolve_canonical_deadlines(bid: dict, brief_row: dict, analysis_result: di
     return sub_deadline, clar_deadline
 
 
+def _resolve_procurement_term_and_model(
+    brief_row: dict,
+    decision_brief: any,
+    analysis_result: dict | None,
+) -> tuple[str, str]:
+    """Reconcile contract term and procurement model across sources.
+    Prefers structured Decision Brief and analysis observations over empty/stale legacy brief_row."""
+    contract_term = None
+    proc_model = None
+
+    # 1. Check Decision Brief snapshot rows if loaded
+    if decision_brief and getattr(decision_brief, "snapshot_rows", None):
+        for label, val in decision_brief.snapshot_rows:
+            label_lower = (label or "").strip().lower()
+            if not contract_term and any(term_lbl in label_lower for term_lbl in ("contract term", "duration")):
+                val_str = str(val or "").strip()
+                if val_str and val_str.lower() not in ("not stated", "not extracted", "none", "n/a"):
+                    contract_term = val_str
+            if not proc_model and any(model_lbl in label_lower for model_lbl in ("procurement model", "award structure", "contract model")):
+                val_str = str(val or "").strip()
+                if val_str and val_str.lower() not in ("not classified", "not stated", "not extracted", "none", "n/a"):
+                    proc_model = val_str
+
+    # 2. Check Fast Analysis snapshot / typed_observations
+    if (not contract_term or not proc_model) and analysis_result:
+        snap = analysis_result.get("fast_analysis_result_snapshot") or {}
+        r_snap = snap.get("result") or {}
+        typed_obs = r_snap.get("typed_observations") or []
+        if not typed_obs:
+            oi = analysis_result.get("structured_intelligence") or {}
+            dm = oi.get("dates_and_mechanics") or {}
+            typed_obs = dm.get("typed_observations") or []
+
+        if typed_obs:
+            try:
+                from scripts.fast_analysis_report_adapter import _contract_term, _procurement_model
+                if not contract_term:
+                    ct_derived = _contract_term(typed_obs)
+                    if ct_derived and ct_derived.lower() not in ("term not confidently extracted", "not stated"):
+                        contract_term = ct_derived
+                if not proc_model:
+                    pm_derived = _procurement_model(typed_obs)
+                    if pm_derived and pm_derived.lower() not in ("not stated in the extracted data.", "not classified"):
+                        proc_model = pm_derived
+            except Exception:
+                pass
+
+    # 3. Fall back to legacy brief_row
+    if not contract_term:
+        contract_term = brief_row.get("contract_term")
+    if not proc_model:
+        proc_model = brief_row.get("procurement_model")
+
+    return (contract_term or "Not stated"), (proc_model or "Not classified")
+
+
 def _resolve_customer_safe_summary(bid: dict, brief_row: dict, analysis_result: dict | None) -> str:
     """Resolve customer-facing executive summary. Never renders internal benchmark,
     migration, or QA fixture wording."""
@@ -1649,11 +1705,23 @@ def page_understand(bid_id: int):
     docs = tenancy.get_documents_authenticated(_token, bid_id)
     analysis_result = tenancy.get_latest_analysis_result_authenticated(_token, bid_id, "FAST")
 
+    # ── DECISION BRIEF RETRIEVAL (BI-VALUE-4) ─────────────────────────────────
+    target_run_id = None
+    latest_run = tenancy.get_latest_analysis_run_authenticated(_token, bid_id)
+    if latest_run and latest_run.get("status") in ("COMPLETE", "PARTIAL"):
+        target_run_id = int(latest_run["id"])
+
+    decision_brief = None
+    if target_run_id:
+        try:
+            decision_brief = tenancy.get_decision_brief_for_organization(bid_id, target_run_id, _org_id)
+        except Exception:
+            decision_brief = None
+
     # Decode JSON fields from brief_row if present
     exec_summary = _resolve_customer_safe_summary(bid, brief_row, analysis_result)
     opp_type = brief_row.get("opportunity_type") or "Not classified"
-    contract_term = brief_row.get("contract_term") or "Not stated"
-    proc_model = brief_row.get("procurement_model") or "Not classified"
+    contract_term, proc_model = _resolve_procurement_term_and_model(brief_row, decision_brief, analysis_result)
     scope_cats = _ensure_list(brief_row.get("scope_categories"))
     deliverables = _ensure_list(brief_row.get("deliverables_summary"))
     qual_gates = _ensure_list(brief_row.get("qualification_gates"))
@@ -1714,18 +1782,6 @@ def page_understand(bid_id: int):
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
     # ── DECISION BRIEF INTERACTIVE PRESENTATION (BI-VALUE-4) ──────────────────
-    target_run_id = None
-    latest_run = tenancy.get_latest_analysis_run_authenticated(_token, bid_id)
-    if latest_run and latest_run.get("status") in ("COMPLETE", "PARTIAL"):
-        target_run_id = int(latest_run["id"])
-
-    decision_brief = None
-    if target_run_id:
-        try:
-            decision_brief = tenancy.get_decision_brief_for_organization(bid_id, target_run_id, _org_id)
-        except Exception:
-            decision_brief = None
-
     if decision_brief:
         # Cross-document conflicts if present
         document_conflicts = _ensure_list(brief_row.get("document_conflicts"))

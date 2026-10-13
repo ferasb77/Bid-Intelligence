@@ -259,6 +259,7 @@ def _presentation_dates(typed_observations: list[dict]) -> list[tuple[str, str]]
 _FUZZY_DEDUP_STOPWORDS = frozenset((
     "the", "and", "for", "any", "that", "this", "will", "may", "with", "from",
     "are", "was", "were", "been", "have", "has", "had", "its", "their",
+    "highest", "points", "proposal", "proposals", "proponent", "proponents",
 ))
 
 
@@ -1443,7 +1444,7 @@ def build_fast_report_content(result: FastAnalysisResult,
         req_texts = " ".join(r.get("description", "") for r in result.requirements).lower()
         if "statement of work" in req_texts or "sow" in req_texts:
             proc_model = "Single-award services agreement with as-needed Statement of Work (SOW) call-offs"
-        elif "single" in req_texts:
+        elif any(p in req_texts for p in ("single contract", "single supplier award", "single award", "single successful proponent", "single proponent award")):
             proc_model = "Single Contract"
 
     C.SNAPSHOT_FACTS = [

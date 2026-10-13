@@ -16,6 +16,7 @@ Page Architecture:
 from __future__ import annotations
 
 import html
+import re
 import tempfile
 from pathlib import Path
 from typing import Sequence
@@ -118,8 +119,36 @@ styles = {
 }
 
 
+_ALLOWED_REPORTLAB_TAGS = re.compile(
+    r'(<b>|</b>|<i>|</i>|<br\s*/?>|<font\s+color=[\'"][#a-zA-Z0-9]+[\'"]>|</font>)',
+    re.I,
+)
+
+
+def _sanitize_for_reportlab(text: str) -> str:
+    """Safely prepare text for ReportLab Paragraph rendering.
+
+    Preserves trusted structural formatting tags (<b>, <i>, <br/>, <font color="...">)
+    while escaping all untrusted dynamic content (including &, <, > outside allowed tags).
+    Normalizes <br> to <br/> for ReportLab XML compliance.
+    """
+    if not text:
+        return "—"
+    tokens = _ALLOWED_REPORTLAB_TAGS.split(str(text))
+    out = []
+    for token in tokens:
+        if _ALLOWED_REPORTLAB_TAGS.fullmatch(token):
+            if token.lower() in ("<br>", "<br/>"):
+                out.append("<br/>")
+            else:
+                out.append(token)
+        else:
+            out.append(html.escape(token).replace("\n", "<br/>"))
+    return "".join(out)
+
+
 def _p(text: str, kind: str = "body") -> Paragraph:
-    safe = html.escape(str(text or "—")).replace("\n", "<br/>")
+    safe = _sanitize_for_reportlab(text)
     return Paragraph(safe, styles[kind])
 
 
@@ -212,7 +241,7 @@ def _draw_header_footer(canvas, doc):
     
     # Running Bottom Footer
     canvas.line(MARGIN_X, 0.52 * inch, PAGE_WIDTH - MARGIN_X, 0.52 * inch)
-    canvas.drawString(MARGIN_X, 0.38 * inch, "Confidential · Prepared for Bid Decision Maker · Enable My Growth / Bid Intelligence")
+    canvas.drawString(MARGIN_X, 0.38 * inch, "Confidential | Prepared for Bid Decision Maker | Enable My Growth / Bid Intelligence")
     canvas.setFont(BODY_MED_FONT, 7.5)
     canvas.setFillColor(DARK_BLUE)
     canvas.drawRightString(PAGE_WIDTH - MARGIN_X, 0.38 * inch, f"Page {canvas.getPageNumber()}")
@@ -237,7 +266,7 @@ def render_decision_brief_pdf(brief: DecisionBrief, output_path: str | Path) -> 
         bottomMargin=0.62 * inch,
         title=f"Bid Intelligence Brief — {brief.solicitation}",
     )
-    doc.brief_header = f"{brief.buyer} · {brief.solicitation}"
+    doc.brief_header = f"{brief.buyer} | {brief.solicitation}"
 
     frame = Frame(
         MARGIN_X,
@@ -491,12 +520,22 @@ def render_decision_brief_pdf(brief: DecisionBrief, output_path: str | Path) -> 
     story.append(Spacer(1, 5))
 
     story.append(_p("Evaluation Rules & Threshold Disclosures", "h2"))
+    tie_rule_text = brief.evaluation_summary.tie_break_rule
+    if "no tie-break" in tie_rule_text.lower():
+        tie_rule_cell = f"<b>NO RULE IDENTIFIED:</b> {tie_rule_text}"
+    elif "conflicting" in tie_rule_text.lower():
+        tie_rule_cell = f"<b>CONFLICTING EVIDENCE:</b> {tie_rule_text}"
+    elif "unverified" in tie_rule_text.lower():
+        tie_rule_cell = f"<b>UNVERIFIED MENTION:</b> {tie_rule_text}"
+    else:
+        tie_rule_cell = f"<b>STATED TIE-BREAK SEQUENCE:</b> {tie_rule_text}"
+
     story.append(_table(
         ["Evaluation Rule", "Stated RFP Provision / Fact"],
         [
             ["Minimum Passing Threshold", "<b>NONE STATED IN RFP:</b> York did not specify an explicit minimum passing threshold (e.g. 70% or 75%) to qualify for financial evaluation. Full 100-point composite scoring applies."],
             ["Short List Presentation Stage", "<b>CONDITIONAL (PART 4):</b> York reserves the right to invite only the highest-ranked proponents to presentations (worth an additional 20 points). Written proposal ranking is decisive."],
-            ["Tie-Break Mechanism", "<b>TECHNICAL PRIORITY:</b> If two or more proposals achieve identical total scores, the proposal with the highest technical score will be ranked first."],
+            ["Tie-Break Mechanism", tie_rule_cell],
         ],
         [1.85 * inch, USABLE_WIDTH - 1.85 * inch],
     ))
