@@ -24,7 +24,7 @@ from pages.stage_memory import page_memory
 from pages.stage_full_analysis import page_full_analysis
 from pages.stage_check_assurance import page_check_assurance
 from pdf_export import generate_compliance_pdf
-from brand import dashboard_brand_html, sidebar_brand_html
+from brand import dashboard_brand_html, sidebar_brand_html, login_brand_html, login_footer_html
 from components.ui import (inject_css, stage_badge, status_badge, priority_badge,
                             readiness_bar, days_until, days_label, metric_card,
                             STAGES, STATUSES, PRIORITIES, CATEGORIES, SENSITIVITY,
@@ -72,7 +72,8 @@ def _clear_all_user_scoped_state():
     nothing user-scoped survives."""
     _auth_session.sign_out()  # clears SESSION_KEY + AUTH_CONTEXT_KEY
     for _key in ("active_bid", "pkg3_selected_bid", "pkg3_org_choice",
-                 "pkg3_login_email", "pkg3_bid_access_denied"):
+                 "pkg3_login_email", "pkg3_bid_access_denied",
+                 "login_email_input", "login_password_input", "password_reset_req_email"):
         st.session_state.pop(_key, None)
     for _key in list(st.session_state.keys()):
         if _key.startswith(_ALIGN_SESSION_KEY_PREFIXES):
@@ -80,52 +81,57 @@ def _clear_all_user_scoped_state():
 
 
 def _render_login_gate():
-    st.markdown(sidebar_brand_html(), unsafe_allow_html=True)
-    st.markdown("## Sign in")
-    if st.session_state.pop("bi_password_reset_complete", False):
-        st.success("Your password has been updated. You can now sign in with your new password.")
-    if _invite_result.error not in ("no invite callback present",) and not _invite_result.ok:
-        st.error(f"Sign-in link could not be verified: {_invite_result.error}")
-    if _fragment_result.error not in ("no fragment session callback present",) and not _fragment_result.ok:
-        st.error(f"Sign-in link could not be verified: {_fragment_result.error}")
+    # Public registration disabled: should_create_user = False policy enforced.
     st.markdown(
-        '<div class="info-box">Enter your email to receive a one-time sign-in link. '
-        'No password is required, and no account is created if the email is not already registered '
-        '(self-service sign-up is not available).</div>', unsafe_allow_html=True)
-    _login_email = st.text_input("Email", key="pkg3_login_email")
-    if st.button("Send sign-in link", key="pkg3_send_magiclink", type="primary"):
-        if _login_email:
-            try:
-                _client = _auth_client.get_auth_client()
-                _opts = {"should_create_user": False}
-                _base_url = _get_app_base_url()
-                if _base_url:
-                    _opts["email_redirect_to"] = _base_url
-                _client.auth.sign_in_with_otp({"email": _login_email, "options": _opts})
-            except Exception:
-                pass  # never reveal whether the email exists
-            st.success("If that email has an account, a sign-in link has been sent. Check your inbox.")
+        """
+        <style>
+        section[data-testid="stSidebar"] { display: none !important; }
+        div[data-testid="collapsedControl"] { display: none !important; }
+        @media (max-width: 768px) {
+            div[data-testid="column"] {
+                min-width: 100% !important;
+                flex: 1 1 100% !important;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    col_left, col_center, col_right = st.columns([1.1, 1.4, 1.1])
+    with col_center:
+        st.markdown(login_brand_html(), unsafe_allow_html=True)
+        if st.session_state.pop("bi_password_reset_complete", False):
+            st.success("Your password has been updated. You can now sign in with your new password.")
+        if _invite_result.error not in ("no invite callback present",) and not _invite_result.ok:
+            st.error(f"Authentication link could not be verified: {_invite_result.error}")
+        if _fragment_result.error not in ("no fragment session callback present",) and not _fragment_result.ok:
+            st.error(f"Authentication link could not be verified: {_fragment_result.error}")
 
-    with st.expander("Sign in with a password"):
-        with st.form("password_sign_in", clear_on_submit=True):
-            email = st.text_input("Email", key="password_login_email")
-            password = st.text_input("Password", type="password")
-            submitted = st.form_submit_button("Sign in")
+        with st.form("bi_login_form", clear_on_submit=False):
+            st.markdown('<div class="bi-login-card-header">Sign in to your workspace</div>', unsafe_allow_html=True)
+            email = st.text_input("Email", key="login_email_input")
+            password = st.text_input("Password", type="password", key="login_password_input")
+            submitted = st.form_submit_button("Sign in", type="primary", use_container_width=True)
+
         if submitted:
-            result = _auth_session.sign_in(email, password)
+            clean_email = email.strip() if email else ""
+            result = _auth_session.sign_in(clean_email, password)
             if result.ok:
                 st.rerun()
             st.error(result.error)
 
-    with st.expander("Forgot your password? / Reset password"):
-        with st.form("password_reset_request", clear_on_submit=True):
-            reset_email = st.text_input("Account email", key="password_reset_req_email")
-            reset_submitted = st.form_submit_button("Send password reset link")
-        if reset_submitted:
-            if reset_email:
-                _base_url = _get_app_base_url()
-                _auth_session.request_password_reset(reset_email, redirect_to=_base_url)
-            st.success("If that email has an account, a password reset link has been sent. Check your inbox.")
+        with st.expander("Forgot your password?"):
+            with st.form("password_reset_request", clear_on_submit=True):
+                st.caption("Enter your account email to receive a password reset link.")
+                reset_email = st.text_input("Account email", key="password_reset_req_email")
+                reset_submitted = st.form_submit_button("Send reset link", use_container_width=True)
+            if reset_submitted:
+                if reset_email:
+                    _base_url = _get_app_base_url()
+                    _auth_session.request_password_reset(reset_email.strip(), redirect_to=_base_url)
+                st.success("If that email has an account, a password reset link has been sent. Check your inbox.")
+
+        st.markdown(login_footer_html(), unsafe_allow_html=True)
 
 
 _session_result = _auth_session.restore_session()

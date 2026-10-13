@@ -87,11 +87,12 @@ def sign_in(email: str, password: str) -> AuthResult:
     """Sign in an already-provisioned Supabase Auth user. Never creates an
     account (instruction 6) -- Supabase's sign_in_with_password() call
     itself only authenticates an existing user; it cannot create one."""
-    if not email or not password:
+    email_clean = email.strip() if email else ""
+    if not email_clean or not password:
         return AuthResult(ok=False, error="email and password are required")
     try:
         client = get_auth_client()
-        resp = client.auth.sign_in_with_password({"email": email, "password": password})
+        resp = client.auth.sign_in_with_password({"email": email_clean, "password": password})
     except Exception as e:
         return AuthResult(ok=False, error=_safe_auth_error(e))
 
@@ -117,18 +118,19 @@ def request_password_reset(email: str, redirect_to: str | None = None) -> AuthRe
     """Request a Supabase password reset email.
     Safe failure: never reveals whether the email exists.
     Uses only the public anon client, never the service role client."""
-    if not email:
+    email_clean = email.strip() if email else ""
+    if not email_clean:
         return AuthResult(ok=False, error="Email is required")
     try:
         client = get_auth_client()
         options = {}
         if redirect_to:
             options["redirect_to"] = redirect_to
-        client.auth.reset_password_for_email(email, options=options)
+        client.auth.reset_password_for_email(email_clean, options=options)
     except Exception:
         # Never leak provider details or user existence
         pass
-    return AuthResult(ok=True, email=email)
+    return AuthResult(ok=True, email=email_clean)
 
 
 def sign_out() -> None:

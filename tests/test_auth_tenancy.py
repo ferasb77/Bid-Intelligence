@@ -823,5 +823,97 @@ class TestAppWiresTheFragmentSessionBridge(unittest.TestCase):
         self.assertIn("no fragment session callback present", gate_body)
 
 
+class TestLoginExperienceUpgrade(unittest.TestCase):
+    """Deterministic tests verifying the upgraded password-first login experience
+    and removal of magic links from normal login presentation."""
+
+    def _app_source(self) -> str:
+        return open(
+            os.path.join(os.path.dirname(__file__), "..", "app.py"), "r", encoding="utf-8"
+        ).read()
+
+    def _login_gate_source(self) -> str:
+        src = self._app_source()
+        start = src.index("def _render_login_gate():")
+        end = src.index("\n\n\n", start)
+        return src[start:end]
+
+    def test_login_gate_does_not_call_sign_in_with_otp(self):
+        gate = self._login_gate_source()
+        self.assertNotIn("sign_in_with_otp", gate)
+        self.assertNotIn("pkg3_send_magiclink", gate)
+
+    def test_login_gate_does_not_contain_magic_link_copy(self):
+        gate = self._login_gate_source()
+        self.assertNotIn("Send sign-in link", gate)
+        self.assertNotIn("one-time sign-in", gate)
+        self.assertNotIn("passwordless", gate)
+        self.assertNotIn("magic", gate.lower())
+
+    def test_login_gate_uses_password_authentication(self):
+        gate = self._login_gate_source()
+        self.assertIn("_auth_session.sign_in", gate)
+        self.assertIn('st.form("bi_login_form"', gate)
+        self.assertIn('st.form_submit_button("Sign in"', gate)
+
+    def test_login_gate_password_form_is_not_inside_expander(self):
+        gate = self._login_gate_source()
+        self.assertNotIn('st.expander("Sign in with a password")', gate)
+
+    def test_password_reset_remains_available(self):
+        gate = self._login_gate_source()
+        self.assertIn('st.expander("Forgot your password?")', gate)
+        self.assertIn("request_password_reset", gate)
+        self.assertIn("Send reset link", gate)
+
+    def test_no_public_signup_exposed(self):
+        gate = self._login_gate_source()
+        for forbidden in ("Create account", "Register", "Sign up", "Continue as guest"):
+            self.assertNotIn(forbidden.lower(), gate.lower().replace("should_create_user", ""))
+
+    def test_login_branding_dedicated_and_no_personal_names(self):
+        gate = self._login_gate_source()
+        self.assertIn("login_brand_html()", gate)
+        self.assertIn("login_footer_html()", gate)
+        import brand
+        brand_html = brand.login_brand_html()
+        footer_html = brand.login_footer_html()
+        self.assertIn("BID INTELLIGENCE", brand_html)
+        self.assertIn("Decision & Proposal Platform", brand_html)
+        self.assertIn("Evidence-led bid decisions. Stronger proposals.", brand_html)
+        self.assertNotIn("FERAS BANNA", brand_html)
+        self.assertNotIn("FERAS BANNA", footer_html)
+        self.assertIn("An Enable My Growth application", footer_html)
+        self.assertIn("Secure access for authorized users", footer_html)
+
+    def test_password_sign_in_normalizes_email(self):
+        import auth_session
+        with patch("auth_session.get_auth_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_client.auth.sign_in_with_password.return_value = MagicMock(
+                session=MagicMock(access_token="tok", refresh_token="ref", expires_at=1000),
+                user=MagicMock(id="u-1", email="user@example.com")
+            )
+            mock_get_client.return_value = mock_client
+            with patch("streamlit.session_state", {}):
+                res = auth_session.sign_in("  user@example.com  ", "password123")
+                self.assertTrue(res.ok)
+                mock_client.auth.sign_in_with_password.assert_called_once_with({
+                    "email": "user@example.com",
+                    "password": "password123"
+                })
+
+    def test_password_reset_normalizes_email(self):
+        import auth_session
+        with patch("auth_session.get_auth_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
+            res = auth_session.request_password_reset("  user@example.com  ")
+            self.assertTrue(res.ok)
+            mock_client.auth.reset_password_for_email.assert_called_once_with(
+                "user@example.com", options={}
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

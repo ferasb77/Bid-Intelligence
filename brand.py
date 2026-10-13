@@ -47,3 +47,25 @@ def dashboard_brand_html() -> str:
       <div class="emg-dashboard-line">{BRAND_LINE}</div>
     </div>
     """
+
+
+def login_brand_html() -> str:
+    return f"""
+    <div class="bi-login-brand">
+      <img src="{asset_data_uri('emg-3d-mark.png')}" alt="Enable My Growth Möbius mark" class="bi-login-mark">
+      <div class="bi-login-titles">
+        <div class="bi-login-title">BID INTELLIGENCE</div>
+        <div class="bi-login-subtitle">{PRODUCT_EDITION}</div>
+      </div>
+      <div class="bi-login-tagline">Evidence-led bid decisions. Stronger proposals.</div>
+    </div>
+    """
+
+
+def login_footer_html() -> str:
+    return """
+    <div class="bi-login-footer">
+      <div>Secure access for authorized users</div>
+      <div class="bi-login-subfooter">An Enable My Growth application</div>
+    </div>
+    """

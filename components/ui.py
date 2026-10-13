@@ -196,6 +196,63 @@ div[data-testid="stForm"] { background: #111118; border: 1px solid #292832; bord
 .emg-dashboard-descriptor { max-width:760px; margin-top:.75rem; color:#918E86; font-size:.87rem; line-height:1.6; }
 .emg-dashboard-line { margin-top:.65rem; color:#C9A96E; font-family:'Cormorant Garamond',serif; font-size:1.05rem; }
 @media (max-width:700px) { .emg-dashboard-name { font-size:2.1rem; } .emg-dashboard-brand { padding:1rem; } }
+
+/* Bid Intelligence Dedicated Enterprise Sign-in Experience */
+.bi-login-brand {
+    text-align: center;
+    margin: 1.5rem auto 1.5rem auto;
+}
+.bi-login-mark {
+    width: 62px;
+    height: 62px;
+    object-fit: contain;
+    margin: 0 auto 0.85rem auto;
+    display: block;
+}
+.bi-login-title {
+    font-family: 'Cormorant Garamond', serif !important;
+    font-size: 2.15rem !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.07em !important;
+    color: #EDEAE3 !important;
+    line-height: 1.1 !important;
+    margin-bottom: 0.25rem !important;
+}
+.bi-login-subtitle {
+    font-size: 0.74rem !important;
+    letter-spacing: 0.16em !important;
+    text-transform: uppercase !important;
+    color: #C9A96E !important;
+    font-weight: 500 !important;
+    margin-bottom: 0.85rem !important;
+}
+.bi-login-tagline {
+    font-family: 'Inter', sans-serif !important;
+    font-size: 0.90rem !important;
+    color: #A9A69D !important;
+    line-height: 1.4 !important;
+}
+.bi-login-card-header {
+    font-size: 0.98rem;
+    font-weight: 600;
+    color: #EDEAE3;
+    margin-bottom: 0.75rem;
+    letter-spacing: -0.01em;
+}
+.bi-login-footer {
+    text-align: center;
+    font-size: 0.76rem;
+    color: #918E86;
+    line-height: 1.6;
+    margin-top: 1.75rem;
+    letter-spacing: 0.02em;
+}
+.bi-login-subfooter {
+    color: #6E6C66;
+    font-size: 0.70rem;
+    letter-spacing: 0.04em;
+    margin-top: 0.2rem;
+}
 </style>
 """
 
