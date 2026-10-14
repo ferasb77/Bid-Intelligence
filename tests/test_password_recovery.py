@@ -41,16 +41,13 @@ def client():
         yield client
 
 
-@pytest.mark.parametrize("flow", ["hash", "fragment"])
-def test_recovery_does_not_grant_application_session(flow, client):
+def test_recovery_does_not_grant_application_session(client):
     st.session_state[auth.SESSION_KEY] = {"user_id": "previous-user"}
     st.session_state[auth.AUTH_CONTEXT_KEY] = "previous-organization"
-    params = ({"token_hash": "test-hash", "type": "recovery"} if flow == "hash"
-              else {"sb_at": "test-access", "sb_rt": "test-refresh", "sb_type": "recovery"})
+    params = {"token_hash": "test-hash", "type": "recovery"}
     params["unrelated"] = "keep"
     with patch.object(st, "query_params", params), patch("tenancy.resolve_organization_context") as resolve:
-        result = (auth.handle_invite_callback() if flow == "hash"
-                  else auth.handle_fragment_session_callback())
+        result = auth.handle_invite_callback()
     assert result.ok
     assert st.session_state[auth.RECOVERY_SESSION_KEY]["user_id"] == "test-user"
     assert not auth.restore_session().ok
@@ -114,39 +111,15 @@ def test_identity_mismatch_cannot_update_password(client):
     client.auth.update_user.assert_not_called()
 
 
-@pytest.mark.parametrize("flow", ["hash", "fragment"])
-def test_expired_callback_is_rejected_and_credentials_removed(flow, client):
-    params = ({"token_hash": "expired", "type": "recovery"} if flow == "hash"
-              else {"sb_at": "expired", "sb_rt": "expired", "sb_type": "recovery"})
+def test_expired_callback_is_rejected_and_credentials_removed(client):
+    params = {"token_hash": "expired", "type": "recovery"}
     client.auth.verify_otp.side_effect = Exception("sensitive")
-    client.auth.set_session.side_effect = Exception("sensitive")
     with patch.object(st, "query_params", params):
-        result = (auth.handle_invite_callback() if flow == "hash"
-                  else auth.handle_fragment_session_callback())
+        result = auth.handle_invite_callback()
     assert not result.ok
     assert "sensitive" not in result.error
     assert not params
     assert auth.RECOVERY_SESSION_KEY not in st.session_state
-
-
-def test_partial_fragment_is_removed(client):
-    params = {"sb_at": "test-access", "sb_type": "recovery"}
-    with patch.object(st, "query_params", params):
-        assert not auth.handle_fragment_session_callback().ok
-    assert not params
-    client.auth.set_session.assert_not_called()
-
-
-def test_expired_link_error_is_safe_and_removed(client):
-    params = {"error": "access_denied", "error_description": "sensitive", "sb_type": "recovery"}
-    with patch.object(st, "query_params", params):
-        result = auth.handle_fragment_session_callback()
-    assert not result.ok
-    assert "expired" in result.error
-    assert "sensitive" not in result.error
-    assert not params
-    client.auth.set_session.assert_not_called()
-
 
 def test_partial_hash_callback_is_removed(client):
     params = {"token_hash": "test-hash"}

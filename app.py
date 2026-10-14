@@ -47,9 +47,7 @@ import auth_client as _auth_client
 import tenancy as _tenancy
 from config import get_app_base_url as _get_app_base_url
 
-_auth_session.render_fragment_session_bridge()
 _invite_result = _auth_session.handle_invite_callback()
-_fragment_result = _auth_session.handle_fragment_session_callback()
 if st.session_state.get(_auth_session.RECOVERY_SESSION_KEY):
     _auth_session.render_password_recovery()
 
@@ -104,9 +102,6 @@ def _render_login_gate():
             st.success("Your password has been updated. You can now sign in with your new password.")
         if _invite_result.error not in ("no invite callback present",) and not _invite_result.ok:
             st.error(f"Authentication link could not be verified: {_invite_result.error}")
-        if _fragment_result.error not in ("no fragment session callback present",) and not _fragment_result.ok:
-            st.error(f"Authentication link could not be verified: {_fragment_result.error}")
-
         with st.form("bi_login_form", clear_on_submit=False):
             st.markdown('<div class="bi-login-card-header">Sign in to your workspace</div>', unsafe_allow_html=True)
             email = st.text_input("Email", key="login_email_input")

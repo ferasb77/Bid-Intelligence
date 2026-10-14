@@ -11,6 +11,7 @@ Final gatekeeper ensuring zero-defect package assembly:
 from datetime import datetime
 import streamlit as st
 import auth_session
+import database
 import tenancy
 from analyst import submission_readiness_check
 from config import api_key_configured
@@ -94,10 +95,16 @@ def page_submit(bid_id: int):
         if up_file:
             up_key = f"uploaded_sub_{bid_id}_{up_file.name}_{up_file.size}"
             if not st.session_state.get(up_key):
-                tenancy.upload_document_for_organization(bid_id, _org_id, up_file.name, up_file.read(), doc_type="Submission")
-                st.session_state[up_key] = True
-                st.success(f"Added {up_file.name} to submission package.")
-                st.rerun()
+                try:
+                    tenancy.upload_document_for_organization(
+                        bid_id, _org_id, up_file.name, up_file.read(), doc_type="Submission"
+                    )
+                except database.StorageUploadError as exc:
+                    st.error(str(exc))
+                else:
+                    st.session_state[up_key] = True
+                    st.success(f"Added {up_file.name} to submission package.")
+                    st.rerun()
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 

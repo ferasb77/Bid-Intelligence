@@ -47,6 +47,17 @@ def get_service_client() -> Client:
 
 BUCKET = "bid-documents"
 
+
+class StorageUploadError(RuntimeError):
+    """Safe error exposed when durable document storage is unavailable."""
+
+
+def _storage_upload_extension(filename: str) -> str:
+    """Return only a conventional extension; persisted object names are server-made."""
+    basename = str(filename or "").replace("\\", "/").rsplit("/", 1)[-1]
+    ext = os.path.splitext(basename)[1].lower()
+    return ext if 1 < len(ext) <= 16 and ext[1:].isalnum() else ""
+
 def init_db():
     """No-op — schema is created via supabase_schema.sql in Supabase dashboard."""
     pass
@@ -392,8 +403,8 @@ def save_upload(bid_id, filename, file_bytes, doc_type="RFP / Source",
 
     # Build storage path
     import uuid
-    ext = os.path.splitext(filename)[1]
-    unique_name = f"{bid_id}/{uuid.uuid4().hex}{ext}"
+    ext = _storage_upload_extension(filename)
+    unique_name = f"{int(bid_id)}/{uuid.uuid4().hex}{ext}"
 
     # Upload to Supabase Storage
     try:
@@ -405,14 +416,12 @@ def save_upload(bid_id, filename, file_bytes, doc_type="RFP / Source",
         # Get public/signed URL as file_path proxy
         file_path = f"supabase://{BUCKET}/{unique_name}"
     except Exception:
-        # Fallback: save locally if storage fails
-        upload_dir = os.path.join(os.path.dirname(__file__), "uploads", str(bid_id))
-        os.makedirs(upload_dir, exist_ok=True)
-        local_path = os.path.join(upload_dir, filename)
-        with open(local_path, "wb") as f:
-            f.write(file_bytes)
-        storage_path = None
-        file_path = local_path
+        # Storage is the durable, shared system of record. Do not write the
+        # bytes to a container-local path or create document metadata when it
+        # is unavailable.
+        raise StorageUploadError(
+            "Document storage is temporarily unavailable. The upload was not saved; please try again."
+        ) from None
 
     if doc_id:
         # Version update — archive current
