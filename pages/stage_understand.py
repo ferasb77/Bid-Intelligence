@@ -1728,9 +1728,12 @@ def page_understand(bid_id: int):
         target_run_id = int(latest_run["id"])
 
     decision_brief = None
+    decision_brief_unavailable_message = None
     if target_run_id:
         try:
             decision_brief = tenancy.get_decision_brief_for_organization(bid_id, target_run_id, _org_id)
+        except analysis_service.DecisionBriefUnavailableError as exc:
+            decision_brief_unavailable_message = str(exc)
         except Exception:
             decision_brief = None
 
@@ -1896,6 +1899,22 @@ def page_understand(bid_id: int):
                 st.session_state.page = "stage_full_analysis"
                 st.rerun()
 
+        return
+
+    if decision_brief_unavailable_message:
+        st.info(decision_brief_unavailable_message)
+        latest_fast = opp_state.get("latest_fast_run") or {}
+        if latest_fast.get("report_storage_path"):
+            fast_report_bytes = _download_stored_file(latest_fast["report_storage_path"])
+            if fast_report_bytes:
+                st.download_button(
+                    "Download Historical Appendix (Superseded)",
+                    data=fast_report_bytes,
+                    file_name=f"fast_analysis_report_{bid_id}.pdf",
+                    mime="application/pdf",
+                    key=f"dl_fast_analysis_containment_{bid_id}",
+                    use_container_width=True,
+                )
         return
 
     # ── SECTION A: EXECUTIVE SUMMARY (LEGACY FALLBACK) ────────────────────────

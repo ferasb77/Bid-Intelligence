@@ -25,6 +25,9 @@ from pypdf import PdfReader
 from decision_brief import (
     EvaluationSummary,
     DecisionBriefInput,
+    GovernedBuyerIntelligenceInput,
+    ProcurementIdentityInput,
+    SubmissionMechanicInput,
     build_decision_brief,
     _resolve_tie_break_rule,
 )
@@ -39,6 +42,40 @@ from scripts.fast_analysis_report_adapter import (
 from pages.stage_understand import _resolve_procurement_term_and_model
 import decision_brief_report
 import analysis_service
+
+
+def _york_fixture_brief():
+    """Explicit York fixture used only to exercise the PDF renderer safely."""
+    return build_decision_brief(
+        DecisionBriefInput(
+            identity=ProcurementIdentityInput(
+                buyer="York University",
+                opportunity_title="Instructor for Sales and AI Training and Mentorship Program",
+                solicitation_number="P27-070",
+                submission_deadline="2026-10-26, 15:00:00 EDT",
+                questions_deadline="2026-10-14, 15:00:00 EDT",
+                contract_term="One-year initial term with two optional one-year extensions",
+                estimated_budget="All-inclusive CAD total; non-reimbursable travel expenses",
+                session_volume="Multiple venture cohorts; cohort workshops & 1-on-1 mentorship",
+                submission_channel="Bonfire (https://yorku.bonfirehub.ca)",
+                source_documents=("P27-070 Sales and AI Training and Mentorship Program(PDF).pdf",),
+            ),
+            buyer_intelligence=GovernedBuyerIntelligenceInput(
+                verified_buyer_domain="yorku.ca",
+                official_website="https://www.yorku.ca",
+            ),
+            scope_requirements=(),
+            evaluation_criteria=(),
+            proof_items=(),
+            commercial_clauses=(),
+            submission_mechanics=SubmissionMechanicInput(
+                channel="Bonfire (https://yorku.bonfirehub.ca)",
+                file_structure="Six (6) separate PDF files",
+                registration_gate="MERX registration and direct document acquisition",
+            ),
+            tie_break_rule="Price, ability to deliver services, coin toss",
+        )
+    )
 
 
 def test_boilerplate_stopwords_expanded():
@@ -179,9 +216,9 @@ def test_understand_header_kpi_resolution():
 
 
 def test_decision_brief_pdf_rendering_no_tag_leaks():
-    """Verify that rendered Decision Brief PDF for Run 57 does not leak raw HTML/XML tags
+    """Verify that rendered Decision Brief PDF for York fixture does not leak raw HTML/XML tags
     and contains accurate tie-break rules."""
-    brief = analysis_service.load_decision_brief_for_run(57)
+    brief = _york_fixture_brief()
     pdf_bytes = decision_brief_report.render_decision_brief_bytes(brief)
     reader = PdfReader(io.BytesIO(pdf_bytes))
     full_text = "\n".join(page.extract_text() for page in reader.pages)
@@ -295,7 +332,7 @@ def test_escape_dynamic_text_and_adversarial_pdf_rendering():
     assert decision_brief_report.escape_dynamic_text("Line 1\nLine 2") == "Line 1<br/>Line 2"
 
     # 2. Render adversarial Decision Brief to PDF without crash or tag leakage
-    brief = analysis_service.load_decision_brief_for_run(57)
+    brief = _york_fixture_brief()
     # Inject adversarial dynamic fields
     adversarial_brief = dataclasses.replace(
         brief,
@@ -414,30 +451,18 @@ def test_procurement_model_boundary_phrases():
     assert _test_phrase("This solicitation will establish a standing offer agreement.") == "Standing Offer"
 
 
-def test_historical_fast_report_cannot_masquerade_as_authoritative_brief():
-    """Phase H: Regression verifying authoritative output policy.
-
-    A historical Fast Analysis report (e.g. Run 55) must NOT masquerade as the
-    current primary Decision Brief. When export_bid_intelligence_brief_for_organization
-    is invoked, it resolves the current Decision Brief path, never returning an old
-    Fast Analysis PDF as the primary decision brief.
-    Furthermore, in UNDERSTAND state, when a full analysis run (e.g. Run 57) exists alongside
-    a historical Fast run (e.g. Run 55), the primary export target resolves to the current
-    run rather than the historical Fast run.
-    """
+def test_decision_brief_export_is_contained_without_substituting_fast_report():
+    """The contained export must fail, never substitute a historical Fast PDF."""
+    from unittest.mock import patch
     from tenancy import export_bid_intelligence_brief_for_organization
 
-    # 1. Primary Decision Brief export for Run 57 succeeds and produces the authoritative 8-page brief
-    brief_pdf_bytes = export_bid_intelligence_brief_for_organization(1522, 57, "4326b564-8cc5-4463-9304-9a589f08cc91")
-    assert brief_pdf_bytes.startswith(b"%PDF")
-    reader = PdfReader(io.BytesIO(brief_pdf_bytes))
-    assert len(reader.pages) == 8
+    with patch("tenancy.require_bid_access"), patch(
+        "database.get_analysis_run", return_value={"id": 57, "bid_id": 1522, "status": "COMPLETE"}
+    ):
+        with pytest.raises(analysis_service.DecisionBriefUnavailableError):
+            export_bid_intelligence_brief_for_organization(1522, 57, "4326b564-8cc5-4463-9304-9a589f08cc91")
 
-    # 2. Verify that the primary export contains the authoritative Decision Brief title, not Fast report title
-    first_page_text = reader.pages[0].extract_text()
-    assert "BID INTELLIGENCE DECISION BRIEF" in first_page_text or "STRATEGIC BID INTELLIGENCE" in first_page_text
-
-    # 3. Verify state export resolution prefers full_status run_id over historical Fast run_id
+    # The existing state rule still identifies the current run rather than a Fast appendix.
     mock_full_status = {"run_id": 57, "status": "COMPLETE"}
     mock_opp_state = {
         "full_status": mock_full_status,

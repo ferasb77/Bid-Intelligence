@@ -16,6 +16,7 @@ from components.ui import (qual_badge, evidence_badge, decision_badge, days_unti
                            metric_card, procurement_staleness_banner, resolve_evidence_display_status,
                            QUAL_STATUSES, EVIDENCE_STATUSES, CATEGORIES)
 import auth_session
+import analysis_service
 import tenancy
 
 
@@ -60,9 +61,12 @@ def page_decide(bid_id: int):
 
     latest_run = tenancy.get_latest_analysis_run_authenticated(_token, bid_id)
     decision_brief = None
+    decision_brief_unavailable_message = None
     if latest_run and latest_run.get("status") in ("COMPLETE", "PARTIAL"):
         try:
             decision_brief = tenancy.get_decision_brief_for_organization(bid_id, int(latest_run["id"]), _org_id)
+        except analysis_service.DecisionBriefUnavailableError as exc:
+            decision_brief_unavailable_message = str(exc)
         except Exception:
             decision_brief = None
 
@@ -76,6 +80,8 @@ def page_decide(bid_id: int):
         c2.markdown('<div style="text-align:right;padding-top:.7rem"><span style="background:#111118;border:1px solid #353129;color:#A9A69D;padding:.3rem .7rem;border-radius:4px;font-size:.78rem;font-weight:600">Decision: Not Yet Recorded</span></div>', unsafe_allow_html=True)
 
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
+    if decision_brief_unavailable_message:
+        st.info(decision_brief_unavailable_message)
 
     procurement_state = tenancy.get_procurement_state_for_organization(bid_id, _org_id)
     if latest_decision:

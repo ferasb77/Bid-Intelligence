@@ -1109,6 +1109,11 @@ def update_bid_authenticated(access_token: str, bid_id: int, data: dict) -> None
     auth_client.get_authenticated_client(access_token).table("bids").update(clean).eq("id", bid_id).execute()
 
 
+_AUTHENTICATED_ANALYSIS_RESULT_PROJECTION = (
+    "id,run_id,bid_id,structured_intelligence,fact_origins,report_content_snapshot"
+)
+
+
 def get_bid_analysis_authenticated(access_token: str, bid_id: int) -> dict:
     """Analysis runs and the latest structured result for one bid, both
     RLS-gated (analysis_runs_select_bid_access / analysis_results_select_
@@ -1137,7 +1142,7 @@ def get_bid_analysis_authenticated(access_token: str, bid_id: int) -> dict:
         if run.get("status") == "COMPLETE":
             rows = (
                 client.table("analysis_results")
-                .select("*")
+                .select(_AUTHENTICATED_ANALYSIS_RESULT_PROJECTION)
                 .eq("run_id", run["id"])
                 .execute()
                 .data
@@ -1188,7 +1193,9 @@ def get_latest_analysis_result_authenticated(
     )
     if not runs:
         return None
-    rows = client.table("analysis_results").select("*").eq("run_id", runs[0]["id"]).execute().data
+    rows = (client.table("analysis_results")
+            .select(_AUTHENTICATED_ANALYSIS_RESULT_PROJECTION)
+            .eq("run_id", runs[0]["id"]).execute().data)
     return rows[0] if rows else None
 
 

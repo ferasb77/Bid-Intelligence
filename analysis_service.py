@@ -680,10 +680,30 @@ def regenerate_report_from_raw_snapshot(run_id: int, buyer_intelligence: dict | 
     return _render_pdf_bytes(content)
 
 
+DECISION_BRIEF_SOURCE_VALIDATION_MESSAGE = (
+    "The Decision Brief is temporarily unavailable while its source evidence is being validated. "
+    "The Fast Analysis report remains available."
+)
+
+
+class DecisionBriefUnavailableError(ValueError):
+    """Raised while the Decision Brief path is contained for source validation."""
+
+
+def _raise_decision_brief_unavailable() -> None:
+    """Fail closed until the Decision Brief has an approved provenance contract.
+
+    The current builder can combine a selected opportunity's identity with
+    unsupported historical body content.  This guard deliberately lives at
+    the shared service boundary so neither the interactive view nor either
+    export route can present such a brief.
+    """
+    raise DecisionBriefUnavailableError(DECISION_BRIEF_SOURCE_VALIDATION_MESSAGE)
+
+
 def generate_bid_intelligence_brief_from_raw_snapshot(run_id: int) -> bytes:
-    """Render the primary concise UNDERSTAND export from a durable snapshot.
-    Zero model calls, zero extraction, no run mutation occurs on this path."""
-    return _render_brief_snapshot_impl(run_id)
+    """Block Decision Brief export until source validation is implemented."""
+    _raise_decision_brief_unavailable()
 
 
 
@@ -717,6 +737,7 @@ FULL_ANALYSIS_PERSISTENCE_GAP = (
 def load_decision_brief_for_run(run_id: int):
     """Load and construct the canonical DecisionBrief from a completed run's raw snapshot.
     Zero model calls, zero extraction, no run mutation occurs on this path."""
+    _raise_decision_brief_unavailable()
     run = db.get_analysis_run(run_id)
     if not run or run.get("status") not in ("COMPLETE", "PARTIAL"):
         raise ValueError(f"analysis run {run_id} is not usable; cannot build DecisionBrief")
@@ -751,6 +772,7 @@ def load_decision_brief_for_run(run_id: int):
 
 
 def _render_brief_snapshot_impl(run_id: int) -> bytes:
+    _raise_decision_brief_unavailable()
     try:
         brief = load_decision_brief_for_run(run_id)
         from decision_brief_report import render_decision_brief_bytes

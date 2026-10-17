@@ -487,6 +487,22 @@ class TestAuthenticatedReads(unittest.TestCase):
         self.assertIsNone(analysis["latest_result"])
 
 
+class TestAuthenticatedAnalysisResultProjection(unittest.TestCase):
+    """Raw extraction sidecars stay server-internal even for valid RLS reads."""
+
+    def test_authenticated_result_projection_excludes_raw_fast_snapshot(self):
+        self.assertNotIn("fast_analysis_result_snapshot", tenancy._AUTHENTICATED_ANALYSIS_RESULT_PROJECTION)
+        self.assertIn("structured_intelligence", tenancy._AUTHENTICATED_ANALYSIS_RESULT_PROJECTION)
+
+    def test_authenticated_analysis_helpers_do_not_select_all_result_columns(self):
+        source = open(os.path.join(os.path.dirname(__file__), "..", "tenancy.py"), encoding="utf-8").read()
+        start = source.index("def get_bid_analysis_authenticated(")
+        end = source.index("def get_latest_analysis_run_authenticated(", start)
+        body = source[start:end]
+        self.assertNotIn('table("analysis_results")\n                .select("*")', body)
+        self.assertIn("_AUTHENTICATED_ANALYSIS_RESULT_PROJECTION", body)
+
+
 class TestLogoutClearsAllUserScopedState(unittest.TestCase):
     """Instruction: logout must clear auth context, organization context,
     tokens/session state, active bid, and any user-scoped cached state --
