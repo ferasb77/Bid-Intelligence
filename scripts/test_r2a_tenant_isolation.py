@@ -172,6 +172,23 @@ def find_free_port() -> int:
     return port
 
 
+def remove_directory_with_retries(path: str, max_retries: int = 15, backoff: float = 0.25) -> bool:
+    """Safely remove directory on Windows with bounded backoff retries.
+
+    Returns True if directory is successfully removed (or did not exist).
+    Returns False if directory still exists after max_retries.
+    """
+    if not os.path.exists(path):
+        return True
+    for attempt in range(max_retries):
+        try:
+            shutil.rmtree(path)
+            return True
+        except Exception:
+            time.sleep(backoff)
+    return not os.path.exists(path)
+
+
 class DisposablePostgresCluster:
     """Context manager for a fresh, ephemeral PostgreSQL 17 cluster."""
 
@@ -197,7 +214,7 @@ class DisposablePostgresCluster:
         ]
         res = subprocess.run(cmd_init, capture_output=True, text=True)
         if res.returncode != 0:
-            shutil.rmtree(self.temp_dir, ignore_errors=True)
+            remove_directory_with_retries(self.temp_dir)
             raise RuntimeError(f"initdb failed (code {res.returncode}): {res.stderr}")
 
         # 2. Launch postgres daemon
@@ -233,20 +250,79 @@ class DisposablePostgresCluster:
 
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.proc:
+    def _terminate_process(self):
+        """Shut down the postgres process cleanly, terminating child processes safely."""
+        if not self.proc:
+            return
+
+        pg_ctl_exe = os.path.join(self.pg_bin, "pg_ctl.exe" if os.name == "nt" else "pg_ctl")
+        stopped = False
+
+        # Attempt graceful shutdown via pg_ctl stop -m fast -w first
+        if os.path.exists(pg_ctl_exe) and os.path.exists(self.data_dir):
             try:
-                self.proc.terminate()
+                res = subprocess.run(
+                    [pg_ctl_exe, "stop", "-D", self.data_dir, "-m", "fast", "-w"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                if res.returncode == 0:
+                    try:
+                        self.proc.wait(timeout=5)
+                        stopped = True
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        # If not stopped, terminate process tree
+        if not stopped:
+            pid = self.proc.pid
+            if os.name == "nt":
+                # On Windows, taskkill /T /F ensures all backend/autovacuum child processes exit
+                try:
+                    subprocess.run(
+                        ["taskkill", "/PID", str(pid), "/T", "/F"],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+                except Exception:
+                    pass
+            else:
+                try:
+                    self.proc.terminate()
+                except Exception:
+                    pass
+
+            try:
                 self.proc.wait(timeout=5)
             except Exception:
                 try:
                     self.proc.kill()
+                    self.proc.wait(timeout=5)
                 except Exception:
                     pass
-            self.proc = None
 
-        if os.path.exists(self.temp_dir):
-            shutil.rmtree(self.temp_dir, ignore_errors=True)
+        self.proc = None
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # 1. Terminate server process tree
+        self._terminate_process()
+
+        # 2. Remove temporary directory with bounded retries
+        cleanup_success = remove_directory_with_retries(self.temp_dir, max_retries=20, backoff=0.25)
+        if not cleanup_success:
+            err_msg = (
+                f"CLEANUP DEFECT: Failed to remove temporary PostgreSQL cluster directory at '{self.temp_dir}'. "
+                "Directory or residual file locks remain."
+            )
+            print(f"\nFATAL: {err_msg}", file=sys.stderr)
+            if exc_val is not None:
+                # Chain to original exception if one occurred
+                raise RuntimeError(err_msg) from exc_val
+            raise RuntimeError(err_msg)
 
     def get_connection(self):
         conn = psycopg2.connect(
@@ -989,7 +1065,9 @@ def main():
     print(f"Allocated Dynamic Port:      {port}")
 
     print("Provisioning fresh, disposable PostgreSQL 17 instance...")
+    cluster_temp_dir = None
     with DisposablePostgresCluster(pg_bin, port) as cluster:
+        cluster_temp_dir = cluster.temp_dir
         conn = cluster.get_connection()
         cur = conn.cursor()
 
@@ -1015,9 +1093,14 @@ def main():
 
         conn.close()
 
+    # Verify that cluster temporary directory is genuinely absent
+    if cluster_temp_dir and os.path.exists(cluster_temp_dir):
+        print(f"FATAL CLEANUP DEFECT: Residual directory still exists at {cluster_temp_dir}", file=sys.stderr)
+        sys.exit(1)
+
     print("\n================================================================================")
     print("PACKAGE R2A.1 ACCEPTANCE SUITE: 100% OF CHECKS PASSED")
-    print("Ephemeral cluster cleanly stopped and removed. Zero environmental residue.")
+    print("Ephemeral cluster cleanly stopped and removed. Zero environmental residue confirmed.")
     print("================================================================================")
 
 
