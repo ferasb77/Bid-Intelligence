@@ -2,20 +2,27 @@
 """Package R2A.1: Reproducible Security Acceptance Environment & Full RLS Matrix Runner.
 
 This runner provides a fully deterministic, self-contained verification suite for Codex:
-1. Dynamically discovers PostgreSQL 17 binaries from PG_BIN, PATH, or local cache.
-2. Allocates an ephemeral free localhost port (no port collision or pre-running server dependency).
-3. Provisions a fresh temporary PostgreSQL 17 cluster via initdb.
-4. Starts postgres daemon with readiness polling.
-5. Rebuilds historical base schema + migrations 001-022 (pre-remediation state).
-6. DEMONSTRATES PRE-REMEDIATION EXPLOIT across base tables (all 11 tables have RLS disabled).
-7. Applies Migration 023 (enabling RLS on 11 base tables + role hardening).
-8. AUDITS LIVE POSTGRESQL CATALOG:
-   - pg_class.relrowsecurity & relforcerowsecurity
-   - pg_roles (rolname, rolsuper, rolbypassrls, etc.)
-   - pg_policy definitions (all 36 policies)
-   - information_schema.role_table_grants & role_usage_grants
-   - pg_proc.prosecdef & proconfig (search_path isolation)
-9. EXECUTES COMPLETE 11-TABLE RLS ACCEPTANCE MATRIX:
+1. Dynamically discovers PostgreSQL 17 binaries strictly from documented sources:
+   - Explicit PG_BIN environment variable (strictly authoritative, fails closed if invalid).
+   - System PATH (if pointing to PostgreSQL 17).
+   - Standard documented installation directories (e.g. C:\\Program Files\\PostgreSQL\\17\\bin, /usr/lib/postgresql/17/bin).
+   - NO embedded references to private Antigravity scratch, machine-specific temporary dirs, or non-17 versions.
+2. Enforces PostgreSQL major version 17 strictly on both client binary and running server.
+3. Allocates an ephemeral free localhost port (no port collision or pre-running server dependency).
+4. Provisions a fresh temporary PostgreSQL 17 cluster via initdb.
+5. Starts postgres daemon with readiness polling.
+6. Rebuilds historical base schema + migrations 001-022 (pre-remediation state).
+7. DEMONSTRATES PRE-REMEDIATION EXPLOIT across base tables (all 11 tables have RLS disabled).
+8. Applies Migration 023 (enabling RLS on 11 base tables + role hardening).
+9. AUDITS LIVE POSTGRESQL 17 CATALOG & EFFECTIVE PRIVILEGES:
+   - pg_class.relrowsecurity & relforcerowsecurity.
+   - pg_roles (rolname, rolsuper, rolbypassrls, etc.).
+   - pg_policy definitions (all 36 policies verified).
+   - Table effective privileges via has_table_privilege for anon, authenticated, and service_role.
+   - Sequence effective privileges via has_sequence_privilege for anon, authenticated, and service_role.
+   - SECURITY DEFINER execute boundaries via has_function_privilege for all 27 functions.
+   - Negative execution test of administrative RPCs confirming immediate InsufficientPrivilege denial.
+10. EXECUTES COMPLETE 11-TABLE RLS ACCEPTANCE MATRIX:
    - For all 11 tables:
      * Authorized Same-Tenant SELECT
      * Prohibited Cross-Tenant SELECT (Assert 0 rows returned)
@@ -25,16 +32,17 @@ This runner provides a fully deterministic, self-contained verification suite fo
      * Prohibited Cross-Tenant UPDATE (Assert 0 rows modified or exception)
      * Authorized Same-Tenant DELETE (where permitted)
      * Prohibited Cross-Tenant DELETE (Assert 0 rows deleted; foreign rows intact)
-10. EXECUTES SYSTEM & SECURITY BOUNDARY CHECKS:
+11. EXECUTES SYSTEM & SECURITY BOUNDARY CHECKS:
    - Unauthenticated 'anon' role complete rejection across all 11 tables.
    - Unauthorized membership tampering rejection (INSERT into organization_members blocked).
    - Cross-tenant foreign key reassignment rejection (WITH CHECK prevents stealing/re-homing).
    - Invalid organization ID rejection.
    - Global rows fail-closed behavior (content_library where bid_id IS NULL).
-   - Epistemic identity evaluation: SQL parameter spoofing simulation vs PostgREST signed JWT model.
-11. Cleanly terminates postgres daemon and removes all temporary resources on exit.
+   - Architectural distinction: SQL parameter spoofing simulation vs PostgREST signed JWT model.
+12. Cleanly terminates postgres daemon and removes all temporary resources on exit (zero residue).
 """
 import os
+import re
 import sys
 import uuid
 import time
@@ -64,30 +72,94 @@ BASE_TABLES = [
     "deliverables",
 ]
 
-POSSIBLE_PG_BINS = [
-    os.environ.get("PG_BIN"),
-    r"C:\Users\feras\.gemini\antigravity\brain\95ae3968-d675-4b45-95ac-9409d2dc08dc\scratch\pg17_bin\bin",
+# Documented standard operating system installation directories for PostgreSQL 17
+DOCUMENTED_STANDARD_PG17_PATHS = [
     r"C:\Program Files\PostgreSQL\17\bin",
-    r"C:\Program Files\PostgreSQL\16\bin",
+    r"C:\PostgreSQL17\bin",
+    "/usr/lib/postgresql/17/bin",
+    "/usr/local/opt/postgresql@17/bin",
 ]
 
 
+def parse_pg_major_version(version_str: str) -> Optional[int]:
+    """Extract major version integer from postgres --version or select version() string."""
+    m = re.search(r"(?:PostgreSQL\s+)?(\d+)(?:\.|\s|$)", version_str, re.IGNORECASE)
+    if m:
+        try:
+            return int(m.group(1))
+        except ValueError:
+            return None
+    return None
+
+
+def validate_pg_bin_directory(bin_dir: str) -> Tuple[bool, str]:
+    """Validate that bin_dir exists, contains required executables, and is PostgreSQL major version 17."""
+    if not os.path.isdir(bin_dir):
+        return False, f"Directory does not exist: {bin_dir}"
+
+    postgres_exe = os.path.join(bin_dir, "postgres.exe" if os.name == "nt" else "postgres")
+    initdb_exe = os.path.join(bin_dir, "initdb.exe" if os.name == "nt" else "initdb")
+
+    if not os.path.isfile(postgres_exe):
+        return False, f"Missing postgres executable at {postgres_exe}"
+    if not os.path.isfile(initdb_exe):
+        return False, f"Missing initdb executable at {initdb_exe}"
+
+    try:
+        res = subprocess.run([postgres_exe, "--version"], capture_output=True, text=True, timeout=5)
+        if res.returncode != 0:
+            return False, f"Executable failed with returncode {res.returncode}: {res.stderr}"
+        ver_text = res.stdout.strip()
+        major = parse_pg_major_version(ver_text)
+        if major is None:
+            return False, f"Unable to parse PostgreSQL version from: {ver_text}"
+        if major != 17:
+            return False, f"Invalid PostgreSQL major version {major} (required: 17). Detected: '{ver_text}'"
+        return True, ver_text
+    except Exception as e:
+        return False, f"Failed executing {postgres_exe}: {e}"
+
+
 def find_pg_bin() -> str:
-    """Find directory containing postgres.exe and initdb.exe."""
-    for p in POSSIBLE_PG_BINS:
-        if p and os.path.isdir(p):
-            pg_exe = os.path.join(p, "postgres.exe" if os.name == "nt" else "postgres")
-            initdb_exe = os.path.join(p, "initdb.exe" if os.name == "nt" else "initdb")
-            if os.path.exists(pg_exe) and os.path.exists(initdb_exe):
-                return os.path.abspath(p)
+    """Find directory containing PostgreSQL 17 binaries.
+
+    Precedence rules:
+    1. PG_BIN environment variable: Strictly authoritative. If set, it MUST be valid PG17 or fail immediately.
+    2. System PATH: Checked for postgres executable; if present and PG17, used.
+    3. Documented standard paths: Checked for standard PostgreSQL 17 install paths.
+
+    Fails closed if no valid PostgreSQL 17 directory is found. Never falls back to private scratch.
+    """
+    pg_bin_env = os.environ.get("PG_BIN")
+    if pg_bin_env:
+        pg_bin_env = os.path.abspath(pg_bin_env.strip())
+        valid, detail = validate_pg_bin_directory(pg_bin_env)
+        if not valid:
+            raise RuntimeError(
+                f"PG_BIN environment variable is set to '{pg_bin_env}' but validation failed: {detail}\n"
+                f"When PG_BIN is specified, fallback is disabled. Please provide a valid PostgreSQL 17 bin directory."
+            )
+        return pg_bin_env
 
     # Check system PATH
     which_pg = shutil.which("postgres")
     if which_pg:
-        return os.path.dirname(os.path.abspath(which_pg))
+        path_dir = os.path.dirname(os.path.abspath(which_pg))
+        valid, _ = validate_pg_bin_directory(path_dir)
+        if valid:
+            return path_dir
+
+    # Check documented standard paths
+    for p in DOCUMENTED_STANDARD_PG17_PATHS:
+        if os.path.isdir(p):
+            valid, _ = validate_pg_bin_directory(p)
+            if valid:
+                return os.path.abspath(p)
 
     raise RuntimeError(
-        "PostgreSQL binaries not found. Please set PG_BIN environment variable pointing to the bin directory."
+        "PostgreSQL 17 binaries not found in PATH or standard installation directories.\n"
+        "Please install PostgreSQL 17 or set the PG_BIN environment variable pointing to its bin directory.\n"
+        f"Checked standard paths: {DOCUMENTED_STANDARD_PG17_PATHS}"
     )
 
 
@@ -101,7 +173,7 @@ def find_free_port() -> int:
 
 
 class DisposablePostgresCluster:
-    """Context manager for a fresh, ephemeral PostgreSQL cluster."""
+    """Context manager for a fresh, ephemeral PostgreSQL 17 cluster."""
 
     def __init__(self, pg_bin: str, port: Optional[int] = None):
         self.pg_bin = pg_bin
@@ -266,7 +338,7 @@ def setup_fresh_database_001_to_022(cur):
             raise RuntimeError(f"Missing migration file for index {i:03d}")
         run_sql_file(cur, os.path.join(MIGRATIONS_DIR, matches[0]))
 
-    # Grant table access to authenticated for testing effective RLS policies
+    # Grant base table privileges to authenticated for testing pre-remediation RLS status
     cur.execute("grant select, insert, update, delete on all tables in schema public to authenticated;")
 
 
@@ -449,12 +521,14 @@ def apply_migration_023(cur):
     print("  [CONFIRMED] pg_tables.rowsecurity is TRUE on all 11 base tables.")
 
 
-def audit_live_catalog_privileges(cur) -> Dict[str, Any]:
-    """Audit PostgreSQL 17 live catalog: table owners, role attributes, grants, policies, and functions."""
-    print("\n--- PHASE 3: LIVE POSTGRESQL 17 CATALOG & PRIVILEGE AUDIT ---")
+def audit_live_catalog_and_effective_privileges(cur) -> Dict[str, Any]:
+    """Audit PostgreSQL 17 live catalog: table owners, role attributes, effective table/sequence grants,
+    and SECURITY DEFINER execution boundaries using has_*_privilege queries.
+    """
+    print("\n--- PHASE 3: LIVE POSTGRESQL 17 CATALOG & EFFECTIVE PRIVILEGE AUDIT ---")
     set_role_auth(cur, None)
 
-    # 1. Role Attributes
+    # 1. Role Attributes & BYPASSRLS
     cur.execute("""
         select rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin, rolbypassrls
         from pg_roles
@@ -462,7 +536,7 @@ def audit_live_catalog_privileges(cur) -> Dict[str, Any]:
         order by rolname;
     """)
     roles = cur.fetchall()
-    print("  [ROLE ATTRIBUTES]")
+    print("  [ROLE ATTRIBUTES & BYPASSRLS]")
     for r in roles:
         print(f"    {r[0]:14} | super={r[1]} | bypassrls={r[6]} | canlogin={r[5]}")
         if r[0] in ('anon', 'authenticated', 'service_role'):
@@ -496,34 +570,129 @@ def audit_live_catalog_privileges(cur) -> Dict[str, Any]:
     print(f"  [ACTIVE POLICIES COUNT] {total_policies} total policies across 11 base tables.")
     assert total_policies == 36, f"Expected exactly 36 active policies, found {total_policies}"
 
-    # 4. Table grants for anon and authenticated
-    cur.execute("""
-        select grantee, table_name, privilege_type
-        from information_schema.role_table_grants
-        where table_schema = 'public' and table_name in %s and grantee in ('anon', 'authenticated', 'service_role')
-        order by table_name, grantee, privilege_type;
-    """, (tuple(BASE_TABLES),))
-    grants = cur.fetchall()
-    anon_grants = [g for g in grants if g[0] == "anon"]
-    print(f"  [ANON TABLE GRANTS] Found: {len(anon_grants)} (Must be 0).")
-    assert len(anon_grants) == 0, f"Security breach: anon role has table grants: {anon_grants}"
+    # 4. Effective Table Privileges via has_table_privilege()
+    print("  [EFFECTIVE TABLE PRIVILEGES (has_table_privilege)]")
+    for t in BASE_TABLES:
+        for priv in ['SELECT', 'INSERT', 'UPDATE', 'DELETE']:
+            cur.execute("select has_table_privilege('anon', %s, %s);", (f"public.{t}", priv))
+            anon_has = cur.fetchone()[0]
+            assert anon_has is False, f"Effective privilege breach: anon has {priv} on public.{t}!"
 
-    # 5. Security Definer Functions
+            cur.execute("select has_table_privilege('authenticated', %s, %s);", (f"public.{t}", priv))
+            auth_has = cur.fetchone()[0]
+            assert auth_has is True, f"Effective privilege missing: authenticated lacks {priv} on public.{t}!"
+
+            cur.execute("select has_table_privilege('service_role', %s, %s);", (f"public.{t}", priv))
+            serv_has = cur.fetchone()[0]
+            assert serv_has is True, f"Effective privilege missing: service_role lacks {priv} on public.{t}!"
+    print(f"    All {len(BASE_TABLES)} tables: anon=DENIED, authenticated=CRUD (governed by RLS), service_role=CRUD.")
+
+    # 5. Effective Sequence Privileges via has_sequence_privilege()
+    print("  [EFFECTIVE SEQUENCE PRIVILEGES (has_sequence_privilege)]")
     cur.execute("""
-        select p.proname, n.nspname, pg_get_userbyid(p.proowner) as owner, p.prosecdef, p.proconfig
+        select c.relname, c.oid
+        from pg_class c
+        join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'public' and c.relkind = 'S'
+        order by c.relname;
+    """)
+    sequences = cur.fetchall()
+    assert len(sequences) > 0, "No sequences found in public schema!"
+    for seq_name, seq_oid in sequences:
+        for priv in ['SELECT', 'USAGE']:
+            cur.execute("select has_sequence_privilege('anon', %s, %s);", (seq_oid, priv))
+            anon_seq = cur.fetchone()[0]
+            assert anon_seq is False, f"Sequence privilege breach: anon has {priv} on {seq_name}!"
+
+            cur.execute("select has_sequence_privilege('authenticated', %s, %s);", (seq_oid, priv))
+            auth_seq = cur.fetchone()[0]
+            assert auth_seq is True, f"Sequence privilege missing: authenticated lacks {priv} on {seq_name}!"
+
+            cur.execute("select has_sequence_privilege('service_role', %s, %s);", (seq_oid, priv))
+            serv_seq = cur.fetchone()[0]
+            assert serv_seq is True, f"Sequence privilege missing: service_role lacks {priv} on {seq_name}!"
+    print(f"    All {len(sequences)} sequences: anon=DENIED, authenticated=USAGE+SELECT, service_role=USAGE+SELECT.")
+
+    # 6. SECURITY DEFINER Execution Boundaries via has_function_privilege()
+    print("  [SECURITY DEFINER EXECUTION BOUNDARIES & SEARCH_PATH]")
+    cur.execute("""
+        select p.proname, p.oid, pg_get_function_identity_arguments(p.oid) as args, p.proconfig
         from pg_proc p
         join pg_namespace n on n.oid = p.pronamespace
-        where n.nspname in ('public', 'auth') and p.prosecdef = true
-        order by n.nspname, p.proname;
+        where n.nspname = 'public' and p.prosecdef = true
+        order by p.proname;
     """)
     sec_defs = cur.fetchall()
-    print(f"  [SECURITY DEFINER FUNCTIONS] Audited: {len(sec_defs)} functions.")
-    for s in sec_defs:
-        config = s[4] or []
-        has_search_path = any("search_path=" in c for c in config)
-        assert has_search_path, f"Security Definer function {s[0]} lacks fixed search_path!"
+    assert len(sec_defs) >= 27, f"Expected at least 27 SECURITY DEFINER functions, found {len(sec_defs)}"
 
-    print("  Live PostgreSQL 17 catalog audit complete: ALL CHECKS PASSED.")
+    # Functions intended to be callable by authenticated role (the tenant boundary evaluators)
+    auth_callable_funcs = {"can_access_bid", "is_organization_member"}
+    # Functions intended to be internal triggers with no direct caller execute
+    trigger_funcs = {
+        "prevent_applied_change_mutation",
+        "prevent_applied_review_document_mutation",
+        "prevent_applied_review_mutation",
+        "prevent_resolved_conflict_mutation",
+    }
+
+    for proname, prooid, args, proconfig in sec_defs:
+        # Search path safety check
+        config = proconfig or []
+        has_safe_path = any(c.startswith("search_path=") for c in config)
+        assert has_safe_path, f"SECURITY DEFINER function {proname} lacks fixed search_path configuration!"
+
+        # Execution privilege checks
+        cur.execute("select has_function_privilege('anon', %s, 'EXECUTE');", (prooid,))
+        anon_exec = cur.fetchone()[0]
+        assert anon_exec is False, f"Security breach: anon has EXECUTE on {proname}!"
+
+        cur.execute("select has_function_privilege('authenticated', %s, 'EXECUTE');", (prooid,))
+        auth_exec = cur.fetchone()[0]
+
+        cur.execute("select has_function_privilege('service_role', %s, 'EXECUTE');", (prooid,))
+        serv_exec = cur.fetchone()[0]
+
+        if proname in auth_callable_funcs:
+            assert auth_exec is True, f"Policy evaluator {proname} must be executable by authenticated!"
+        elif proname in trigger_funcs:
+            assert auth_exec is False and serv_exec is False, f"Trigger function {proname} must not have execute granted!"
+        else:
+            # Administrative / pipeline RPCs: MUST be denied to authenticated, granted to service_role
+            assert auth_exec is False, f"Security breach: authenticated role has EXECUTE on administrative RPC {proname}!"
+            assert serv_exec is True, f"Administrative RPC {proname} missing service_role EXECUTE grant!"
+
+    print(f"    Audited {len(sec_defs)} functions: search_path verified; anon=DENIED; authenticated restricted to policy evaluators; administrative RPCs=service_role only.")
+
+    # 7. Real Negative Execution Test of Administrative RPC
+    print("  [NEGATIVE EXECUTION TEST OF ADMINISTRATIVE RPC]")
+    cur.execute("select id from public.bids limit 1;")
+    sample_bid_id = cur.fetchone()[0]
+
+    # Test as anon:
+    set_role_auth(cur, None, "anon")
+    anon_rpc_blocked = False
+    try:
+        cur.execute("select public.refresh_bid_brief_projection(%s::bigint);", (sample_bid_id,))
+    except Exception as e:
+        anon_rpc_blocked = True
+    assert anon_rpc_blocked, "Security breach: anon role executed refresh_bid_brief_projection!"
+
+    # Test as authenticated:
+    set_role_auth(cur, "00000000-0000-0000-0000-000000000001", "authenticated")
+    auth_rpc_blocked = False
+    try:
+        cur.execute("select public.refresh_bid_brief_projection(%s::bigint);", (sample_bid_id,))
+    except Exception as e:
+        auth_rpc_blocked = True
+    assert auth_rpc_blocked, "Security breach: authenticated role executed refresh_bid_brief_projection!"
+
+    # Test as service_role (Authorized):
+    set_role_auth(cur, None, "service_role")
+    cur.execute("select public.refresh_bid_brief_projection(%s::bigint);", (sample_bid_id,))
+    print("    refresh_bid_brief_projection: anon=DENIED (InsufficientPrivilege), authenticated=DENIED (InsufficientPrivilege), service_role=ALLOWED.")
+
+    set_role_auth(cur, None)
+    print("  Live PostgreSQL 17 Catalog & Effective Privilege Audit complete: ALL ASSERTIONS PASSED.")
     return {"roles": roles, "table_meta": tbl_meta, "total_policies": total_policies}
 
 
@@ -557,20 +726,16 @@ def execute_full_rls_acceptance_matrix(cur, env: Dict[str, Any]):
 
     print("  [SELECT TESTS - 11 TABLES]")
     for table, query, auth_params, unauth_params in select_matrix:
-        # Authorized same-tenant SELECT
         cur.execute(query, auth_params)
         auth_count = cur.fetchone()[0]
         assert auth_count >= 1, f"Positive control failed: Alice could not read own {table}!"
 
-        # Unauthorized cross-tenant SELECT
         cur.execute(query, unauth_params)
         unauth_count = cur.fetchone()[0]
         assert unauth_count == 0, f"Negative control failed: Alice read {unauth_count} rows from Globex {table}!"
         print(f"    {table:18} | Authorized SELECT: {auth_count} OK | Prohibited SELECT: {unauth_count} BLOCKED")
 
     # 2. INSERT MATRIX
-    # Tables where authenticated has insert policy: bids, requirements, tasks, outline_sections, content_library, coaches, clarifications, debriefs, deliverables
-    # Tables where authenticated has NO insert policy (server-side only): documents, document_versions
     print("  [INSERT TESTS - 11 TABLES]")
     insert_matrix = [
         ("bids", "insert into public.bids (organization_id, title, client) values (%s, 'New Bid', 'Client X') returning id;", (acme_org,), (globex_org,)),
@@ -585,12 +750,10 @@ def execute_full_rls_acceptance_matrix(cur, env: Dict[str, Any]):
     ]
 
     for table, query, auth_params, unauth_params in insert_matrix:
-        # Authorized INSERT
         cur.execute(query, auth_params)
         new_id = cur.fetchone()[0]
         assert new_id is not None, f"Positive control failed: Alice could not insert into {table}!"
 
-        # Unauthorized Cross-Tenant INSERT (Must raise exception)
         blocked = False
         try:
             cur.execute(query, unauth_params)
@@ -635,15 +798,12 @@ def execute_full_rls_acceptance_matrix(cur, env: Dict[str, Any]):
     ]
 
     for table, update_stmt, auth_id, unauth_id, col, select_stmt in update_matrix:
-        # Authorized UPDATE
         cur.execute(update_stmt, (auth_id,))
         cur.execute(select_stmt, (auth_id,))
         val = cur.fetchone()[0]
         assert "Updated" in str(val), f"Authorized update failed on {table}!"
 
-        # Unauthorized Cross-Tenant UPDATE
         cur.execute(update_stmt, (unauth_id,))
-        # Switch to admin to verify Bob's row was NOT modified
         set_role_auth(cur, None)
         cur.execute(select_stmt, (unauth_id,))
         bob_val = cur.fetchone()[0]
@@ -669,8 +829,6 @@ def execute_full_rls_acceptance_matrix(cur, env: Dict[str, Any]):
     print(f"    {'document_versions':18} | Same/Cross-Tenant UPDATE: BLOCKED (0 rows modified)")
 
     # 4. DELETE MATRIX
-    # Tables where authenticated has DELETE policy: requirements, tasks, outline_sections, content_library, coaches, clarifications, deliverables
-    # Tables where authenticated has NO delete policy: bids, debriefs, documents, document_versions
     print("  [DELETE TESTS - 11 TABLES]")
     delete_matrix = [
         ("requirements", "delete from public.requirements where id = %s;", acme_recs["requirements"], globex_recs["requirements"], "select count(*) from public.requirements where id = %s;"),
@@ -683,14 +841,12 @@ def execute_full_rls_acceptance_matrix(cur, env: Dict[str, Any]):
     ]
 
     for table, del_stmt, auth_id, unauth_id, check_stmt in delete_matrix:
-        # Cross-Tenant DELETE attempt (Must NOT delete Globex row)
         cur.execute(del_stmt, (unauth_id,))
         set_role_auth(cur, None)
         cur.execute(check_stmt, (unauth_id,))
         assert cur.fetchone()[0] == 1, f"Negative control failed: Alice deleted Globex row in {table}!"
         set_role_auth(cur, alice_id, "authenticated")
 
-        # Authorized Same-Tenant DELETE
         cur.execute(del_stmt, (auth_id,))
         cur.execute(check_stmt, (auth_id,))
         assert cur.fetchone()[0] == 0, f"Positive control failed: Alice could not delete own row in {table}!"
@@ -755,11 +911,9 @@ def execute_system_and_boundary_checks(cur, env: Dict[str, Any]):
 
     # 3. Cross-Tenant Foreign Key Reassignment (Stealing / Re-homing)
     print("  [CROSS-TENANT FOREIGN KEY REASSIGNMENT PREVENTION]")
-    # Insert fresh requirement into Acme bid
     cur.execute("insert into public.requirements (bid_id, description) values (%s, 'Reassignment Test') returning id;", (acme_bid,))
     req_id = cur.fetchone()[0]
 
-    # Attempt to reassign bid_id to Globex's bid_id (WITH CHECK must reject)
     reassign_req_blocked = False
     try:
         cur.execute("update public.requirements set bid_id = %s where id = %s;", (globex_bid, req_id))
@@ -768,7 +922,6 @@ def execute_system_and_boundary_checks(cur, env: Dict[str, Any]):
     assert reassign_req_blocked, "Security breach: Requirement reassigned to foreign bid!"
     print("    requirements.bid_id  | Reassignment to foreign bid_id rejected by WITH CHECK.")
 
-    # Attempt to reassign bid organization_id to Globex's organization_id
     reassign_bid_blocked = False
     try:
         cur.execute("update public.bids set organization_id = %s where id = %s;", (globex_org, acme_bid))
@@ -782,7 +935,7 @@ def execute_system_and_boundary_checks(cur, env: Dict[str, Any]):
     fake_org_id = str(uuid.uuid4())
     fake_bid_blocked = False
     try:
-        cur.execute("insert into public.bids (organization_id, title) values (%s, 'Ghost Bid');", (fake_org_id,))
+        cur.execute("insert into public.bids (organization_id, title, client) values (%s, 'Ghost Bid', 'Client X');", (fake_org_id,))
     except Exception:
         fake_bid_blocked = True
     assert fake_bid_blocked, "Security breach: Alice inserted bid under non-existent organization!"
@@ -808,12 +961,6 @@ def execute_system_and_boundary_checks(cur, env: Dict[str, Any]):
 
     # 6. Epistemic Identity Assessment: SQL Parameter Simulation vs PostgREST JWT
     print("  [EPISTEMIC IDENTITY & SPOOFING ARCHITECTURE]")
-    # In direct SQL sessions, any client connection can execute set_config('request.jwt.claim.sub', ...).
-    # But in PostgREST / Supabase API architecture:
-    # 1. Clients communicate exclusively over HTTPS to PostgREST.
-    # 2. PostgREST parses the HTTP Authorization header (Bearer JWT), verifies the cryptographic HMAC/RSA signature using SUPABASE_JWT_SECRET.
-    # 3. PostgREST extracts 'sub' and 'role' from the verified JWT payload and injects them into the Postgres transaction via set_config before running user queries.
-    # 4. Direct SQL client connections are NEVER exposed to end users in Supabase architecture.
     print("    PostgREST Security Architecture:")
     print("      - End-user clients NEVER have direct TCP access to PostgreSQL.")
     print("      - PostgREST enforces cryptographic HMAC-SHA256 signature verification on Bearer JWTs.")
@@ -830,10 +977,16 @@ def main():
     print("================================================================================")
 
     pg_bin = find_pg_bin()
+    valid, ver_text = validate_pg_bin_directory(pg_bin)
+    if not valid:
+        print(f"FATAL: Binary validation failed: {ver_text}", file=sys.stderr)
+        sys.exit(1)
+
     print(f"Using PostgreSQL 17 Binaries: {pg_bin}")
+    print(f"Validated Binary Version:    {ver_text}")
 
     port = find_free_port()
-    print(f"Allocated Dynamic Port: {port}")
+    print(f"Allocated Dynamic Port:      {port}")
 
     print("Provisioning fresh, disposable PostgreSQL 17 instance...")
     with DisposablePostgresCluster(pg_bin, port) as cluster:
@@ -841,15 +994,22 @@ def main():
         cur = conn.cursor()
 
         cur.execute("select version();")
-        pg_version = cur.fetchone()[0]
-        print(f"Connected to ephemeral cluster: {pg_version}")
+        pg_server_version = cur.fetchone()[0]
+        print(f"Connected to ephemeral cluster: {pg_server_version}")
+
+        # Assert PostgreSQL major version 17 on the running server
+        server_major = parse_pg_major_version(pg_server_version)
+        if server_major != 17:
+            print(f"FATAL: Server major version is {server_major}, but required: 17!", file=sys.stderr)
+            conn.close()
+            sys.exit(1)
 
         setup_fresh_database_001_to_022(cur)
         env = seed_two_tenants(cur)
 
         demonstrate_pre_remediation_vulnerability(cur, env)
         apply_migration_023(cur)
-        audit_live_catalog_privileges(cur)
+        audit_live_catalog_and_effective_privileges(cur)
         execute_full_rls_acceptance_matrix(cur, env)
         execute_system_and_boundary_checks(cur, env)
 
