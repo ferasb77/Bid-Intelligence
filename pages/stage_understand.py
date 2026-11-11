@@ -13,7 +13,6 @@ Answers:
 """
 import json
 import streamlit as st
-from database import download_file as _download_stored_file
 from components.ui import (stage_badge, days_until, days_label, metric_card,
                            readiness_bar, STAGES, SENSITIVITY)
 import analysis_service
@@ -298,7 +297,9 @@ def _render_fast_analysis_panel(bid_id: int, rfp_docs: list, procurement_state: 
         except (ValueError, tenancy.AccessDeniedError) as exc:
             c1.caption(f"Brief export is unavailable: {exc}")
         if run.get("report_storage_path"):
-            appendix_bytes = _download_stored_file(run["report_storage_path"])
+            appendix_bytes = tenancy.download_analysis_report_for_organization(
+                bid_id, run["id"], _current_access_token_and_org()[1]
+            )
             if appendix_bytes:
                 c1.download_button("Download Full Intelligence Appendix", data=appendix_bytes,
                                    file_name=f"full_intelligence_appendix_{bid_id}.pdf",
@@ -343,11 +344,12 @@ def _render_fast_analysis_panel(bid_id: int, rfp_docs: list, procurement_state: 
                 from extractor import extract_procurement_package
                 # Download file bytes for rfp_docs
                 pkg_files_to_extract = []
+                org_id = _current_access_token_and_org()[1]
                 for d in rfp_docs:
-                    fp = d.get("file_path")
-                    fn = d.get("filename")
-                    if fp and fn:
-                        fb = _download_stored_file(fp)
+                    doc_id = d.get("id")
+                    fn = d.get("filename") or d.get("name")
+                    if doc_id and fn:
+                        fb = tenancy.download_document_for_organization(bid_id, doc_id, org_id)
                         if fb:
                             pkg_files_to_extract.append((fn, fb))
                 if not pkg_files_to_extract:

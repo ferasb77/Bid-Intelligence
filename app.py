@@ -679,7 +679,7 @@ def page_bid_overview(bid_id):
     if up:
         _upload_key = f"uploaded_{bid_id}_{up.name}_{up.size}"
         if not st.session_state.get(_upload_key):
-            save_upload(bid_id, up.name, up.read())
+            _tenancy.upload_document_for_organization(bid_id, _ctx.organization_id, up.name, up.read())
             st.session_state[_upload_key] = True
             st.success(f"Uploaded: {up.name}")
             st.rerun()
@@ -1017,8 +1017,9 @@ def page_documents(bid_id):
         if st.button(f"➕ Add {len(new_expected)} expected document(s) from matrix",
                      use_container_width=False):
             for r in new_expected:
-                create_expected_document(
+                _tenancy.create_expected_document_for_organization(
                     bid_id=bid_id,
+                    organization_id=_ctx.organization_id,
                     name=r.get("evidence",""),
                     doc_type="Submission" if r["category"]=="Mandatory" else "Financial",
                     owner=r.get("owner"),
@@ -1057,7 +1058,7 @@ def page_documents(bid_id):
                 for did in selected_ids:
                     doc = next((d for d in docs if d["id"] == did), None)
                     if doc:
-                        upsert_document({
+                        _tenancy.upsert_document_for_organization(bid_id, _ctx.organization_id, {
                             "id": did, "bid_id": bid_id,
                             "name": doc["name"],
                             "doc_type": new_type,
@@ -1224,10 +1225,11 @@ def page_documents(bid_id):
                     _key = f"uploaded_{bid_id}_{upload_doc_id}_{up.name}_{up.size}"
                     if not st.session_state.get(_key):
                         fb = up.read()
-                        save_upload(bid_id, up.name, fb,
-                                    doc_type=target["doc_type"],
-                                    owner=uploader_name or target.get("owner"),
-                                    doc_id=upload_doc_id)
+                        _tenancy.upload_document_for_organization(
+                            bid_id, _ctx.organization_id, up.name, fb,
+                            doc_type=target["doc_type"],
+                            owner=uploader_name or target.get("owner"),
+                            doc_id=upload_doc_id)
                         st.session_state[_key] = True
                     del st.session_state["upload_for_doc"]
                     st.success(f"✅ Uploaded successfully.")
@@ -1288,14 +1290,15 @@ def page_documents(bid_id):
                 dl = c2.form_submit_button("Delete", use_container_width=True)
                 cx = c3.form_submit_button("Cancel", use_container_width=True)
             if sv:
-                upsert_document({"id":eid,"bid_id":bid_id,"name":name,"doc_type":dt,
+                _tenancy.upsert_document_for_organization(bid_id, _ctx.organization_id, {
+                    "id":eid,"bid_id":bid_id,"name":name,"doc_type":dt,
                     "owner":owner,"due_date":due,"status":st_,
                     "linked_req_ids":linked,"mandatory":1 if mand else 0,
                     "notes":notes,"file_path":None,"file_size":None,"version":None})
                 del st.session_state["editing_doc"]
                 st.rerun()
             if dl:
-                delete_document(eid)
+                _tenancy.delete_document_for_organization(bid_id, eid, _ctx.organization_id)
                 del st.session_state["editing_doc"]
                 st.rerun()
             if cx:
@@ -1322,15 +1325,18 @@ def page_documents(bid_id):
             _key = f"uploaded_{bid_id}_{up.name}_{up.size}"
             if not st.session_state.get(_key):
                 fb = up.read()
-                save_upload(bid_id, up.name, fb, doc_type=up_type,
-                            owner=up_owner or None)
+                _tenancy.upload_document_for_organization(
+                    bid_id, _ctx.organization_id, up.name, fb, doc_type=up_type,
+                    owner=up_owner or None)
                 # Update linked/mandatory if set
                 new_docs = get_documents(bid_id)
                 latest = next((d for d in reversed(new_docs)
                                if d["name"]==up.name), None)
                 if latest and (linked_new or mand_new):
-                    upsert_document({**latest, "linked_req_ids":linked_new,
-                                     "mandatory":1 if mand_new else 0})
+                    _tenancy.upsert_document_for_organization(
+                        bid_id, _ctx.organization_id,
+                        {**latest, "linked_req_ids":linked_new,
+                         "mandatory":1 if mand_new else 0})
                 st.session_state[_key] = True
                 st.success(f"Uploaded: {up.name}")
                 st.rerun()
@@ -1349,8 +1355,9 @@ def page_documents(bid_id):
             notes_e = st.text_area("Notes / Instructions", height=60)
             if st.form_submit_button("Add to Registry", use_container_width=True):
                 if name_e:
-                    create_expected_document(
-                        bid_id=bid_id, name=name_e, doc_type=dt_e,
+                    _tenancy.create_expected_document_for_organization(
+                        bid_id=bid_id, organization_id=_ctx.organization_id,
+                        name=name_e, doc_type=dt_e,
                         owner=own_e or None, due_date=due_e or None,
                         linked_req_ids=linked_e or None,
                         mandatory=1 if mand_e else 0, notes=notes_e)
@@ -1375,27 +1382,15 @@ def page_documents(bid_id):
             if c1.button("🔍 Run Analysis with Claude", use_container_width=True, type="primary",
                          key="run_analysis_btn"):
                 from analyst import analyze_addendum
-                from database import download_file
                 import fitz, base64, anthropic as _ant
 
                 with st.spinner(f"Analyzing {doc['name']}… 20–40 seconds"):
                     try:
-                        sp   = doc.get("storage_path") or ""
-                        fp   = doc.get("file_path") or ""
                         name_lower = doc["name"].lower()
-                        file_bytes = None
+                        file_bytes = _tenancy.download_document_for_organization(
+                            bid_id, doc["id"], _ctx.organization_id
+                        )
                         text = ""
-
-                        # 1. Try Supabase Storage first
-                        if sp:
-                            file_bytes = download_file(sp)
-
-                        # 2. Fallback: local disk
-                        if not file_bytes and fp and not fp.startswith("supabase://"):
-                            import os as _os
-                            if _os.path.exists(fp):
-                                with open(fp, "rb") as f_:
-                                    file_bytes = f_.read()
 
                         # 3. Extract text
                         if file_bytes:

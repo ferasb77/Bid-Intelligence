@@ -161,7 +161,10 @@ def get_bid_for_organization(bid_id: int, organization_id: str) -> dict | None:
     that exists but belongs to a different organization returns None --
     the same shape as 'not found', not a distinguishable error, so callers
     cannot use response shape to probe for the existence of other
-    organizations' bid IDs."""
+    organizations' bid IDs. Fails closed immediately if organization_id or
+    bid_id is missing."""
+    if not organization_id or not bid_id:
+        return None
     sb = db.get_client()
     rows = (
         sb.table("bids")
@@ -237,7 +240,7 @@ def authorize_bid_access(bid_id: int, organization_id: str) -> bool:
 def require_bid_access(bid_id: int, organization_id: str) -> None:
     """Raises AccessDeniedError, doing nothing else, if organization_id
     does not own bid_id. Call this FIRST, before any privileged action."""
-    if not authorize_bid_access(bid_id, organization_id):
+    if not organization_id or not bid_id or not authorize_bid_access(bid_id, organization_id):
         raise AccessDeniedError(
             f"organization {organization_id} does not have access to bid {bid_id}"
         )
@@ -528,17 +531,15 @@ def upload_document_for_organization(
     doc_type: str = "RFP / Source", owner: str | None = None, doc_id: int | None = None,
 ):
     """Authorization boundary in front of database.save_upload() (final
-    interactive-surface cutover pass, package 3). `documents` has no
-    authenticated write policy in migration 008 -- reads are category A
-    (RLS-gated), but writes, like Storage itself, remain server-only by
-    that migration's own already-live, deliberate design (category B) and
-    are explicitly out of scope for this pass (Storage/report-object
-    authorization is Package 4). This wrapper does not touch Storage or
-    save_upload()'s own logic at all; it only adds the missing explicit
-    tenant-authorization check immediately before the privileged call, so
-    the remaining service-role use is authorization-gated rather than a
-    bare, ungated convenience call."""
+    interactive-surface cutover pass, package 3; hardened in R2A.2).
+    Verifies tenant ownership of bid_id AND that doc_id (when updating/replacing
+    an existing document version) belongs to bid_id BEFORE executing privileged
+    storage and database operations."""
     require_bid_access(bid_id, organization_id)
+    if doc_id is not None:
+        doc = db.get_document(doc_id)
+        if not doc or int(doc.get("bid_id", -1)) != int(bid_id):
+            raise AccessDeniedError(f"document {doc_id} does not belong to bid {bid_id}")
     return db.save_upload(bid_id, filename, file_bytes, doc_type=doc_type, owner=owner, doc_id=doc_id)
 
 
@@ -547,11 +548,12 @@ def set_document_mandatory_for_organization(
 ) -> None:
     """Authorization boundary in front of database.upsert_document() for the
     single narrow field write pages/stage_submit.py performs (resolving an
-    UNKNOWN mandatory-document classification). Same rationale as
-    upload_document_for_organization() above: `documents` writes stay
-    server-side under the currently-live RLS policy set, so this is a
-    privileged operation, tenant-authorized immediately before the call."""
+    UNKNOWN mandatory-document classification). Verifies bid ownership and
+    document-to-bid association before modifying."""
     require_bid_access(bid_id, organization_id)
+    doc = db.get_document(doc_id)
+    if not doc or int(doc.get("bid_id", -1)) != int(bid_id):
+        raise AccessDeniedError(f"document {doc_id} does not belong to bid {bid_id}")
     db.upsert_document({"id": doc_id, "mandatory": mandatory})
 
 
@@ -560,10 +562,131 @@ def create_document_record_for_organization(
 ) -> None:
     """Authorization boundary in front of database.upsert_document() for
     creating expected-document checklist rows (no file bytes -- the
-    RFP-extraction review screen's per-item submission checklist). Same
-    `documents`-stays-server-side rationale as the two functions above."""
+    RFP-extraction review screen's per-item submission checklist). Verifies
+    bid ownership and enforces bid_id scope."""
     require_bid_access(bid_id, organization_id)
-    db.upsert_document(data)
+    doc_id = data.get("id")
+    if doc_id:
+        doc = db.get_document(doc_id)
+        if not doc or int(doc.get("bid_id", -1)) != int(bid_id):
+            raise AccessDeniedError(f"document {doc_id} does not belong to bid {bid_id}")
+    clean = dict(data)
+    clean["bid_id"] = bid_id
+    db.upsert_document(clean)
+
+
+def get_document_for_organization(bid_id: int, doc_id: int, organization_id: str) -> dict | None:
+    """Fetch a single document record only if caller's organization owns bid_id
+    and doc_id belongs to bid_id."""
+    require_bid_access(bid_id, organization_id)
+    doc = db.get_document(doc_id)
+    if not doc or int(doc.get("bid_id", -1)) != int(bid_id):
+        return None
+    return doc
+
+
+def download_document_for_organization(bid_id: int, doc_id: int, organization_id: str) -> bytes | None:
+    """Authorized document download: verifies caller's organization owns bid_id
+    and doc_id belongs to bid_id BEFORE fetching file bytes from Storage (or local fallback)."""
+    require_bid_access(bid_id, organization_id)
+    doc = db.get_document(doc_id)
+    if not doc or int(doc.get("bid_id", -1)) != int(bid_id):
+        raise AccessDeniedError(f"document {doc_id} does not belong to bid {bid_id}")
+    sp = doc.get("storage_path")
+    if sp:
+        bytes_data = db.download_file(sp)
+        if bytes_data is not None:
+            return bytes_data
+    fp = doc.get("file_path")
+    if fp and not fp.startswith("supabase://"):
+        import os
+        if os.path.exists(fp):
+            with open(fp, "rb") as f:
+                return f.read()
+    return None
+
+
+def get_signed_url_for_document_for_organization(
+    bid_id: int, doc_id: int, organization_id: str, expires_in: int = 3600
+) -> str:
+    """Authorized signed URL generator: verifies caller's organization owns bid_id
+    and doc_id belongs to bid_id BEFORE signing the Storage path."""
+    require_bid_access(bid_id, organization_id)
+    doc = db.get_document(doc_id)
+    if not doc or int(doc.get("bid_id", -1)) != int(bid_id):
+        raise AccessDeniedError(f"document {doc_id} does not belong to bid {bid_id}")
+    sp = doc.get("storage_path")
+    if not sp:
+        raise ValueError(f"document {doc_id} has no storage_path")
+    return db.get_signed_url(sp, expires_in=expires_in)
+
+
+def delete_document_for_organization(bid_id: int, doc_id: int, organization_id: str) -> None:
+    """Authorized document deletion: verifies caller's organization owns bid_id
+    and doc_id belongs to bid_id BEFORE deleting document and versions."""
+    require_bid_access(bid_id, organization_id)
+    doc = db.get_document(doc_id)
+    if not doc or int(doc.get("bid_id", -1)) != int(bid_id):
+        raise AccessDeniedError(f"document {doc_id} does not belong to bid {bid_id}")
+    db.delete_document(doc_id, bid_id=bid_id)
+
+
+def download_analysis_report_for_organization(
+    bid_id: int, run_id: int, organization_id: str
+) -> bytes | None:
+    """Authorized analysis report download: verifies caller's organization owns bid_id
+    and run_id belongs to bid_id BEFORE downloading the rendered report from Storage."""
+    require_bid_access(bid_id, organization_id)
+    run = db.get_analysis_run(run_id)
+    if not run or int(run.get("bid_id", -1)) != int(bid_id):
+        raise AccessDeniedError(f"run {run_id} does not belong to bid {bid_id}")
+    sp = run.get("report_storage_path")
+    if not sp:
+        return None
+    return db.download_file(sp)
+
+
+def get_signed_url_for_analysis_report_for_organization(
+    bid_id: int, run_id: int, organization_id: str, expires_in: int = 3600
+) -> str:
+    """Authorized signed URL generator for analysis reports: verifies caller's
+    organization owns bid_id and run_id belongs to bid_id BEFORE signing."""
+    require_bid_access(bid_id, organization_id)
+    run = db.get_analysis_run(run_id)
+    if not run or int(run.get("bid_id", -1)) != int(bid_id):
+        raise AccessDeniedError(f"run {run_id} does not belong to bid {bid_id}")
+    sp = run.get("report_storage_path")
+    if not sp:
+        raise ValueError(f"run {run_id} has no report_storage_path")
+    return db.get_signed_url(sp, expires_in=expires_in)
+
+
+def upsert_document_for_organization(bid_id: int, organization_id: str, data: dict) -> None:
+    """Authorized upsert for document metadata: verifies caller's organization owns bid_id
+    and doc_id (if updating) belongs to bid_id."""
+    require_bid_access(bid_id, organization_id)
+    doc_id = data.get("id")
+    if doc_id:
+        doc = db.get_document(doc_id)
+        if not doc or int(doc.get("bid_id", -1)) != int(bid_id):
+            raise AccessDeniedError(f"document {doc_id} does not belong to bid {bid_id}")
+    clean_data = dict(data)
+    clean_data["bid_id"] = bid_id
+    db.upsert_document(clean_data)
+
+
+def create_expected_document_for_organization(
+    bid_id: int, organization_id: str, name: str, doc_type: str,
+    owner: str | None = None, due_date: str | None = None,
+    linked_req_ids: str | None = None, mandatory: int = 0, notes: str = "",
+) -> int | None:
+    """Authorized creation of an expected document row."""
+    require_bid_access(bid_id, organization_id)
+    return db.create_expected_document(
+        bid_id=bid_id, name=name, doc_type=doc_type, owner=owner,
+        due_date=due_date, linked_req_ids=linked_req_ids,
+        mandatory=mandatory, notes=notes,
+    )
 
 
 def save_bid_brief_for_organization(

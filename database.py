@@ -325,6 +325,12 @@ def get_documents(bid_id):
                  .select("*").eq("bid_id", bid_id)
                  .order("doc_type").order("name").execute())
 
+def get_document(doc_id: int) -> dict | None:
+    """Fetch a single document record by primary key."""
+    if not doc_id:
+        return None
+    return _one(get_client().table("documents").select("*").eq("id", doc_id).execute())
+
 def upsert_document(data):
     sb = get_client()
     keys = ["name","doc_type","owner","due_date","status","notes",
@@ -337,8 +343,18 @@ def upsert_document(data):
         clean = {k: data.get(k) for k in ["bid_id"] + keys}
         sb.table("documents").insert(clean).execute()
 
-def delete_document(doc_id):
-    get_client().table("documents").delete().eq("id", doc_id).execute()
+def delete_document(doc_id: int, bid_id: int | None = None) -> None:
+    """Delete a document record and its version history.
+    When bid_id is provided, verifies document belongs to bid_id before deleting."""
+    if not doc_id:
+        return
+    sb = get_client()
+    if bid_id is not None:
+        doc = get_document(doc_id)
+        if doc and doc.get("bid_id") is not None and int(doc["bid_id"]) != int(bid_id):
+            raise ValueError(f"document {doc_id} does not belong to bid {bid_id}")
+    sb.table("document_versions").delete().eq("document_id", doc_id).execute()
+    sb.table("documents").delete().eq("id", doc_id).execute()
 
 def get_document_versions(doc_id):
     return _rows(get_client().table("document_versions")
@@ -399,6 +415,8 @@ def save_upload(bid_id, filename, file_bytes, doc_type="RFP / Source",
         # Version update — archive current
         doc = _one(sb.table("documents").select("*").eq("id", doc_id).execute())
         if doc:
+            if doc.get("bid_id") is not None and int(doc["bid_id"]) != int(bid_id):
+                raise ValueError(f"document {doc_id} does not belong to bid {bid_id}")
             new_ver = (doc.get("version") or 1) + 1
             sb.table("document_versions").insert({
                 "document_id": doc_id,
@@ -429,23 +447,57 @@ def save_upload(bid_id, filename, file_bytes, doc_type="RFP / Source",
         new_id = int(row["id"]) if row else None
         return file_path, new_id
 
-def download_file(storage_path: str) -> bytes:
-    """Download file bytes from Supabase Storage."""
+def download_file(storage_path: str) -> bytes | None:
+    """Download file bytes from Supabase Storage.
+    NOTE: Low-level Storage primitive. External callers must not pass
+    unverified, caller-controlled storage paths. Prefer
+    tenancy.download_document_for_organization() or
+    tenancy.download_analysis_report_for_organization() which enforce
+    organization ownership."""
+    if not storage_path or not isinstance(storage_path, str) or not storage_path.strip():
+        return None
+    cleaned = storage_path.strip()
+    if ".." in cleaned or cleaned.startswith("/"):
+        return None
     sb = get_client()
     try:
-        response = sb.storage.from_(BUCKET).download(storage_path)
+        response = sb.storage.from_(BUCKET).download(cleaned)
         return response
     except Exception:
         return None
 
 def get_signed_url(storage_path: str, expires_in: int = 3600) -> str:
-    """Get a temporary signed URL for a stored file."""
+    """Get a temporary signed URL for a stored file.
+    NOTE: Low-level Storage primitive. External callers must not pass
+    unverified, caller-controlled storage paths. Prefer
+    tenancy.get_signed_url_for_document_for_organization() or
+    database.get_document_signed_url() which enforce organization ownership."""
+    if not storage_path or not isinstance(storage_path, str) or not storage_path.strip():
+        return ""
+    cleaned = storage_path.strip()
+    if ".." in cleaned or cleaned.startswith("/"):
+        return ""
     sb = get_client()
     try:
-        result = sb.storage.from_(BUCKET).create_signed_url(storage_path, expires_in)
+        result = sb.storage.from_(BUCKET).create_signed_url(cleaned, expires_in)
         return result.get("signedURL") or result.get("signedUrl","")
     except Exception:
         return ""
+
+def get_document_signed_url(doc_id: int, organization_id: str, expires_in: int = 3600) -> str:
+    """Authorized signed URL generator: verifies document belongs to a bid
+    owned by organization_id before signing the Storage path. Fails closed
+    (returns empty string) if unauthorized, non-existent, or unpersisted."""
+    if not doc_id or not organization_id:
+        return ""
+    sb = get_client()
+    doc = _one(sb.table("documents").select("id, bid_id, storage_path").eq("id", doc_id).execute())
+    if not doc or not doc.get("storage_path"):
+        return ""
+    bid = _one(sb.table("bids").select("id, organization_id").eq("id", doc["bid_id"]).execute())
+    if not bid or bid.get("organization_id") != organization_id:
+        return ""
+    return get_signed_url(doc["storage_path"], expires_in=expires_in)
 
 # ── Outline ───────────────────────────────────────────────────────────────────
 def get_outline(bid_id):
