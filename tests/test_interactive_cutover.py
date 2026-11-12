@@ -191,22 +191,24 @@ class TestCutoverArchitecture(unittest.TestCase):
     def test_sign_out_present_in_sidebar_for_normal_authenticated_use(self):
         self.assertIn('st.button("Sign out", key="pkg3_sidebar_signout"', self.source)
 
-    def test_team_roster_reachable_from_global_sidebar_navigation(self):
-        """page_team_roster() (coaches -- migration 009's organization-
-        scoped tenancy) has always been routable ('team_roster' has been
-        in the router's page-dispatch table since it was added), but had
-        no sidebar button pointing at it -- a normal authenticated user
-        had no way to actually reach it through the UI. This is a
-        reachability regression guard, not a new authorization check."""
+    def test_phoenix_beta_sidebar_is_simplified(self):
+        """Phoenix Beta simplification: the global sidebar offers only
+        Dashboard, Bids Directory and New Bid Ingestion; the retired pages
+        (Content Library, Organizational Memory, Team & Resource Library,
+        Executive View, Firm Profile & Settings) are neither in the sidebar
+        nor routed, and the API-key status indicator is gone. Their code and
+        tables are untouched."""
         nav_start = self.source.index("# ── Global Navigation ──")
         nav_end = self.source.index("}.items():", nav_start)
         nav_block = self.source[nav_start:nav_end]
-        self.assertIn('"team_roster"', nav_block,
-                       "no global sidebar nav entry routes to team_roster")
-
-        router_idx = self.source.index('page in ("team_roster", "coach_roster")')
-        router_block = self.source[router_idx:router_idx + 120]
-        self.assertIn("page_team_roster()", router_block)
+        for key in ('"dashboard"', '"all_bids"', '"new_bid"'):
+            self.assertIn(key, nav_block)
+        for key in ("content_library", "org_memory", "team_roster", "exec_dashboard", "settings_firm"):
+            self.assertNotIn(key, nav_block)
+            self.assertNotIn(f'page == "{key}"', self.source)
+        self.assertNotIn('page in ("team_roster", "coach_roster")', self.source)
+        self.assertNotIn("API key configured", self.source)
+        self.assertNotIn("No API key — add to .env", self.source)
 
 
 class TestGoAuthorizesBidOpen(unittest.TestCase):

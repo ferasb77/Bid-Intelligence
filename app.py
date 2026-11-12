@@ -239,11 +239,6 @@ with st.sidebar:
         _clear_all_user_scoped_state()
         st.rerun()
 
-    if api_key_configured():
-        st.markdown('<span style="font-size:.7rem;color:#27AE60">● API key configured</span>', unsafe_allow_html=True)
-    else:
-        st.markdown('<span style="font-size:.7rem;color:#E67E22">● No API key — add to .env</span>', unsafe_allow_html=True)
-
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
     # ── Global Navigation ──
@@ -251,11 +246,6 @@ with st.sidebar:
         "🏠  Dashboard": "dashboard",
         "📋  Bids Directory": "all_bids",
         "➕  New Bid Ingestion": "new_bid",
-        "📚  Content Library": "content_library",
-        "🧠  Organizational Memory": "org_memory",
-        "👥  Team & Resource Library": "team_roster",
-        "📊  Executive View": "exec_dashboard",
-        "⚙️  Firm Profile & Settings": "settings_firm",
     }.items():
         if st.button(label, key=f"nav_{key}", use_container_width=True):
             go(key)
@@ -2236,16 +2226,10 @@ elif page == "all_bids":
     page_all_bids()
 elif page == "new_bid":
     page_new_bid()
-elif page == "content_library":
-    page_content_library()
-elif page == "org_memory":
-    page_memory()
-elif page in ("team_roster", "coach_roster"):
-    page_team_roster()
-elif page == "exec_dashboard":
-    page_exec_dashboard()
-elif page == "settings_firm":
-    page_settings_firm()
+# Phoenix Beta simplification: Content Library, Organizational Memory,
+# Team & Resource Library, Executive View and Firm Profile & Settings are
+# no longer routed (their code, tables and data are untouched); a stale
+# page key falls through to the Dashboard below.
 
 # Active bid pages (5 workflow stages + contextual debrief + backward compatibility)
 elif bid_id is None:
