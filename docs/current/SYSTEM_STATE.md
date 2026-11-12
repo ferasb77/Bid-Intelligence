@@ -3341,6 +3341,14 @@ pass — the audit's one fix was already correct as commissioned.
 > section_drafts, 1 requirement_evidence_enrichments) cleaned up, verified
 > zero residue.
 
+> **Migration 024 (Super Admin MVP) — external state, 2026-11-12:**
+> `migrations/024_platform_super_admin.sql` (`platform_admins`,
+> append-only `platform_admin_audit_log`; RLS on, zero policies, no
+> anon/authenticated privileges) is applied **only to the isolated Phoenix
+> beta database** (`supabase-beta-db` on `emg-staging-01`, owner-authorized).
+> It is **NOT applied** to the operational Oracle database or the hosted
+> Supabase project. See `BID_INTELLIGENCE_SUPER_ADMIN_MVP_REPORT.md`.
+
 ## Where NOT to look first
 
 Do not begin ordinary task orientation by reading the ~99 root-level

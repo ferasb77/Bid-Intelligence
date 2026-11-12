@@ -82,6 +82,8 @@ def _clear_all_user_scoped_state():
 def _render_login_gate():
     st.markdown(sidebar_brand_html(), unsafe_allow_html=True)
     st.markdown("## Sign in")
+    if st.session_state.pop("bi_access_revoked_notice", False):
+        st.warning("Your access has been changed or disabled. Contact your administrator if you need access.")
     if st.session_state.pop("bi_password_reset_complete", False):
         st.success("Your password has been updated. You can now sign in with your new password.")
     if _invite_result.error not in ("no invite callback present",) and not _invite_result.ok:
@@ -149,6 +151,28 @@ if not isinstance(_ctx, (_tenancy.AuthContext, _tenancy.OrganizationSelectionReq
         or (isinstance(_ctx, _tenancy.AuthContext) and _ctx.user_id != _session_result.user_id):
     _ctx = _tenancy.resolve_organization_context(_session_result.user_id, _session_result.email)
     st.session_state[_auth_session.AUTH_CONTEXT_KEY] = _ctx
+
+# Super Admin MVP: an existing session is re-checked server-side at most every
+# ACCESS_REVALIDATION_SECONDS. A disabled/deleted account or a removed
+# membership signs the user out (fail-closed). A role changed by a platform
+# admin is picked up without re-login.
+import time as _time
+import dataclasses as _dataclasses
+_ACCESS_REVALIDATED_AT_KEY = "bi_access_revalidated_at"
+_ACCESS_REVALIDATION_SECONDS = 15
+if _time.time() - st.session_state.get(_ACCESS_REVALIDATED_AT_KEY, 0) >= _ACCESS_REVALIDATION_SECONDS:
+    _access = _tenancy.revalidate_session_access(
+        _session_result.user_id,
+        _ctx.organization_id if isinstance(_ctx, _tenancy.AuthContext) else None)
+    if not _access.ok:
+        _clear_all_user_scoped_state()
+        st.session_state.pop(_ACCESS_REVALIDATED_AT_KEY, None)
+        st.session_state["bi_access_revoked_notice"] = True
+        st.rerun()
+    if isinstance(_ctx, _tenancy.AuthContext) and _access.role and _access.role != _ctx.role:
+        _ctx = _dataclasses.replace(_ctx, role=_access.role)
+        st.session_state[_auth_session.AUTH_CONTEXT_KEY] = _ctx
+    st.session_state[_ACCESS_REVALIDATED_AT_KEY] = _time.time()
 
 if isinstance(_ctx, _tenancy.NoOrganizationAccess):
     st.markdown(sidebar_brand_html(), unsafe_allow_html=True)

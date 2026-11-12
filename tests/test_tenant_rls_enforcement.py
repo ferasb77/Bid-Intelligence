@@ -517,8 +517,11 @@ class TestLogoutClearsAllUserScopedState(unittest.TestCase):
         self.assertGreaterEqual(sign_out_button_count, 1, "expected at least one Sign out button")
         clear_call_count = source.count("_clear_all_user_scoped_state()")
         # One call inside the shared function's own definition, plus one
-        # per "Sign out" button that invokes it.
-        self.assertEqual(clear_call_count, 1 + sign_out_button_count)
+        # per "Sign out" button that invokes it, plus one forced sign-out
+        # when server-side access revalidation fails (Super Admin MVP:
+        # disabled user / removed membership).
+        self.assertIn("if not _access.ok:\n        _clear_all_user_scoped_state()", source)
+        self.assertEqual(clear_call_count, 2 + sign_out_button_count)
 
     def test_auth_session_sign_out_clears_session_and_context(self):
         """Re-confirms (already tested in test_auth_tenancy.py) that

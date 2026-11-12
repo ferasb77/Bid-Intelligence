@@ -124,6 +124,51 @@ def resolve_organization_context(user_id: str, email: str) -> OrganizationResolu
     )
 
 
+@dataclass(frozen=True)
+class SessionAccessCheck:
+    """Result of revalidate_session_access(). `role` is the CURRENT
+    membership role when ok and an organization was checked."""
+    ok: bool
+    reason: str = ""
+    role: str | None = None
+
+
+def revalidate_session_access(user_id: str, organization_id: str | None = None) -> SessionAccessCheck:
+    """Super Admin MVP: re-check, server-side, that an already-signed-in
+    user still has effective access. A user disabled (banned) in Supabase
+    Auth, deleted, or removed from the organization they are operating as
+    must lose application access without waiting for their stored session
+    to expire. Fails closed on any lookup error.
+
+    Uses the service-role client: auth.admin for ban state, and
+    organization_members for the current membership/role."""
+    try:
+        sb = db.get_service_client()
+        resp = sb.auth.admin.get_user_by_id(user_id)
+        user = getattr(resp, "user", None)
+        if user is None:
+            return SessionAccessCheck(ok=False, reason="account_not_found")
+        import platform_admin
+        if platform_admin.user_is_disabled(user):
+            return SessionAccessCheck(ok=False, reason="account_disabled")
+        if organization_id is None:
+            return SessionAccessCheck(ok=True)
+        rows = (
+            sb.table("organization_members")
+            .select("role")
+            .eq("organization_id", organization_id)
+            .eq("user_id", user_id)
+            .execute()
+            .data
+            or []
+        )
+        if not rows:
+            return SessionAccessCheck(ok=False, reason="membership_removed")
+        return SessionAccessCheck(ok=True, role=rows[0].get("role"))
+    except Exception:
+        return SessionAccessCheck(ok=False, reason="access_check_failed")
+
+
 # ── Tenant-aware bid primitives ──────────────────────────────────────────
 # Deliberately separate names from database.py's existing get_all_bids() /
 # get_bid() / create_bid() -- those remain unchanged, unscoped compatibility
