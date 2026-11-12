@@ -11,6 +11,7 @@ Answers:
 7. What are the main risks?
 8. What needs to be submitted and when?
 """
+import html as _html
 import json
 import streamlit as st
 from components.ui import (stage_badge, days_until, days_label, metric_card,
@@ -802,6 +803,39 @@ def _resolve_customer_safe_summary(bid: dict, brief_row: dict, analysis_result: 
     return raw_summary or "Executive summary pending synthesis."
 
 
+def _render_opportunity_details_editor(_token: str, bid_id: int, bid: dict) -> None:
+    """Phoenix Beta upload-only ingestion: show the opportunity title and
+    issuing organization (filled from the RFP by FAST when it completes,
+    see bid_identity.py) and let the user correct them. Expanded while a
+    temporary value is still in place."""
+    import bid_identity
+    pending = (bid.get("title") == bid_identity.PLACEHOLDER_TITLE
+               or bid.get("client") == bid_identity.PLACEHOLDER_CLIENT)
+    with st.expander("📝 Opportunity details — title & issuing organization", expanded=pending):
+        if pending:
+            run = tenancy.get_latest_analysis_run_authenticated(_token, bid_id, "FAST")
+            if run and run.get("status") not in ("COMPLETE", "FAILED"):
+                st.caption("These are being identified from your RFP documents by FAST analysis "
+                           "and will appear here when it completes. You can also enter them now.")
+            else:
+                st.caption("Not identified with confidence from the RFP documents. Please enter "
+                           "the opportunity title and issuing organization.")
+        else:
+            st.caption("Identified from your RFP documents (or entered by you). Correct them here if needed.")
+        with st.form(f"opp_details_{bid_id}"):
+            c1, c2 = st.columns(2)
+            new_title = c1.text_input("Opportunity Title", value=bid.get("title") or "")
+            new_client = c2.text_input("Client / Organization", value=bid.get("client") or "")
+            if st.form_submit_button("Save details"):
+                if not new_title.strip() or not new_client.strip():
+                    st.error("Opportunity Title and Client / Organization cannot be empty.")
+                else:
+                    tenancy.update_bid_authenticated(_token, bid_id, {
+                        "title": new_title.strip(), "client": new_client.strip()})
+                    st.success("Opportunity details saved.")
+                    st.rerun()
+
+
 def page_understand(bid_id: int):
     _token, _org_id = _current_access_token_and_org()
     bid = tenancy.get_bid_authenticated(_token, bid_id)
@@ -832,8 +866,10 @@ def page_understand(bid_id: int):
     # ── HEADER & OPPORTUNITY IDENTITY ─────────────────────────────────────────
     st.markdown('<div style="font-size:.72rem;color:#C9A96E;text-transform:uppercase;letter-spacing:.12em;font-weight:600">STAGE 1 · UNDERSTAND</div>', unsafe_allow_html=True)
     c1, c2 = st.columns([4, 1.2])
-    c1.markdown(f"# {bid['client']}")
-    c1.markdown(f'<div style="font-size:1.15rem;color:#EDEAE3;font-weight:500;margin-top:-.3rem">{bid["title"]}</div>', unsafe_allow_html=True)
+    # Title / client may now be filled automatically from uploaded RFP text,
+    # so they are HTML-escaped before being rendered.
+    c1.markdown(f"# {_html.escape(bid['client'] or '')}")
+    c1.markdown(f'<div style="font-size:1.15rem;color:#EDEAE3;font-weight:500;margin-top:-.3rem">{_html.escape(bid["title"] or "")}</div>', unsafe_allow_html=True)
     if bid.get("file_number"):
         c1.markdown(f'<span style="font-size:.78rem;color:#6E6C66">Solicitation Ref: <strong>#{bid["file_number"]}</strong></span>', unsafe_allow_html=True)
 
@@ -842,6 +878,8 @@ def page_understand(bid_id: int):
     c2.markdown(f'<div style="text-align:right;font-size:.75rem;color:{sc};margin-top:.3rem">● {bid.get("sensitivity","Standard")}</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
+
+    _render_opportunity_details_editor(_token, bid_id, bid)
 
     # ── PROCUREMENT REVISION & ADDENDUM GOVERNANCE (migration 010) ───────────
     # Rendered before everything else on this page: whether procurement

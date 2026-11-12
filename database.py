@@ -126,6 +126,17 @@ def create_bid(data):
     row = _one(sb.table("bids").insert(clean).execute())
     return int(row["id"]) if row else None
 
+def fill_placeholder_bid_identity(bid_id, title, client, placeholder_title, placeholder_client):
+    """Phoenix Beta upload flow: replace a bid's temporary title / client
+    with an extracted value, conditionally -- each UPDATE matches only while
+    the column still holds its temporary value, so a value the user has
+    already edited is never overwritten (no read-then-write race)."""
+    sb = get_client()
+    if title:
+        sb.table("bids").update({"title": title}).eq("id", bid_id).eq("title", placeholder_title).execute()
+    if client:
+        sb.table("bids").update({"client": client}).eq("id", bid_id).eq("client", placeholder_client).execute()
+
 def update_bid(bid_id, data):
     """Partial update: only writes keys the caller actually included in
     `data`. A key that's absent is left untouched on the row; a key that's

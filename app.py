@@ -432,20 +432,23 @@ def page_new_bid():
         for fn, fb in pkg_files:
             st.markdown(f'<span style="font-size:.78rem;color:#A9A69D">📄 <strong>{fn}</strong> ({len(fb)//1024} KB)</span>', unsafe_allow_html=True)
 
-        # Derive sensible default title from first uploaded document
-        first_stem = pkg_files[0][0].rsplit(".", 1)[0].replace("_", " ").replace("-", " ")
-        c_t1, c_t2 = st.columns(2)
-        pkg_title = c_t1.text_input("Opportunity Title *", value=first_stem, key="pkg_bid_title")
-        pkg_client = c_t2.text_input("Client / Organization *", value="", placeholder="e.g. City of Calgary", key="pkg_bid_client")
+        # Phoenix Beta: no title/client entry here. The bid starts with clear
+        # temporary values; FAST analysis fills them from the RFP when it
+        # completes (bid_identity.py), and the user can correct them on the
+        # UNDERSTAND page.
+        import bid_identity as _bid_identity
+        pkg_title = _bid_identity.PLACEHOLDER_TITLE
+        pkg_client = _bid_identity.PLACEHOLDER_CLIENT
+        st.caption("The opportunity title and issuing organization are identified from your documents "
+                   "during FAST analysis — you can review and correct them afterwards.")
 
         st.markdown("")
-        if st.button("⚡ Create Bid & Start Fast Analysis →", use_container_width=True, type="primary"):
+        if st.button("⚡ Create Bid & Start FAST Analysis →", use_container_width=True, type="primary",
+                     disabled=not pkg_files):
             from config import get_api_key as _gak, api_key_configured as _akc
             api_key = st.session_state.get("anthropic_api_key") or (_gak() if _akc() else None)
             if not api_key:
                 st.error("Add your Anthropic API key first (see above or Settings).")
-            elif not pkg_title or not pkg_client:
-                st.error("Opportunity Title and Client are required to create the bid.")
             else:
                 with st.spinner(f"Creating opportunity and uploading {len(pkg_files)} procurement document(s)…"):
                     try:

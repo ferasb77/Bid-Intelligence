@@ -409,7 +409,20 @@ class TestNewRFPPipelineArchitecture(unittest.TestCase):
         body = self.app_source[fn_start:fn_end]
 
         # Must have the primary button for Fast Analysis onboarding
-        self.assertIn("⚡ Create Bid & Start Fast Analysis →", body)
+        self.assertIn("⚡ Create Bid & Start FAST Analysis →", body)
+
+        # Phoenix Beta: upload-only -- no mandatory title/client fields; the
+        # bid starts with clear temporary values filled later from the RFP.
+        self.assertNotIn('"Opportunity Title *"', body)
+        self.assertNotIn('"Client / Organization *"', body)
+        self.assertIn("_bid_identity.PLACEHOLDER_TITLE", body)
+        self.assertIn("_bid_identity.PLACEHOLDER_CLIENT", body)
+        # ZIP / multi-document support and the manual option are kept
+        self.assertIn("accept_multiple_files=True", body)
+        self.assertIn('"zip"', body)
+        self.assertIn('with st.form("manual_bid")', body)
+        # UNDERSTAND lets the user review / correct the extracted details
+        self.assertIn("_render_opportunity_details_editor(_token, bid_id, bid)", self.understand_source)
 
         # Must NOT call extract_procurement_package in the onboarding button handler
         self.assertNotIn("extract_procurement_package(pkg_files", body)

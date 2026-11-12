@@ -556,6 +556,20 @@ def _execute_fast_analysis_run(run_id: int, bid_id: int, docs: list[dict], api_k
         # against and how many of its corpus documents have not yet gone
         # through a governed review, so the UI can flag it as advisory
         # and potentially stale relative to canonical truth.
+        # Phoenix Beta upload-only ingestion: fill the bid's temporary
+        # title / client from the identity FAST already extracted (grounded
+        # in the corpus text; no extra model call). Only temporary values
+        # are replaced, and a failure here never affects the run.
+        try:
+            import bid_identity
+            ident = bid_identity.resolve_from_fast_result(result, [t for _, t in documents])
+            if ident.get("title") or ident.get("client"):
+                db.fill_placeholder_bid_identity(
+                    bid_id, ident.get("title"), ident.get("client"),
+                    bid_identity.PLACEHOLDER_TITLE, bid_identity.PLACEHOLDER_CLIENT)
+        except Exception:
+            pass
+
         procurement_state = db.get_bid_procurement_state(bid_id)
         reviewed_hashes = db.get_reviewed_document_hashes(bid_id)
         unreviewed_document_count = sum(
