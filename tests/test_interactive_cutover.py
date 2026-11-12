@@ -456,6 +456,44 @@ class TestNewRFPPipelineArchitecture(unittest.TestCase):
         # View-Source citations remain (Commercial pricing clauses + Sources)
         self.assertGreaterEqual(body.count("_source_view_expander("), 4)
 
+    def test_understand_and_full_present_one_pdf_each(self):
+        """Phoenix reporting upgrade: UNDERSTAND offers only the FAST
+        Opportunity Snapshot (Brief and Full Intelligence Appendix retired);
+        Full Bid Intelligence offers only the Bid Opportunity Assessment."""
+        src = self.understand_source
+        self.assertIn("Download Opportunity Snapshot (PDF)", src)
+        self.assertIn("export_opportunity_snapshot_for_organization", src)
+        self.assertNotIn("Download Full Intelligence Appendix", src)
+        self.assertNotIn("Download Bid Intelligence Brief", src)
+        self.assertNotIn("download_analysis_report_for_organization", src)
+        full_path = os.path.join(os.path.dirname(__file__), "..", "pages", "stage_full_analysis.py")
+        with open(full_path, "r", encoding="utf-8") as fh:
+            full = fh.read()
+        self.assertIn("Download Bid Opportunity Assessment (PDF)", full)
+        self.assertIn("export_bid_opportunity_assessment_for_organization", full)
+        self.assertNotIn("Download Full Intelligence Report", full)
+        self.assertEqual(full.count("st.download_button("), 1)
+
+    def test_documents_tab_update_analysis_and_no_auto_reanalysis(self):
+        src = self.understand_source
+        add = src[src.index("def _render_add_documents("):src.index("def page_understand(")]
+        self.assertNotIn("_start_fast_analysis", add)  # upload never triggers analysis
+        upd = src[src.index("def _render_update_analysis("):src.index("def _start_fast_analysis(")]
+        self.assertIn('"🔄 Update Analysis"', upd)
+        self.assertIn("_start_fast_analysis(bid_id)", upd)
+        self.assertIn("Earlier analysis versions", upd)
+        body = src[src.index("with tab_docs:"):]
+        self.assertIn("_render_update_analysis(bid_id, _org_id)", body)
+
+    def test_deadline_correction_is_owner_only_and_flagged(self):
+        src = self.understand_source
+        panel = src[src.index("def _render_deadline_panel("):src.index("def _render_update_analysis(")]
+        self.assertIn("if not _is_account_owner():", panel)
+        self.assertIn("MANUALLY ENTERED", panel)
+        self.assertIn('"submission_deadline": str(new_val)', panel)
+        self.assertIn("never blocks analysis", panel)
+        self.assertIn('in ("admin", "owner")', src)
+
     def test_deep_verification_preserved_in_stage_understand(self):
         """Legacy extract_procurement_package must be preserved as an optional expander in stage_understand."""
         self.assertIn("🔬 Deep Verification & Cross-Document Synthesis (Optional / In-Depth)", self.understand_source)

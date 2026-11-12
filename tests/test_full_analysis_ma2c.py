@@ -274,7 +274,7 @@ def test_page_prepare_export_caches_and_never_starts(monkeypatch):
         calls.append(run_id)
         return {"pdf": b"%PDF-x", "filename": "f.pdf"}
 
-    monkeypatch.setattr(tenancy, "export_full_analysis_report_for_organization", fake_export)
+    monkeypatch.setattr(tenancy, "export_bid_opportunity_assessment_for_organization", fake_export)
     monkeypatch.setattr(tenancy, "start_full_analysis_for_organization", _trap)
     session = {}
     assert page.prepare_export(1295, "org", 33, "PARTIAL", session)["filename"] == "f.pdf"
@@ -287,7 +287,7 @@ def test_page_prepare_export_caches_and_never_starts(monkeypatch):
 def test_page_prepare_export_denied(monkeypatch):
     def deny(*a):
         raise tenancy.AccessDeniedError("x")
-    monkeypatch.setattr(tenancy, "export_full_analysis_report_for_organization", deny)
+    monkeypatch.setattr(tenancy, "export_bid_opportunity_assessment_for_organization", deny)
     session = {}
     assert "error" in page.prepare_export(1, "org", 2, "COMPLETE", session)
     assert not session

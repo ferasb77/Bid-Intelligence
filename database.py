@@ -973,6 +973,19 @@ def upload_analysis_report(bid_id: int, run_id: int, pdf_bytes: bytes) -> str:
     return storage_path
 
 
+def upload_json_object(storage_path: str, payload: dict) -> str:
+    """Upload a small JSON document (e.g. Buyer Intelligence research) to
+    the bid-documents bucket at a server-chosen, bid-scoped path."""
+    import json as _json
+    cleaned = (storage_path or "").strip()
+    if not cleaned or ".." in cleaned or cleaned.startswith("/"):
+        raise ValueError("invalid storage path")
+    get_client().storage.from_(BUCKET).upload(
+        cleaned, _json.dumps(payload, default=str).encode("utf-8"),
+        file_options={"content-type": "application/json", "upsert": "true"})
+    return cleaned
+
+
 def get_latest_analysis_result(bid_id: int, analysis_mode: str = "FAST") -> dict | None:
     """Convenience: the structured result of the most recent COMPLETE run
     for a bid+mode, or None if no run has ever completed."""

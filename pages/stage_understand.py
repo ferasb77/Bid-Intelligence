@@ -289,26 +289,10 @@ def _render_fast_analysis_panel(bid_id: int, rfp_docs: list, procurement_state: 
             unsafe_allow_html=True)
         _render_fast_analysis_governance_note(run, procurement_state)
         c1, c2 = st.columns(2)
-        try:
-            # Primary customer export: deterministic selection and rendering
-            # over this completed run's raw snapshot; no model call or write.
-            brief_bytes = tenancy.export_bid_intelligence_brief_for_organization(
-                bid_id, run["id"], _current_access_token_and_org()[1])
-            c1.download_button("⬇ Download Bid Intelligence Brief", data=brief_bytes,
-                               file_name=f"bid_intelligence_brief_{bid_id}.pdf",
-                               mime="application/pdf", key=f"dl_brief_{bid_id}",
-                               use_container_width=True)
-        except (ValueError, tenancy.AccessDeniedError) as exc:
-            c1.caption(f"Brief export is unavailable: {exc}")
-        if run.get("report_storage_path"):
-            appendix_bytes = tenancy.download_analysis_report_for_organization(
-                bid_id, run["id"], _current_access_token_and_org()[1]
-            )
-            if appendix_bytes:
-                c1.download_button("Download Full Intelligence Appendix", data=appendix_bytes,
-                                   file_name=f"full_intelligence_appendix_{bid_id}.pdf",
-                                   mime="application/pdf", key=f"dl_analysis_{bid_id}",
-                                   use_container_width=True)
+        # Phoenix: the FAST stage presents exactly one PDF -- the Opportunity
+        # Snapshot (document-verified, zero model calls). The former Brief
+        # and Full Intelligence Appendix downloads are retired from the UI.
+        _render_snapshot_download(c1, bid_id, run)
         if c2.button("🔁 Re-run Fast Analysis", key=f"rerun_analysis_{bid_id}", use_container_width=True):
             _start_fast_analysis(bid_id)
         # MA-2B: the deeper, separate Full Bid Intelligence (six specialists +
@@ -371,6 +355,127 @@ def _render_fast_analysis_panel(bid_id: int, rfp_docs: list, procurement_state: 
                             st.rerun()
                         except Exception as e:
                             st.error(f"Deep verification failed: {e}")
+
+
+def _snapshot_cache_key(bid_id: int, run_id: int, bid: dict | None) -> str:
+    b = bid or {}
+    return f"px_snapshot_{bid_id}_{run_id}_{hash((b.get('title'), b.get('client'), b.get('submission_deadline')))}"
+
+
+def _render_snapshot_download(container, bid_id: int, run: dict, *, label: str = "⬇ Download Opportunity Snapshot (PDF)",
+                              key_suffix: str = "") -> None:
+    """Build (once per session, per run and bid identity) and offer the FAST
+    Opportunity Snapshot PDF."""
+    _token, org = _current_access_token_and_org()
+    bid = tenancy.get_bid_authenticated(_token, bid_id) or {}
+    key = _snapshot_cache_key(bid_id, run["id"], bid)
+    out = st.session_state.get(key)
+    if out is None:
+        try:
+            out = tenancy.export_opportunity_snapshot_for_organization(bid_id, run["id"], org)
+        except Exception as exc:  # never break the page over an export
+            container.caption(f"Opportunity Snapshot is unavailable: {exc}")
+            return
+        st.session_state[key] = out
+    container.download_button(label, data=out["pdf"], file_name=out["filename"], mime="application/pdf",
+                              key=f"dl_snapshot_{bid_id}_{run['id']}{key_suffix}", use_container_width=True,
+                              type="primary" if not key_suffix else "secondary")
+
+
+def _is_account_owner() -> bool:
+    ctx = auth_session.current_auth_context()
+    return getattr(ctx, "role", None) in ("admin", "owner")
+
+
+def _render_deadline_panel(_token: str, bid_id: int, bid: dict, analysis_result: dict | None) -> None:
+    """Submission deadline: extracted from the package (addendum changes shown
+    as Updated), with a Phoenix Account Owner manual correction that is
+    flagged and never overwritten by re-analysis (bids.submission_deadline
+    is never written by FAST). The extracted value is always kept visible."""
+    import change_tracking as ct
+    from datetime import date as _date
+    r_snap = ((analysis_result or {}).get("fast_analysis_result_snapshot") or {}).get("result") or {}
+    dl = ct.effective_deadline(r_snap, []) if r_snap else {"value": None, "amended_from": None, "conflict": []}
+    manual = bid.get("submission_deadline")
+    with st.expander("🗓 Submission deadline", expanded=False):
+        if dl.get("value"):
+            line = f"**Extracted from the documents:** {dl['value']}"
+            if dl.get("doc"):
+                line += f" — _{_html.escape(str(dl['doc']))}_"
+            st.markdown(line)
+            if dl.get("amended_from"):
+                st.markdown(f'<span style="color:#C9A96E;font-weight:600;font-size:.75rem">UPDATED</span> '
+                            f'previously {dl["amended_from"]["value"]} '
+                            f'({_html.escape(str(dl["amended_from"].get("doc") or ""))})', unsafe_allow_html=True)
+            if dl.get("conflict"):
+                vals = "; ".join(f"{c['value']} ({c['doc']})" for c in dl["conflict"])
+                st.markdown(f'<span style="color:#C0392B;font-weight:600;font-size:.75rem">CONFLICT</span> '
+                            f'{_html.escape(vals)}', unsafe_allow_html=True)
+        else:
+            st.caption("No submission deadline has been extracted from the analysed documents yet.")
+        if manual and str(manual)[:10] != str(dl.get("value") or "")[:10]:
+            st.markdown(f'**In use:** {manual} <span style="color:#E67E22;font-size:.75rem;font-weight:600">'
+                        f'MANUALLY ENTERED</span>', unsafe_allow_html=True)
+        st.caption("A deadline that has passed does not close the opportunity in Phoenix and never blocks analysis.")
+        if not _is_account_owner():
+            st.caption("Only the Phoenix Account Owner can enter a deadline correction.")
+            return
+        with st.form(f"deadline_form_{bid_id}"):
+            try:
+                default = _date.fromisoformat(str(manual or dl.get("value") or "")[:10])
+            except ValueError:
+                default = None
+            new_val = st.date_input("Corrected submission deadline", value=default)
+            c1, c2 = st.columns(2)
+            save = c1.form_submit_button("Save manual deadline")
+            clear = c2.form_submit_button("Use extracted deadline")
+            if save is True and new_val:  # st.form_submit_button returns a bool
+                tenancy.update_bid_authenticated(_token, bid_id, {"submission_deadline": str(new_val)})
+                st.success("Manual deadline saved. It is flagged as manually entered and is kept on re-analysis.")
+                st.rerun()
+            if clear is True:
+                tenancy.update_bid_authenticated(_token, bid_id, {"submission_deadline": None})
+                st.success("Manual entry removed; the extracted deadline is used.")
+                st.rerun()
+
+
+def _render_update_analysis(bid_id: int, organization_id: str) -> None:
+    """Documents tab: documents added since the last completed analysis, a
+    clear Update Analysis action over the complete current package, and
+    access to earlier analysis versions (never discarded)."""
+    try:
+        state = tenancy.get_document_update_state_for_organization(bid_id, organization_id)
+    except Exception as exc:
+        st.caption(f"Analysis state unavailable: {exc}")
+        return
+    pending, runs = state["pending"], state["analysed_runs"]
+    _token, _ = _current_access_token_and_org()
+    active = tenancy.get_latest_analysis_run_authenticated(_token, bid_id, "FAST")
+    running = bool(active and active.get("status") not in ("COMPLETE", "FAILED"))
+    st.markdown("#### 🔄 Update Analysis")
+    if pending:
+        names = ", ".join(_html.escape(d["name"]) for d in pending)
+        st.markdown(f'<div class="warn-box">{len(pending)} document(s) not yet analysed: {names}</div>',
+                    unsafe_allow_html=True)
+    elif runs:
+        st.caption("All documents in the registry are included in the latest analysis.")
+    st.caption("Update Analysis re-runs FAST over the complete current package (all documents). "
+               "Earlier analyses and reports are kept below.")
+    if st.button("🔄 Update Analysis", key=f"update_analysis_{bid_id}", type="primary" if pending else "secondary",
+                 disabled=running):
+        _start_fast_analysis(bid_id)
+    if running:
+        st.caption("An analysis is in progress.")
+    earlier = runs[:-1]
+    if earlier:
+        with st.expander(f"Earlier analysis versions ({len(earlier)})"):
+            for r in reversed(earlier):
+                c1, c2 = st.columns([2, 2])
+                c1.markdown(f"FAST run {r['id']} — {str(r.get('completed_at') or r.get('created_at'))[:16].replace('T', ' ')}")
+                if c2.button("Prepare snapshot", key=f"prep_snap_{bid_id}_{r['id']}"):
+                    st.session_state[f"px_prev_{bid_id}_{r['id']}"] = True
+                if st.session_state.get(f"px_prev_{bid_id}_{r['id']}"):
+                    _render_snapshot_download(c2, bid_id, r, label="⬇ Snapshot (this version)", key_suffix="_prev")
 
 
 def _start_fast_analysis(bid_id: int):
@@ -747,9 +852,10 @@ def _resolve_canonical_deadlines(bid: dict, brief_row: dict, analysis_result: di
         if doc_meta:
             try:
                 import canonical_procurement as cp
+                import change_tracking as ct
                 merged_ident = cp.merge_identity_fields(doc_meta)
                 if not sub_deadline:
-                    sub_deadline = merged_ident.get("submission_deadline")
+                    sub_deadline = ct.effective_deadline(r_snap, []).get("value") or merged_ident.get("submission_deadline")
                 if not clar_deadline:
                     clar_deadline = merged_ident.get("clarification_deadline")
             except Exception:
@@ -851,7 +957,8 @@ def _render_add_documents(bid_id: int, organization_id: str) -> None:
             st.markdown(f'<div class="warn-box">⚠️ {_html.escape(str(w))}</div>', unsafe_allow_html=True)
         for fn, fb in pkg_files:
             tenancy.upload_document_for_organization(bid_id, organization_id, fn, fb, doc_type="RFP / Source")
-        st.success(f"{len(pkg_files)} document(s) added. Re-run Fast Analysis on the Overview tab to include them.")
+        st.success(f"{len(pkg_files)} document(s) added. No analysis was started -- click Update Analysis "
+                   f"to analyse the complete package.")
         st.rerun()
 
 
@@ -908,6 +1015,7 @@ def page_understand(bid_id: int):
     # ── OVERVIEW ──────────────────────────────────────────────────────────────
     with tab_overview:
         _render_opportunity_details_editor(_token, bid_id, bid)
+        _render_deadline_panel(_token, bid_id, bid, analysis_result)
         # ── TOP KPI SUMMARY CARDS ──────────────────────────────────────────────────
         sub_deadline, clar_deadline = _resolve_canonical_deadlines(bid, brief_row, analysis_result)
         sub_days = days_until(sub_deadline)
@@ -915,7 +1023,13 @@ def page_understand(bid_id: int):
         val_str = f"CAD {bid['value_cad']:,.0f}" if bid.get("value_cad") else "Not stated"
 
         k1, k2, k3, k4 = st.columns(4)
-        k1.markdown(metric_card("Submission Deadline", sub_deadline or "—", days_label(sub_days) if sub_days is not None else "Date unconfirmed"), unsafe_allow_html=True)
+        if sub_days is not None and sub_days < 0:
+            sub_note = f"Stated date passed {abs(sub_days)}d ago"
+        else:
+            sub_note = days_label(sub_days) if sub_days is not None else "Date unconfirmed"
+        if bid.get("submission_deadline"):
+            sub_note += " · manually entered"
+        k1.markdown(metric_card("Submission Deadline", sub_deadline or "—", sub_note), unsafe_allow_html=True)
         k2.markdown(metric_card("Enquiry Deadline", clar_deadline or "—", days_label(clar_days) if clar_days is not None else "Date unconfirmed"), unsafe_allow_html=True)
         k3.markdown(metric_card("Est. Value / Term", val_str, contract_term[:32]), unsafe_allow_html=True)
         k4.markdown(metric_card("Procurement Model", proc_model[:22], f"Lead: {bid.get('owner') or 'Unassigned'}"), unsafe_allow_html=True)
@@ -1335,6 +1449,7 @@ def page_understand(bid_id: int):
         for d in docs:
             st.markdown(f"📄 **{d['name']}** ({d.get('doc_type','Document')}) — v{d.get('version',1)} [{d.get('status','Expected')}]")
         _render_add_documents(bid_id, _org_id)
+        _render_update_analysis(bid_id, _org_id)
         # Governed bids keep the buyer-update (addenda) review workflow here.
         _render_procurement_governance_panel(bid_id, _org_id, docs)
 

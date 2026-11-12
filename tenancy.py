@@ -362,9 +362,19 @@ def start_full_analysis_for_organization(
     can never be reused across bids or organizations."""
     require_bid_access(bid_id, organization_id)
     import full_analysis_service
-    return full_analysis_service.start_full_analysis(
+    response = full_analysis_service.start_full_analysis(
         bid_id, api_key, source_run_id=source_run_id,
         created_by_user_id=created_by_user_id, retry=retry, execution=execution)
+    # Buyer Intelligence: bounded web research alongside a newly created FULL
+    # run, in its own background thread -- it never delays or alters FULL.
+    try:
+        run = (response or {}).get("run") or {}
+        if (response or {}).get("outcome") == "CREATED" and run.get("id") and execution == "background":
+            import buyer_research
+            buyer_research.start_background(bid_id, int(run["id"]), api_key)
+    except Exception:
+        pass
+    return response
 
 
 def get_full_analysis_status_for_organization(
@@ -427,6 +437,55 @@ def export_full_analysis_report_for_organization(
         identity_facts=snapshot.get("SNAPSHOT_FACTS"),
         canonical_tables={k: snapshot.get(k) for k in ("EVAL_WEIGHTS", "EVAL_MINIMUM_SCORES", "KEY_DATES")})
     return {"pdf": out["pdf"], "filename": out["filename"]}
+
+
+def export_opportunity_snapshot_for_organization(bid_id: int, run_id: int, organization_id: str) -> dict:
+    """FAST "Opportunity Snapshot" PDF for one COMPLETE FAST run. Ownership
+    of bid_id and run_id's membership of the bid are checked before any
+    privileged read. Read-only, zero model calls. {"pdf", "filename"}."""
+    require_bid_access(bid_id, organization_id)
+    run = db.get_analysis_run(run_id)
+    if not run or int(run.get("bid_id", -1)) != int(bid_id):
+        raise AccessDeniedError(f"run {run_id} does not belong to bid {bid_id}")
+    import phoenix_report_service
+    return phoenix_report_service.snapshot_pdf(bid_id, run_id)
+
+
+def export_bid_opportunity_assessment_for_organization(bid_id: int, organization_id: str, run_id: int) -> dict:
+    """FULL "Bid Opportunity Assessment" PDF for one FULL run (COMPLETE or
+    PARTIAL). Same checks as the Full Analysis result view; read-only."""
+    require_bid_access(bid_id, organization_id)
+    run = db.get_analysis_run(run_id)
+    if not run or int(run.get("bid_id", -1)) != int(bid_id) or run.get("analysis_mode") != "FULL":
+        raise AccessDeniedError(f"run {run_id} is not a Full Analysis run of bid {bid_id}")
+    import phoenix_report_service
+    return phoenix_report_service.assessment_pdf(bid_id, run_id)
+
+
+def get_buyer_research_for_organization(bid_id: int, organization_id: str, run_id: int) -> dict | None:
+    require_bid_access(bid_id, organization_id)
+    import buyer_research
+    return buyer_research.load(bid_id, run_id)
+
+
+def start_buyer_research_for_organization(bid_id: int, organization_id: str, run_id: int,
+                                          api_key: str | None) -> bool:
+    """Bounded, background Buyer Intelligence web research for a FULL run.
+    Never blocks or alters the FULL analysis itself."""
+    require_bid_access(bid_id, organization_id)
+    run = db.get_analysis_run(run_id)
+    if not run or int(run.get("bid_id", -1)) != int(bid_id) or run.get("analysis_mode") != "FULL":
+        raise AccessDeniedError(f"run {run_id} is not a Full Analysis run of bid {bid_id}")
+    import buyer_research
+    return buyer_research.start_background(bid_id, run_id, api_key)
+
+
+def get_document_update_state_for_organization(bid_id: int, organization_id: str) -> dict:
+    """{"pending": [document rows not yet included in a completed FAST
+    analysis], "analysed_runs": [COMPLETE FAST runs, oldest first]}."""
+    require_bid_access(bid_id, organization_id)
+    import phoenix_report_service as prs
+    return {"pending": prs.pending_documents(bid_id), "analysed_runs": prs.fast_runs(bid_id)}
 
 
 def mark_full_analysis_run_stuck_for_organization(

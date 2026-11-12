@@ -131,20 +131,24 @@ def live_frame(bid_id: int, organization_id: str, session, run_id: int | None = 
     return {"view": view, "status": status, "rows": rows, "packets": packets, "error": None}
 
 
-def prepare_export(bid_id: int, organization_id: str, run_id: int, run_status: str | None, session) -> dict:
-    """MA-2C: the persisted run as a PDF. {"pdf", "filename"} or {"error"}.
+def prepare_export(bid_id: int, organization_id: str, run_id: int, run_status: str | None, session,
+                   variant: str = "") -> dict:
+    """Phoenix: the FULL "Bid Opportunity Assessment" PDF for the persisted
+    run. {"pdf", "filename"} or {"error"}. `variant` (the Buyer Intelligence
+    research state) is part of the cache key so the report is rebuilt once
+    research completes.
     Only for a terminal COMPLETE/PARTIAL run; goes through tenancy's
     authorized, read-only export wrapper (never a model, never a rerun).
     The rendered bytes are cached per run in this browser session, so
     repeated downloads do not even re-render."""
     if run_status not in EXPORTABLE:
         return {"error": "The report can be exported once the analysis is complete or partial."}
-    key = _EXPORT_CACHE.format(run=run_id)
+    key = _EXPORT_CACHE.format(run=run_id) + (f"_{variant}" if variant else "")
     cached = session.get(key)
     if cached:
         return cached
     try:
-        out = tenancy.export_full_analysis_report_for_organization(bid_id, organization_id, run_id)
+        out = tenancy.export_bid_opportunity_assessment_for_organization(bid_id, organization_id, run_id)
     except tenancy.AccessDeniedError:
         return {"error": "You do not have access to that analysis."}
     except Exception as exc:
@@ -260,24 +264,52 @@ def _render_section(title: str, blurb: str, findings: list, primary: str | None,
                             unsafe_allow_html=True)
 
 
+def _render_buyer_research(bid_id: int, run_id: int) -> str:
+    """Buyer Intelligence (bounded web research) status for this FULL run;
+    returns the research state used as the report cache variant."""
+    _, org, _ = _ctx()
+    try:
+        research = tenancy.get_buyer_research_for_organization(bid_id, org, run_id)
+    except Exception:
+        research = None
+    state = (research or {}).get("status") or "NONE"
+    if state == "COMPLETE":
+        st.caption(f"Buyer Intelligence: {len(research.get('items') or [])} verified external source(s) "
+                   f"included in the assessment.")
+    elif state == "RUNNING":
+        st.caption("Buyer Intelligence web research is running in the background (about 1–2 minutes). "
+                   "The assessment can be downloaded now and re-exported once it completes.")
+    else:
+        note = {"FAILED": "Buyer Intelligence research did not complete.",
+                "SKIPPED": "Buyer Intelligence research needs the issuing organization (Opportunity details)."
+                }.get(state, "Buyer Intelligence web research has not been run for this analysis.")
+        c1, c2 = st.columns([3, 1.4])
+        c1.caption(note)
+        if c2.button("Run buyer research", key=f"fa_research_{bid_id}_{run_id}"):
+            key = _api_key()
+            if key is None:
+                st.error("Add your Anthropic API key first (see New Bid page or Settings).")
+            else:
+                try:
+                    tenancy.start_buyer_research_for_organization(bid_id, org, run_id, key)
+                except Exception as exc:
+                    st.error(f"Could not start buyer research: {exc}")
+                st.rerun()
+    return f"{state}_{(research or {}).get('researched_at') or ''}"
+
+
 def _render_export(bid_id: int, status: dict) -> None:
-    """Download the persisted result as the Full Intelligence PDF report."""
+    """The FULL stage presents one PDF: the Bid Opportunity Assessment."""
     run_id, run_status = status.get("run_id"), status.get("status")
     if run_status not in EXPORTABLE:
         return
     _, org, _ = _ctx()
-    key = _EXPORT_CACHE.format(run=run_id)
-    if not st.session_state.get(key):
-        if st.button("Export Full Intelligence Report (PDF)", key=f"fa_export_{bid_id}_{run_id}"):
-            out = prepare_export(bid_id, org, run_id, run_status, st.session_state)
-            if out.get("error"):
-                st.error(out["error"])
-                return
-        else:
-            st.caption("Builds a PDF from this saved result. It does not re-run the analysis.")
-            return
-    out = st.session_state[key]
-    st.download_button("Download Full Intelligence Report (PDF)", data=out["pdf"], file_name=out["filename"],
+    variant = _render_buyer_research(bid_id, run_id)
+    out = prepare_export(bid_id, org, run_id, run_status, st.session_state, variant)
+    if out.get("error"):
+        st.error(out["error"])
+        return
+    st.download_button("⬇ Download Bid Opportunity Assessment (PDF)", data=out["pdf"], file_name=out["filename"],
                        mime="application/pdf", key=f"fa_dl_{bid_id}_{run_id}", type="primary")
 
 

@@ -1,0 +1,149 @@
+[[SOURCE: tor_for_gil_trainer_-design_thinking.pdf | PAGE: 1]]
+Terms of Reference (ToR)
+Request for Proposal (RFQ)
+
+
+Subject:            Trainer for Design Thinking
+Reference:       IL/GIL2026/PR0018- Trainer for Design Thinking
+Project Title:   GIL-Generation of Innovation Leaders
+Project Code:  GIL LEBA_PCA2023612_PD20261705
+
+ABOUT INJAZ LEBANON
+INJAZ Lebanon is a non-profit organization, an affiliate of Junior Achievement (JA) Worldwide, with a mission to equip youth with
+the skills and mindset they need to become entrepreneurs and business leaders stimulating their communities. It is also a member
+of INJAZ Al-Arab, a regional network of 14 countries across the MENA region. INJAZ Lebanon delivers programs in partnership with
+the business sector, focusing on entrepreneurship, work readiness, and financial literacy.
+ABOUT GIL
+The GIL 2026-2028 program is designed to empower youth through a structured entrepreneurial journey. From sparking initial
+interest in social innovation to providing full incubation for market-ready startups, the program bridges the gap between raw
+ideas and sustainable businesses. The project operates across multiple locations, including Tripoli, Akkar, and Bekaa.
+Overview
+INJAZ Lebanon is seeking a highly skilled Design Thinking Trainer to lead a 6-session intensive track for youth aged 18–28. The
+trainer will guide participants through the journey of "Problem-First" thinking, moving from initial ideation to a validated business
+model and a low-fidelity prototype. The objective is to equip youth with the tools to solve real-world pain points through
+structured innovation and market validation.
+Scope of Work
+The Design Thinking Trainer shall be responsible for the following:
+A. Advanced Training Delivery & Mentorship
+-
+Curriculum Facilitation: Execute the 6-session Design Thinking agenda, focusing on the Value Proposition Canvas
+(VPC) and the full 9-block Business Model Canvas (BMC).
+-
+Methodological Instruction: Teach specialized techniques including "The Mom Test" for unbiased validation,
+Market Sizing (TAM/SAM/SOM), and the "10-slide rule" for storytelling.
+-
+Prototyping Supervision: Lead the "Prototyping Lab," helping students create Low-Fidelity MVPs (paper
+wireframes, storyboards, or physical mock-ups).
+-
+Active Feedback: Provide continuous, critical feedback during "Daily Wrap-Up" sessions to ensure each team’s
+foundation is stable before moving to the next phase.
+B. Documentation
+-
+Output Collection: Ensure every team completes and submits the mandatory deliverables for each session (e.g.,
+Empathy Maps, Interview Scripts, Operational Flowcharts).
+-
+Reporting: Submit a final track report summarizing team progress, the quality of the prototypes developed, and
+the readiness of each startup for the pitching jury.
+
+[[SOURCE: tor_for_gil_trainer_-design_thinking.pdf | PAGE: 2]]
+Detailed Operational Workflow & Timeline
+Phase 1: Pre-Training & Validation
+-
+Material Readiness: Prepare all specialized templates (VPC, Empathy Maps, BMC, Stakeholder Maps).
+-
+Candidate Review: Collaborate with the Outreach Officer to ensure participants have the creative capacity and
+commitment for a 6-session technical track.
+Phase 2: Execution (The 6-Session Journey)
+-
+Sessions 1-2 (The Problem & The User): Facilitate the shift from "Product-First" to "Problem-First." Guide the
+creation of User Personas and Validation Interview Scripts.
+-
+Sessions 3-4 (The Model & Operations): Help groups map the Customer Journey, define Revenue Streams, and
+draw Operational Flowcharts to illustrate day-to-day business logic.
+-
+Session 5 (The MVP): Oversee the "Prototyping Lab." Ensure the cost structure and profit logic align with the value
+proposition.
+-
+Session 6 (The Pitch): Conduct the "Pitching Lab," focusing on body language, visual storytelling, and handling Q&A
+from a mock jury.
+Phase 3: Final Submission & Reconciliation
+-
+Deliverable Audit: Verify that each team has a 5-minute Pitch Deck and a completed BMC ready for jury
+submission.
+-
+Financial Handover: Submit all trainer-related documentation (attendance, reports, and invoices) to the INJAZ
+team within 5 days of track completion.
+Deliverables
+The Trainer must ensure the delivery of the following from participants:
+1. Validated Problem Statement & VPC (Session 1).
+2. Customer Personas & 10-Question Validation Script (Session 2).
+3. Mapped Customer Journey & Revenue Model (Session 3).
+4. Operational Flowchart & Stakeholder Map (Session 4).
+5. Low-Fidelity Prototype (MVP) & Profit Logic (Session 5).
+6. Final 5-minute Pitch Deck & Stable BMC (Session 6).
+Qualifications
+The ideal candidate should have:
+-
+Design Thinking Expertise: Deep experience in User-Centric Design, Lean Startup, and Business Model Generation.
+-
+Facilitation Skills: Ability to manage "Hands-on" sessions and guide youth.
+-
+Analytical Mindset: Proficiency in teaching financial logic (Profit Logic) and market sizing (TAM/SAM/SOM).
+-
+Mentorship Experience: Proven track record of providing constructive feedback that pivots or strengthens startup
+ideas.
+-
+Communication: Strong storytelling skills to teach pitching and public speaking.
+
+General Requirements
+-
+Coordination with the INJAZ Lebanon Project Coordinator and M&E team.
+-
+Maintenance of a high standard of safety, inclusivity, and PSEA compliance.
+-
+Adherence to GIL and INJAZ Lebanon branding guidelines for all presentation materials.
+
+[[SOURCE: tor_for_gil_trainer_-design_thinking.pdf | PAGE: 3]]
+SUBMISSION REQUIREMENTS
+Applicants must submit the following documents:
+1. Updated CV - Highlighting relevant experience
+2. Technical Proposal (Brief)
+ - Methods for engaging participants.
+ - Previous experience with similar trainings, showing the field of expertise, soft skills, knowledge and technical literacy.
+
+3. Quotation
+ - The rate per training hour, inclusive of all costs (preparation, materials, transportation, etc.).
+- Total estimated cost based on 5 days × 3 hours per day.
+
+4. Availability Statement
+- Confirming availability to deliver the five (5)-days training
+
+EVALUATION CRITERIA
+Proposals will be evaluated based on a combined technical and financial scoring system as follows:
+
+1. Technical Evaluation – 60% The technical score will assess:
+Expertise: Demonstrated proficiency in training youth on Lean Startup frameworks or enterprise development. (25%)
+Knowledge: Strong grasp of the Sustainable Development Goals (SDGs) and the local business landscape. (15%)
+Soft Skills: Strong storytelling and motivational capacity to engage and inspire young learners. (10%)
+Technical Literacy: Competence in utilizing digital tools, reporting platforms, and educational media. (10%)
+
+2. Financial Evaluation – 40% The financial score will assess:
+ Proposed Rate per Training Hour (40%) - Competitiveness and cost-effectiveness of the hourly rate.
+
+PAYMENT TERMS
+
+Payment shall be made by wire transfer or through Payment Order/ Telegraphic Transfer/Over the counter payment after
+submission of an appropriate and acceptable original invoice/timesheet with all the request to INJAZ Lebanon.
+
+INJAZ Lebanon operates through bank Audi and won't handle any transfer or withdrawal charges (To be charged on the service
+provider.
+
+TO APPLY:
+
+Please submit the following documents via email to applicant.one@example.org  and applicant.two@example.org  no later than
+October 30, 2026.  Please mention in the subject line: IL/GIL2026/PR0018- Trainer for Design Thinking.
+
+Proposals that are received by INJAZ Lebanon after the deadline indicated above, for whatever reason, shall not be considered
+for evaluation.
+
+Thank you
