@@ -285,7 +285,7 @@ def _render_fast_analysis_panel(bid_id: int, rfp_docs: list, procurement_state: 
         st.markdown(
             f'<div class="info-box">✅ Fast Analysis complete'
             f'{f" in {duration:.0f}s" if isinstance(duration, (int, float)) else ""} '
-            f'— see the <strong>UNDERSTAND</strong> stage for the intelligence report.</div>',
+            f'</div>',
             unsafe_allow_html=True)
         _render_fast_analysis_governance_note(run, procurement_state)
         c1, c2 = st.columns(2)
@@ -838,6 +838,23 @@ def _render_opportunity_details_editor(_token: str, bid_id: int, bid: dict) -> N
                     st.rerun()
 
 
+def _render_add_documents(bid_id: int, organization_id: str) -> None:
+    """Documents tab: add more procurement documents to this bid's registry
+    (same upload path and ZIP unpacking as New Bid Ingestion)."""
+    from extractor import unpack_procurement_package
+    up_files = st.file_uploader(
+        "Add documents (PDF, DOCX, XLSX, XLS, CSV, TXT, ZIP)", accept_multiple_files=True,
+        type=["pdf", "docx", "xlsx", "xls", "csv", "txt", "zip"], key=f"add_docs_{bid_id}")
+    if up_files and st.button("⬆ Add to document registry", key=f"add_docs_btn_{bid_id}"):
+        pkg_files, warnings = unpack_procurement_package([(f.name, f.read()) for f in up_files])
+        for w in warnings:
+            st.markdown(f'<div class="warn-box">⚠️ {_html.escape(str(w))}</div>', unsafe_allow_html=True)
+        for fn, fb in pkg_files:
+            tenancy.upload_document_for_organization(bid_id, organization_id, fn, fb, doc_type="RFP / Source")
+        st.success(f"{len(pkg_files)} document(s) added. Re-run Fast Analysis on the Overview tab to include them.")
+        st.rerun()
+
+
 def page_understand(bid_id: int):
     _token, _org_id = _current_access_token_and_org()
     bid = tenancy.get_bid_authenticated(_token, bid_id)
@@ -880,182 +897,170 @@ def page_understand(bid_id: int):
     c2.markdown(f'<div style="text-align:right;font-size:.75rem;color:{sc};margin-top:.3rem">● {bid.get("sensitivity","Standard")}</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
+    procurement_state = tenancy.get_procurement_state_for_organization(bid_id, _org_id)
+    oi = _ensure_dict(analysis_result.get("structured_intelligence")) if analysis_result else {}
 
-    _render_opportunity_details_editor(_token, bid_id, bid)
+    # Phoenix Beta: UNDERSTAND is organised in five tabs. Every section is an
+    # existing section regrouped -- no data, analysis or report logic changes.
+    tab_overview, tab_reqs, tab_comm, tab_sources, tab_docs = st.tabs([
+        "Overview", "Requirements", "Commercial & Risks", "Sources", "Documents"])
 
-    # ── PROCUREMENT REVISION & ADDENDUM GOVERNANCE (migration 010) ───────────
-    # Rendered before everything else on this page: whether procurement
-    # truth is governed shapes how much trust the rest of the page's
-    # intelligence deserves (an ungoverned bid must never visually imply
-    # its revision 1 is verified truth).
-    procurement_state = _render_procurement_governance_panel(bid_id, _org_id, docs)
-    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+    # ── OVERVIEW ──────────────────────────────────────────────────────────────
+    with tab_overview:
+        _render_opportunity_details_editor(_token, bid_id, bid)
+        # ── TOP KPI SUMMARY CARDS ──────────────────────────────────────────────────
+        sub_deadline, clar_deadline = _resolve_canonical_deadlines(bid, brief_row, analysis_result)
+        sub_days = days_until(sub_deadline)
+        clar_days = days_until(clar_deadline)
+        val_str = f"CAD {bid['value_cad']:,.0f}" if bid.get("value_cad") else "Not stated"
 
-    # ── TOP KPI SUMMARY CARDS ──────────────────────────────────────────────────
-    sub_deadline, clar_deadline = _resolve_canonical_deadlines(bid, brief_row, analysis_result)
-    sub_days = days_until(sub_deadline)
-    clar_days = days_until(clar_deadline)
-    val_str = f"CAD {bid['value_cad']:,.0f}" if bid.get("value_cad") else "Not stated"
-
-    k1, k2, k3, k4 = st.columns(4)
-    k1.markdown(metric_card("Submission Deadline", sub_deadline or "—", days_label(sub_days) if sub_days is not None else "Date unconfirmed"), unsafe_allow_html=True)
-    k2.markdown(metric_card("Enquiry Deadline", clar_deadline or "—", days_label(clar_days) if clar_days is not None else "Date unconfirmed"), unsafe_allow_html=True)
-    k3.markdown(metric_card("Est. Value / Term", val_str, contract_term[:32]), unsafe_allow_html=True)
-    k4.markdown(metric_card("Procurement Model", proc_model[:22], f"Lead: {bid.get('owner') or 'Unassigned'}"), unsafe_allow_html=True)
-    st.markdown("")
-
-    # ── FAST ANALYSIS: START / LIVE PROGRESS ──────────────────────────────────
-    # Phase 3 commissioning fix: this is the only reachable place in the
-    # product a user can actually start/observe Fast Analysis (see the panel
-    # functions above for why). Runs before the completed-intelligence
-    # section further down, which continues to render only once a run is
-    # COMPLETE.
-    rfp_docs = [d for d in docs if d.get("doc_type") == "RFP / Source"]
-    _render_fast_analysis_panel(bid_id, rfp_docs, procurement_state)
-    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-
-    # ── SECTION A0: CROSS-DOCUMENT CONFLICTS & DISCREPANCIES ──────────────────
-    document_conflicts = _ensure_list(brief_row.get("document_conflicts"))
-    if document_conflicts:
-        st.markdown("### ⚠️ Document Discrepancies & Cross-Document Conflicts")
+        k1, k2, k3, k4 = st.columns(4)
+        k1.markdown(metric_card("Submission Deadline", sub_deadline or "—", days_label(sub_days) if sub_days is not None else "Date unconfirmed"), unsafe_allow_html=True)
+        k2.markdown(metric_card("Enquiry Deadline", clar_deadline or "—", days_label(clar_days) if clar_days is not None else "Date unconfirmed"), unsafe_allow_html=True)
+        k3.markdown(metric_card("Est. Value / Term", val_str, contract_term[:32]), unsafe_allow_html=True)
+        k4.markdown(metric_card("Procurement Model", proc_model[:22], f"Lead: {bid.get('owner') or 'Unassigned'}"), unsafe_allow_html=True)
+        # ── SECTION A: EXECUTIVE SUMMARY ──────────────────────────────────────────
+        st.markdown("#### 💡 Executive Synthesis")
         st.markdown(
-            '<div class="warn-box">'
-            '<strong>Discrepancies Detected Across Procurement Package:</strong> Contradictions or differing instructions were identified between source documents. '
-            'Review these discrepancies and submit formal clarification questions before the enquiry deadline.'
-            '</div>',
+            f'<div style="background:#111118;border:1px solid #292832;border-left:4px solid #C9A96E;'
+            f'border-radius:0 6px 6px 0;padding:1.1rem 1.4rem;font-size:.95rem;line-height:1.6;color:#EDEAE3">'
+            f'{exec_summary}'
+            f'</div>',
             unsafe_allow_html=True
         )
-        for dc in document_conflicts:
-            s_a = dc.get("source_a", {}) if isinstance(dc.get("source_a"), dict) else {"doc": "Source A", "text": str(dc.get("source_a",""))}
-            s_b = dc.get("source_b", {}) if isinstance(dc.get("source_b"), dict) else {"doc": "Source B", "text": str(dc.get("source_b",""))}
-            classification = dc.get("classification", "TRUE_CONFLICT" if dc.get("conflict_type") else "REVIEW_ITEM")
-            is_review = classification == "REVIEW_ITEM"
-            badge_col = "#E67E22" if is_review else "#C0392B"
-            badge_label = "REVIEW ITEM" if is_review else "TRUE CONFLICT"
-            
+        # ── SECTION A0: CROSS-DOCUMENT CONFLICTS & DISCREPANCIES ──────────────────
+        document_conflicts = _ensure_list(brief_row.get("document_conflicts"))
+        if document_conflicts:
+            st.markdown("#### ⚠️ Document Discrepancies")
             st.markdown(
-                f'<div style="background:#1A0F00;border:1px solid #3A2A00;border-left:4px solid {badge_col};'
-                f'border-radius:0 4px 4px 0;padding:.7rem 1.1rem;margin:.4rem 0">'
-                f'<span style="color:{badge_col};font-weight:700;font-size:.76rem">[{badge_label}]</span> '
-                f'<span style="color:#A9A69D;font-size:.74rem">[{dc.get("conflict_type","CONFLICT")}]</span> '
-                f'<strong>{dc.get("topic","Discrepancy")}</strong>'
-                f'<div style="font-size:.8rem;color:#EDEAE3;margin-top:.3rem">'
-                f'<strong>Source A ({s_a.get("doc","Doc A")}):</strong> {s_a.get("text","")}<br>'
-                f'<strong>Source B ({s_b.get("doc","Doc B")}):</strong> {s_b.get("text","")}'
-                f'</div>'
-                f'{"<div style=font-size:.76rem;color:#C9A96E;margin-top:.2rem><strong>Reason:</strong> " + dc.get("reason","") + "</div>" if dc.get("reason") else ""}'
-                f'<div style="font-size:.76rem;color:#E67E22;margin-top:.3rem"><strong>Assessment:</strong> {dc.get("assessment","")}</div>'
-                f'<div style="font-size:.76rem;color:#27AE60;margin-top:.2rem">💡 <strong>Action:</strong> {dc.get("recommended_action","Submit clarification question")}</div>'
-                f'</div>',
+                '<div class="warn-box">'
+                '<strong>Discrepancies Detected Across Procurement Package:</strong> Contradictions or differing instructions were identified between source documents. '
+                'Review these discrepancies and submit formal clarification questions before the enquiry deadline.'
+                '</div>',
                 unsafe_allow_html=True
             )
-        st.markdown("")
+            for dc in document_conflicts:
+                s_a = dc.get("source_a", {}) if isinstance(dc.get("source_a"), dict) else {"doc": "Source A", "text": str(dc.get("source_a",""))}
+                s_b = dc.get("source_b", {}) if isinstance(dc.get("source_b"), dict) else {"doc": "Source B", "text": str(dc.get("source_b",""))}
+                classification = dc.get("classification", "TRUE_CONFLICT" if dc.get("conflict_type") else "REVIEW_ITEM")
+                is_review = classification == "REVIEW_ITEM"
+                badge_col = "#E67E22" if is_review else "#C0392B"
+                badge_label = "REVIEW ITEM" if is_review else "TRUE CONFLICT"
 
-    # ── SECTION A: EXECUTIVE SUMMARY ──────────────────────────────────────────
-    st.markdown("### 💡 Executive Synthesis: What Is the Buyer Procuring?")
-    st.markdown(
-        f'<div style="background:#111118;border:1px solid #292832;border-left:4px solid #C9A96E;'
-        f'border-radius:0 6px 6px 0;padding:1.1rem 1.4rem;font-size:.95rem;line-height:1.6;color:#EDEAE3">'
-        f'{exec_summary}'
-        f'</div>',
-        unsafe_allow_html=True
-    )
-    st.markdown("")
-
-    # ── SECTION B: SCOPE & DELIVERABLES ───────────────────────────────────────
-    c_scope, c_deliv = st.columns(2)
-    with c_scope:
-        st.markdown("### 🎯 What They Want (Scope)")
-        if scope_cats:
-            for s in scope_cats:
                 st.markdown(
-                    f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;'
-                    f'padding:.6rem .9rem;margin:.3rem 0;font-size:.85rem">'
-                    f'<span style="color:#C9A96E;font-weight:600">▪</span> {s}</div>',
+                    f'<div style="background:#1A0F00;border:1px solid #3A2A00;border-left:4px solid {badge_col};'
+                    f'border-radius:0 4px 4px 0;padding:.7rem 1.1rem;margin:.4rem 0">'
+                    f'<span style="color:{badge_col};font-weight:700;font-size:.76rem">[{badge_label}]</span> '
+                    f'<span style="color:#A9A69D;font-size:.74rem">[{dc.get("conflict_type","CONFLICT")}]</span> '
+                    f'<strong>{dc.get("topic","Discrepancy")}</strong>'
+                    f'<div style="font-size:.8rem;color:#EDEAE3;margin-top:.3rem">'
+                    f'<strong>Source A ({s_a.get("doc","Doc A")}):</strong> {s_a.get("text","")}<br>'
+                    f'<strong>Source B ({s_b.get("doc","Doc B")}):</strong> {s_b.get("text","")}'
+                    f'</div>'
+                    f'{"<div style=font-size:.76rem;color:#C9A96E;margin-top:.2rem><strong>Reason:</strong> " + dc.get("reason","") + "</div>" if dc.get("reason") else ""}'
+                    f'<div style="font-size:.76rem;color:#E67E22;margin-top:.3rem"><strong>Assessment:</strong> {dc.get("assessment","")}</div>'
+                    f'<div style="font-size:.76rem;color:#27AE60;margin-top:.2rem">💡 <strong>Action:</strong> {dc.get("recommended_action","Submit clarification question")}</div>'
+                    f'</div>',
                     unsafe_allow_html=True
                 )
-        else:
-            st.markdown('<div class="info-box">Scope details extracted from Statement of Work.</div>', unsafe_allow_html=True)
-
-    with c_deliv:
-        st.markdown("### 📦 Main Deliverables (Outputs)")
-        if deliverables:
-            for d in deliverables:
-                cat_tag = f'<span style="font-size:.68rem;color:#C9A96E;margin-left:.4rem">[{d.get("category","Core")}]</span>' if d.get("category") else ""
-                evidence_state, evidence = _evidence_label(d)
+        # FAST status, report downloads and access to Full Bid Intelligence
+        rfp_docs = [d for d in docs if d.get("doc_type") == "RFP / Source"]
+        _render_fast_analysis_panel(bid_id, rfp_docs, procurement_state)
+        if key_dates:
+            st.markdown("#### 📅 Key Procurement Dates")
+            for kd in key_dates:
                 st.markdown(
-                    f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;'
-                    f'padding:.6rem .9rem;margin:.3rem 0;font-size:.85rem">'
-                    f'<strong>{d.get("title","Deliverable")}</strong>{cat_tag}'
-                    f'{"<br><span style=font-size:.76rem;color:#A9A69D>" + d.get("description","") + "</span>" if d.get("description") else ""}'
-                    f'<div style="font-size:.7rem;color:#6E6C66;margin-top:.2rem">SOURCE / EVIDENCE: {evidence_state}{" · " + evidence if evidence else ""}</div>'
+                    f'<div style="display:flex;justify-content:space-between;background:#111118;'
+                    f'border:1px solid #292832;border-radius:4px;padding:.5rem .8rem;margin:.3rem 0;font-size:.82rem">'
+                    f'<span>{kd.get("milestone","")}</span>'
+                    f'<strong style="color:#C9A96E">{kd.get("date","")}</strong>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+
+    # ── REQUIREMENTS ──────────────────────────────────────────────────────────
+    with tab_reqs:
+        # ── SECTION B: SCOPE & DELIVERABLES ───────────────────────────────────────
+        c_scope, c_deliv = st.columns(2)
+        with c_scope:
+            st.markdown("#### 🎯 Scope")
+            if scope_cats:
+                for s in scope_cats:
+                    st.markdown(
+                        f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;'
+                        f'padding:.6rem .9rem;margin:.3rem 0;font-size:.85rem">'
+                        f'<span style="color:#C9A96E;font-weight:600">▪</span> {s}</div>',
+                        unsafe_allow_html=True
+                    )
+            else:
+                st.markdown('<div class="empty-state">No scope categories identified.</div>', unsafe_allow_html=True)
+
+        with c_deliv:
+            st.markdown("#### 📦 Deliverables")
+            if deliverables:
+                for d in deliverables:
+                    cat_tag = f'<span style="font-size:.68rem;color:#C9A96E;margin-left:.4rem">[{d.get("category","Core")}]</span>' if d.get("category") else ""
+                    evidence_state, evidence = _evidence_label(d)
+                    st.markdown(
+                        f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;'
+                        f'padding:.6rem .9rem;margin:.3rem 0;font-size:.85rem">'
+                        f'<strong>{d.get("title","Deliverable")}</strong>{cat_tag}'
+                        f'{"<br><span style=font-size:.76rem;color:#A9A69D>" + d.get("description","") + "</span>" if d.get("description") else ""}'
+                        f'<div style="font-size:.7rem;color:#6E6C66;margin-top:.2rem">SOURCE / EVIDENCE: {evidence_state}{" · " + evidence if evidence else ""}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+            else:
+                st.markdown('<div class="empty-state">No deliverables identified.</div>', unsafe_allow_html=True)
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        # ── SECTION C: CONDITIONS TO QUALIFY (HARD GATES) ─────────────────────────
+        st.markdown("#### ⚖️ Mandatory Qualification Gates")
+        st.caption("Pass/fail conditions — any unmet mandatory gate disqualifies the bid.")
+
+        from components.ui import qual_badge, evidence_badge
+        from requirement_semantics import select_qualification_requirements, normalize_requirement_identity_text
+
+        # Match authoritative brief qualification gates to persisted requirements
+        matched_qual_reqs = select_qualification_requirements(reqs, qual_gates)
+
+        if matched_qual_reqs:
+            for idx, r in enumerate(matched_qual_reqs, 1):
+                ref_str = f' <span style="font-size:.72rem;color:#6E6C66">({r.get("rfso_ref","Gate")})</span>' if r.get("rfso_ref") else ""
+                q_status = r.get("qual_status", "UNKNOWN")
+                e_status = r.get("evidence_status", "MISSING")
+                st.markdown(
+                    f'<div style="background:#1A0F00;border:1px solid #3A2A00;border-left:3px solid #E67E22;'
+                    f'border-radius:0 4px 4px 0;padding:.6rem 1rem;margin:.35rem 0;font-size:.85rem">'
+                    f'<div style="display:flex;justify-content:space-between;align-items:center">'
+                    f'<span style="color:#E67E22;font-weight:700">GATE #{idx} [{r.get("req_id","M")}]</span>'
+                    f'<span>{qual_badge(q_status)} {evidence_badge(e_status)}</span>'
+                    f'</div>'
+                    f'<div style="margin-top:.2rem;color:#EDEAE3">{r.get("description","")}{ref_str}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+        elif qual_gates:
+            # Gates exist in brief but did not match database rows (e.g. before requirement persistence)
+            for idx, g in enumerate(qual_gates, 1):
+                ref_str = f' <span style="font-size:.72rem;color:#6E6C66">({g.get("rfp_ref","Ref")})</span>' if g.get("rfp_ref") else ""
+                st.markdown(
+                    f'<div style="background:#1A0F00;border:1px solid #3A2A00;border-left:3px solid #E67E22;'
+                    f'border-radius:0 4px 4px 0;padding:.6rem 1rem;margin:.35rem 0;font-size:.85rem">'
+                    f'<span style="color:#E67E22;font-weight:700">GATE #{idx} [{g.get("type","Supplier Qualification")}]</span>{ref_str}'
+                    f'<div style="margin-top:.2rem;color:#EDEAE3">{g.get("requirement","")}</div>'
                     f'</div>',
                     unsafe_allow_html=True
                 )
         else:
-            st.markdown('<div class="info-box">Deliverable outputs extracted from RFP requirements.</div>', unsafe_allow_html=True)
-
-    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-
-    # ── SECTION C: CONDITIONS TO QUALIFY (HARD GATES) ─────────────────────────
-    st.markdown("### ⚖️ Conditions to Qualify (Mandatory Gates vs Scored Criteria)")
-    st.markdown(
-        '<div class="info-box">'
-        '<strong>Critical Gate Rule:</strong> True pass/fail mandatory qualification conditions are separated from competitive scored criteria. '
-        'Any mandatory gate must be satisfied or the bid will be disqualified.'
-        '</div>',
-        unsafe_allow_html=True
-    )
-
-    from components.ui import qual_badge, evidence_badge
-    from requirement_semantics import select_qualification_requirements, normalize_requirement_identity_text
-
-    # Match authoritative brief qualification gates to persisted requirements
-    matched_qual_reqs = select_qualification_requirements(reqs, qual_gates)
-
-    if matched_qual_reqs:
-        for idx, r in enumerate(matched_qual_reqs, 1):
-            ref_str = f' <span style="font-size:.72rem;color:#6E6C66">({r.get("rfso_ref","Gate")})</span>' if r.get("rfso_ref") else ""
-            q_status = r.get("qual_status", "UNKNOWN")
-            e_status = r.get("evidence_status", "MISSING")
             st.markdown(
-                f'<div style="background:#1A0F00;border:1px solid #3A2A00;border-left:3px solid #E67E22;'
-                f'border-radius:0 4px 4px 0;padding:.6rem 1rem;margin:.35rem 0;font-size:.85rem">'
-                f'<div style="display:flex;justify-content:space-between;align-items:center">'
-                f'<span style="color:#E67E22;font-weight:700">GATE #{idx} [{r.get("req_id","M")}]</span>'
-                f'<span>{qual_badge(q_status)} {evidence_badge(e_status)}</span>'
-                f'</div>'
-                f'<div style="margin-top:.2rem;color:#EDEAE3">{r.get("description","")}{ref_str}</div>'
-                f'</div>',
+                '<div class="empty-state">'
+                'No explicit pass/fail supplier qualification gates were identified. '
+                'Mandatory compliance requirements remain tracked in the compliance register.'
+                '</div>',
                 unsafe_allow_html=True
             )
-    elif qual_gates:
-        # Gates exist in brief but did not match database rows (e.g. before requirement persistence)
-        for idx, g in enumerate(qual_gates, 1):
-            ref_str = f' <span style="font-size:.72rem;color:#6E6C66">({g.get("rfp_ref","Ref")})</span>' if g.get("rfp_ref") else ""
-            st.markdown(
-                f'<div style="background:#1A0F00;border:1px solid #3A2A00;border-left:3px solid #E67E22;'
-                f'border-radius:0 4px 4px 0;padding:.6rem 1rem;margin:.35rem 0;font-size:.85rem">'
-                f'<span style="color:#E67E22;font-weight:700">GATE #{idx} [{g.get("type","Supplier Qualification")}]</span>{ref_str}'
-                f'<div style="margin-top:.2rem;color:#EDEAE3">{g.get("requirement","")}</div>'
-                f'</div>',
-                unsafe_allow_html=True
-            )
-    else:
-        st.markdown(
-            '<div class="empty-state">'
-            'No explicit pass/fail supplier qualification gates were identified. '
-            'Mandatory compliance requirements remain tracked in the compliance register.'
-            '</div>',
-            unsafe_allow_html=True
-        )
-
-    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-
-    # ── SECTION D: EVALUATION & COMMERCIAL STRUCTURE ──────────────────────────
-    c_eval, c_comm = st.columns(2)
-    with c_eval:
-        st.markdown("### 📊 How We Will Be Evaluated")
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        st.markdown("#### 📊 Evaluation Criteria")
         if eval_breakdown:
             from evaluation_hierarchy import (
                 format_evaluation_for_display,
@@ -1139,63 +1144,9 @@ def page_understand(bid_id: int):
                     unsafe_allow_html=True
                 )
         else:
-            st.markdown('<div class="info-box">Evaluation weighting details extracted from RFP instructions.</div>', unsafe_allow_html=True)
-
-    with c_comm:
-        st.markdown("### 💼 Commercial & Contracting Structure")
-        if commercial:
-            for cm in commercial:
-                evidence_state, evidence = _evidence_label(cm)
-                st.markdown(
-                    f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;'
-                    f'padding:.6rem .9rem;margin:.3rem 0;font-size:.85rem">'
-                    f'<strong style="color:#C9A96E">{cm.get("topic","Commercial Item")}</strong>'
-                    f'<div style="font-size:.78rem;color:#EDEAE3;margin-top:.2rem">{cm.get("source_fact") or cm.get("details","")}</div>'
-                    f'<div style="font-size:.7rem;color:#6E6C66;margin-top:.2rem">SOURCE / EVIDENCE: {evidence_state}{" · " + evidence if evidence else ""}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
-        else:
-            st.markdown('<div class="info-box">Commercial rules (pricing model, option periods, call-up mechanics) summarized from RFP terms.</div>', unsafe_allow_html=True)
-
-    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-
-    # ── SECTION E: CONTRACT & DELIVERY RISKS ──────────────────────────────────
-    st.markdown("### ⚠️ Contract & Delivery Risks")
-    st.markdown(
-        '<div style="font-size:.82rem;color:#A9A69D;margin-bottom:.5rem">'
-        'Conditions that could materially affect delivery, liability, or margin. Review before committing writing resources.'
-        '</div>',
-        unsafe_allow_html=True
-    )
-    if contract_risks:
-        for rk in contract_risks:
-            evidence_state, evidence = _evidence_label(rk)
-            legacy = rk.get("assessment_basis") == "LEGACY_EXTRACTION"
-            sc_col = "#6E6C66" if legacy else "#E67E22"
-            source_fact = rk.get("source_fact") or rk.get("risk", "")
-            assessments = rk.get("assessment") or []
-            interpretation = "; ".join(a.get("why_it_matters", "") for a in assessments if isinstance(a, dict) and a.get("why_it_matters"))
-            st.markdown(
-                f'<div style="background:#111118;border:1px solid #292832;border-left:3px solid {sc_col};'
-                f'border-radius:0 4px 4px 0;padding:.6rem 1rem;margin:.35rem 0;font-size:.85rem">'
-                f'<span style="color:{sc_col};font-weight:700;font-size:.75rem">{"LEGACY EXTRACTION" if legacy else "SOURCE FACT"}</span> '
-                f'<strong>{rk.get("topic") or source_fact}</strong>'
-                f'<div style="font-size:.78rem;color:#EDEAE3;margin-top:.2rem">{rk.get("details") or source_fact}</div>'
-                f'{"<div style=font-size:.78rem;color:#A9A69D;margin-top:.2rem><strong>SYSTEM INTERPRETATION:</strong> " + interpretation + "</div>" if interpretation else ""}'
-                f'<div style="font-size:.7rem;color:#6E6C66;margin-top:.2rem">SOURCE / EVIDENCE: {evidence_state}{" · " + evidence if evidence else ""}</div>'
-                f'</div>',
-                unsafe_allow_html=True
-            )
-    else:
-        st.markdown('<div class="info-box">No source-grounded contract-risk clauses were identified in the extracted evidence. This does not confirm that none exist.</div>', unsafe_allow_html=True)
-
-    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-
-    # ── SECTION F: SUBMISSION REQUIREMENTS & KEY DATES ────────────────────────
-    c_subreq, c_dates = st.columns(2)
-    with c_subreq:
-        st.markdown("### 📋 Submission Requirements Checklist")
+            st.markdown('<div class="empty-state">No evaluation weighting identified.</div>', unsafe_allow_html=True)
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        st.markdown("#### 📋 Submission Requirements")
         if sub_reqs:
             for sr in sub_reqs:
                 st.markdown(
@@ -1210,60 +1161,81 @@ def page_understand(bid_id: int):
         else:
             st.markdown('<div class="info-box">No explicit submission documents were identified in the procurement package.</div>', unsafe_allow_html=True)
 
-    with c_dates:
-        st.markdown("### 📅 Key Procurement Dates")
-        if key_dates:
-            for kd in key_dates:
+    # ── COMMERCIAL & RISKS ────────────────────────────────────────────────────
+    with tab_comm:
+        st.markdown("#### 💼 Commercial & Contracting Structure")
+        if commercial:
+            for cm in commercial:
+                evidence_state, evidence = _evidence_label(cm)
                 st.markdown(
-                    f'<div style="display:flex;justify-content:space-between;background:#111118;'
-                    f'border:1px solid #292832;border-radius:4px;padding:.5rem .8rem;margin:.3rem 0;font-size:.82rem">'
-                    f'<span>{kd.get("milestone","")}</span>'
-                    f'<strong style="color:#C9A96E">{kd.get("date","")}</strong>'
+                    f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;'
+                    f'padding:.6rem .9rem;margin:.3rem 0;font-size:.85rem">'
+                    f'<strong style="color:#C9A96E">{cm.get("topic","Commercial Item")}</strong>'
+                    f'<div style="font-size:.78rem;color:#EDEAE3;margin-top:.2rem">{cm.get("source_fact") or cm.get("details","")}</div>'
+                    f'<div style="font-size:.7rem;color:#6E6C66;margin-top:.2rem">SOURCE / EVIDENCE: {evidence_state}{" · " + evidence if evidence else ""}</div>'
                     f'</div>',
                     unsafe_allow_html=True
                 )
         else:
-            st.markdown(
-                f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;padding:.6rem .8rem;font-size:.82rem">'
-                f'Submission deadline: <strong>{bid.get("submission_deadline") or "—"}</strong><br>'
-                f'Enquiry deadline: <strong>{bid.get("clarification_deadline") or "—"}</strong>'
-                f'</div>',
-                unsafe_allow_html=True
-            )
+            st.markdown('<div class="empty-state">No commercial structure identified.</div>', unsafe_allow_html=True)
+        pricing = _ensure_dict(oi.get("pricing_and_commercial"))
+        pricing_points = _ensure_list(pricing.get("points"))
+        raw_pricing_occ = _ensure_list(pricing.get("raw_pricing_occurrences"))
+        if pricing_points or raw_pricing_occ:
+            st.markdown("#### 💰 Pricing & Payment Terms")
+            for p in pricing_points:
+                st.markdown(
+                    f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;'
+                    f'padding:.55rem .85rem;margin:.3rem 0;font-size:.84rem">'
+                    f'<strong style="color:#C9A96E">{p.get("topic","")}</strong>'
+                    f'<div style="font-size:.78rem;color:#EDEAE3;margin-top:.2rem">{p.get("detail","")}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+            for i, occ in enumerate(raw_pricing_occ):
+                label = occ.get("raw_wording") or occ.get("semantic_kind") or "Pricing detail"
+                _source_view_expander(str(label)[:80], occ.get("source_refs"), key_suffix=f"pricing_{i}")
+            raw_commercial = _ensure_list(pricing.get("raw_commercial_clauses"))
+            for i, c in enumerate(raw_commercial):
+                label = c.get("topic") or c.get("clause_kind") or "Commercial clause"
+                _source_view_expander(str(label)[:80], c.get("source_refs"), key_suffix=f"commercial_{i}")
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        # ── SECTION E: CONTRACT & DELIVERY RISKS ──────────────────────────────────
+        st.markdown("#### ⚠️ Contract & Delivery Risks")
+        if contract_risks:
+            for rk in contract_risks:
+                evidence_state, evidence = _evidence_label(rk)
+                legacy = rk.get("assessment_basis") == "LEGACY_EXTRACTION"
+                sc_col = "#6E6C66" if legacy else "#E67E22"
+                source_fact = rk.get("source_fact") or rk.get("risk", "")
+                assessments = rk.get("assessment") or []
+                interpretation = "; ".join(a.get("why_it_matters", "") for a in assessments if isinstance(a, dict) and a.get("why_it_matters"))
+                st.markdown(
+                    f'<div style="background:#111118;border:1px solid #292832;border-left:3px solid {sc_col};'
+                    f'border-radius:0 4px 4px 0;padding:.6rem 1rem;margin:.35rem 0;font-size:.85rem">'
+                    f'<span style="color:{sc_col};font-weight:700;font-size:.75rem">{"LEGACY EXTRACTION" if legacy else "SOURCE FACT"}</span> '
+                    f'<strong>{rk.get("topic") or source_fact}</strong>'
+                    f'<div style="font-size:.78rem;color:#EDEAE3;margin-top:.2rem">{rk.get("details") or source_fact}</div>'
+                    f'{"<div style=font-size:.78rem;color:#A9A69D;margin-top:.2rem><strong>SYSTEM INTERPRETATION:</strong> " + interpretation + "</div>" if interpretation else ""}'
+                    f'<div style="font-size:.7rem;color:#6E6C66;margin-top:.2rem">SOURCE / EVIDENCE: {evidence_state}{" · " + evidence if evidence else ""}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+        else:
+            st.markdown('<div class="info-box">No source-grounded contract-risk clauses were identified in the extracted evidence. This does not confirm that none exist.</div>', unsafe_allow_html=True)
 
-    # ── PROGRESSIVE DISCLOSURE: SOURCE CITATIONS & VERBATIM DETAILS ───────────
-    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-    with st.expander("🔍 View Extracted Source Citations & RFP Details"):
-        st.markdown(f"**RFP Documents in Registry ({len(docs)} files):**")
-        for d in docs:
-            st.markdown(f"📄 **{d['name']}** ({d.get('doc_type','Document')}) — v{d.get('version',1)} [{d.get('status','Expected')}]")
+    # ── SOURCES ───────────────────────────────────────────────────────────────
+    with tab_sources:
+        if not oi:
+            st.markdown('<div class="info-box">Detailed, source-traceable FAST intelligence appears here once a FAST analysis completes.</div>', unsafe_allow_html=True)
         if citations:
-            st.markdown("**Key Section Citations:**")
+            st.markdown("#### 🔍 Key Section Citations")
             for k, v in citations.items():
                 st.markdown(f"• `{k}`: {v}")
-
-    # ── FAST ANALYSIS: FULL STRUCTURED INTELLIGENCE (Product Integration Phase 2) ──
-    # Additive to the bid_briefs-driven sections above -- reads the durable
-    # OpportunityIntelligence contract straight from analysis_results, with
-    # no re-extraction. Renders only when a completed Fast Analysis run
-    # exists for this bid; otherwise the page behaves exactly as before.
-    analysis_result = tenancy.get_latest_analysis_result_authenticated(_token, bid_id, "FAST")
-    if analysis_result and analysis_result.get("structured_intelligence"):
-        oi = _ensure_dict(analysis_result["structured_intelligence"])
-        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-        st.markdown("## ⚡ Fast Analysis — Full Intelligence")
-        st.markdown(
-            '<div style="font-size:.82rem;color:#A9A69D;margin-bottom:.6rem">'
-            'Detailed, source-traceable output from the default analysis engine. '
-            'Expand any "View Source" panel to see the exact document, page, and excerpt a fact came from.'
-            '</div>',
-            unsafe_allow_html=True
-        )
-
         dates_and_mechanics = _ensure_dict(oi.get("dates_and_mechanics"))
         raw_dates = _ensure_list(dates_and_mechanics.get("raw_date_observations"))
         if raw_dates:
-            st.markdown("### 📅 Key Dates — Full Detail")
+            st.markdown("#### 📅 Key Dates — Sources")
             for i, obs in enumerate(raw_dates):
                 label = obs.get("semantic_kind") or "Date"
                 value = obs.get("date") or obs.get("original_value") or ""
@@ -1277,11 +1249,10 @@ def page_understand(bid_id: int):
                     unsafe_allow_html=True
                 )
                 _source_view_expander(f"{label} · {value}", obs.get("source_refs"), key_suffix=f"date_{i}")
-
         evaluation = _ensure_dict(oi.get("evaluation"))
         raw_occ = _ensure_list(evaluation.get("raw_occurrences"))
         if raw_occ:
-            st.markdown("### 📊 Evaluation Criteria — Full Detail by Category")
+            st.markdown("#### 📊 Evaluation Criteria — Sources")
             categories = {}
             for occ in raw_occ:
                 cat = occ.get("category_scope") or "Uncategorized"
@@ -1299,10 +1270,9 @@ def page_understand(bid_id: int):
                         unsafe_allow_html=True
                     )
                     _source_view_expander(f"{cat} · {label}", occ.get("source_refs"), key_suffix=f"eval_{cat}_{i}")
-
         ambiguities = _ensure_list(oi.get("ambiguities"))
         if ambiguities:
-            st.markdown("### ❓ Ambiguities & Clarification Questions")
+            st.markdown("#### ❓ Ambiguities & Clarification Questions")
             for amb in ambiguities:
                 st.markdown(
                     f'<div style="background:#1A0F00;border:1px solid #3A2A00;border-left:3px solid #E67E22;'
@@ -1315,35 +1285,12 @@ def page_understand(bid_id: int):
                     f'</div>',
                     unsafe_allow_html=True
                 )
-
-        pricing = _ensure_dict(oi.get("pricing_and_commercial"))
-        pricing_points = _ensure_list(pricing.get("points"))
-        raw_pricing_occ = _ensure_list(pricing.get("raw_pricing_occurrences"))
-        if pricing_points or raw_pricing_occ:
-            st.markdown("### 💰 Pricing & Commercial Detail")
-            for p in pricing_points:
-                st.markdown(
-                    f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;'
-                    f'padding:.55rem .85rem;margin:.3rem 0;font-size:.84rem">'
-                    f'<strong style="color:#C9A96E">{p.get("topic","")}</strong>'
-                    f'<div style="font-size:.78rem;color:#EDEAE3;margin-top:.2rem">{p.get("detail","")}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
-            for i, occ in enumerate(raw_pricing_occ):
-                label = occ.get("raw_wording") or occ.get("semantic_kind") or "Pricing detail"
-                _source_view_expander(str(label)[:80], occ.get("source_refs"), key_suffix=f"pricing_{i}")
-            raw_commercial = _ensure_list(pricing.get("raw_commercial_clauses"))
-            for i, c in enumerate(raw_commercial):
-                label = c.get("topic") or c.get("clause_kind") or "Commercial clause"
-                _source_view_expander(str(label)[:80], c.get("source_refs"), key_suffix=f"commercial_{i}")
-
         buyer_intel = _ensure_dict(oi.get("buyer_intelligence"))
         verified_facts = _ensure_list(buyer_intel.get("verified_facts"))
         relevant_signals = _ensure_list(buyer_intel.get("relevant_signals"))
         bid_relevance = _ensure_list(buyer_intel.get("bid_relevance"))
         if verified_facts or relevant_signals or bid_relevance:
-            st.markdown("### 🏛️ Buyer Intelligence")
+            st.markdown("#### 🏛️ Buyer Intelligence")
             if buyer_intel.get("intro"):
                 st.markdown(f'<div style="font-size:.85rem;color:#EDEAE3;margin-bottom:.4rem">{buyer_intel["intro"]}</div>', unsafe_allow_html=True)
             b1, b2 = st.columns(2)
@@ -1375,7 +1322,6 @@ def page_understand(bid_id: int):
             if buyer_intel.get("facts_note") or buyer_intel.get("sources_note"):
                 note = buyer_intel.get("facts_note") or buyer_intel.get("sources_note")
                 st.markdown(f'<div style="font-size:.7rem;color:#6E6C66;margin-top:.3rem">{note}</div>', unsafe_allow_html=True)
-
         source_map = _ensure_dict(oi.get("source_map"))
         ref_table = _ensure_list(source_map.get("reference_table"))
         if ref_table:
@@ -1383,7 +1329,15 @@ def page_understand(bid_id: int):
                 for row in ref_table:
                     st.markdown(f"• **{row.get('finding','')}**: {row.get('reference','')}")
 
-    # ── NEXT STAGE CALL TO ACTION ─────────────────────────────────────────────
+    # ── DOCUMENTS ─────────────────────────────────────────────────────────────
+    with tab_docs:
+        st.markdown(f"#### 📄 Document Registry ({len(docs)})")
+        for d in docs:
+            st.markdown(f"📄 **{d['name']}** ({d.get('doc_type','Document')}) — v{d.get('version',1)} [{d.get('status','Expected')}]")
+        _render_add_documents(bid_id, _org_id)
+        # Governed bids keep the buyer-update (addenda) review workflow here.
+        _render_procurement_governance_panel(bid_id, _org_id, docs)
+
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
     c1, c2 = st.columns([3, 1])
     c1.markdown(

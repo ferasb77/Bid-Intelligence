@@ -440,6 +440,22 @@ class TestNewRFPPipelineArchitecture(unittest.TestCase):
         # Must navigate to stage_understand
         self.assertIn('go("stage_understand", bid_id)', body)
 
+    def test_understand_is_organised_in_five_tabs(self):
+        """Phoenix Beta: UNDERSTAND regroups its existing sections into five
+        tabs; FAST status/downloads sit in Overview, View-Source citations
+        in Sources, the registry and document upload in Documents."""
+        body = self.understand_source[self.understand_source.index("def page_understand("):]
+        self.assertIn('"Overview", "Requirements", "Commercial & Risks", "Sources", "Documents"])', body)
+        order = ["with tab_overview:", "_render_fast_analysis_panel(", "with tab_reqs:",
+                 "Mandatory Qualification Gates", "Submission Requirements", "with tab_comm:",
+                 "Pricing & Payment Terms", "Contract & Delivery Risks", "with tab_sources:",
+                 "Key Dates — Sources", "View Full Source Map", "with tab_docs:",
+                 "Document Registry", "_render_add_documents(", "Proceed to DECIDE"]
+        positions = [body.index(marker) for marker in order]
+        self.assertEqual(positions, sorted(positions))
+        # View-Source citations remain (Commercial pricing clauses + Sources)
+        self.assertGreaterEqual(body.count("_source_view_expander("), 4)
+
     def test_deep_verification_preserved_in_stage_understand(self):
         """Legacy extract_procurement_package must be preserved as an optional expander in stage_understand."""
         self.assertIn("🔬 Deep Verification & Cross-Document Synthesis (Optional / In-Depth)", self.understand_source)
