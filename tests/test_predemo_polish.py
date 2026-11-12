@@ -86,18 +86,16 @@ def test_customer_safe_summary_resolution_uses_clean_notes_when_available():
 
 
 def test_single_check_sidebar_navigation_entry():
-    """Sidebar exposes exactly one CHECK entry point with sequence number 4."""
+    """Phoenix Beta simplification: the sidebar exposes no CHECK entry point
+    and no CHECK route (the Proposal Assurance code itself is retained)."""
     src = (ROOT / "app.py").read_text(encoding="utf-8")
 
-    # Verify app routes
     assert "from pages.stage_check_assurance import page_check_assurance" in src
-    assert '"🛡️  4. CHECK: Proposal Assurance": "stage_check_assurance"' in src
+    assert '"🛡️  4. CHECK: Proposal Assurance": "stage_check_assurance"' not in src
     assert '"🔍  4. CHECK":      "stage_check"' not in src
     assert '"🛡️  CHECK: Proposal Assurance": "stage_check_assurance"' not in src
-
-    # Verify both route names dispatch to Proposal Assurance
-    assert 'elif page in ("stage_check_assurance", "stage_check", "compliance", "proposal_analyzer"):' in src
-    assert 'page_check_assurance(bid_id)' in src
+    assert 'elif page in ("stage_check_assurance", "stage_check", "compliance", "proposal_analyzer"):' not in src
+    assert 'page_check_assurance(bid_id)' not in src
 
 
 def test_canonical_closing_date_resolution():

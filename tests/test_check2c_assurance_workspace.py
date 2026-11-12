@@ -875,8 +875,10 @@ class TestArchitecture:
     def test_app_routes_and_nav_entry(self):
         src = (ROOT / "app.py").read_text(encoding="utf-8")
         assert "from pages.stage_check_assurance import page_check_assurance" in src
-        assert '"stage_check_assurance"' in src and "page_check_assurance(bid_id)" in src
-        assert "CHECK: Proposal Assurance" in src
+        # Phoenix Beta simplification: CHECK is retained in code but is no
+        # longer in the bid-stage navigation or routed.
+        assert '"stage_check_assurance"' not in src and "page_check_assurance(bid_id)" not in src
+        assert "CHECK: Proposal Assurance" not in src
         assert '"chk_"' in src                                             # cleared on logout
 
     def test_understand_and_full_bid_intelligence_unaffected(self):

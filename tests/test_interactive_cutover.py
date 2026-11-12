@@ -26,6 +26,7 @@ import importlib
 import os
 import time
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import streamlit as st
@@ -209,6 +210,26 @@ class TestCutoverArchitecture(unittest.TestCase):
         self.assertNotIn('page in ("team_roster", "coach_roster")', self.source)
         self.assertNotIn("API key configured", self.source)
         self.assertNotIn("No API key — add to .env", self.source)
+
+    def test_phoenix_beta_bid_workflow_is_understand_and_decide(self):
+        """Phoenix Beta simplification: the bid workflow offers only
+        1. UNDERSTAND (with Full Bid Intelligence) and 2. DECIDE. BUILD,
+        CHECK (Proposal Assurance), SUBMIT and Debrief are neither in the
+        sidebar nor routed (stale keys fall back to the Dashboard), and
+        DECIDE no longer links forward to BUILD."""
+        nav_start = self.source.index("stages_nav = {")
+        nav_block = self.source[nav_start:self.source.index("}", nav_start)]
+        for key in ('"stage_understand"', '"stage_full_analysis"', '"stage_decide"'):
+            self.assertIn(key, nav_block)
+        for key in ("stage_build", "stage_check_assurance", "stage_submit", "stage_debrief"):
+            self.assertNotIn(key, nav_block)
+            self.assertNotIn(f'"{key}"', self.source)
+        for fn in ("page_build(bid_id)", "page_check_assurance(bid_id)",
+                   "page_submit(bid_id)", "page_debrief(bid_id)"):
+            self.assertNotIn(fn, self.source)
+        decide = (Path(__file__).resolve().parent.parent / "pages" / "stage_decide.py").read_text(encoding="utf-8")
+        self.assertNotIn("Proceed to BUILD", decide)
+        self.assertNotIn('"stage_build"', decide)
 
 
 class TestGoAuthorizesBidOpen(unittest.TestCase):

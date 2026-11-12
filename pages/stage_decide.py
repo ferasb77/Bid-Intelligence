@@ -391,10 +391,5 @@ def page_decide(bid_id: int):
                     st.success("Official pursuit decision recorded.")
                     st.rerun()
 
-    # ── NEXT STAGE CTA ────────────────────────────────────────────────────────
-    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-    c1, c2 = st.columns([3, 1])
-    c1.markdown('<div style="color:#A9A69D;font-size:.85rem;padding-top:.4rem">Qualified to proceed? Advance to proposal construction.</div>', unsafe_allow_html=True)
-    if c2.button("Proceed to BUILD →", use_container_width=True, type="primary"):
-        st.session_state.page = "stage_build"
-        st.rerun()
+    # Phoenix Beta simplification: no next-stage call to action here --
+    # DECIDE is the final stage offered in the beta workflow.

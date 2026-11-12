@@ -265,14 +265,9 @@ with st.sidebar:
                 "💡  1. UNDERSTAND": "stage_understand",
                 "🧬  Full Bid Intelligence": "stage_full_analysis",
                 "⚖️  2. DECIDE":     "stage_decide",
-                "🛠️  3. BUILD":      "stage_build",
-                "🛡️  4. CHECK: Proposal Assurance": "stage_check_assurance",
-                "🚀  5. SUBMIT":     "stage_submit",
             }
-
-            # Reveal Debrief contextually once submitted or closed
-            if bid.get("stage") in ("Submitted", "Won", "Lost", "Withdrawn", "No Bid"):
-                stages_nav["🏆  Debrief"] = "stage_debrief"
+            # Phoenix Beta simplification: BUILD, CHECK (Proposal Assurance),
+            # SUBMIT and Debrief are not offered (code/tables/data untouched).
 
             for label, key in stages_nav.items():
                 if st.button(label, key=f"nav_{key}", use_container_width=True):
@@ -2240,13 +2235,8 @@ elif page == "stage_full_analysis":
     page_full_analysis(bid_id)
 elif page in ("stage_decide", "clarifications", "ai_analyst"):
     page_decide(bid_id)
-elif page in ("stage_build", "outline", "section_drafter", "tasks", "documents", "deliverables"):
-    page_build(bid_id)
-elif page in ("stage_check_assurance", "stage_check", "compliance", "proposal_analyzer"):
-    page_check_assurance(bid_id)
-elif page in ("stage_submit", "submission_assembler"):
-    page_submit(bid_id)
-elif page in ("stage_debrief", "debrief"):
-    page_debrief(bid_id)
+# Phoenix Beta simplification: BUILD / CHECK / SUBMIT / Debrief page keys
+# (including their legacy aliases) are no longer routed; any such stale key
+# falls through to the Dashboard below.
 else:
     go("dashboard")
