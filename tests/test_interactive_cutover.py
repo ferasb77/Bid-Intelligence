@@ -108,9 +108,10 @@ class TestCutoverArchitecture(unittest.TestCase):
         gate_fn_start = self.source.index("def _render_login_gate():")
         gate_fn_end = self.source.index("\n\n\n", gate_fn_start)
         gate_fn_body = self.source[gate_fn_start:gate_fn_end]
-        self.assertIn("should_create_user", gate_fn_body)
-        self.assertIn("False", self.source[self.source.index("should_create_user"):self.source.index("should_create_user") + 40])
-        self.assertNotIn("sign_up", gate_fn_body.lower().replace("should_create_user", ""))
+        # Password sign-in only: no sign-up, and no email sign-in link that could create a user.
+        self.assertNotIn("sign_up", gate_fn_body.lower())
+        self.assertNotIn("sign_in_with_otp", gate_fn_body)
+        self.assertIn("_auth_session.sign_in(", gate_fn_body)
 
     def test_zero_membership_fails_closed_in_gate(self):
         self.assertIn("NoOrganizationAccess", self.source)

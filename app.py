@@ -90,44 +90,18 @@ def _render_login_gate():
         st.error(f"Sign-in link could not be verified: {_invite_result.error}")
     if _fragment_result.error not in ("no fragment session callback present",) and not _fragment_result.ok:
         st.error(f"Sign-in link could not be verified: {_fragment_result.error}")
-    st.markdown(
-        '<div class="info-box">Enter your email to receive a one-time sign-in link. '
-        'No password is required, and no account is created if the email is not already registered '
-        '(self-service sign-up is not available).</div>', unsafe_allow_html=True)
-    _login_email = st.text_input("Email", key="pkg3_login_email")
-    if st.button("Send sign-in link", key="pkg3_send_magiclink", type="primary"):
-        if _login_email:
-            try:
-                _client = _auth_client.get_auth_client()
-                _opts = {"should_create_user": False}
-                _base_url = _get_app_base_url()
-                if _base_url:
-                    _opts["email_redirect_to"] = _base_url
-                _client.auth.sign_in_with_otp({"email": _login_email, "options": _opts})
-            except Exception:
-                pass  # never reveal whether the email exists
-            st.success("If that email has an account, a sign-in link has been sent. Check your inbox.")
-
-    with st.expander("Sign in with a password"):
-        with st.form("password_sign_in", clear_on_submit=True):
-            email = st.text_input("Email", key="password_login_email")
-            password = st.text_input("Password", type="password")
-            submitted = st.form_submit_button("Sign in")
-        if submitted:
-            result = _auth_session.sign_in(email, password)
+    with st.form("password_sign_in", clear_on_submit=False):
+        email = st.text_input("Email address", key="password_login_email")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Sign in", type="primary")
+    if submitted:
+        if not (email or "").strip() or not password:
+            st.error("Enter your email address and password.")
+        else:
+            result = _auth_session.sign_in(email.strip(), password)
             if result.ok:
                 st.rerun()
             st.error(result.error)
-
-    with st.expander("Forgot your password? / Reset password"):
-        with st.form("password_reset_request", clear_on_submit=True):
-            reset_email = st.text_input("Account email", key="password_reset_req_email")
-            reset_submitted = st.form_submit_button("Send password reset link")
-        if reset_submitted:
-            if reset_email:
-                _base_url = _get_app_base_url()
-                _auth_session.request_password_reset(reset_email, redirect_to=_base_url)
-            st.success("If that email has an account, a password reset link has been sent. Check your inbox.")
 
 
 _session_result = _auth_session.restore_session()

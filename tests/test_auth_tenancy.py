@@ -385,6 +385,30 @@ class TestAuthSession(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertNotIn("xyz", result.error)
         self.assertNotIn("user@internal.example", result.error)
+        self.assertEqual(result.error, "Incorrect email address or password.")
+
+    @patch("auth_session.get_auth_client")
+    def test_sign_in_service_failure_is_distinguished_from_bad_credentials(self, mock_get_auth_client):
+        mock_client = MagicMock()
+        mock_client.auth.sign_in_with_password.side_effect = ConnectionError("connection refused 10.0.0.5")
+        mock_get_auth_client.return_value = mock_client
+        import auth_session
+        result = auth_session.sign_in("a@b.com", "pw")
+        self.assertFalse(result.ok)
+        self.assertIn("temporarily unavailable", result.error)
+        self.assertNotIn("10.0.0.5", result.error)
+
+    def test_login_gate_offers_only_email_and_password(self):
+        import pathlib
+        src = pathlib.Path(__file__).resolve().parent.parent.joinpath("app.py").read_text(encoding="utf-8")
+        gate = src[src.index("def _render_login_gate"):src.index("_session_result = _auth_session.restore_session()")]
+        for gone in ("sign_in_with_otp", "Send sign-in link", "request_password_reset", "Forgot"):
+            self.assertNotIn(gone, gate)
+        for kept in ('"Email address"', '"Password"', '"Sign in"', "_auth_session.sign_in("):
+            self.assertIn(kept, gate)
+        # The Super Admin invite / password-setup callbacks still run before the gate.
+        self.assertIn("_auth_session.handle_invite_callback()", src)
+        self.assertIn("_auth_session.render_password_recovery()", src)
 
     def test_sign_in_missing_fields_never_calls_auth_client(self):
         import auth_session

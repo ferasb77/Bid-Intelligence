@@ -51,6 +51,7 @@ from auth_client import get_auth_client
 SESSION_KEY = "bi_auth_session"
 AUTH_CONTEXT_KEY = "bi_auth_context"
 RECOVERY_SESSION_KEY = "bi_recovery_session"
+INVALID_CREDENTIALS_MESSAGE = "Incorrect email address or password."
 # 'invite' -- the original Supabase Auth invite-acceptance flow, valid only
 # once per user (Supabase's invite endpoint refuses to re-send once an
 # account is confirmed -- see 'email' below for the fallback that covers
@@ -79,8 +80,14 @@ class AuthResult:
 def _safe_auth_error(exc: Exception) -> str:
     """Never echo raw provider exception text back to the UI/logs -- it can
     include request detail we don't need to retain. A short, fixed,
-    non-identifying message is enough for a sign-in failure."""
-    return "sign-in failed: invalid credentials or authentication service unavailable"
+    non-identifying message is enough for a sign-in failure. A rejected
+    email/password pair (HTTP 400, "Invalid login credentials") is told apart
+    from an unavailable service; neither reveals whether the email exists."""
+    status = getattr(exc, "status", None)
+    text = str(getattr(exc, "message", "") or exc).lower()
+    if status in (400, 401) or "invalid login credentials" in text or "invalid_credentials" in text:
+        return INVALID_CREDENTIALS_MESSAGE
+    return "Sign-in is temporarily unavailable. Please try again in a few minutes."
 
 
 def sign_in(email: str, password: str) -> AuthResult:
@@ -88,7 +95,7 @@ def sign_in(email: str, password: str) -> AuthResult:
     account (instruction 6) -- Supabase's sign_in_with_password() call
     itself only authenticates an existing user; it cannot create one."""
     if not email or not password:
-        return AuthResult(ok=False, error="email and password are required")
+        return AuthResult(ok=False, error="Enter your email address and password.")
     try:
         client = get_auth_client()
         resp = client.auth.sign_in_with_password({"email": email, "password": password})
@@ -98,7 +105,7 @@ def sign_in(email: str, password: str) -> AuthResult:
     session = getattr(resp, "session", None)
     user = getattr(resp, "user", None)
     if not session or not user:
-        return AuthResult(ok=False, error="invalid credentials")
+        return AuthResult(ok=False, error=INVALID_CREDENTIALS_MESSAGE)
 
     import streamlit as st
     st.session_state.pop(RECOVERY_SESSION_KEY, None)
