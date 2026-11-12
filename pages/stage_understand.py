@@ -1183,20 +1183,29 @@ def page_understand(bid_id: int):
                 STATUS_UNRESOLVED_HIERARCHY,
                 STATUS_MIXED_UNITS,
                 STATUS_INSUFFICIENT_DATA,
-                BASIS_WITHIN_PARENT,
             )
             display_rows, totals = format_evaluation_for_display(eval_breakdown)
+            # Sub-criterion qualifier by arithmetic over the published weights
+            # (children summing to the parent's own weight are shares of the
+            # total score, not "within" the parent) -- never the AI label alone.
+            from phoenix_reports import child_weight_basis
+            child_basis = {}
+            for _p in display_rows:
+                _kids = [r for r in display_rows if r is not _p and r.get("parent_stage") == _p.get("stage")]
+                if _kids:
+                    child_basis[_p.get("stage")] = child_weight_basis(
+                        _p.get("stage") or "", _p.get("weight"), [k.get("weight") for k in _kids], [])
 
             for ev in display_rows:
                 raw_wt = ev.get("weight") or ""
                 val = ev.get("weight_value")
                 unit = ev.get("weight_unit")
-                basis = ev.get("weight_basis")
                 indent = ev.get("indent", 0)
 
                 # Format weight badge
                 if raw_wt:
-                    basis_suffix = f" (Within {ev.get('parent_stage', 'Parent')})" if basis == BASIS_WITHIN_PARENT else ""
+                    basis_suffix = (f" (of {ev.get('parent_stage', 'Parent')})"
+                                    if child_basis.get(ev.get("parent_stage")) == "within" else "")
                     wt_html = f'<span style="color:#27AE60;font-weight:700">{raw_wt}{basis_suffix}</span>'
                 else:
                     wt_html = ""

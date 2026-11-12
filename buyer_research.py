@@ -4,8 +4,11 @@ One bounded, time-limited Claude call with the server-side web search tool.
 Results are kept strictly separate from the RFP requirements and are only
 kept when their URL is one the search actually returned (no invented
 sources). The call never blocks the FULL analysis: it runs in a background
-thread started alongside a FULL run and the report renders with whatever is
-available ("not available" when research is still running or failed).
+thread -- started alongside a new FULL run, or when a FULL result without
+research is opened (`ensure`) -- and the report states the actual research
+state: not yet run, in progress, completed with / without findings, failed,
+or skipped. Completed research for the same buyer and opportunity is reused
+across FULL runs of the same bid instead of paying for a new search.
 
 Persisted as JSON in Storage at {bid_id}/buyer_research/{full_run_id}.json --
 no schema change.
@@ -21,9 +24,11 @@ from datetime import datetime, timezone
 MODEL = "claude-opus-5-5"
 MAX_SEARCHES = 5
 TIMEOUT_SECONDS = 150
-STALE_AFTER_SECONDS = 600
-TOPICS = {"profile": "Organisation profile", "programme": "Related programmes",
-          "partners": "Partners & funders", "news": "Recent news"}
+STALE_AFTER_SECONDS = 200  # > TIMEOUT_SECONDS: a RUNNING marker older than this was orphaned (e.g. restart)
+TOPICS = {"programme": "Current programmes", "initiative": "Initiative named in the procurement",
+          "subject": "Work in the opportunity's subject", "partners": "Partnerships & funding",
+          "procurement": "Comparable projects or procurements", "profile": "Organisation profile",
+          "news": "Recent news"}
 
 SYSTEM = (
     "You compile public, verifiable background facts about a buyer organisation for a bid team. "
@@ -38,17 +43,23 @@ def _path(bid_id: int, run_id: int) -> str:
     return f"{int(bid_id)}/buyer_research/{int(run_id)}.json"
 
 
-def _prompt(client: str, title: str, reference: str | None, today: str) -> str:
+def _prompt(client: str, title: str, reference: str | None, today: str, context: str = "") -> str:
     ref = f" (reference {reference})" if reference else ""
+    ctx = f"Procurement context, quoted from the documents: \"{context}\"\n" if context else ""
     return (
-        f"Today is {today}. Buyer organisation: {client}. Opportunity: {title}{ref}.\n"
-        "Search the web and find up to 6 factual items about this buyer covering: "
-        "(profile) its mandate and profile; (programme) recent programmes or projects related to the "
-        "opportunity's subject; (partners) partners or funders publicly linked to that work; "
-        "(news) news from the last 24 months.\n"
+        f"Today is {today}. Buyer organisation: {client}. Opportunity: {title}{ref}.\n{ctx}"
+        "Search the web and find up to 6 verifiable facts about this buyer, in this priority: "
+        "(initiative) the programme or initiative named in the procurement context, if any; "
+        "(programme) the buyer's current programmes; (subject) its work in the opportunity's subject area; "
+        "(partners) documented partnerships and funding for that work; (procurement) comparable projects "
+        "or procurements it has run; (profile) its mandate, only if little else is found.\n"
         "If you cannot confirm that a source is about this specific organisation, leave it out.\n"
+        "For each fact give a \"connection\": one sentence on how the SOURCE ITSELF links the fact to this "
+        "opportunity (for example it names the same programme or the same subject), or null when the source "
+        "does not state such a link. Never infer preferences, intentions, budgets or likely decisions.\n"
         "Finish with ONLY a JSON array inside <items></items>, each element: "
-        '{"topic": "profile|programme|partners|news", "statement": "one factual sentence", '
+        '{"topic": "initiative|programme|subject|partners|procurement|profile", '
+        '"statement": "one factual sentence", "connection": "one sentence or null", '
         '"url": "the exact source URL", "published": "YYYY-MM-DD, YYYY-MM, YYYY or null"}.')
 
 
@@ -107,9 +118,11 @@ def parse_items(text: str, urls: dict[str, dict]) -> list[dict]:
         if not hit or not stmt or len(stmt) > 400:
             continue
         url, meta = hit
+        conn = re.sub(r"\s+", " ", str(it.get("connection") or "")).strip()
         items.append({
             "topic": it.get("topic") if it.get("topic") in TOPICS else "profile",
             "statement": stmt,
+            "connection": conn if conn and conn.lower() not in ("null", "none", "n/a") and len(conn) <= 300 else None,
             "url": url,
             "source_title": (meta or {}).get("title"),
             "published": _date(it.get("published"), (meta or {}).get("page_age")),
@@ -118,13 +131,13 @@ def parse_items(text: str, urls: dict[str, dict]) -> list[dict]:
 
 
 def run_research(client_name: str, title: str, reference: str | None, api_key: str | None,
-                 *, anthropic_client=None) -> dict:
+                 *, anthropic_client=None, context: str = "") -> dict:
     """One bounded research call. Returns the persisted payload shape."""
     import config
     today = datetime.now(timezone.utc).date().isoformat()
     started = time.monotonic()
     client = anthropic_client or config.get_anthropic_client(api_key)
-    messages = [{"role": "user", "content": _prompt(client_name, title, reference, today)}]
+    messages = [{"role": "user", "content": _prompt(client_name, title, reference, today, context)}]
     blocks: list[dict] = []
     resp = None
     for _ in range(3):  # resume a paused server-tool turn at most twice
@@ -153,7 +166,7 @@ def run_research(client_name: str, title: str, reference: str | None, api_key: s
         pass
     return {"status": "COMPLETE", "items": items, "searched_urls": len(urls), "model": MODEL,
             "researched_at": datetime.now(timezone.utc).isoformat(), "usage": usage,
-            "query": {"client": client_name, "title": title, "reference": reference}}
+            "query": {"client": client_name, "title": title, "reference": reference, "context": context}}
 
 
 # ── persistence + background launch ────────────────────────────────────────
@@ -198,6 +211,76 @@ def research_subject(bid_id: int) -> dict:
     return {"client": client, "title": title, "reference": (bid.get("file_number") or "").strip() or None}
 
 
+def procurement_context(bid_id: int, run_id: int) -> str:
+    """Short verbatim context for the search (the documents' own 'about' and
+    overview sentences), so research targets the programme named in the
+    procurement. Empty when it cannot be read; never raises."""
+    try:
+        import full_analysis_service
+        import phoenix_report_service as prs
+        import phoenix_reports as pr
+        source = (full_analysis_service.get_full_analysis_status(bid_id, run_id) or {}).get("source_analysis_run_id")
+        if not source:
+            return ""
+        f = prs.build_facts_for_run(bid_id, int(source))
+        parts = [(pr.sentences_of(it["text"]) or [""])[0] for it in f.get("about") or []]
+        parts += [s["text"] for s in (f.get("synopsis") or [])[:1]]
+        return pr.clip(" ".join(p for p in parts if p), 600)
+    except Exception:
+        return ""
+
+
+def _same_subject(a: dict, subj: dict) -> bool:
+    q = (a or {}).get("query") or {}
+    return ((q.get("client") or "").casefold() == (subj.get("client") or "").casefold()
+            and (q.get("title") or "").casefold() == ((subj.get("title") or subj.get("client")) or "").casefold())
+
+
+def reusable(bid_id: int, run_id: int) -> dict | None:
+    """COMPLETE research from another FULL run of the same bid, for the same
+    buyer and opportunity title (newest first). Read-only."""
+    import database as db
+    try:
+        subj = research_subject(bid_id)
+        runs = [r for r in db.list_analysis_runs(bid_id)
+                if r.get("analysis_mode") == "FULL" and int(r["id"]) != int(run_id)]
+    except Exception:
+        return None
+    for r in sorted(runs, key=lambda r: (str(r.get("created_at")), r["id"]), reverse=True):
+        other = load(bid_id, int(r["id"]))
+        if other and other.get("status") == "COMPLETE" and _same_subject(other, subj):
+            return dict(other, reused_from_run=other.get("reused_from_run") or int(r["id"]))
+    return None
+
+
+def for_report(bid_id: int, run_id: int) -> dict | None:
+    """What the assessment shows: this run's research, else reusable research."""
+    own = load(bid_id, run_id)
+    if own and own.get("status") in ("COMPLETE", "RUNNING"):
+        return own
+    return reusable(bid_id, run_id) or own
+
+
+def ensure(bid_id: int, run_id: int, api_key: str | None) -> dict | None:
+    """Make research available for a FULL run without blocking: existing
+    state is returned as is (a FAILED attempt is not retried automatically);
+    otherwise completed research of an earlier run of the same bid is reused;
+    otherwise -- with an API key -- one background search is started."""
+    existing = load(bid_id, run_id)
+    if existing:
+        return existing
+    reused = reusable(bid_id, run_id)
+    if reused:
+        try:
+            _save(bid_id, run_id, reused)
+        except Exception:
+            pass
+        return reused
+    if api_key:
+        start_background(bid_id, run_id, api_key)
+    return load(bid_id, run_id)
+
+
 def start_background(bid_id: int, run_id: int, api_key: str | None) -> bool:
     """Start research for a FULL run in a daemon thread unless it already
     exists or is running. Never raises."""
@@ -217,9 +300,11 @@ def start_background(bid_id: int, run_id: int, api_key: str | None) -> bool:
 
     def _work():
         try:
-            out = run_research(subj["client"], subj["title"] or subj["client"], subj["reference"], api_key)
+            out = run_research(subj["client"], subj["title"] or subj["client"], subj["reference"], api_key,
+                               context=procurement_context(bid_id, run_id))
         except Exception as exc:
-            out = {"status": "FAILED", "error": type(exc).__name__, "items": []}
+            out = {"status": "FAILED", "error": type(exc).__name__, "items": [],
+                   "query": {"client": subj["client"], "title": subj["title"] or subj["client"]}}
         out["started_at"] = started_at
         try:
             _save(bid_id, run_id, out)

@@ -264,25 +264,38 @@ def _render_section(title: str, blurb: str, findings: list, primary: str | None,
                             unsafe_allow_html=True)
 
 
-def _render_buyer_research(bid_id: int, run_id: int) -> str:
+def _ensure_research(bid_id: int, run_id: int) -> dict | None:
+    """Research state for this FULL run. The first time a result without
+    research is opened in this session, completed research of the same bid is
+    reused or one background search is started (never blocks the page)."""
+    _, org, _ = _ctx()
+    flag = f"fa_research_ensured_{bid_id}_{run_id}"
+    try:
+        if not st.session_state.get(flag):
+            st.session_state[flag] = True
+            return tenancy.ensure_buyer_research_for_organization(bid_id, org, run_id, _api_key())
+        return tenancy.get_buyer_research_for_organization(bid_id, org, run_id)
+    except Exception:
+        return None
+
+
+def _render_buyer_research(bid_id: int, run_id: int, research: dict | None) -> str:
     """Buyer Intelligence (bounded web research) status for this FULL run;
     returns the research state used as the report cache variant."""
     _, org, _ = _ctx()
-    try:
-        research = tenancy.get_buyer_research_for_organization(bid_id, org, run_id)
-    except Exception:
-        research = None
     state = (research or {}).get("status") or "NONE"
     if state == "COMPLETE":
-        st.caption(f"Buyer Intelligence: {len(research.get('items') or [])} verified external source(s) "
-                   f"included in the assessment.")
+        n = len(research.get("items") or [])
+        st.caption(f"Buyer Intelligence: {n} verified external source(s) included in the assessment."
+                   if n else "Buyer Intelligence: research completed; no verifiable public sources were found.")
     elif state == "RUNNING":
-        st.caption("Buyer Intelligence web research is running in the background (about 1–2 minutes). "
-                   "The assessment can be downloaded now and re-exported once it completes.")
+        st.caption("Buyer Intelligence web research is running in the background (about 1–2 minutes); "
+                   "this panel refreshes automatically and the assessment is rebuilt when it completes.")
     else:
         note = {"FAILED": "Buyer Intelligence research did not complete.",
                 "SKIPPED": "Buyer Intelligence research needs the issuing organization (Opportunity details)."
-                }.get(state, "Buyer Intelligence web research has not been run for this analysis.")
+                }.get(state, "Buyer Intelligence web research has not been run for this analysis "
+                             "(an Anthropic API key is needed to start it).")
         c1, c2 = st.columns([3, 1.4])
         c1.caption(note)
         if c2.button("Run buyer research", key=f"fa_research_{bid_id}_{run_id}"):
@@ -304,13 +317,31 @@ def _render_export(bid_id: int, status: dict) -> None:
     if run_status not in EXPORTABLE:
         return
     _, org, _ = _ctx()
-    variant = _render_buyer_research(bid_id, run_id)
-    out = prepare_export(bid_id, org, run_id, run_status, st.session_state, variant)
-    if out.get("error"):
-        st.error(out["error"])
-        return
-    st.download_button("⬇ Download Bid Opportunity Assessment (PDF)", data=out["pdf"], file_name=out["filename"],
-                       mime="application/pdf", key=f"fa_dl_{bid_id}_{run_id}", type="primary")
+    research = _ensure_research(bid_id, run_id)
+    running = (research or {}).get("status") == "RUNNING"
+
+    def body():
+        current = research
+        if running:
+            try:
+                current = tenancy.get_buyer_research_for_organization(bid_id, org, run_id)
+            except Exception:
+                current = research
+            if (current or {}).get("status") != "RUNNING":
+                st.rerun()  # research finished: leave the polling fragment
+        variant = _render_buyer_research(bid_id, run_id, current)
+        out = prepare_export(bid_id, org, run_id, run_status, st.session_state, variant)
+        if out.get("error"):
+            st.error(out["error"])
+            return
+        st.download_button("⬇ Download Bid Opportunity Assessment (PDF)", data=out["pdf"],
+                           file_name=out["filename"], mime="application/pdf",
+                           key=f"fa_dl_{bid_id}_{run_id}", type="primary")
+
+    if running:
+        st.fragment(run_every=10)(body)()  # poll while the background research runs
+    else:
+        body()
 
 
 def _render_result(bid_id: int, status: dict) -> None:

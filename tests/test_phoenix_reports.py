@@ -139,7 +139,7 @@ def test_injaz_pdfs_state_what_the_rfp_says(injaz_reports, which):
 
 def test_injaz_page_budgets(injaz_reports):
     _, _, _, snap, assess = injaz_reports
-    assert 2 <= _pages(snap["pdf"]) <= 3
+    assert _pages(snap["pdf"]) <= 2
     assert 3 <= _pages(assess["pdf"]) <= 6
     assert snap["filename"].endswith("_Opportunity_Snapshot.pdf")
     assert assess["filename"].endswith("_Bid_Opportunity_Assessment.pdf")
@@ -148,7 +148,7 @@ def test_injaz_page_budgets(injaz_reports):
 def test_assessment_discloses_partial_and_missing_research(injaz_reports):
     text = re.sub(r"\s+", " ", injaz_reports[2])
     assert "completed partially" in text
-    assert "External buyer research is not available" in text
+    assert "External buyer research has not yet been run" in text
     assert "does not recommend whether to bid" in text
 
 
@@ -327,7 +327,234 @@ def test_buyer_research_in_assessment_has_url_and_date(injaz_reports):
     f = injaz_reports[0]
     research = {"status": "COMPLETE", "researched_at": "2026-11-12T10:00:00+00:00", "items": [
         {"topic": "profile", "statement": "INJAZ Lebanon is a member of INJAZ Al-Arab.",
-         "url": "https://injaz-lebanon.org/about", "source_title": "About INJAZ", "published": "2025-03-03"}]}
+         "url": "https://injaz-lebanon.org/about", "source_title": "About INJAZ", "published": "2025-03-03",
+         "connection": "The page names the GIL programme."},
+        {"topic": "news", "statement": "INJAZ Lebanon held a youth summit.", "url": "https://injaz-lebanon.org/news",
+         "source_title": "News", "published": None, "connection": None}]}
     text = re.sub(r"\s+", " ", _pdf_text(pr.render_assessment(f, research=research)["pdf"]))
     assert "https://injaz-lebanon.org/about" in text and "2025-03-03" in text
     assert "do not indicate the buyer's preferences" in text
+    assert "The page names the GIL programme." in text and "Background on the buyer" in text
+    assert "undated" in text and "2 verified external finding(s)" in text
+
+
+# ── V2: evaluation weight hierarchy (generic, arithmetic-first) ─────────────
+
+def test_child_weight_basis_rule():
+    assert pr.child_weight_basis("Technical Evaluation", "60%", ["25%", "15%", "10%", "10%"], []) == "overall"
+    assert pr.child_weight_basis("Financial Evaluation", "40%", ["40%"], []) == "overall"
+    assert pr.child_weight_basis("Technical Proposal", "70%", ["50%", "30%", "20%"], []) == "within"
+    assert pr.child_weight_basis("Technical", "60%", ["30%", "20%"], ["Approach (30% of the technical score)"]) == "within"
+    assert pr.child_weight_basis("Technical", "60%", ["30%", "20%"], []) == "published"
+    assert pr.child_weight_basis("Technical", "60%", ["30%", None], []) == "published"
+
+
+def test_injaz_weights_are_overall_shares_without_parent_qualifier(injaz_reports):
+    f, snap, full = injaz_reports[0], injaz_reports[1], injaz_reports[2]
+    kids = [c for c in f["criteria"] if c["level"] == 1]
+    assert len(kids) == 5 and all(c["basis"] == "overall" for c in kids)
+    for text in (snap, full):
+        t = re.sub(r"\s+", " ", text)
+        assert "of Technical Evaluation" not in t and "of Financial Evaluation" not in t
+        assert "Technical Evaluation 60% = 25% + 15% + 10% + 10%" in t
+        assert "Financial Evaluation 40% = 40%" in t
+
+
+def test_calgary_weights_and_pricing_form_excluded():
+    """Independent package: Key/Other Personnel 10% + 10% = Team 20% are
+    overall shares; the price form's 55/35/10 item weights are price
+    calculation, not evaluation criteria."""
+    snap = json.loads((FIX / "calgary_26_1603_run34_raw_snapshot.json").read_text(encoding="utf-8"))["result"]
+    docs = []
+    for ec in snap["evaluation_criteria"]:
+        for r in ec.get("source_refs") or []:
+            if r.get("excerpt"):
+                docs.append((r.get("source_doc") or "rfp.docx", f"[[SOURCE: {r.get('source_doc')} | PAGE: 1]]\n{r['excerpt']}"))
+    f = pr.build_facts(bid={"id": 1, "title": "Leadership L&D", "client": None}, fast_result=snap, documents=docs)
+    stages = [c["stage"] for c in f["criteria"]]
+    assert not any(s.startswith("Item ") for s in stages)
+    team = [c for c in f["criteria"] if c["level"] == 1 and "Personnel" in c["stage"]]
+    assert team and all(c["basis"] == "overall" for c in team)
+    assert len({(c["stage"], c["weight"]) for c in f["criteria"]}) == len(f["criteria"])  # no duplicates
+    text = re.sub(r"\s+", " ", _pdf_text(pr.render_snapshot(f)["pdf"]))
+    assert "of Team Experience" not in text and "Pricing Form" not in text
+
+
+# ── V2: concise, non-repeating reports ─────────────────────────────────────
+
+SNAP_TITLES = ("1. Opportunity at a Glance", "2. Scope and Delivery Essentials", "3. Evaluation and Eligibility",
+               "4. Commercial and Submission Essentials")
+FULL_TITLES = ("1. Executive Intelligence Summary", "2. Opportunity and Delivery Requirements", "3. Buyer Intelligence",
+               "4. Evaluation and Commercial Intelligence", "5. Material Information and Amendments",
+               "6. Management Decision Reference")
+
+
+def test_section_structure(injaz_reports):
+    snap, full = (re.sub(r"\s+", " ", t) for t in injaz_reports[1:3])
+    for t in SNAP_TITLES:
+        assert t in snap, t
+    assert "Additional Material Facts" not in snap  # nothing left to add for the original ToR
+    for t in FULL_TITLES:
+        assert t in full, t
+
+
+@pytest.mark.parametrize("which", [1, 2])
+def test_statements_are_printed_once(injaz_reports, which):
+    t = re.sub(r"\s+", " ", injaz_reports[which])
+    for needle in ("inclusive of all costs", "Total estimated cost", "shall not be considered",
+                   "won't handle any transfer", "30 October 2026", "Payment shall be made by wire transfer",
+                   "within 5 days of track completion"):
+        assert t.lower().count(needle.lower()) == 1, (needle, t.lower().count(needle.lower()))
+    assert not re.search(r"\b\d+ stated\b", t)
+    assert "for whatever reason" not in t  # late rule summarised, not quoted
+    assert "Please submit the following documents via email" not in t  # no verbatim submission instruction
+
+
+def test_quantities_presented_as_published(injaz_reports):
+    f = injaz_reports[0]
+    snap = re.sub(r"\s+", " ", injaz_reports[1])
+    assert "6-session" in snap and "aged 18" in snap
+    assert "5 days × 3 hours per day" in snap and "five (5)-days" in snap
+    assert any("five 5 days" in pdg.fold(x["text"]) for x in f["quantities"])
+    assert all(x["page"] for x in f["quantities"])
+
+
+def test_pricing_kept_apart_from_required_documents(injaz_reports):
+    f = injaz_reports[0]
+    assert pr.required_document_names(f) == ["Updated CV", "Technical Proposal (Brief)", "Quotation",
+                                             "Availability Statement"]
+    assert [p["text"][:20] for p in f["pricing"]] == ["The rate per trainin", "Total estimated cost"]
+
+
+def test_addendum_snapshot_lists_new_facts_once_with_labels():
+    f = _addendum_case(previous=True)
+    snap_pdf = pr.render_snapshot(f)["pdf"]
+    snap = re.sub(r"\s+", " ", _pdf_text(snap_pdf))
+    full = re.sub(r"\s+", " ", _pdf_text(pr.render_assessment(f, full_status="COMPLETE")["pdf"]))
+    assert "5. Additional Material Facts" in snap and "NEW INFORMATION" in snap
+    assert snap.count("PSEA Code of Conduct") == 1 and full.count("PSEA Code of Conduct") == 1
+    assert "$15" not in snap + full
+    assert _pages(snap_pdf) <= 2
+
+
+# ── V2: independent fictional package with a different structure ───────────
+
+LIB = "RFT-2027-014_Digital_Literacy.pdf"
+
+
+def _library():
+    text = (FIX / "fictional_library_rft.txt").read_text(encoding="utf-8")
+
+    def ec(stage, weight, parent, excerpt, page=2):
+        return {"stage": stage, "weight": weight, "parent_stage": parent, "weight_basis": "Overall",
+                "source_refs": [{"source_doc": LIB, "page": page, "excerpt": excerpt}]}
+    result = {
+        "doc_metadata_by_doc": {LIB: {"client": "Harbourview Municipal Library Board", "file_number": "RFT-2027-014",
+                                      "submission_deadline": "2027-03-15"}},
+        "evaluation_criteria": [
+            ec("Technical Proposal", "70%", "Evaluation Criteria", "Technical Proposal – 70%"),
+            ec("Methodology", "50%", "Technical Proposal", "Methodology (50%) - approach to adult learners"),
+            ec("Team", "30%", "Technical Proposal", "Team (30%) - facilitator qualifications and bilingual capacity."),
+            ec("Experience", "20%", "Technical Proposal", "Experience (20%) - comparable workshop programmes"),
+            ec("Price", "30%", "Evaluation Criteria", "Price – 30%"),
+        ],
+        "requirements": [], "commercial_clauses": [], "canonical_milestones": [],
+    }
+    bid = {"id": 99, "title": "Digital Literacy Workshop Series for Older Adults",
+           "client": "Harbourview Municipal Library Board", "file_number": None, "submission_deadline": None}
+    return pr.build_facts(bid=bid, fast_result=result, documents=[(LIB, text)], analysis_date="2026-11-12")
+
+
+def test_independent_package_reports():
+    f = _library()
+    assert f["deadline"]["effective"] == "2027-03-15"
+    assert all(c["basis"] == "within" for c in f["criteria"] if c["level"] == 1)  # 50 + 30 + 20 = 100
+    snap_pdf = pr.render_snapshot(f)["pdf"]
+    snap = re.sub(r"\s+", " ", _pdf_text(snap_pdf))
+    full = re.sub(r"\s+", " ", _pdf_text(pr.render_assessment(f, full_status="COMPLETE",
+                                                              research={"status": "FAILED"})["pdf"]))
+    assert _pages(snap_pdf) <= 2
+    assert "50% of Technical Proposal" in snap and "15 March 2027" in snap
+    assert "Electronic submission" in snap
+    assert "CAD 45,000" in snap and "net 30 days" in snap
+    assert "40 workshops of 2 hours" in snap
+    for t in FULL_TITLES:
+        assert t in full, t
+    assert "attempted" in full and "did not complete" in full
+    for text in (snap, full):
+        assert not FALSE_ABSENCE.search(text) and not FORBIDDEN.search(text)
+
+
+# ── V2: buyer research states, persistence and reuse (no network) ──────────
+
+@pytest.mark.parametrize("research,needle", [
+    (None, "has not yet been run"),
+    ({"status": "RUNNING", "started_at": "2026-11-12T10:00:00+00:00"}, "was in progress"),
+    ({"status": "FAILED", "started_at": "2026-11-12T10:00:00+00:00"}, "did not complete"),
+    ({"status": "SKIPPED"}, "buyer organisation is not identified"),
+    ({"status": "COMPLETE", "items": [], "researched_at": "2026-11-12T10:00:00+00:00"}, "found no public sources"),
+])
+def test_assessment_states_research_state(injaz_reports, research, needle):
+    text = re.sub(r"\s+", " ", _pdf_text(pr.render_assessment(injaz_reports[0], research=research)["pdf"]))
+    assert needle in text
+
+
+class _Store:
+    def __init__(self, runs):
+        self.files, self.runs = {}, runs
+
+    def install(self, monkeypatch):
+        import database as db
+        monkeypatch.setattr(db, "download_file", lambda p: self.files.get(p))
+        monkeypatch.setattr(db, "upload_json_object", lambda p, d: self.files.__setitem__(p, json.dumps(d).encode()))
+        monkeypatch.setattr(db, "list_analysis_runs", lambda b: self.runs)
+        monkeypatch.setattr(db, "get_bid", lambda b: {"id": b, "client": "INJAZ Lebanon",
+                                                      "title": "Trainer for Design Thinking", "file_number": None})
+
+
+def test_research_reused_across_runs_of_same_bid(monkeypatch):
+    store = _Store([{"id": 21, "analysis_mode": "FULL", "created_at": "2026-11-10"},
+                    {"id": 22, "analysis_mode": "FULL", "created_at": "2026-11-11"}])
+    store.install(monkeypatch)
+    started = []
+    monkeypatch.setattr(buyer_research, "start_background", lambda *a: started.append(a) or True)
+    store.files["15/buyer_research/21.json"] = json.dumps({
+        "status": "COMPLETE", "items": [{"statement": "x", "url": "https://e.org"}],
+        "query": {"client": "INJAZ Lebanon", "title": "Trainer for Design Thinking"}}).encode()
+    out = buyer_research.ensure(15, 22, "key")
+    assert out["status"] == "COMPLETE" and out["reused_from_run"] == 21 and not started
+    assert json.loads(store.files["15/buyer_research/22.json"])["reused_from_run"] == 21
+    assert buyer_research.for_report(15, 22)["items"][0]["url"] == "https://e.org"
+
+
+def test_research_started_once_and_failed_not_retried(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    store = _Store([{"id": 30, "analysis_mode": "FULL", "created_at": "2026-11-12"}])
+    store.install(monkeypatch)
+    started = []
+    monkeypatch.setattr(buyer_research, "start_background", lambda *a: started.append(a) or True)
+    assert buyer_research.ensure(15, 30, None) is None and not started  # no key -> nothing paid
+    buyer_research.ensure(15, 30, "key")
+    assert started == [(15, 30, "key")]
+    old = (datetime.now(timezone.utc) - timedelta(seconds=buyer_research.STALE_AFTER_SECONDS + 5)).isoformat()
+    store.files["15/buyer_research/30.json"] = json.dumps({"status": "RUNNING", "started_at": old}).encode()
+    assert buyer_research.load(15, 30)["status"] == "FAILED"  # orphaned by a restart
+    assert buyer_research.ensure(15, 30, "key")["status"] == "FAILED" and len(started) == 1
+    assert buyer_research.STALE_AFTER_SECONDS < 300
+
+
+def test_research_prompt_targets_procurement_context_and_keeps_connection():
+    content = [
+        {"type": "web_search_tool_result", "content": [
+            {"type": "web_search_result", "url": "https://injaz-lebanon.org/gil", "title": "GIL", "page_age": None}]},
+        {"type": "text", "text": '<items>[{"topic":"initiative","statement":"GIL runs in Akkar.",'
+                                 '"connection":"The page describes the GIL programme named in the ToR.",'
+                                 '"url":"https://injaz-lebanon.org/gil","published":"2026-02"}]</items>'},
+    ]
+    client = _Client(_Resp(content))
+    out = buyer_research.run_research("INJAZ Lebanon", "Trainer for Design Thinking", None, None,
+                                      anthropic_client=client, context="The GIL 2026-2028 program ...")
+    assert out["items"][0]["connection"].startswith("The page describes")
+    assert out["items"][0]["published"] == "2026-02" and out["items"][0]["topic"] == "initiative"
+    prompt = client.calls[0]["messages"][0]["content"]
+    assert "The GIL 2026-2028 program" in prompt and "connection" in prompt

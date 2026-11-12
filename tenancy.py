@@ -365,13 +365,14 @@ def start_full_analysis_for_organization(
     response = full_analysis_service.start_full_analysis(
         bid_id, api_key, source_run_id=source_run_id,
         created_by_user_id=created_by_user_id, retry=retry, execution=execution)
-    # Buyer Intelligence: bounded web research alongside a newly created FULL
-    # run, in its own background thread -- it never delays or alters FULL.
+    # Buyer Intelligence: bounded web research for the FULL run this start
+    # resolved to (new, active or reused), in its own background thread -- it
+    # never delays or alters FULL. Completed research of the same bid is reused.
     try:
         run = (response or {}).get("run") or {}
-        if (response or {}).get("outcome") == "CREATED" and run.get("id") and execution == "background":
+        if run.get("id") and execution == "background":
             import buyer_research
-            buyer_research.start_background(bid_id, int(run["id"]), api_key)
+            buyer_research.ensure(bid_id, int(run["id"]), api_key)
     except Exception:
         pass
     return response
@@ -466,6 +467,18 @@ def get_buyer_research_for_organization(bid_id: int, organization_id: str, run_i
     require_bid_access(bid_id, organization_id)
     import buyer_research
     return buyer_research.load(bid_id, run_id)
+
+
+def ensure_buyer_research_for_organization(bid_id: int, organization_id: str, run_id: int,
+                                           api_key: str | None) -> dict | None:
+    """Research state for a FULL run, reusing completed research of the same
+    bid or starting one background search when none exists. Never blocks."""
+    require_bid_access(bid_id, organization_id)
+    run = db.get_analysis_run(run_id)
+    if not run or int(run.get("bid_id", -1)) != int(bid_id) or run.get("analysis_mode") != "FULL":
+        raise AccessDeniedError(f"run {run_id} is not a Full Analysis run of bid {bid_id}")
+    import buyer_research
+    return buyer_research.ensure(bid_id, run_id, api_key)
 
 
 def start_buyer_research_for_organization(bid_id: int, organization_id: str, run_id: int,
