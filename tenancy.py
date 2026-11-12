@@ -463,6 +463,18 @@ def export_bid_opportunity_assessment_for_organization(bid_id: int, organization
     return phoenix_report_service.assessment_pdf(bid_id, run_id)
 
 
+def get_full_analysis_facts_for_organization(bid_id: int, organization_id: str, run_id: int) -> dict:
+    """Verified, source-referenced facts behind the Bid Opportunity
+    Assessment, for the Full Bid Intelligence tabs. Same checks as the
+    export; read-only, zero model calls."""
+    require_bid_access(bid_id, organization_id)
+    run = db.get_analysis_run(run_id)
+    if not run or int(run.get("bid_id", -1)) != int(bid_id) or run.get("analysis_mode") != "FULL":
+        raise AccessDeniedError(f"run {run_id} is not a Full Analysis run of bid {bid_id}")
+    import phoenix_report_service
+    return phoenix_report_service.facts_for_full_run(bid_id, run_id)
+
+
 def get_buyer_research_for_organization(bid_id: int, organization_id: str, run_id: int) -> dict | None:
     require_bid_access(bid_id, organization_id)
     import buyer_research

@@ -27,9 +27,12 @@ entered again.
 """
 from __future__ import annotations
 
+import re
+
 import streamlit as st
 
 import auth_session
+import phoenix_reports as pr
 import tenancy
 from components import full_analysis_view as fav
 from config import api_key_configured, get_api_key
@@ -242,28 +245,6 @@ def _render_stuck(bid_id: int, view: dict) -> None:
         st.rerun()
 
 
-def _render_section(title: str, blurb: str, findings: list, primary: str | None, key: str) -> None:
-    st.markdown(f"#### {title}")
-    st.caption(blurb)
-    if not findings:
-        st.markdown('<div style="font-size:.82rem;color:#6E6C66">No findings in this domain.</div>',
-                    unsafe_allow_html=True)
-        return
-    st.markdown("".join(fav.finding_html(f, primary=primary) for f in findings[:12]), unsafe_allow_html=True)
-    if len(findings) > 12:
-        with st.expander(f"{len(findings) - 12} more"):
-            st.markdown("".join(fav.finding_html(f, primary=primary) for f in findings[12:]),
-                        unsafe_allow_html=True)
-    trace = fav.trace_rows(findings)
-    if trace:
-        with st.expander("Evidence references"):
-            for t, cids, fids in trace:
-                refs = ", ".join(cids + fids)
-                st.markdown(f'<div style="font-size:.76rem;color:#A9A69D;margin:.15rem 0">'
-                            f'<span style="color:#EDEAE3">{fav.esc(t)}</span><br>{fav.esc(refs)}</div>',
-                            unsafe_allow_html=True)
-
-
 def _ensure_research(bid_id: int, run_id: int) -> dict | None:
     """Research state for this FULL run. The first time a result without
     research is opened in this session, completed research of the same bid is
@@ -344,6 +325,277 @@ def _render_export(bid_id: int, status: dict) -> None:
         body()
 
 
+RESULT_TABS = ("Overview", "Requirements", "Evaluation", "Commercial", "Buyer Intelligence", "Detailed Findings")
+_FACTS_CACHE = "fa_facts_{run}"
+# Specialist text that asserts information is missing is never shown as a
+# verified fact (the documents often state it; an empty AI field is not absence).
+_ABSENCE = (r"(not specified|not stated|not provided|not defined|\babsent\b|\bmissing\b|"
+                      r"does not (state|specify|include)|no (evaluation|submission|payment) )")
+
+
+def load_facts(bid_id: int, organization_id: str, run_id: int, session) -> dict:
+    """{"facts"} or {"error"}: the verified fact model shared with the PDF
+    (document text read once per run per session; errors are not cached)."""
+    key = _FACTS_CACHE.format(run=run_id)
+    if key in session:
+        return session[key]
+    try:
+        out = {"facts": tenancy.get_full_analysis_facts_for_organization(bid_id, organization_id, run_id)}
+    except Exception as exc:
+        return {"error": str(exc)}
+    session[key] = out
+    return out
+
+
+def _ref(item) -> str:
+    r = pr.ref_text(item) if item else ""
+    return f' <span style="color:#8C8A84;font-size:.74rem">[{fav.esc(r)}]</span>' if r else ""
+
+
+def _heading(text: str) -> None:
+    st.markdown(f'<div style="font-size:.9rem;color:#C9A96E;margin:.9rem 0 .25rem">{fav.esc(text)}</div>',
+                unsafe_allow_html=True)
+
+
+def _facts_list(items: list, n: int = 220) -> None:
+    if not items:
+        return
+    lis = "".join(f'<li style="margin:.12rem 0">{fav.esc(pr.brief(it["text"], n))}{_ref(it)}</li>' for it in items)
+    st.markdown(f'<ul style="font-size:.84rem;margin:.1rem 0 .4rem 1.1rem;line-height:1.45">{lis}</ul>',
+                unsafe_allow_html=True)
+
+
+def _kv_table(rows: list) -> None:
+    if not rows:
+        return
+    trs = "".join(f'<tr><td style="color:#A9A69D;padding:.3rem .8rem .3rem 0;vertical-align:top;white-space:nowrap">'
+                  f'{fav.esc(k)}</td><td style="padding:.3rem 0;vertical-align:top">{v}</td></tr>' for k, v in rows)
+    st.markdown(f'<table style="font-size:.84rem;border-collapse:collapse;width:100%">{trs}</table>',
+                unsafe_allow_html=True)
+
+
+def _deadline_html(f: dict) -> str:
+    d = f["deadline"]
+    if d["manual"]:
+        out = (f"<strong>{fav.esc(pr.fmt_date(d['manual']))}</strong> — manually entered by a Phoenix user"
+               + (f"; documents state {fav.esc(pr.fmt_date(d['extracted']))}{_ref(d['extracted_ref'])}"
+                  if d["extracted"] else ""))
+    elif d["extracted"]:
+        out = f"<strong>{fav.esc(pr.fmt_date(d['extracted']))}</strong>{_ref(d['extracted_ref'])}"
+    else:
+        return ""
+    if d["amended_from"]:
+        out += (f'<br><span style="color:#D9A441">Updated</span> — previously '
+                f'{fav.esc(pr.fmt_date(d["amended_from"]["value"]))}{_ref(d["amended_from"]["ref"])}')
+    return out
+
+
+def _tab_overview(bid_id: int, status: dict, view: dict, f: dict | None) -> None:
+    st.markdown(fav.render_strip(view["bots"], view["reconciliation"]), unsafe_allow_html=True)
+    st.markdown(fav.render_banner(*fav.overall_banner(view, status)), unsafe_allow_html=True)
+    _render_export(bid_id, status)  # PDF download + Buyer Intelligence state (starts/reuses research)
+    if not f:
+        return
+    _, org, _ = _ctx()
+    try:
+        research = tenancy.get_buyer_research_for_organization(bid_id, org, status["run_id"])
+    except Exception:
+        research = None
+    _heading("Executive summary")
+    ident, rows = f["identity"], []
+    if ident.get("organization"):
+        rows.append(("Buyer", fav.esc(ident["organization"])))
+    if ident.get("reference"):
+        rows.append(("Reference", fav.esc(ident["reference"])))
+    if _deadline_html(f):
+        rows.append(("Submission deadline", _deadline_html(f)))
+    if f["synopsis"]:
+        rows.append(("Synopsis", fav.esc(" ".join(s["text"] for s in f["synopsis"])) + _ref(f["synopsis"][0])))
+    top = [c for c in f["criteria"] if c["level"] == 0 and c["weight"]]
+    if top:
+        rows.append(("Evaluation basis", fav.esc(" / ".join(f"{c['stage']} {c['weight']}" for c in top))
+                     + _ref(top[0]["ref"])))
+    if f["pricing"]:
+        p = f["pricing"][0]
+        rows.append(("Pricing basis", fav.esc(pr.brief(p["text"], 200)) + _ref(p)))
+    if f["changes"]:
+        k = {kind: sum(1 for c in f["changes"] if c["kind"] == kind) for kind in ("NEW", "UPDATED", "CONFLICT")}
+        rows.append(("Changes in later documents",
+                     fav.esc(", ".join(f"{v} {kk.lower()}" for kk, v in k.items() if v)) + " — see Commercial"))
+    rows.append(("External buyer research", fav.esc(pr._research_status_line(research).replace("section 3", "see Buyer Intelligence"))))
+    _kv_table(rows)
+
+
+def _tab_requirements(f: dict) -> None:
+    groups = pr._groups(f["scope"])
+    if groups:
+        _heading("Scope of work")
+        for g in groups:
+            if g["heading"]:
+                st.markdown(f'<div style="font-size:.82rem;color:#EDEAE3;margin-top:.3rem">{fav.esc(g["heading"])}</div>',
+                            unsafe_allow_html=True)
+            _facts_list(g["items"])
+    for title, key in (("Workflow and timeline", "timeline"), ("Deliverables", "deliverables"),
+                       ("Stated quantities and durations", "quantities"), ("Qualifications sought", "qualifications"),
+                       ("General requirements", "general")):
+        items = [it for it in f[key] if not (key == "timeline" and pr._is_subhead(it["text"]))]
+        if items:
+            _heading(title)
+            _facts_list(items)
+    if f["required_docs"]:
+        _heading("Required submission documents")
+        _facts_list([dict(d, text=d["name"] + (": " + "; ".join(x["text"].rstrip(".") for x in d["details"])
+                                               if d["details"] else "")) for d in f["required_docs"]], n=400)
+
+
+def _tab_evaluation(f: dict) -> None:
+    if f["criteria"]:
+        _heading("Evaluation criteria and weights")
+        trs = []
+        for c in f["criteria"]:
+            name = fav.esc(c["stage"])
+            name = (f'<span style="padding-left:{1.2 * c["level"]}rem">— {name}</span>' if c["level"]
+                    else f"<strong>{name}</strong>")
+            w = fav.esc(c["weight"] or "—")
+            if c["level"] and c["weight"] and c.get("basis") == "within":
+                w += f' <span style="color:#8C8A84">of {fav.esc(c["parent"])}</span>'
+            trs.append(f'<tr><td style="padding:.3rem .6rem .3rem 0">{name}</td>'
+                       f'<td style="padding:.3rem .6rem;white-space:nowrap">{w}</td>'
+                       f'<td style="padding:.3rem 0;color:#8C8A84;font-size:.74rem">{fav.esc(pr.ref_text(c["ref"]))}</td></tr>')
+        st.markdown('<table style="font-size:.84rem;border-collapse:collapse;width:100%">'
+                    '<tr style="color:#A9A69D"><td>Criterion</td><td style="padding:0 .6rem">Weight</td><td>Source</td></tr>'
+                    + "".join(trs) + "</table>", unsafe_allow_html=True)
+        notes = []
+        for p in f["criteria"]:
+            if p.get("children_basis") == "overall":
+                kids = [c for c in f["criteria"] if c["level"] and c.get("parent") == p["stage"]]
+                notes.append(f"{p['stage']} {p['weight']} = " + " + ".join(str(k["weight"]) for k in kids))
+        if notes:
+            st.caption("Sub-criterion weights are shares of the total score, as their sums show: " + "; ".join(notes) + ".")
+    elif f["eval_text"]:
+        _heading("Evaluation criteria and weights")
+        _facts_list(f["eval_text"])
+    evidence = [dict(x, text=f"{d['name']}: {x['text']}") for d in f["required_docs"]
+                if not pr._PRICING.search(d["name"]) for x in d["details"]]
+    if evidence:
+        _heading("What the proposal must contain")
+        _facts_list(evidence)
+    if not (f["criteria"] or f["eval_text"] or evidence):
+        st.caption("No evaluation section could be located in the document text; see the source documents.")
+
+
+def _tab_commercial(f: dict) -> None:
+    for title, key, n in (("Pricing", "pricing", 240), ("Budget (as stated)", "budget", 240),
+                          ("Payment terms", "payment", 300)):
+        if f[key]:
+            _heading(title)
+            _facts_list(f[key], n)
+    if f["clauses"]:
+        _heading("Material contract terms")
+        _facts_list([{"text": c["text"], **(c["ref"] or {})} for c in f["clauses"]])
+    sub, rows = f["submission"], []
+    if sub.get("channel"):
+        ms = (sub.get("method_sentences") or [None])[0]
+        rows.append(("Method", f"<strong>{fav.esc(sub['channel'])}</strong>"
+                     + (" to " + ", ".join(fav.esc(e["email"]) for e in sub["emails"]) if sub.get("emails") else "")
+                     + _ref(ms)))
+    if pr._subject_text(sub):
+        rows.append(("Subject line", fav.esc(pr._subject_text(sub)) + _ref(sub["subject_rule"])))
+    if pr._late_text(sub):
+        rows.append(("Late submissions", fav.esc(pr._late_text(sub)) + _ref(sub["late_rule"])))
+    if _deadline_html(f):
+        rows.append(("Deadline", _deadline_html(f)))
+    for k in f["key_dates"]:
+        rows.append((k["label"], fav.esc(pr.fmt_date(k["value"])) + _ref(k["ref"])))
+    if rows:
+        _heading("Submission")
+        _kv_table(rows)
+    if f["changes"]:
+        _heading("Changes introduced by later documents")
+        color = {"NEW": "#7FBF94", "UPDATED": "#D9A441", "CONFLICT": "#E07A6B"}
+        label = {"NEW": "New information", "UPDATED": "Updated information", "CONFLICT": "Unresolved conflict"}
+        lis = []
+        for c in f["changes"]:
+            cur = pr.fmt_date(c["current"]) if c["topic"] == "Submission deadline" else pr.brief(str(c["current"]), 260)
+            prev = ""
+            if c.get("previous"):
+                pv = pr.fmt_date(c["previous"]) if c["topic"] == "Submission deadline" else pr.brief(str(c["previous"]), 200)
+                prev = f" — previously {fav.esc(pv)}{_ref(c.get('supersedes'))}"
+            lis.append(f'<li><span style="color:{color.get(c["kind"], "#A9A69D")}">{label.get(c["kind"], c["kind"])}</span> · '
+                       f'{fav.esc(c["topic"])}: {fav.esc(cur)}{_ref(c.get("source"))}{prev}</li>')
+        st.markdown(f'<ul style="font-size:.84rem;margin:.1rem 0 .4rem 1.1rem">{"".join(lis)}</ul>', unsafe_allow_html=True)
+    if f["workbooks"]:
+        _heading("Spreadsheets in the package")
+        lis = []
+        for wb in f["workbooks"]:
+            purpose = fav.esc(wb["purpose"]) if wb.get("purpose") else "purpose unconfirmed"
+            link = wb.get("references") or []
+            ref = (f" — {'referenced in' if link[0]['status'] == 'linked' else 'possible reference in'} "
+                   f"{fav.esc(pr.ref_text(link[0]))}") if link else " — link to RFP/addendum unconfirmed"
+            lis.append(f"<li><strong>{fav.esc(wb['name'])}</strong>: {purpose}{ref}</li>")
+        st.markdown(f'<ul style="font-size:.84rem;margin:.1rem 0 .4rem 1.1rem">{"".join(lis)}</ul>', unsafe_allow_html=True)
+
+
+def _tab_buyer(f: dict | None, research: dict | None) -> None:
+    if f and f["about"]:
+        _heading("As stated in the procurement documents")
+        _facts_list([dict(it, text=(pr.sentences_of(it["text"]) or [it["text"]])[0]) for it in f["about"]], 300)
+    _heading("External sources")
+    state = (research or {}).get("status") or "NONE"
+    items = (research or {}).get("items") or []
+    if state != "COMPLETE" or not items:
+        st.caption({"RUNNING": "Web research is in progress; the Overview tab refreshes automatically.",
+                    "FAILED": "Web research did not complete; it can be re-run from the Overview tab.",
+                    "SKIPPED": "Web research needs the issuing organization (Understand → Opportunity details).",
+                    "COMPLETE": "Web research completed; no public sources could be verified as being about this buyer."
+                    }.get(state, "Web research has not been run for this analysis yet."))
+        return
+    st.caption(f"Public sources found by targeted web research on "
+               f"{pr.fmt_date(str(research.get('researched_at') or '')[:10])}. External facts about the buyer, separate "
+               "from the procurement requirements; a connection is shown only where the source itself states it.")
+    for it in items:
+        conn = it.get("connection")
+        st.markdown(
+            f'<div style="font-size:.84rem;margin:.45rem 0;padding:.45rem .7rem;border-left:2px solid #C9A96E">'
+            f'{fav.esc(it["statement"])}'
+            f'<div style="color:#A9A69D;font-size:.78rem;margin-top:.15rem">'
+            f'{("Connection: " + fav.esc(conn)) if conn else "Background on the buyer"}</div>'
+            f'<div style="font-size:.74rem;margin-top:.15rem"><a href="{fav.esc(it["url"])}" target="_blank">'
+            f'{fav.esc(pr.clip(it.get("source_title") or it["url"], 90))}</a> · '
+            f'<span style="color:#8C8A84">{fav.esc(it.get("published") or "undated")}</span></div></div>',
+            unsafe_allow_html=True)
+
+
+def _grounded(findings: list) -> list:
+    """Only document-grounded findings: canonical authority, with evidence
+    references, and not a claim that information is missing."""
+    return [x for x in findings
+            if x.get("authority") == "CANONICAL" and (x.get("canonical_ids") or x.get("finding_ids"))
+            and not re.search(_ABSENCE, f"{x.get('title') or ''} {x.get('detail') or ''}", re.I)]
+
+
+def _tab_detailed(bid_id: int, grouped: dict) -> None:
+    st.caption("Additional source-grounded findings from the specialist analyses, each tied to canonical evidence. "
+               "Specialist interpretations, risk assessments and gap claims are working notes and are not shown "
+               "here as verified facts.")
+    shown = 0
+    for sid, title, blurb in fav.RESULT_SECTIONS:
+        items = _grounded(grouped["domains"][sid])
+        if not items:
+            continue
+        shown += len(items)
+        with st.expander(f"{title} ({len(items)})"):
+            st.caption(blurb)
+            st.markdown("".join(fav.finding_html(x, primary=sid) for x in items), unsafe_allow_html=True)
+            st.caption("Evidence: " + "; ".join(f"{t[:60]} → {', '.join(c + i)}"
+                                                 for t, c, i in fav.trace_rows(items)[:40]))
+    if not shown:
+        st.caption("The specialist analyses produced no additional document-grounded findings beyond the facts in "
+                    "the other tabs.")
+    if grouped["completeness_note"]:
+        st.caption(grouped["completeness_note"])
+
+
 def _render_result(bid_id: int, status: dict) -> None:
     _, org, _ = _ctx()
     try:
@@ -353,32 +605,39 @@ def _render_result(bid_id: int, status: dict) -> None:
         return
     rows = res.get("specialist_results") or []
     view = fav.build_view(status, rows)
-    result = res.get("result") or {}
-    grouped = fav.group_result(result, rows)
-
-    st.markdown(fav.render_strip(view["bots"], view["reconciliation"]), unsafe_allow_html=True)
-    st.markdown(fav.render_banner(*fav.overall_banner(view, status)), unsafe_allow_html=True)
-    _render_export(bid_id, status)
-
-    for sid, title, blurb in fav.RESULT_SECTIONS:
-        _render_section(title, blurb, grouped["domains"][sid], sid, f"{bid_id}_{sid}")
-
-    st.markdown("#### Cross-Domain Risks & Gaps")
-    st.caption("Reconciled across specialists, plus gaps, ambiguities and items needing human confirmation.")
-    for label, items in (("Cross-domain risks", grouped["cross_domain_risks"]),
-                         ("Gaps", grouped["gaps"]),
-                         ("Ambiguities", grouped["ambiguities"]),
-                         ("Needs human confirmation", grouped["human_confirmation"])):
-        if not items:
-            continue
-        with st.expander(f"{label} ({len(items)})", expanded=(label == "Cross-domain risks")):
-            st.markdown("".join(fav.finding_html(f) for f in items), unsafe_allow_html=True)
-            trace = fav.trace_rows(items)
-            if trace:
-                st.caption("References: " + "; ".join(
-                    f"{t[:60]} → {', '.join(c + f)}" for t, c, f in trace[:40]))
-    if grouped["completeness_note"]:
-        st.caption(grouped["completeness_note"])
+    grouped = fav.group_result(res.get("result") or {}, rows)
+    facts = None
+    if status.get("status") in EXPORTABLE:
+        loaded = load_facts(bid_id, org, status["run_id"], st.session_state)
+        facts = loaded.get("facts")
+        if facts:
+            pr._set_alias(facts)
+    tabs = st.tabs(list(RESULT_TABS))
+    with tabs[0]:
+        _tab_overview(bid_id, status, view, facts)
+    if not facts:
+        msg = ("The verified document facts could not be loaded right now; refresh to try again."
+               if status.get("status") in EXPORTABLE else
+               "Verified document facts are shown once the Full Analysis completes.")
+        for t in tabs[1:5]:
+            with t:
+                st.caption(msg)
+    else:
+        with tabs[1]:
+            _tab_requirements(facts)
+        with tabs[2]:
+            _tab_evaluation(facts)
+        with tabs[3]:
+            _tab_commercial(facts)
+    if facts:
+        with tabs[4]:
+            try:
+                research = tenancy.get_buyer_research_for_organization(bid_id, org, status["run_id"])
+            except Exception:
+                research = None
+            _tab_buyer(facts, research)
+    with tabs[5]:
+        _tab_detailed(bid_id, grouped)
 
 
 def page_full_analysis(bid_id: int) -> None:

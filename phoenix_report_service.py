@@ -96,6 +96,20 @@ def snapshot_pdf(bid_id: int, run_id: int) -> dict:
     return pr.render_snapshot(build_facts_for_run(bid_id, run_id))
 
 
+def facts_for_full_run(bid_id: int, full_run_id: int) -> dict:
+    """The verified fact model the Bid Opportunity Assessment is built from,
+    for display on the Full Bid Intelligence page. Read-only."""
+    import full_analysis_service
+    status = full_analysis_service.get_full_analysis_status(bid_id, full_run_id) or {}
+    source = status.get("source_analysis_run_id")
+    if not source:
+        bundle = full_analysis_service.get_full_analysis_result(bid_id, full_run_id) or {}
+        source = (bundle.get("result") or {}).get("source_analysis_run_id")
+    if not source:
+        raise ValueError("this Full Analysis run has no source FAST analysis")
+    return build_facts_for_run(bid_id, int(source))
+
+
 def assessment_pdf(bid_id: int, full_run_id: int) -> dict:
     import buyer_research
     import full_analysis_service
