@@ -54,12 +54,16 @@ def _prompt(client: str, title: str, reference: str | None, today: str, context:
         "(partners) documented partnerships and funding for that work; (procurement) comparable projects "
         "or procurements it has run; (profile) its mandate, only if little else is found.\n"
         "If you cannot confirm that a source is about this specific organisation, leave it out.\n"
-        "For each fact give a \"connection\": one sentence on how the SOURCE ITSELF links the fact to this "
-        "opportunity (for example it names the same programme or the same subject), or null when the source "
-        "does not state such a link. Never infer preferences, intentions, budgets or likely decisions.\n"
+        "Do not restate what the procurement context already says. Each fact must be distinct.\n"
+        "For every fact copy one sentence VERBATIM from the source page that supports it (\"evidence\"); facts "
+        "without such a sentence must be left out. If a fact concerns a past period (for example a programme "
+        "launched, or funding granted, in an earlier year), say so with its year and give that period in "
+        "\"as_of\"; never present an older funding or partnership arrangement as applying to a current "
+        "programme or to this opportunity. Never infer preferences, intentions, budgets or likely decisions.\n"
         "Finish with ONLY a JSON array inside <items></items>, each element: "
         '{"topic": "initiative|programme|subject|partners|procurement|profile", '
-        '"statement": "one factual sentence", "connection": "one sentence or null", '
+        '"statement": "one factual sentence", "evidence": "verbatim sentence from the source", '
+        '"as_of": "the year or period the fact refers to, or null", '
         '"url": "the exact source URL", "published": "YYYY-MM-DD, YYYY-MM, YYYY or null"}.')
 
 
@@ -118,11 +122,13 @@ def parse_items(text: str, urls: dict[str, dict]) -> list[dict]:
         if not hit or not stmt or len(stmt) > 400:
             continue
         url, meta = hit
-        conn = re.sub(r"\s+", " ", str(it.get("connection") or "")).strip()
+        ev = re.sub(r"\s+", " ", str(it.get("evidence") or "")).strip()
+        as_of = re.sub(r"\s+", " ", str(it.get("as_of") or "")).strip()
         items.append({
             "topic": it.get("topic") if it.get("topic") in TOPICS else "profile",
             "statement": stmt,
-            "connection": conn if conn and conn.lower() not in ("null", "none", "n/a") and len(conn) <= 300 else None,
+            "evidence": ev[:600] or None,
+            "as_of": as_of[:40] if as_of and as_of.lower() not in ("null", "none", "n/a") else None,
             "url": url,
             "source_title": (meta or {}).get("title"),
             "published": _date(it.get("published"), (meta or {}).get("page_age")),
@@ -130,8 +136,57 @@ def parse_items(text: str, urls: dict[str, dict]) -> list[dict]:
     return items[:6]
 
 
+_FETCH_BYTES = 3_000_000
+
+
+def page_text(url: str, timeout: float = 12.0) -> str | None:
+    """Readable text of a public web page (for evidence verification), or
+    None. Only http(s) to public addresses; never raises."""
+    import html as _html
+    import ipaddress
+    import socket
+    import urllib.request
+    from urllib.parse import urlparse
+    try:
+        u = urlparse(url)
+        if u.scheme not in ("http", "https") or not u.hostname:
+            return None
+        for info in socket.getaddrinfo(u.hostname, None):
+            ip = ipaddress.ip_address(info[4][0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                return None
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; BidIntelligence-research-check)"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            raw = r.read(_FETCH_BYTES)
+            charset = r.headers.get_content_charset() or "utf-8"
+        text = raw.decode(charset, errors="replace")
+        text = re.sub(r"(?is)<(script|style|noscript)[^>]*>.*?</\1>", " ", text)
+        text = re.sub(r"(?s)<[^>]+>", " ", text)
+        return _html.unescape(text)
+    except Exception:
+        return None
+
+
+def verify_items(items: list[dict], fetch=page_text) -> list[dict]:
+    """Mark each item evidence_verified only when its quoted source sentence
+    is actually present on the cited page (a valid URL alone is not evidence)."""
+    import procurement_digest as pdg
+    pages: dict[str, str | None] = {}
+    for it in items:
+        ev = pdg.fold(it.get("evidence") or "")
+        if len(ev) < 25:
+            it["evidence_verified"] = False
+            continue
+        if it["url"] not in pages:
+            pages[it["url"]] = fetch(it["url"])
+        page = pdg.fold(pages[it["url"]] or "")
+        probes = [ev[:100], ev[len(ev) // 2 - 50: len(ev) // 2 + 50] if len(ev) > 140 else ev[-100:]]
+        it["evidence_verified"] = bool(page) and all(p.strip() in page for p in probes if p.strip())
+    return items
+
+
 def run_research(client_name: str, title: str, reference: str | None, api_key: str | None,
-                 *, anthropic_client=None, context: str = "") -> dict:
+                 *, anthropic_client=None, context: str = "", fetch=page_text) -> dict:
     """One bounded research call. Returns the persisted payload shape."""
     import config
     today = datetime.now(timezone.utc).date().isoformat()
@@ -156,7 +211,7 @@ def run_research(client_name: str, title: str, reference: str | None, api_key: s
             break
         messages = messages + [{"role": "assistant", "content": data.get("content") or []}]
     urls, text = _collect(blocks)
-    items = parse_items(text, urls)
+    items = verify_items(parse_items(text, urls), fetch)
     usage = {}
     try:
         u = resp.usage.model_dump() if resp is not None else {}
@@ -165,6 +220,8 @@ def run_research(client_name: str, title: str, reference: str | None, api_key: s
     except Exception:
         pass
     return {"status": "COMPLETE", "items": items, "searched_urls": len(urls), "model": MODEL,
+            "evidence_checked": True,
+            "verified_count": sum(1 for i in items if i.get("evidence_verified")),
             "researched_at": datetime.now(timezone.utc).isoformat(), "usage": usage,
             "query": {"client": client_name, "title": title, "reference": reference, "context": context}}
 
@@ -180,6 +237,8 @@ def load(bid_id: int, run_id: int) -> dict | None:
         data = json.loads(raw.decode("utf-8"))
     except Exception:
         return None
+    if data.get("status") == "COMPLETE" and not data.get("evidence_checked"):
+        return None  # pre-verification format: superseded by a verified search
     if data.get("status") == "RUNNING":
         try:
             age = (datetime.now(timezone.utc) - datetime.fromisoformat(data.get("started_at"))).total_seconds()

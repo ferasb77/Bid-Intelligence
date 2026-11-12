@@ -266,9 +266,10 @@ def _render_buyer_research(bid_id: int, run_id: int, research: dict | None) -> s
     _, org, _ = _ctx()
     state = (research or {}).get("status") or "NONE"
     if state == "COMPLETE":
-        n = len(research.get("items") or [])
-        st.caption(f"Buyer Intelligence: {n} verified external source(s) included in the assessment."
-                   if n else "Buyer Intelligence: research completed; no verifiable public sources were found.")
+        n = len([i for i in research.get("items") or [] if i.get("evidence_verified")])
+        st.caption("Buyer Intelligence: verified external research is included in the assessment "
+                   "(see the Buyer Intelligence tab)." if n else
+                   "Buyer Intelligence: research completed; no source content could be verified.")
     elif state == "RUNNING":
         st.caption("Buyer Intelligence web research is running in the background (about 1–2 minutes); "
                    "this panel refreshes automatically and the assessment is rebuilt when it completes.")
@@ -422,7 +423,7 @@ def _tab_overview(bid_id: int, status: dict, view: dict, f: dict | None) -> None
         k = {kind: sum(1 for c in f["changes"] if c["kind"] == kind) for kind in ("NEW", "UPDATED", "CONFLICT")}
         rows.append(("Changes in later documents",
                      fav.esc(", ".join(f"{v} {kk.lower()}" for kk, v in k.items() if v)) + " — see Commercial"))
-    rows.append(("External buyer research", fav.esc(pr._research_status_line(research).replace("section 3", "see Buyer Intelligence"))))
+    rows.append(("External buyer research", fav.esc(pr._research_status_line(research, [(pr.sentences_of(it["text"]) or [it["text"]])[0] for it in f["about"]][:2]).replace("section 3", "see Buyer Intelligence"))))
     _kv_table(rows)
 
 
@@ -537,32 +538,37 @@ def _tab_commercial(f: dict) -> None:
 
 
 def _tab_buyer(f: dict | None, research: dict | None) -> None:
-    if f and f["about"]:
-        _heading("As stated in the procurement documents")
-        _facts_list([dict(it, text=(pr.sentences_of(it["text"]) or [it["text"]])[0]) for it in f["about"]], 300)
-    _heading("External sources")
+    about = [dict(it, text=(pr.sentences_of(it["text"]) or [it["text"]])[0]) for it in (f or {}).get("about") or []][:2]
+    if about:
+        _heading("Context from the procurement documents")
+        _facts_list(about, 300)
+    _heading("Verified external research")
     state = (research or {}).get("status") or "NONE"
-    items = (research or {}).get("items") or []
-    if state != "COMPLETE" or not items:
+    items = pr.research_items_for_display(research, [a["text"] for a in about]) if state == "COMPLETE" else []
+    if not items:
         st.caption({"RUNNING": "Web research is in progress; the Overview tab refreshes automatically.",
                     "FAILED": "Web research did not complete; it can be re-run from the Overview tab.",
                     "SKIPPED": "Web research needs the issuing organization (Understand → Opportunity details).",
-                    "COMPLETE": "Web research completed; no public sources could be verified as being about this buyer."
+                    "COMPLETE": "Web research completed; no source content could be verified to support a relevant "
+                                "fact beyond the procurement documents."
                     }.get(state, "Web research has not been run for this analysis yet."))
         return
-    st.caption(f"Public sources found by targeted web research on "
-               f"{pr.fmt_date(str(research.get('researched_at') or '')[:10])}. External facts about the buyer, separate "
-               "from the procurement requirements; a connection is shown only where the source itself states it.")
-    for it in items:
-        conn = it.get("connection")
+    st.caption(f"Targeted web research on {pr.fmt_date(str(research.get('researched_at') or '')[:10])}. Each fact "
+               "is shown only when its quoted source text was found on the cited page. Historical facts are dated "
+               "and do not establish current funding or partnerships.")
+    order = list(pr.TOPIC_LABELS)
+    for it in sorted(items, key=lambda i: order.index(i.get("topic")) if i.get("topic") in order else len(order)):
+        dates = ([f"refers to {it['as_of']}"] if it.get("as_of") else []) + \
+                [f"published {it['published']}" if it.get("published") else "publication date not shown"]
         st.markdown(
             f'<div style="font-size:.84rem;margin:.45rem 0;padding:.45rem .7rem;border-left:2px solid #C9A96E">'
+            f'<div style="color:#C9A96E;font-size:.72rem">{fav.esc(pr.TOPIC_LABELS.get(it.get("topic"), "Buyer"))}</div>'
             f'{fav.esc(it["statement"])}'
-            f'<div style="color:#A9A69D;font-size:.78rem;margin-top:.15rem">'
-            f'{("Connection: " + fav.esc(conn)) if conn else "Background on the buyer"}</div>'
+            f'<div style="color:#A9A69D;font-size:.76rem;margin-top:.15rem">Source text: “'
+            f'{fav.esc(pr.clip(it.get("evidence") or "", 220))}”</div>'
             f'<div style="font-size:.74rem;margin-top:.15rem"><a href="{fav.esc(it["url"])}" target="_blank">'
             f'{fav.esc(pr.clip(it.get("source_title") or it["url"], 90))}</a> · '
-            f'<span style="color:#8C8A84">{fav.esc(it.get("published") or "undated")}</span></div></div>',
+            f'<span style="color:#8C8A84">{fav.esc("; ".join(dates))}</span></div></div>',
             unsafe_allow_html=True)
 
 

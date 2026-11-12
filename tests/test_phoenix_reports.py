@@ -313,7 +313,7 @@ def test_buyer_research_keeps_only_returned_urls():
     ]
     client = _Client(_Resp(content))
     out = buyer_research.run_research("INJAZ Lebanon", "Trainer for Design Thinking", "IL/GIL2026/PR0018",
-                                      None, anthropic_client=client)
+                                      None, anthropic_client=client, fetch=lambda u: None)
     assert out["status"] == "COMPLETE"
     assert [i["url"] for i in out["items"]] == ["https://injaz-lebanon.org/about"]
     assert out["items"][0]["published"] == "2025-03-03"
@@ -325,17 +325,23 @@ def test_buyer_research_keeps_only_returned_urls():
 
 def test_buyer_research_in_assessment_has_url_and_date(injaz_reports):
     f = injaz_reports[0]
-    research = {"status": "COMPLETE", "researched_at": "2026-11-12T10:00:00+00:00", "items": [
-        {"topic": "profile", "statement": "INJAZ Lebanon is a member of INJAZ Al-Arab.",
-         "url": "https://injaz-lebanon.org/about", "source_title": "About INJAZ", "published": "2025-03-03",
-         "connection": "The page names the GIL programme."},
+    research = {"status": "COMPLETE", "evidence_checked": True, "researched_at": "2026-11-12T10:00:00+00:00", "items": [
+        {"topic": "partners", "statement": "In 2016 GIL was funded by a national donor.", "as_of": "2016",
+         "evidence": "GIL was launched in 2016 with funding from a national donor.", "evidence_verified": True,
+         "url": "https://injaz-lebanon.org/gil", "source_title": "GIL", "published": "2025-03-03"},
         {"topic": "news", "statement": "INJAZ Lebanon held a youth summit.", "url": "https://injaz-lebanon.org/news",
-         "source_title": "News", "published": None, "connection": None}]}
+         "evidence": "A summit was held.", "evidence_verified": False, "source_title": "News", "published": None},
+        {"topic": "profile", "statement": "INJAZ Lebanon is a non-profit organization.", "evidence_verified": True,
+         "evidence": "INJAZ Lebanon is a non-profit organization.", "url": "https://injaz-lebanon.org/",
+         "source_title": "Home", "published": None}]}
     text = re.sub(r"\s+", " ", _pdf_text(pr.render_assessment(f, research=research)["pdf"]))
-    assert "https://injaz-lebanon.org/about" in text and "2025-03-03" in text
-    assert "do not indicate the buyer's preferences" in text
-    assert "The page names the GIL programme." in text and "Background on the buyer" in text
-    assert "undated" in text and "2 verified external finding(s)" in text
+    assert "https://injaz-lebanon.org/gil" in text and "published 2025-03-03" in text and "refers to 2016" in text
+    assert "Source text:" in text and "Partnerships & funding" in text
+    assert "youth summit" not in text  # quoted evidence not found on the page -> not shown
+    assert "https://injaz-lebanon.org/ " not in text + " " and "Organisation profile" not in text  # restates the ToR
+    assert "do not establish current funding or partnerships" in text
+    assert "1 verified external finding(s)" in text
+    assert "Connection to this opportunity" not in text
 
 
 # ── V2: evaluation weight hierarchy (generic, arithmetic-first) ─────────────
@@ -492,7 +498,8 @@ def test_independent_package_reports():
     ({"status": "RUNNING", "started_at": "2026-11-12T10:00:00+00:00"}, "was in progress"),
     ({"status": "FAILED", "started_at": "2026-11-12T10:00:00+00:00"}, "did not complete"),
     ({"status": "SKIPPED"}, "buyer organisation is not identified"),
-    ({"status": "COMPLETE", "items": [], "researched_at": "2026-11-12T10:00:00+00:00"}, "found no public sources"),
+    ({"status": "COMPLETE", "evidence_checked": True, "items": [], "researched_at": "2026-11-12T10:00:00+00:00"},
+     "found no public source whose content could be verified"),
 ])
 def test_assessment_states_research_state(injaz_reports, research, needle):
     text = re.sub(r"\s+", " ", _pdf_text(pr.render_assessment(injaz_reports[0], research=research)["pdf"]))
@@ -519,7 +526,7 @@ def test_research_reused_across_runs_of_same_bid(monkeypatch):
     started = []
     monkeypatch.setattr(buyer_research, "start_background", lambda *a: started.append(a) or True)
     store.files["15/buyer_research/21.json"] = json.dumps({
-        "status": "COMPLETE", "items": [{"statement": "x", "url": "https://e.org"}],
+        "status": "COMPLETE", "evidence_checked": True, "items": [{"statement": "x", "url": "https://e.org"}],
         "query": {"client": "INJAZ Lebanon", "title": "Trainer for Design Thinking"}}).encode()
     out = buyer_research.ensure(15, 22, "key")
     assert out["status"] == "COMPLETE" and out["reused_from_run"] == 21 and not started
@@ -543,18 +550,56 @@ def test_research_started_once_and_failed_not_retried(monkeypatch):
     assert buyer_research.STALE_AFTER_SECONDS < 300
 
 
-def test_research_prompt_targets_procurement_context_and_keeps_connection():
+def test_research_prompt_targets_context_and_verifies_quoted_evidence():
     content = [
         {"type": "web_search_tool_result", "content": [
-            {"type": "web_search_result", "url": "https://injaz-lebanon.org/gil", "title": "GIL", "page_age": None}]},
-        {"type": "text", "text": '<items>[{"topic":"initiative","statement":"GIL runs in Akkar.",'
-                                 '"connection":"The page describes the GIL programme named in the ToR.",'
-                                 '"url":"https://injaz-lebanon.org/gil","published":"2026-02"}]</items>'},
+            {"type": "web_search_result", "url": "https://injaz-lebanon.org/gil", "title": "GIL", "page_age": None},
+            {"type": "web_search_result", "url": "https://x.example/post", "title": "Post", "page_age": None}]},
+        {"type": "text", "text": '<items>[{"topic":"initiative","statement":"GIL was created in 2016.",'
+                                 '"evidence":"The Generation of Innovation Leaders programme was created in 2016.",'
+                                 '"as_of":"2016","url":"https://injaz-lebanon.org/gil","published":"2026-02"},'
+                                 '{"topic":"news","statement":"Invented claim about the buyer.",'
+                                 '"evidence":"This sentence is not on the page at all, anywhere.",'
+                                 '"as_of":null,"url":"https://x.example/post","published":null}]</items>'},
     ]
+    pages = {"https://injaz-lebanon.org/gil": "About us. The Generation of Innovation Leaders "
+                                              "programme was created  in 2016. Contact.",
+             "https://x.example/post": None}
     client = _Client(_Resp(content))
     out = buyer_research.run_research("INJAZ Lebanon", "Trainer for Design Thinking", None, None,
-                                      anthropic_client=client, context="The GIL 2026-2028 program ...")
-    assert out["items"][0]["connection"].startswith("The page describes")
-    assert out["items"][0]["published"] == "2026-02" and out["items"][0]["topic"] == "initiative"
+                                      anthropic_client=client, context="The GIL 2026-2028 program ...",
+                                      fetch=lambda u: pages[u])
+    a, b = out["items"]
+    assert a["evidence_verified"] is True and a["as_of"] == "2016" and a["topic"] == "initiative"
+    assert b["evidence_verified"] is False
+    assert out["evidence_checked"] is True and out["verified_count"] == 1
     prompt = client.calls[0]["messages"][0]["content"]
-    assert "The GIL 2026-2028 program" in prompt and "connection" in prompt
+    assert "The GIL 2026-2028 program" in prompt and "VERBATIM" in prompt and "as_of" in prompt
+
+
+def test_legacy_unverified_research_is_not_used(monkeypatch):
+    store = _Store([])
+    store.install(monkeypatch)
+    store.files["15/buyer_research/11.json"] = json.dumps({"status": "COMPLETE", "items": [{"url": "u"}]}).encode()
+    assert buyer_research.load(15, 11) is None
+
+
+def test_location_kind_separates_programme_geography():
+    assert pr.location_kind("The project operates across multiple locations, including Tripoli, Akkar, and Bekaa.") \
+        == "programme"
+    assert pr.location_kind("The training will take place in Beirut at the INJAZ office.") == "delivery"
+    f = injaz_facts()
+    snap = re.sub(r"\s+", " ", _pdf_text(pr.render_snapshot(f)["pdf"]))
+    assert "PROGRAMME LOCATIONS" in snap.upper() and "DELIVERY LOCATION" not in snap.upper()
+
+
+def injaz_facts():
+    result, docs = _injaz()
+    return pr.build_facts(bid=_bid(), fast_result=result, documents=docs, analysis_date="2026-11-12")
+
+
+def test_full_requirements_are_compact_tables(injaz_reports):
+    full = re.sub(r"\s+", " ", injaz_reports[2])
+    assert "Requirement (summary)" in full and "Required capabilities and conditions" in full
+    for needle in ("Curriculum Facilitation", "Design Thinking Expertise", "PSEA compliance"):
+        assert needle in full, needle

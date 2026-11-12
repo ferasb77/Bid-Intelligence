@@ -14,6 +14,10 @@ below), not by default.
    it tells you which specific files to open for the subsystem the task
    touches. Don't grep/read broadly before checking it.
 
+4. For any work on user workflows, intelligence (FAST/FULL, buyer
+   research) or reports, read `docs/product/BID_INTELLIGENCE_PRODUCT_BRIEF.md`
+   first — the product purpose, users and reporting rules.
+
 ## Standing rules
 
 - Do not treat a root-level `*_REPORT.md` / `*_AUDIT.md` /

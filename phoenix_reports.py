@@ -335,6 +335,24 @@ def _groups(items: list[dict]) -> list[dict]:
     return [g for g in groups if g["items"]]
 
 
+_PROGRAMME_GEO = re.compile(r"\b(project|programme|program|initiative|network|operates|across)\b", re.I)
+_DELIVERY_GEO = re.compile(r"\b(training|workshops?|sessions?|services?|assignment|work)\b.{0,40}\b(will|shall|must)\b.{0,30}"
+                           r"\b(take place|be (delivered|held|conducted|performed))\b|\bvenue\b|place of (performance|delivery)",
+                           re.I)
+
+
+def location_kind(text: str) -> str:
+    """'delivery' only when the sentence says where the assignment itself is
+    delivered; a sentence about where a programme or organisation operates is
+    'programme' geography -- never presented as the delivery location."""
+    if _DELIVERY_GEO.search(text):
+        return "delivery"
+    return "programme" if _PROGRAMME_GEO.search(text) else "unspecified"
+
+
+_LOCATION_LABEL = {"delivery": "Delivery location", "programme": "Programme locations",
+                   "unspecified": "Location (as documented)"}
+
 _LOCATION = re.compile(r"\b(locations?|venues?|place of (performance|delivery)|delivered (in|at)|on-?site at)\b", re.I)
 _BUDGET = re.compile(r"\b(budget|ceiling|not (to )?exceed|maximum (contract |total )?(value|amount)|estimated (contract )?value)\b", re.I)
 _PRICING = re.compile(r"\b(rate|price|pricing|cost|quotation|quote|currency|vat|tax|inclusive|lump.?sum|fee)\b", re.I)
@@ -433,6 +451,8 @@ def build_facts(*, bid: dict, fast_result: dict, documents: list[tuple[str, str]
     if reference and not pdg.corpus_contains(docs, str(reference)):
         reference = bid.get("file_number") or None
     location = next((s for s in pdg.find_sentences(docs, _LOCATION.pattern, 3) if len(s["text"]) <= 180), None)
+    if location:
+        location = dict(location, kind=location_kind(location["text"]))
 
     # ── deadline: extracted (with addendum authority) + manual override ──
     dl = ct.effective_deadline(r, docs)
@@ -692,7 +712,7 @@ def _glance_rows(f: dict, shown: _Shown, *, synopsis_sentences: int, identity: b
         rows.append(("Reference", esc(ident["reference"])))
     if ident.get("location"):
         loc = ident["location"]
-        rows.append(("Location", f"{esc(loc['text'])}{_rt(loc)}"))
+        rows.append((_LOCATION_LABEL[loc.get("kind") or "unspecified"], f"{esc(loc['text'])}{_rt(loc)}"))
         shown.add(loc["text"])
     dv = _deadline_value(f)
     if dv:
@@ -753,10 +773,10 @@ def _method_text(sub: dict) -> str | None:
     return val + _rt(ms)
 
 
-def _research_status_line(research: dict | None) -> str:
+def _research_status_line(research: dict | None, context: list[str] | None = None) -> str:
     state = (research or {}).get("status") or "NONE"
     if state == "COMPLETE":
-        n = len(research.get("items") or [])
+        n = len(research_items_for_display(research, context))
         return f"{n} verified external finding(s) — section 3" if n else "Completed; no verifiable public sources found"
     return {"RUNNING": "In progress when this report was generated",
             "FAILED": "Attempted; did not complete",
@@ -847,6 +867,22 @@ def _scope_blocks(f: dict, shown: _Shown, *, detailed: bool) -> list:
             out.append(Paragraph(f"<i>{esc(g['heading'])}</i>", _st["body"]))
         out += _lines(g["items"], shown, n=160 if detailed else 120, limit=None if detailed else 5)
     return out
+
+
+def _req_table(pairs: list[tuple[str | None, dict]], shown: _Shown, *, n: int) -> list:
+    """Compact 'Area | Requirement | Source' table: the item's own label as
+    the area, its first sentence (cut at a clause boundary) as the summary."""
+    rows = []
+    for area, it in pairs:
+        if shown.seen(it["text"]):
+            continue
+        lab, rest = label_of(it["text"])
+        rows.append([f"<b>{esc(lab or area or '')}</b>", esc(brief(rest, n)),
+                     Paragraph(esc(ref_text(it)), _st["cell_s"])])
+        shown.add(it["text"])
+    if not rows:
+        return []
+    return [_table(["Area", "Requirement (summary)", "Source"], rows, [BODY_W * 0.25, BODY_W * 0.62, BODY_W * 0.13])]
 
 
 def _deliverables_block(f: dict, shown: _Shown) -> list:
@@ -987,7 +1023,25 @@ def _change_rows(changes: list[dict]) -> list:
     return rows
 
 
-def _research_blocks(research: dict | None) -> list:
+def research_items_for_display(research: dict | None, context: list[str] | None = None) -> list[dict]:
+    """External findings worth showing: only those whose quoted evidence was
+    found on the cited page, minus items that restate the procurement
+    documents (e.g. a generic organisation profile already in the ToR)."""
+    ctx = [pdg.fold(c) for c in context or []]
+    out = []
+    for it in (research or {}).get("items") or []:
+        if not it.get("evidence_verified"):
+            continue
+        st = pdg.fold(it.get("statement") or "")
+        if it.get("topic") == "profile" and ctx:
+            continue
+        if any(ct._similar(st, c) > 0.5 for c in ctx):
+            continue
+        out.append(it)
+    return out
+
+
+def _research_blocks(research: dict | None, context: list[str] | None = None) -> list:
     state = (research or {}).get("status") or "NONE"
     when = fmt_date(str((research or {}).get("researched_at") or (research or {}).get("started_at") or "")[:10])
     if state != "COMPLETE":
@@ -1001,26 +1055,38 @@ def _research_blocks(research: dict | None) -> list:
         }.get(state, "External buyer research has not yet been run for this analysis. It starts when the Full "
                      "Analysis results are opened in Phoenix; re-export the assessment once it has completed.")
         return [Paragraph(esc(msg), _st["note"])]
-    items = research.get("items") or []
+    items = research_items_for_display(research, context)
     if not items:
-        return [Paragraph(f"External buyer research{(' on ' + when) if when else ''} found no public sources that "
-                          f"could be verified as being about this buyer; no external findings are included.", _st["note"])]
+        return [Paragraph(f"External buyer research{(' on ' + when) if when else ''} found no public source whose "
+                          f"content could be verified to support a relevant fact about this buyer beyond the "
+                          f"procurement documents; no external findings are included.", _st["note"])]
+    order = list(TOPIC_LABELS)
     rows = []
-    for it in items:
+    for it in sorted(items, key=lambda i: order.index(i.get("topic")) if i.get("topic") in order else len(order)):
         src = esc(clip(it.get("source_title") or "", 80) or it["url"][:60])
-        conn = it.get("connection")
-        rows.append([esc(it["statement"]),
-                     esc(conn) if conn else '<font color="#6B675F">Background on the buyer</font>',
+        dates = []
+        if it.get("as_of"):
+            dates.append(f"refers to {esc(it['as_of'])}")
+        dates.append(f"published {esc(it['published'])}" if it.get("published") else "publication date not shown")
+        ev = clip(it.get("evidence") or "", 200)
+        rows.append([f'<font name="BodyMed" size="7.2" color="#6B675F">{esc(TOPIC_LABELS.get(it.get("topic"), "Buyer"))}'
+                     f'</font><br/>{esc(it["statement"])}'
+                     + (f'<br/><font size="7" color="#6B675F">Source text: “{esc(ev)}”</font>' if ev else ""),
                      Paragraph(f'{src}<br/><font color="#2B5C8A">{esc(it["url"][:90])}</font><br/>'
-                               f'{esc(it.get("published") or "undated")}', _st["cell_s"])])
+                               f'{"; ".join(dates)}', _st["cell_s"])])
     carried = " Carried over from an earlier Full Analysis of this bid." if research.get("reused_from_run") else ""
     return [
-        Paragraph(f"Public sources found by targeted web research on {esc(when)}. External facts about the buyer, "
-                  "kept separate from the procurement requirements; they do not indicate the buyer's preferences. "
-                  f"A connection is shown only where the source itself states it.{carried}", _st["note"]),
-        _table(["Verified external fact", "Connection to this opportunity", "Source"], rows,
-               [BODY_W * 0.42, BODY_W * 0.28, BODY_W * 0.30]),
+        Paragraph(f"Targeted web research on {esc(when)}. Each fact was kept only when its quoted source text was "
+                  "found on the cited page. Historical facts are dated and do not establish current funding or "
+                  f"partnerships; none of this indicates the buyer's preferences.{carried}", _st["note"]),
+        _table(["Verified external fact", "Source"], rows, [BODY_W * 0.66, BODY_W * 0.34]),
     ]
+
+
+TOPIC_LABELS = {"initiative": "Initiative named in the procurement", "programme": "Current programmes",
+                "subject": "Work in the opportunity's subject", "partners": "Partnerships & funding",
+                "procurement": "Comparable projects or procurements", "news": "Recent news",
+                "profile": "Organisation profile"}
 
 
 def render_assessment(f: dict, *, full_status: str | None = None, research: dict | None = None) -> dict:
@@ -1048,12 +1114,13 @@ def render_assessment(f: dict, *, full_status: str | None = None, research: dict
         k = {kind: sum(1 for c in f["changes"] if c["kind"] == kind) for kind in ("NEW", "UPDATED", "CONFLICT")}
         rows.append(("Changes in later documents", esc(", ".join(f"{v} {kk.lower()}" for kk, v in k.items() if v))
                      + " — section 5"))
-    rows.append(("External buyer research", esc(_research_status_line(research))))
+    about_ctx = [(sentences_of(it["text"]) or [it["text"]])[0] for it in f["about"]][:2]
+    rows.append(("External buyer research", esc(_research_status_line(research, about_ctx))))
     section("Executive Intelligence Summary", [_kv(rows)])
 
     # 2. Opportunity and Delivery Requirements
     blocks = []
-    sc = _scope_blocks(f, shown, detailed=True)
+    sc = _req_table([(g["heading"], it) for g in _groups(f["scope"]) for it in g["items"]], shown, n=175)
     if sc:
         blocks += _headed("Scope of work", sc)
     tl = []
@@ -1070,21 +1137,20 @@ def render_assessment(f: dict, *, full_status: str | None = None, research: dict
     qb = _quantity_block(f, shown)
     if qb:
         blocks += _headed("Stated quantities and durations", qb)
-    ql = _lines(f["qualifications"], shown, n=160)
-    if ql:
-        blocks += _headed("Qualifications sought", ql)
-    gen = _lines(f["general"], shown, n=150)
-    if gen:
-        blocks += _headed("General requirements", gen)
+    caps = _req_table([(None, it) for it in f["qualifications"]] + [("General requirement", it) for it in f["general"]],
+                      shown, n=160)
+    if caps:
+        blocks += _headed("Required capabilities and conditions", caps)
     section("Opportunity and Delivery Requirements", blocks)
 
     # 3. Buyer Intelligence
     blocks = []
     about = [dict(it, text=(sentences_of(it["text"]) or [it["text"]])[0]) for it in f["about"]]
-    ab = _lines(about, shown, n=240, limit=3)
+    about = about[:2]
+    ab = _lines(about, shown, n=240, limit=2)
     if ab:
-        blocks += _headed("As stated in the procurement documents", ab)
-    blocks += _headed("External sources", _research_blocks(research))
+        blocks += _headed("Context from the procurement documents", ab)
+    blocks += _headed("Verified external research", _research_blocks(research, context=[a["text"] for a in about]))
     section("Buyer Intelligence", blocks)
 
     # 4. Evaluation and Commercial Intelligence
