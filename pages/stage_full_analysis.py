@@ -204,6 +204,9 @@ def _render_live(bid_id: int) -> None:
 
 @st.fragment(run_every=fav.POLL_INTERVAL_SECONDS)
 def _poll_live(bid_id: int) -> None:
+    if not auth_session.session_access_still_valid():
+        st.rerun()  # full app run: app.py's revalidation signs the user out
+        return
     _render_live(bid_id)
 
 

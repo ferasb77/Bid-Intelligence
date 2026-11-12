@@ -3349,6 +3349,17 @@ pass — the audit's one fix was already correct as commissioned.
 > It is **NOT applied** to the operational Oracle database or the hosted
 > Supabase project. See `BID_INTELLIGENCE_SUPER_ADMIN_MVP_REPORT.md`.
 
+> **Migration 025 (active-account authorization) — external state, 2026-11-12:**
+> `migrations/025_active_account_authorization.sql` (RLS helpers and the
+> own-membership policy require an active `auth.users` account;
+> `session_access_status` RPC; every application SECURITY DEFINER RPC
+> re-asserted service_role-only) is applied **only to the isolated Phoenix
+> beta database**. It is **NOT applied** to the operational Oracle database
+> or the hosted Supabase project. The beta had drifted EXECUTE grants on
+> those RPCs to anon/authenticated; the operational database has **not**
+> been inspected for the same drift. See
+> `BID_INTELLIGENCE_SUPER_ADMIN_REVOCATION_CORRECTION_REPORT.md`.
+
 ## Where NOT to look first
 
 Do not begin ordinary task orientation by reading the ~99 root-level

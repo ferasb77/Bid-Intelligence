@@ -135,10 +135,21 @@ def require_platform_admin(actor_user_id: str, actor_email: str, action: str, sb
     """Gate for every operation. A non-admin attempt is audited as 'denied'
     and raises PlatformAdminDenied."""
     sb = _client(sb)
+    reason = None
     if not is_platform_admin(actor_user_id, sb):
+        reason = "not_platform_admin"
+    else:
+        # A disabled platform admin loses authority immediately (revocation
+        # correction); an indeterminate account lookup denies.
+        try:
+            if user_is_disabled(_get_auth_user(sb, actor_user_id)):
+                reason = "account_disabled"
+        except Exception:
+            reason = "access_check_failed"
+    if reason:
         try:
             _audit(sb, actor_user_id, actor_email, action, "denied",
-                   details={"reason": "not_platform_admin"})
+                   details={"reason": reason})
         except Exception:
             pass  # denial stands even if the audit write fails
         raise PlatformAdminDenied("Platform administrator authority is required.")

@@ -204,6 +204,9 @@ def _outcome_note(bid_id: int) -> None:
 
 @st.fragment(run_every=POLL_INTERVAL_SECONDS)
 def _poll_running(bid_id: int) -> None:
+    if not auth_session.session_access_still_valid():
+        st.rerun()  # full app run: app.py's revalidation signs the user out
+        return
     _, org, _ = _ctx()
     loaded = load_status(bid_id, org)
     status = loaded["status"]

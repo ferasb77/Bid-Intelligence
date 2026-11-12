@@ -152,27 +152,26 @@ if not isinstance(_ctx, (_tenancy.AuthContext, _tenancy.OrganizationSelectionReq
     _ctx = _tenancy.resolve_organization_context(_session_result.user_id, _session_result.email)
     st.session_state[_auth_session.AUTH_CONTEXT_KEY] = _ctx
 
-# Super Admin MVP: an existing session is re-checked server-side at most every
-# ACCESS_REVALIDATION_SECONDS. A disabled/deleted account or a removed
-# membership signs the user out (fail-closed). A role changed by a platform
-# admin is picked up without re-login.
-import time as _time
+# Super Admin revocation correction: an existing session is re-checked
+# server-side on EVERY script run (one service-role call to
+# public.session_access_status, migration 025). A disabled/deleted account,
+# a removed membership, or an indeterminate check signs the user out
+# (fail-closed). A role changed by a platform admin is picked up without
+# re-login. Service-role operations are additionally re-checked per
+# operation (tenancy._require_active_session via the provider registered
+# below), which also covers polling @st.fragment reruns.
 import dataclasses as _dataclasses
-_ACCESS_REVALIDATED_AT_KEY = "bi_access_revalidated_at"
-_ACCESS_REVALIDATION_SECONDS = 15
-if _time.time() - st.session_state.get(_ACCESS_REVALIDATED_AT_KEY, 0) >= _ACCESS_REVALIDATION_SECONDS:
-    _access = _tenancy.revalidate_session_access(
-        _session_result.user_id,
-        _ctx.organization_id if isinstance(_ctx, _tenancy.AuthContext) else None)
-    if not _access.ok:
-        _clear_all_user_scoped_state()
-        st.session_state.pop(_ACCESS_REVALIDATED_AT_KEY, None)
-        st.session_state["bi_access_revoked_notice"] = True
-        st.rerun()
-    if isinstance(_ctx, _tenancy.AuthContext) and _access.role and _access.role != _ctx.role:
-        _ctx = _dataclasses.replace(_ctx, role=_access.role)
-        st.session_state[_auth_session.AUTH_CONTEXT_KEY] = _ctx
-    st.session_state[_ACCESS_REVALIDATED_AT_KEY] = _time.time()
+_tenancy.set_session_principal_provider(_auth_session.session_principal)
+_access = _tenancy.revalidate_session_access(
+    _session_result.user_id,
+    _ctx.organization_id if isinstance(_ctx, _tenancy.AuthContext) else None)
+if not _access.ok:
+    _clear_all_user_scoped_state()
+    st.session_state["bi_access_revoked_notice"] = True
+    st.rerun()
+if isinstance(_ctx, _tenancy.AuthContext) and _access.role and _access.role != _ctx.role:
+    _ctx = _dataclasses.replace(_ctx, role=_access.role)
+    st.session_state[_auth_session.AUTH_CONTEXT_KEY] = _ctx
 
 if isinstance(_ctx, _tenancy.NoOrganizationAccess):
     st.markdown(sidebar_brand_html(), unsafe_allow_html=True)

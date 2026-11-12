@@ -7,7 +7,7 @@ import unittest
 import uuid
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -135,6 +135,24 @@ class FakeSupabase:
 
     def table(self, name):
         return _Query(self, name)
+
+    def rpc(self, name, params):
+        """Emulates migration 025's public.session_access_status: the
+        authoritative auth.users ban state + CURRENT membership row."""
+        assert name == "session_access_status", name
+        u = self.users.get(params["p_user_id"])
+        if u is None:
+            out = {"ok": False, "reason": "account_not_found"}
+        elif pa.user_is_disabled(u):
+            out = {"ok": False, "reason": "account_disabled"}
+        elif params["p_organization_id"] is None:
+            out = {"ok": True, "reason": "", "role": None}
+        else:
+            rows = [m for m in self.tables.get("organization_members", [])
+                    if m["user_id"] == params["p_user_id"] and m["organization_id"] == params["p_organization_id"]]
+            out = ({"ok": True, "reason": "", "role": rows[0]["role"]} if rows
+                   else {"ok": False, "reason": "membership_removed"})
+        return SimpleNamespace(execute=lambda: SimpleNamespace(data=out))
 
     # helpers
     def add_user(self, email, banned=False):
@@ -415,6 +433,99 @@ class TestDisableEnable(unittest.TestCase):
             r = tenancy.revalidate_session_access(self.w.member, self.w.phoenix)
         self.assertEqual((r.ok, r.reason), (False, "access_check_failed"))
 
+    def test_revalidation_fails_closed_on_unexpected_status_shape(self):
+        for data in (None, [], "ok", {"reason": "x"}, {"ok": "true"}, {"ok": False, "reason": "weird"}):
+            sb = SimpleNamespace(rpc=lambda n, p, d=data: SimpleNamespace(execute=lambda: SimpleNamespace(data=d)))
+            with patch.object(tenancy.db, "get_service_client", return_value=sb):
+                r = tenancy.revalidate_session_access(self.w.member, self.w.phoenix)
+            self.assertEqual((r.ok, r.reason), (False, "access_check_failed"), data)
+
+
+# ── Per-operation enforcement of service-role operations ────────────────
+
+class TestSessionOperationEnforcement(unittest.TestCase):
+    """tenancy._require_active_session: every service-role *_for_organization
+    operation re-checks the CURRENT session principal before running."""
+
+    def setUp(self):
+        self.w = _world()
+        self.ctx = tenancy.AuthContext(user_id=self.w.member, email="member@phoenix.example",
+                                       organization_id=self.w.phoenix, organization_name="Phoenix Consulting",
+                                       role="member")
+        self.principal = self.ctx
+        tenancy.set_session_principal_provider(lambda: self.principal)
+        self.addCleanup(tenancy.set_session_principal_provider, None)
+        p = patch.object(tenancy.db, "get_service_client", return_value=self.w.sb)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def _gate(self, org=None):
+        tenancy._require_active_session(org or self.w.phoenix)
+
+    def test_active_member_passes(self):
+        self._gate()
+
+    def test_disabled_user_denied_immediately(self):
+        pa.disable_user(self.w.owner, OWNER_EMAIL, self.w.member, sb=self.w.sb)
+        with self.assertRaisesRegex(tenancy.SessionAccessRevokedError, "account_disabled"):
+            self._gate()
+        pa.enable_user(self.w.owner, OWNER_EMAIL, self.w.member, sb=self.w.sb)
+        self._gate()
+
+    def test_removed_membership_denied(self):
+        pa.remove_membership(self.w.owner, OWNER_EMAIL, self.w.member, self.w.phoenix, sb=self.w.sb)
+        with self.assertRaisesRegex(tenancy.SessionAccessRevokedError, "membership_removed"):
+            self._gate()
+
+    def test_cross_organization_request_denied(self):
+        with self.assertRaisesRegex(tenancy.SessionAccessRevokedError, "organization_mismatch"):
+            self._gate(self.w.other)
+
+    def test_unresolved_or_missing_session_denied(self):
+        for principal in (None, tenancy.NoOrganizationAccess(user_id=self.w.member)):
+            self.principal = principal
+            with self.assertRaises(tenancy.SessionAccessRevokedError):
+                self._gate()
+
+    def test_provider_failure_and_backend_failure_deny(self):
+        tenancy.set_session_principal_provider(lambda: 1 / 0)
+        with self.assertRaisesRegex(tenancy.SessionAccessRevokedError, "access_check_failed"):
+            self._gate()
+        tenancy.set_session_principal_provider(lambda: self.ctx)
+        with patch.object(tenancy.db, "get_service_client", side_effect=RuntimeError("down")):
+            with self.assertRaisesRegex(tenancy.SessionAccessRevokedError, "access_check_failed"):
+                self._gate()
+
+    def test_outside_a_streamlit_run_is_not_session_scoped(self):
+        tenancy.set_session_principal_provider(lambda: tenancy.NO_SESSION_CONTEXT)
+        pa.disable_user(self.w.owner, OWNER_EMAIL, self.w.member, sb=self.w.sb)
+        self._gate()  # background threads / scripts: no session principal to check
+
+    def test_revoked_error_is_an_access_denial(self):
+        self.assertTrue(issubclass(tenancy.SessionAccessRevokedError, tenancy.AccessDeniedError))
+
+    def test_service_role_wrappers_are_gated_before_any_query(self):
+        pa.disable_user(self.w.owner, OWNER_EMAIL, self.w.member, sb=self.w.sb)
+        client = MagicMock()
+        with patch.object(tenancy.db, "get_client", return_value=client):
+            for call in (lambda: tenancy.require_bid_access(1, self.w.phoenix),
+                         lambda: tenancy.list_bids_for_organization(self.w.phoenix),
+                         lambda: tenancy.get_bid_for_organization(1, self.w.phoenix),
+                         lambda: tenancy.create_bid_for_organization({"name": "x"}, self.w.phoenix),
+                         lambda: tenancy.list_organizational_memory_for_organization(self.w.phoenix),
+                         lambda: tenancy.list_organizational_source_documents_for_organization(self.w.phoenix)):
+                with self.assertRaises(tenancy.SessionAccessRevokedError):
+                    call()
+        client.table.assert_not_called()
+        client.rpc.assert_not_called()
+
+    def test_disabled_platform_admin_loses_console_authority(self):
+        w = self.w
+        w.sb.users[w.owner].banned_until = "2999-01-01T00:00:00Z"
+        with self.assertRaises(pa.PlatformAdminDenied):
+            pa.require_platform_admin(w.owner, OWNER_EMAIL, "list_users", sb=w.sb)
+        self.assertEqual(w.sb.audit()[-1]["details"]["reason"], "account_disabled")
+
 
 # ── Audit trail ──────────────────────────────────────────────────────────
 
@@ -448,6 +559,30 @@ class TestStaticBoundaries(unittest.TestCase):
         self.assertNotIn("admin_console", app)
         self.assertNotIn("import platform_admin", app)
         self.assertFalse(os.path.exists(os.path.join(self.ROOT, "pages", "admin_console.py")))
+
+    def test_polling_fragments_revalidate_before_rendering(self):
+        for page, fn in (("pages/stage_full_analysis.py", "def _poll_live("),
+                         ("pages/stage_check_assurance.py", "def _poll_running("),
+                         ("pages/stage_understand.py", "def _poll_active_analysis(")):
+            src = self._read(page)
+            body = src[src.index(fn):]
+            body = body[:body.index("\ndef ", 1)]
+            guard = body.index("auth_session.session_access_still_valid()")
+            self.assertLess(guard, body.index("_render") if "_render" in body else len(body), page)
+            self.assertIn("st.rerun()", body[guard:guard + 200], page)
+
+    def test_client_app_registers_per_operation_session_enforcement(self):
+        app = self._read("app.py")
+        self.assertIn("_tenancy.set_session_principal_provider(_auth_session.session_principal)", app)
+        self.assertNotIn("_ACCESS_REVALIDATION_SECONDS", app)  # no interval: every run
+
+    def test_migration_025_enforces_active_accounts_centrally(self):
+        sql = self._read("migrations/025_active_account_authorization.sql")
+        self.assertIn("u.banned_until is null or u.banned_until <= now()", sql)
+        self.assertIn("select public.current_user_is_active()\n       and exists", sql)
+        self.assertIn("using (user_id = auth.uid() and public.current_user_is_active())", sql)
+        self.assertIn("grant execute on function public.session_access_status(uuid, uuid) to service_role;", sql)
+        self.assertIn("raise exception 'migration 025: SECURITY DEFINER functions still executable", sql)
 
     def test_admin_console_requires_explicit_enable_flag_and_never_reads_keys(self):
         console = self._read("admin_console.py")

@@ -206,6 +206,9 @@ def _poll_active_analysis(bid_id: int) -> None:
     """Smallest appropriate Streamlit auto-refresh mechanism (instruction 6):
     re-runs only this fragment every ANALYSIS_POLL_INTERVAL_SECONDS, not the
     whole page -- no WebSockets, no Supabase Realtime, no queue platform."""
+    if not auth_session.session_access_still_valid():
+        st.rerun()  # full app run: app.py's revalidation signs the user out
+        return
     _render_active_run_progress(bid_id)
 
 

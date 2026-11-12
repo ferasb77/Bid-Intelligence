@@ -134,39 +134,74 @@ class SessionAccessCheck:
 
 
 def revalidate_session_access(user_id: str, organization_id: str | None = None) -> SessionAccessCheck:
-    """Super Admin MVP: re-check, server-side, that an already-signed-in
-    user still has effective access. A user disabled (banned) in Supabase
-    Auth, deleted, or removed from the organization they are operating as
-    must lose application access without waiting for their stored session
-    to expire. Fails closed on any lookup error.
+    """Re-check, server-side, that an already-signed-in user still has
+    effective access. A user disabled (banned) in Supabase Auth, deleted, or
+    removed from the organization they are operating as must lose
+    application access immediately, without waiting for their stored
+    session or access token to expire. Fails closed on any lookup error or
+    unexpected response shape.
 
-    Uses the service-role client: auth.admin for ban state, and
-    organization_members for the current membership/role."""
+    One service-role call to public.session_access_status (migration 025),
+    which reads the authoritative auth.users ban/deletion state and the
+    CURRENT organization_members row in a single query -- never JWT claims
+    or anything cached in the Streamlit session."""
     try:
         sb = db.get_service_client()
-        resp = sb.auth.admin.get_user_by_id(user_id)
-        user = getattr(resp, "user", None)
-        if user is None:
-            return SessionAccessCheck(ok=False, reason="account_not_found")
-        import platform_admin
-        if platform_admin.user_is_disabled(user):
-            return SessionAccessCheck(ok=False, reason="account_disabled")
-        if organization_id is None:
-            return SessionAccessCheck(ok=True)
-        rows = (
-            sb.table("organization_members")
-            .select("role")
-            .eq("organization_id", organization_id)
-            .eq("user_id", user_id)
-            .execute()
-            .data
-            or []
-        )
-        if not rows:
-            return SessionAccessCheck(ok=False, reason="membership_removed")
-        return SessionAccessCheck(ok=True, role=rows[0].get("role"))
+        data = sb.rpc("session_access_status", {
+            "p_user_id": str(user_id) if user_id else None,
+            "p_organization_id": str(organization_id) if organization_id else None,
+        }).execute().data
+        if isinstance(data, list):
+            data = data[0] if len(data) == 1 else None
+        if not isinstance(data, dict) or data.get("ok") not in (True, False):
+            return SessionAccessCheck(ok=False, reason="access_check_failed")
+        if data["ok"] is not True:
+            reason = data.get("reason")
+            if reason not in ("account_not_found", "account_disabled", "membership_removed"):
+                reason = "access_check_failed"
+            return SessionAccessCheck(ok=False, reason=reason)
+        return SessionAccessCheck(ok=True, role=data.get("role"))
     except Exception:
         return SessionAccessCheck(ok=False, reason="access_check_failed")
+
+
+# ── Per-operation session enforcement for service-role operations ───────
+# The *_for_organization functions below run on the RLS-bypassing service
+# client, so a disabled/removed user's stale Streamlit session must be
+# rejected HERE, at the moment of each operation, not only by app.py's
+# top-of-run check (polling @st.fragment reruns never execute app.py).
+# auth_session registers a provider returning the current Streamlit
+# session's AuthContext. Outside a Streamlit script run (background
+# analysis threads already authorized at start, CLI scripts, unit tests)
+# the provider returns NO_SESSION_CONTEXT and enforcement is not applied;
+# inside a script run, a missing/unresolved context, an organization
+# mismatch, or any failed/indeterminate status check denies.
+NO_SESSION_CONTEXT = object()
+_session_principal_provider = None
+
+
+def set_session_principal_provider(provider) -> None:
+    global _session_principal_provider
+    _session_principal_provider = provider
+
+
+def _require_active_session(organization_id) -> None:
+    provider = _session_principal_provider
+    if provider is None:
+        return
+    try:
+        principal = provider()
+    except Exception:
+        raise SessionAccessRevokedError("access_check_failed")
+    if principal is NO_SESSION_CONTEXT:
+        return
+    if not isinstance(principal, AuthContext):
+        raise SessionAccessRevokedError("no_active_organization_session")
+    if organization_id is not None and str(principal.organization_id) != str(organization_id):
+        raise SessionAccessRevokedError("organization_mismatch")
+    check = revalidate_session_access(principal.user_id, principal.organization_id)
+    if not check.ok:
+        raise SessionAccessRevokedError(check.reason or "access_check_failed")
 
 
 # ── Tenant-aware bid primitives ──────────────────────────────────────────
@@ -179,6 +214,7 @@ def revalidate_session_access(user_id: str, organization_id: str | None = None) 
 def list_bids_for_organization(organization_id: str) -> list[dict]:
     """The organization-scoped equivalent of database.get_all_bids() --
     same per-bid req/task rollup, filtered to one organization."""
+    _require_active_session(organization_id)
     sb = db.get_client()
     bids = (
         sb.table("bids")
@@ -208,6 +244,7 @@ def get_bid_for_organization(bid_id: int, organization_id: str) -> dict | None:
     cannot use response shape to probe for the existence of other
     organizations' bid IDs. Fails closed immediately if organization_id or
     bid_id is missing."""
+    _require_active_session(organization_id)
     if not organization_id or not bid_id:
         return None
     sb = db.get_client()
@@ -230,6 +267,7 @@ def create_bid_for_organization(data: dict, organization_id: str) -> int | None:
     A caller with no resolved AuthContext has no organization_id to pass
     and cannot call this function at all, which is the intended fail-closed
     shape until a real authenticated/tenant-aware create path exists."""
+    _require_active_session(organization_id)
     if not organization_id:
         raise ValueError("create_bid_for_organization requires an explicit organization_id")
     sb = db.get_client()
@@ -263,6 +301,12 @@ class AccessDeniedError(Exception):
     target bid. No privileged operation may proceed past this exception --
     every function below raises it BEFORE touching analysis_service.py or
     any privileged write."""
+
+
+class SessionAccessRevokedError(AccessDeniedError):
+    """The current Streamlit session's user is disabled/deleted, no longer
+    a member of the organization, or their status could not be established
+    (fail closed). Raised before any service-role read or write."""
 
 
 class SectionMappingUnavailableError(Exception):
@@ -1903,6 +1947,7 @@ def create_organizational_memory_item_for_organization(
     parameters. Approved-knowledge creation is reserved for a separate,
     explicit human-approval write path that this phase does not build; a
     future OM-2 approval function is where that belongs, not here."""
+    _require_active_session(organization_id)
     if not organization_id:
         raise ValueError(
             "create_organizational_memory_item_for_organization requires an explicit organization_id")
@@ -1925,6 +1970,7 @@ def create_organizational_memory_item_for_organization(
 def list_organizational_memory_for_organization(
     organization_id: str, memory_class: str | None = None,
 ) -> list[dict]:
+    _require_active_session(organization_id)
     if not organization_id:
         raise ValueError(
             "list_organizational_memory_for_organization requires an explicit organization_id")
@@ -1979,6 +2025,7 @@ def _row_to_memory_item(row: dict):
 # ═══════════════════════════════════════════════════════════════════════════
 
 def list_organizational_source_documents_for_organization(organization_id: str) -> list[dict]:
+    _require_active_session(organization_id)
     if not organization_id:
         raise ValueError(
             "list_organizational_source_documents_for_organization requires an explicit organization_id")
@@ -2021,6 +2068,7 @@ def ingest_organizational_source_document_for_organization(
     point already used elsewhere in this codebase -- so file-type handling
     (PDF/DOCX/XLSX/XLS/CSV/plain text) is not reinvented here.
     """
+    _require_active_session(organization_id)
     if not organization_id:
         raise ValueError(
             "ingest_organizational_source_document_for_organization requires an explicit organization_id")
@@ -2143,6 +2191,7 @@ def approve_organizational_memory_item_for_organization(
         derived_from_item_id still points at the exact reviewed
         SOURCE_MEMORY id regardless of any text edit.
     """
+    _require_active_session(organization_id)
     if not organization_id:
         raise ValueError(
             "approve_organizational_memory_item_for_organization requires an explicit organization_id")
@@ -2198,6 +2247,7 @@ def retrieve_organizational_memory_for_organization(
     pass embeddings.embed_query to opt into semantic ranking; any failure
     there still degrades to the deterministic keyword fallback inside
     retrieve() itself."""
+    _require_active_session(organization_id)
     import organizational_memory as om
 
     if not organization_id:

@@ -520,7 +520,7 @@ class TestLogoutClearsAllUserScopedState(unittest.TestCase):
         # per "Sign out" button that invokes it, plus one forced sign-out
         # when server-side access revalidation fails (Super Admin MVP:
         # disabled user / removed membership).
-        self.assertIn("if not _access.ok:\n        _clear_all_user_scoped_state()", source)
+        self.assertIn("if not _access.ok:\n    _clear_all_user_scoped_state()", source)
         self.assertEqual(clear_call_count, 2 + sign_out_button_count)
 
     def test_auth_session_sign_out_clears_session_and_context(self):

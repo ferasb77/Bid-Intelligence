@@ -240,6 +240,35 @@ def handle_invite_callback() -> AuthResult:
     return AuthResult(ok=True, user_id=user.id, email=user.email)
 
 
+def session_principal():
+    """Provider registered with tenancy.set_session_principal_provider() by
+    app.py: the current Streamlit session's resolved AuthContext (or
+    whatever unresolved/None value is stored), or
+    tenancy.NO_SESSION_CONTEXT when not inside a Streamlit script run
+    (background analysis threads, CLI scripts)."""
+    import tenancy
+    try:
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+        script_ctx = get_script_run_ctx(suppress_warning=True)
+    except Exception:
+        script_ctx = None
+    if script_ctx is None:
+        return tenancy.NO_SESSION_CONTEXT
+    import streamlit as st
+    return st.session_state.get(AUTH_CONTEXT_KEY)
+
+
+def session_access_still_valid() -> bool:
+    """Fail-closed revalidation for polling @st.fragment reruns, which never
+    execute app.py's top-of-run check: False if there is no resolved
+    AuthContext or the account/membership is no longer active."""
+    import tenancy
+    ctx = current_auth_context()
+    if not isinstance(ctx, tenancy.AuthContext):
+        return False
+    return tenancy.revalidate_session_access(ctx.user_id, ctx.organization_id).ok
+
+
 def current_auth_context():
     """The AuthContext/NoOrganizationAccess/OrganizationSelectionRequired
     resolved by handle_invite_callback() (or, once wired, by a future

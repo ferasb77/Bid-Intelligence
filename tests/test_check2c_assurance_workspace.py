@@ -341,6 +341,10 @@ def install(monkeypatch, s):
     monkeypatch.setattr(auth_session, "current_session", lambda: {"access_token": "t"})
     monkeypatch.setattr(auth_session, "current_auth_context",
                         lambda: types.SimpleNamespace(organization_id=ORG, user_id="u1"))
+    # Revocation correction: the polling fragment re-checks account/membership
+    # status first; this page-level harness has no live backend, so the
+    # (separately tested) check is stubbed as an active session.
+    monkeypatch.setattr(auth_session, "session_access_still_valid", lambda: True)
 
 
 SCRIPT = f"""
