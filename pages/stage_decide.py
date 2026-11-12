@@ -69,7 +69,11 @@ def page_decide(bid_id: int):
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
 
     procurement_state = tenancy.get_procurement_state_for_organization(bid_id, _org_id)
-    if latest_decision:
+    if procurement_state.get("procurement_truth_status") != "governed":
+        # Phoenix Beta simplification: no "not yet governed / establish a
+        # baseline" banner; staleness banners still apply to governed bids.
+        banner_html = ""
+    elif latest_decision:
         # A decision exists -- pass its stored basis explicitly, even if
         # that stored value is NULL (a decision made before revision
         # tracking existed), so the banner can distinguish "unknown basis"

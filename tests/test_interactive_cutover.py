@@ -230,6 +230,11 @@ class TestCutoverArchitecture(unittest.TestCase):
         decide = (Path(__file__).resolve().parent.parent / "pages" / "stage_decide.py").read_text(encoding="utf-8")
         self.assertNotIn("Proceed to BUILD", decide)
         self.assertNotIn('"stage_build"', decide)
+        # Phoenix Beta: DECIDE shows no "not yet governed / establish a
+        # baseline" banner for an ungoverned bid (staleness banners remain
+        # for governed bids).
+        self.assertIn('if procurement_state.get("procurement_truth_status") != "governed":', decide)
+        self.assertIn('banner_html = ""', decide)
 
 
 class TestGoAuthorizesBidOpen(unittest.TestCase):

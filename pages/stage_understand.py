@@ -225,11 +225,11 @@ def _render_fast_analysis_governance_note(run: dict, procurement_state: dict) ->
     truth_status = procurement_state.get("procurement_truth_status", "ungoverned")
     current_revision = procurement_state.get("procurement_revision", 1)
 
+    # Phoenix Beta simplification: no governance notes for an ungoverned bid
+    # (no "not yet governed" / "not yet through a governed review" warnings).
     if truth_status != "governed":
-        st.markdown(
-            '<div class="warn-box">⚠️ Procurement truth has not yet been governed -- this run is advisory '
-            'only and may reflect an unverified initial extraction.</div>', unsafe_allow_html=True)
-    elif based_on is None:
+        return
+    if based_on is None:
         st.markdown(
             '<div class="warn-box">⚠️ Procurement revision basis is unknown for this run — it predates '
             'procurement-revision tracking. Re-analysis is required before treating it as current.</div>',
@@ -708,10 +708,12 @@ def _render_procurement_governance_panel(bid_id: int, organization_id: str, docs
     truth_status = state.get("procurement_truth_status", "ungoverned")
     revision = state.get("procurement_revision", 1)
 
+    # Phoenix Beta simplification: an ungoverned bid shows no "not yet
+    # governed" warning and no Establish Procurement Baseline step -- the
+    # normal UNDERSTAND / DECIDE workflow does not require a governed
+    # baseline. (_render_baseline_workflow and all governance data are kept.)
     if truth_status == "governed":
         _render_buyer_update_workflow(bid_id, organization_id, docs, revision)
-    else:
-        _render_baseline_workflow(bid_id, organization_id, docs, revision)
 
     return state
 

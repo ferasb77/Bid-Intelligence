@@ -1311,10 +1311,14 @@ class TestUnderstandGovernanceWorkflowRendering(unittest.TestCase):
                 p.stop()
         return "\n".join(calls)
 
-    def test_ungoverned_bid_shows_establish_baseline_workflow(self):
+    def test_ungoverned_bid_shows_no_baseline_requirement(self):
+        """Phoenix Beta simplification: an ungoverned bid shows neither the
+        'not yet governed' warning nor the Establish Procurement Baseline
+        step on UNDERSTAND."""
         rendered = self._render("ungoverned", reviews=[])
-        self.assertIn("Establish Procurement Baseline", rendered)
-        self.assertIn("not yet governed", rendered)
+        self.assertNotIn("Establish Procurement Baseline", rendered)
+        self.assertNotIn("not yet governed", rendered)
+        self.assertNotIn("governed baseline", rendered)
 
     def test_governed_bid_shows_documents_and_addenda_workflow(self):
         rendered = self._render("governed", reviews=[], revision=2)
@@ -1337,9 +1341,12 @@ class TestUnderstandGovernanceWorkflowRendering(unittest.TestCase):
             button_calls.append((label, kwargs))
             return False
 
-        patches = self._base_patches("ungoverned", 1) + [
+        # Phoenix Beta: the baseline step is no longer shown for ungoverned
+        # bids, so the shared review/apply control is exercised through the
+        # governed buyer-update path.
+        patches = self._base_patches("governed", 1) + [
             patch("pages.stage_understand.tenancy.get_procurement_update_reviews_for_organization",
-                  return_value=[{"id": 1, "review_kind": "baseline", "status": "ready_for_review",
+                  return_value=[{"id": 1, "review_kind": "buyer_update", "status": "ready_for_review",
                                  "base_procurement_revision": 1}]),
             patch("pages.stage_understand.tenancy.get_procurement_changes_for_organization", return_value=[
                 {"id": 100, "entity_type": "requirement", "entity_id": "M1", "change_type": "UNCHANGED",
@@ -1370,9 +1377,12 @@ class TestUnderstandGovernanceWorkflowRendering(unittest.TestCase):
             button_calls.append((label, kwargs))
             return False
 
-        patches = self._base_patches("ungoverned", 1) + [
+        # Phoenix Beta: the baseline step is no longer shown for ungoverned
+        # bids, so the shared review/apply control is exercised through the
+        # governed buyer-update path.
+        patches = self._base_patches("governed", 1) + [
             patch("pages.stage_understand.tenancy.get_procurement_update_reviews_for_organization",
-                  return_value=[{"id": 1, "review_kind": "baseline", "status": "ready_for_review",
+                  return_value=[{"id": 1, "review_kind": "buyer_update", "status": "ready_for_review",
                                  "base_procurement_revision": 1}]),
             patch("pages.stage_understand.tenancy.get_procurement_changes_for_organization", return_value=[
                 {"id": 100, "entity_type": "requirement", "entity_id": "M1", "change_type": "UNCHANGED",
@@ -1512,12 +1522,15 @@ class TestFastAnalysisUnreviewedDocumentDisplay(unittest.TestCase):
         )
         self.assertIn("basis is unknown", rendered.lower())
 
-    def test_ungoverned_bid_message_takes_precedence_over_revision_basis(self):
+    def test_ungoverned_bid_shows_no_governance_note(self):
+        """Phoenix Beta simplification: no governance warnings on a FAST run
+        of an ungoverned bid."""
         rendered = self._render_note(
-            {"based_on_procurement_revision": None, "unreviewed_document_count": 0},
+            {"based_on_procurement_revision": None, "unreviewed_document_count": 3},
             {"procurement_revision": 1, "procurement_truth_status": "ungoverned"},
         )
-        self.assertIn("not yet been governed", rendered)
+        self.assertNotIn("not yet been governed", rendered)
+        self.assertNotIn("governed review", rendered)
         self.assertNotIn("basis is unknown", rendered.lower())
 
 
