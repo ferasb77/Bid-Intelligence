@@ -280,20 +280,52 @@ FIELD_FAMILY_OVERRIDE_BY_FIELD = {
     "submission_time": "deadline",
 }
 
+# Arabic name conventions sit beside the English ones (Python's \b is
+# Unicode-aware, but Arabic words take attached prefixes such as ال/و/ب, so
+# the Arabic alternatives are matched without word boundaries). A bare
+# "ملحق" means annex OR addendum, so on its own it is SUPPORTING; "ملحق
+# تعديل" / "تعديل" (amendment) is AMENDMENT.
 _AMENDMENT_NAME_RE = re.compile(
-    r'\b(?:addend(?:um|a)|amendment|revision\s+notice)\b', re.IGNORECASE)
+    r'\b(?:addend(?:um|a)|amendment|corrigend(?:um|a)|errat(?:um|a)|revision\s+notice)\b'
+    # Arabic: only instrument phrasings -- a bare "تعديل" also means
+    # "modification" and can be part of a genuine opportunity name.
+    r'|(?:ملحق|إشعار|اشعار)\s*(?:ال)?تعديل|تعديل\s*رقم|^\W*تعديل\s*[(\[]?\s*[0-9٠-٩۰-۹]', re.IGNORECASE)
 _AMENDMENT_PATH_RE = re.compile(r'(?:^|/)amendment\s*0*\d+\b', re.IGNORECASE)
 _QA_LOG_NAME_RE = re.compile(
-    r'\bq\s*&?\s*a\s*log\b|\bquestions?\s+and\s+answers?\s+log\b', re.IGNORECASE)
+    r'\bq\s*&?\s*a\s*log\b|\bquestions?\s+and\s+answers?\s+log\b'
+    r'|استفسار|أسئلة\s*و\s*أجوبة|اسئلة\s*و\s*اجوبة|إجابات|اجابات', re.IGNORECASE)
 _RESPONSE_FORM_NAME_RE = re.compile(
     r'\b(?:response\s+form|proposal\s+response|submission\s+form|'
-    r'rated\s+criteria|mandatory\s+criteria|qualification\s+requirements?)\b',
-    re.IGNORECASE)
+    r'rated\s+criteria|mandatory\s+criteria|qualification\s+requirements?)\b'
+    r'|نموذج\s*(?:تقديم\s*)?(?:العرض|عرض)', re.IGNORECASE)
 _CONTRACT_NAME_RE = re.compile(
     r'\b(?:form\s+of\s+(?:contract|agreement)|draft\s+(?:contract|agreement)|'
-    r'general\s+service\s+agreement|terms\s+and\s+conditions)\b', re.IGNORECASE)
+    r'general\s+service\s+agreement|terms\s+and\s+conditions)\b'
+    r'|(?:مسودة|نموذج)\s*(?:ال)?عقد|الشروط\s*و\s*الأحكام', re.IGNORECASE)
 _SUPPORTING_NAME_RE = re.compile(
-    r'\b(?:appendix|annex(?:e)?|schedule|attachment|exhibit)\b', re.IGNORECASE)
+    r'\b(?:appendix|annex(?:e)?|schedule|attachment|exhibit)\b'
+    r'|ملحق|مرفق|جدول', re.IGNORECASE)
+
+#: Content signal, independent of the file name: a document whose OWN
+#: extracted title is an amendment heading ("Addendum No. 1", "Amendment
+#: #2", "ملحق تعديل رقم (١)") is an amending instrument even when its file is
+#: called "doc3.pdf". Anchored on purpose: the title must BE the heading
+#: (optionally numbered, optionally "... to RFP X" / ": subject" after the
+#: number), so a genuine opportunity titled e.g. "Amendment of Zoning
+#: By-law Consulting Services" is never demoted.
+_AMENDMENT_NUM = r'\s*(?:no\.?|number|#|رقم)?\s*[(\[]?\s*[0-9٠-٩۰-۹]+[)\]]?'
+_AMENDMENT_TITLE_RE = re.compile(
+    r'^\W*(?:'
+    r'(?:addend(?:um|a)|amendment|corrigend(?:um|a)|errat(?:um|a)|bid\s+bulletin)'
+    r'(?:' + _AMENDMENT_NUM + r'(?:\s*(?:to|for|of|[:\-–—]).*)?)?'
+    r'|(?:ملحق|إشعار|اشعار)?\s*(?:ال)?تعديل(?:' + _AMENDMENT_NUM + r'(?:\s*(?:على|ل|[:\-–—]).*)?)?'
+    r')\W*$',
+    re.IGNORECASE)
+
+
+def is_amendment_title(title) -> bool:
+    """True when a document's own title is an amendment heading only."""
+    return isinstance(title, str) and bool(_AMENDMENT_TITLE_RE.match(title.strip()))
 
 
 def classify_identity_role(document_name: str) -> str:
@@ -324,10 +356,24 @@ def classify_identity_role(document_name: str) -> str:
     return IDENTITY_ROLE_PRIMARY_SOLICITATION
 
 
-def classify_identity_roles(document_names: list[str]) -> dict[str, str]:
+def classify_identity_roles(document_names: list[str],
+                            metadata_by_doc: dict | None = None) -> dict[str, str]:
     """`classify_identity_role` over a whole corpus. Every name gets
-    exactly one role."""
-    return {name: classify_identity_role(name) for name in document_names}
+    exactly one role.
+
+    With `metadata_by_doc` (each document's own extracted metadata), a
+    document the file name left as PRIMARY_SOLICITATION is re-classified as
+    AMENDMENT when its own title -- or the original-language title it was
+    rendered from -- is an amendment heading. The name rule still decides
+    first; content can only demote a document out of identity authority,
+    never promote one into it."""
+    roles = {name: classify_identity_role(name) for name in document_names}
+    for name, meta in (metadata_by_doc or {}).items():
+        if roles.get(name) != IDENTITY_ROLE_PRIMARY_SOLICITATION or not isinstance(meta, dict):
+            continue
+        if is_amendment_title(meta.get("title")) or is_amendment_title(meta.get("title_original")):
+            roles[name] = IDENTITY_ROLE_AMENDMENT
+    return roles
 
 
 def merge_identity_fields(
@@ -381,7 +427,7 @@ def merge_identity_fields_with_provenance(
     at all -- only ranking order can promote a role, never a date
     comparison across roles."""
     default_ranking = AUTHORITY_BY_FIELD_FAMILY.get(field_family) or AUTHORITY_BY_FIELD_FAMILY["identity"]
-    roles = classify_identity_roles(list(metadata_by_doc.keys()))
+    roles = classify_identity_roles(list(metadata_by_doc.keys()), metadata_by_doc)
 
     candidates_by_field: dict[str, dict[str, list[tuple]]] = {}
     for doc_name, meta in metadata_by_doc.items():

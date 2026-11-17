@@ -198,25 +198,51 @@ def _split(buf: str, ref: dict) -> list[dict]:
     return [{"text": p.strip(), **ref} for p in parts if len(p.strip()) > 3]
 
 
-_SUBMIT_HINT = re.compile(r"\b(submit|submitted|submission|send|apply|proposals?\s+(must|shall|should)\s+be)\b", re.I)
+# Any inflection of the submit/send/deliver verbs ("are to be sent by email",
+# "shall be emailed to", "deliver to"), or "<offer> ... must/shall/are to be".
+_SUBMIT_HINT = re.compile(
+    r"\b(submit\w*|submission|send|sent|e-?mailed|deliver\w*|lodg\w*|apply|"
+    r"(proposals?|bids?|offers?|tenders?|quotations?|applications?|responses?)\s+"
+    r"(must|shall|should|will|are\s+to|is\s+to)\s+be)\b", re.I)
+_OFFER = re.compile(r"\b(proposals?|bids?|offers?|tenders?|quotations?|applications?|responses?|submissions?)\b", re.I)
+# Questions/clarification contacts are not the submission channel unless the
+# sentence also says the proposal itself goes there.
+_ENQUIRY = re.compile(r"\b(questions?|enquir\w*|inquir\w*|clarifications?|queries|query)\b", re.I)
 _CHANNEL = re.compile(r"(e-?mail|@|portal|online|upload|e-?tender|platform|hand[- ]deliver|deliver(ed)? to|sealed envelope|courier|address)", re.I)
 _DEADLINE = re.compile(r"\b(no later than|not later than|deadline|closing (date|time)|due (date|by)|before\s+\d{1,2}[:.]\d{2})\b", re.I)
 _LATE = re.compile(r"\b(late|after the (deadline|closing))\b.*\b(not be (considered|accepted|evaluated)|rejected|disqualif)", re.I)
 _SUBJECT = re.compile(r"\bsubject (line|of the e-?mail)\b", re.I)
 
 
+def _is_method_sentence(text: str) -> bool:
+    """A sentence saying how/where the proposal is submitted."""
+    if not (_SUBMIT_HINT.search(text) and _CHANNEL.search(text)):
+        return False
+    if _ENQUIRY.search(text) and not re.search(r"\bsubmi\w*", text, re.I):
+        # "Questions must be sent to x@y" -- an enquiry contact, unless the
+        # same sentence also says proposals/bids go there.
+        stripped = _ENQUIRY.sub(" ", text)
+        return bool(_OFFER.search(stripped)) and not re.search(
+            r"\b(about|regarding|concerning|on)\s+the\s+(proposals?|bids?|offers?|tenders?|rfp|solicitation)\b",
+            text, re.I)
+    return True
+
+
 def submission_instructions(documents: list[tuple[str, str]]) -> dict:
     """Verbatim submission facts: method sentence(s), addresses, deadline
     sentence(s), subject-line and late-submission rules, each located."""
     sents = located_sentences(documents)
-    method = [s for s in sents if _SUBMIT_HINT.search(s["text"]) and _CHANNEL.search(s["text"])]
+    method = [s for s in sents if _is_method_sentence(s["text"])]
     emails, seen = [], set()
     for s in method:
         for e in EMAIL.findall(s["text"]):
             e = e.rstrip(".")
             if e.lower() not in seen:
                 seen.add(e.lower())
-                emails.append({"email": e, "doc": s["doc"], "page": s.get("page")})
+                # The address is printed only as found in the document text,
+                # with the sentence that states it as its reference.
+                emails.append({"email": e, "doc": s["doc"], "page": s.get("page"),
+                               "sheet": s.get("sheet"), "sentence": s})
     channel = None
     blob = " ".join(s["text"] for s in method).lower()
     if emails or re.search(r"\be-?mail\b", blob):

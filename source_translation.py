@@ -91,16 +91,42 @@ def _located(text: str):
         yield idx, page, sheet, line, False
 
 
+def ocr_line_indices(text: str) -> set[int]:
+    """Line indices that sit on a page whose text came from OCR (its marker
+    carries "| OCR: ..."), not from the PDF's own text layer."""
+    out, on_ocr = set(), False
+    for idx, raw in enumerate((text or "").splitlines()):
+        m = _MARKER.match(raw.strip())
+        if m:
+            on_ocr = "OCR:" in (m.group("rest") or "").upper()
+            continue
+        if on_ocr:
+            out.add(idx)
+    return out
+
+
+#: Numbers, dates, percentages, amounts and reference numbers on a scanned
+#: page are exactly what OCR gets wrong (Arabic-Indic digits especially), and
+#: the consistency check cannot catch it: it compares the rendering with the
+#: OCR text, not with the page image. Such lines are never CHECKED.
+_NUMERIC = re.compile(r"[0-9٠-٩۰-۹%٪]")
+OCR_NUMERIC_ISSUE = ("scanned page (OCR): numbers, dates, percentages, amounts and reference "
+                     "numbers are not reliable -- check the original document")
+
+
 def segment_documents(documents: list[tuple[str, str]]) -> dict[str, dict]:
     """Lines needing an English rendering: every non-marker line of an
-    Arabic or mixed document that contains Arabic letters."""
+    Arabic or mixed document that contains Arabic letters. A line from an
+    OCR'd page is flagged ``"ocr": True``."""
     out: dict[str, dict] = {}
     for name, text in documents or []:
         lang = at.detect_language(text)
         if lang not in (at.LANG_AR, at.LANG_MIXED):
             continue
+        ocr = ocr_line_indices(text)
         segs = [{"line": idx, "page": page, "sheet": sheet, "original": line,
-                 "english": None, "status": NOT_TRANSLATED, "issues": []}
+                 "english": None, "status": NOT_TRANSLATED, "issues": [],
+                 **({"ocr": True} if idx in ocr else {})}
                 for idx, page, sheet, line, is_marker in _located(text)
                 if not is_marker and line and at.has_arabic(line)]
         out[name] = {"language": lang, "segments": segs}
@@ -216,6 +242,8 @@ def apply_translation(seg: dict, english: str) -> dict:
         seg.update(english=None, status=NOT_TRANSLATED, issues=["no translation returned"])
         return seg
     issues = at.check_translation(seg["original"], english)
+    if seg.get("ocr") and (_NUMERIC.search(seg["original"]) or _NUMERIC.search(english)):
+        issues = [OCR_NUMERIC_ISSUE] + issues
     seg.update(english=english, status=WITHHELD if issues else CHECKED, issues=issues)
     return seg
 
@@ -224,7 +252,8 @@ def summarize(payload: dict) -> dict:
     segs = [s for d in (payload.get("documents") or {}).values() for s in d.get("segments") or []]
     return {"segments": len(segs), "checked": sum(s["status"] == CHECKED for s in segs),
             "withheld": sum(s["status"] == WITHHELD for s in segs),
-            "not_translated": sum(s["status"] == NOT_TRANSLATED for s in segs)}
+            "not_translated": sum(s["status"] == NOT_TRANSLATED for s in segs),
+            "ocr_uncertain": sum(OCR_NUMERIC_ISSUE in (s.get("issues") or []) for s in segs)}
 
 
 def translate_documents(documents: list[tuple[str, str]], api_key: str | None = None, *, client=None,
@@ -288,6 +317,7 @@ def english_view(documents: list[tuple[str, str]], translations: dict | None) ->
         if not segs and not at.has_arabic(text or ""):
             out.append((name, text))
             continue
+        ocr = ocr_line_indices(text)
         lines = []
         for idx, raw in enumerate((text or "").splitlines()):
             line = raw.strip()
@@ -301,6 +331,8 @@ def english_view(documents: list[tuple[str, str]], translations: dict | None) ->
                 continue
             if at.has_arabic(line):
                 continue  # Arabic with no checked rendering -- never reported
+            if idx in ocr and _NUMERIC.search(line):
+                continue  # OCR'd digits on a scanned page of an Arabic document -- unreliable
             lines.append(at.to_western_digits(raw))
         out.append((name, "\n".join(lines)))
     return out
@@ -571,8 +603,14 @@ def payload_summary_line(translations: dict | None) -> str | None:
     if not docs:
         return None
     s = t.get("summary") or summarize(t)
-    held = s["withheld"] + s["not_translated"]
+    ocr = s.get("ocr_uncertain")
+    if ocr is None:  # snapshot summarised before the OCR rule existed
+        ocr = summarize(t)["ocr_uncertain"]
+    held = s["withheld"] + s["not_translated"] - ocr
     return (f"{len(docs)} source document(s) are in Arabic or bilingual. Their statements appear here in "
             f"English renderings of the original lines, each checked for consistent numbers, dates and "
             f"addresses; the original Arabic text is shown as evidence in the app."
-            + (f" {held} line(s) whose rendering could not be checked were not used." if held else ""))
+            + (f" {held} line(s) whose rendering could not be checked were not used." if held > 0 else "")
+            + (f" UNVERIFIED: {ocr} line(s) from scanned pages read by OCR contain numbers, dates, "
+               f"percentages, amounts or reference numbers; OCR does not read these reliably, so they "
+               f"were not used as facts here -- check them in the original document." if ocr else ""))

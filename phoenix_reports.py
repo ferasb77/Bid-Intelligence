@@ -505,6 +505,7 @@ def build_facts(*, bid: dict, fast_result: dict, documents: list[tuple[str, str]
     deadline = {
         "extracted": dl["value"], "extracted_ref": dl["ref"], "amended_from": dl["amended_from"],
         "conflict": dl["conflict"], "manual": manual if manual and str(manual)[:10] != str(dl["value"] or "")[:10] else None,
+        "unverified": dl.get("unverified"),
     }
     deadline["effective"] = deadline["manual"] or dl["value"]
 
@@ -525,7 +526,8 @@ def build_facts(*, bid: dict, fast_result: dict, documents: list[tuple[str, str]
 
     # ── evaluation ──
     criteria = []
-    for ec in r.get("evaluation_criteria") or []:
+    import procurement_normalization as _pn  # saved snapshots predate the FAST-side merge
+    for ec in _pn.dedupe_evaluation_criteria(r.get("evaluation_criteria") or []):
         ref = _ref_from(ec.get("source_refs"))
         if not _verified(docs, ref["excerpt"]):
             continue
@@ -717,8 +719,9 @@ def _kv(rows: list[tuple[str, str]]) -> Table:
 
 
 def _label(kind: str) -> str:
-    color = {"NEW": GREEN, "UPDATED": AMBER, "CONFLICT": RED}.get(kind, "#6B675F")
-    text = {"NEW": "NEW INFORMATION", "UPDATED": "UPDATED INFORMATION", "CONFLICT": "UNRESOLVED CONFLICT"}.get(kind, kind)
+    color = {"NEW": GREEN, "UPDATED": AMBER, "CONFLICT": RED, "UNVERIFIED": AMBER}.get(kind, "#6B675F")
+    text = {"NEW": "NEW INFORMATION", "UPDATED": "UPDATED INFORMATION", "CONFLICT": "UNRESOLVED CONFLICT",
+            "UNVERIFIED": "UNVERIFIED (OCR)"}.get(kind, kind)
     return f'<font name="BodyMed" color="{color}" size="7.2">{text}</font>'
 
 
@@ -751,6 +754,9 @@ def _deadline_value(f: dict) -> str:
                          f'[{esc(ref_text(d["extracted_ref"]))}]</font>')
     elif d["extracted"]:
         parts.append(f"<b>{esc(fmt_date(d['extracted']))}</b>{_rt(d['extracted_ref'])}")
+    if d.get("unverified") == "OCR" and d["extracted"]:
+        parts.append(f'{_label("UNVERIFIED")} <font size="7.6">read by OCR from a scanned page; '
+                     f'no checked sentence states it -- confirm in the original document</font>')
     if d["amended_from"]:
         parts.append(f'{_label("UPDATED")} <font size="7.6">previously {esc(fmt_date(d["amended_from"]["value"]))} '
                      f'[{esc(ref_text(d["amended_from"]["ref"]))}]</font>')
@@ -826,6 +832,8 @@ def _method_text(sub: dict) -> str | None:
         return None
     ms = (sub.get("method_sentences") or [None])[0]
     if sub.get("emails"):
+        # Referenced to the sentence that states the address itself.
+        ms = sub["emails"][0].get("sentence") or ms
         val = f"<b>{esc(sub.get('channel') or 'Email')}</b> to " + ", ".join(esc(e["email"]) for e in sub["emails"])
     else:
         val = f"<b>{esc(sub.get('channel') or 'As instructed')}</b>" + (f" — {esc(brief(ms['text'], 160))}" if ms else "")
@@ -1268,7 +1276,8 @@ def render_assessment(f: dict, *, full_status: str | None = None, research: dict
     mt = _method_text(sub)
     if mt:
         rows.append(["Submission method", mt.split(' <font size="7"')[0],
-                     Paragraph(esc(ref_text((sub.get("method_sentences") or [None])[0])), _st["cell_s"])])
+                     Paragraph(esc(ref_text(((sub.get("emails") or [{}])[0].get("sentence"))
+                                            or (sub.get("method_sentences") or [None])[0])), _st["cell_s"])])
     if _subject_text(sub):
         rows.append(["Subject line", esc(_subject_text(sub)), Paragraph(esc(ref_text(sub["subject_rule"])), _st["cell_s"])])
     if _late_text(sub):
@@ -1282,6 +1291,8 @@ def render_assessment(f: dict, *, full_status: str | None = None, research: dict
     open_items = []
     if d["conflict"] and not d["amended_from"]:
         open_items.append("submission deadline stated differently across documents")
+    if d.get("unverified") == "OCR":
+        open_items.append("submission deadline read by OCR from a scanned page, not verified")
     open_items += [f"{c['topic'].lower()} stated differently" for c in f["changes"] if c["kind"] == "CONFLICT"]
     open_items += [f"purpose of {w['name']} not confirmed from its contents" for w in f["workbooks"] if not w.get("purpose")]
     if open_items:

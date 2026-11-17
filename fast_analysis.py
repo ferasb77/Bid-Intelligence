@@ -2144,6 +2144,12 @@ def run_fast_analysis_corpus(documents: list[tuple[str, str]], api_key: str,
             if on_task_done is not None:
                 on_task_done(kind, payload, task_result)
 
+    # 3b. Overlapping chunks / routes can return the same criterion twice
+    # (heading-only and heading + description). Merge only evidence-backed
+    # duplicates; distinct criteria and weight conflicts are kept.
+    import procurement_normalization as _pn_dedupe
+    result.evaluation_criteria = _pn_dedupe.dedupe_evaluation_criteria(result.evaluation_criteria)
+
     # 4. Deterministic ambiguity detection over the aggregated, occurrence-
     # preserving data (audit S 7). Evaluation-weight conflicts and pricing-
     # stage ambiguity prefer the V4 focused-task occurrences when available;

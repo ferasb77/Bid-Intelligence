@@ -395,6 +395,115 @@ def extract_scoped_criterion_response_prompts(
     return result
 
 
+# ── Duplicate extractions of one evaluation criterion ───────────────────────
+#
+# A long document is extracted in overlapping chunks (and some packages by
+# more than one route), so the SAME buyer criterion can come back twice: once
+# as its heading ("Expertise") and once as heading + description ("Expertise:
+# Demonstrated proficiency in ..."), or with only punctuation/inline-weight
+# differences. Two entries are merged only when every one of these holds:
+#   * same source document and same parent stage,
+#   * the same published weight (a weight difference is a real conflict and
+#     is kept for detect_evaluation_weight_conflicts),
+#   * the labels are the same label, or one is exactly the other's heading
+#     (the text before its ":" / " - " / " – " / "(" description), AND
+#   * for that heading case, both cite the same source passage (one excerpt
+#     contains the start of the other) -- so two distinct criteria that merely
+#     share a heading word in different sections are never merged.
+# Distinct criteria with equal weights ("Soft Skills 10%", "Technical
+# Literacy 10%") have different headings and are always kept. Weights are
+# never changed; the more descriptive label is kept and source refs unioned.
+
+_CRIT_NUMBERING = re.compile(r"^\s*(?:\(?[0-9ivxlc]{1,4}[.)]|\(?[a-z][.)]|[-•*])\s+", re.I)
+_CRIT_INLINE_WEIGHT = re.compile(r"\(\s*\d+(?:\.\d+)?\s*%\s*\)")
+_CRIT_HEADING_SPLIT = re.compile(r"\s*(?::|\s[-–—]\s|\()\s*")
+
+
+def _crit_fold(text) -> str:
+    import procurement_digest as _pdg
+    text = _CRIT_NUMBERING.sub("", str(text or ""))
+    text = _CRIT_INLINE_WEIGHT.sub(" ", text)
+    return _pdg.fold(text)
+
+
+def _crit_heading(label) -> str:
+    raw = _CRIT_NUMBERING.sub("", str(label or "")).strip()
+    parts = _CRIT_HEADING_SPLIT.split(raw, maxsplit=1)
+    return _crit_fold(parts[0]) if len(parts) == 2 and parts[1].strip() else ""
+
+
+def _crit_weight(value) -> str:
+    return re.sub(r"\s+", "", str(value or "")).lower()
+
+
+def _crit_excerpts(ec: dict) -> list[str]:
+    import procurement_digest as _pdg
+    return [_pdg.fold(r.get("excerpt") or "") for r in (ec.get("source_refs") or [])
+            if isinstance(r, dict) and (r.get("excerpt") or "").strip()]
+
+
+def _same_passage(a: list[str], b: list[str]) -> bool:
+    for x in a:
+        for y in b:
+            short, long_ = (x, y) if len(x) <= len(y) else (y, x)
+            probe = short[:40]
+            if len(probe) >= 8 and probe in long_:
+                return True
+    return False
+
+
+def same_evaluation_criterion(a: dict, b: dict) -> bool:
+    """True when two evaluation_criteria entries are one buyer criterion."""
+    if (a.get("source_doc") or "") != (b.get("source_doc") or ""):
+        return False
+    if _crit_fold(a.get("parent_stage")) != _crit_fold(b.get("parent_stage")):
+        return False
+    if _crit_weight(a.get("weight")) != _crit_weight(b.get("weight")):
+        return False
+    la, lb = _crit_fold(a.get("stage")), _crit_fold(b.get("stage"))
+    if not la or not lb:
+        return False
+    if la == lb:
+        return True
+    ha, hb = _crit_heading(a.get("stage")), _crit_heading(b.get("stage"))
+    heading_match = (ha and len(ha) >= 3 and ha == lb) or (hb and len(hb) >= 3 and hb == la)
+    return bool(heading_match) and _same_passage(_crit_excerpts(a), _crit_excerpts(b))
+
+
+def dedupe_evaluation_criteria(evaluation_criteria: list) -> list:
+    """Merge duplicate extractions of the same criterion (rules above).
+    Order is preserved (first occurrence's position); input is not mutated."""
+    out: list[dict] = []
+    for ec in evaluation_criteria or []:
+        if not isinstance(ec, dict):
+            out.append(ec)
+            continue
+        match = next((i for i, kept in enumerate(out)
+                      if isinstance(kept, dict) and same_evaluation_criterion(kept, ec)), None)
+        if match is None:
+            out.append(dict(ec))
+            continue
+        kept = out[match]
+        if len(_crit_fold(ec.get("stage"))) > len(_crit_fold(kept.get("stage"))):
+            merged = dict(ec)
+            refs = list(ec.get("source_refs") or []) + list(kept.get("source_refs") or [])
+        else:
+            merged = dict(kept)
+            refs = list(kept.get("source_refs") or []) + list(ec.get("source_refs") or [])
+        for k, v in kept.items():  # keep any field only one of them carried
+            if merged.get(k) in (None, "", []) and v not in (None, "", []):
+                merged[k] = v
+        seen, uniq = set(), []
+        for r in refs:
+            key = (r.get("source_doc"), r.get("page"), r.get("sheet"), r.get("excerpt")) if isinstance(r, dict) else repr(r)
+            if key not in seen:
+                seen.add(key)
+                uniq.append(r)
+        merged["source_refs"] = uniq
+        out[match] = merged
+    return out
+
+
 def criteria_as_scoped_occurrences(evaluation_criteria: list[dict]) -> list[dict]:
     """CHECK-1.2 Defect A. `build_scoped_criterion_records` (and its own
     fallback in `full_analysis.build_canonical_package`) has only ever

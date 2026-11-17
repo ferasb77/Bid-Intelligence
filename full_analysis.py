@@ -384,7 +384,7 @@ def build_canonical_package(
         "procurement_mechanics": mechanics,
     }
 
-    roles = canon.classify_identity_roles(sorted(identity_by_doc.keys()))
+    roles = canon.classify_identity_roles(sorted(identity_by_doc.keys()), identity_by_doc)
     document_roles = tuple(
         {"canonical_id": f"DOC-{_slug(name)}", "object_type": OBJ_DOCUMENT_ROLE,
          "document": name, "identity_role": role}
@@ -422,7 +422,7 @@ def build_canonical_package(
             # route's own evaluation_criteria shape, the same fallback
             # fast_analysis.py's own step 5 now applies at extraction time.
             occurrences = pn.criteria_as_scoped_occurrences(
-                list(getattr(result, "evaluation_criteria", []) or []))
+                pn.dedupe_evaluation_criteria(list(getattr(result, "evaluation_criteria", []) or [])))
         scoped_records = pn.build_scoped_criterion_records(
             occurrences, dict(getattr(result, "scoped_criterion_response_prompts", {}) or {}),
             identity_role_by_doc=roles)

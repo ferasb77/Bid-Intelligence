@@ -135,6 +135,10 @@ def effective_deadline(result: dict, documents: list[tuple[str, str]]) -> dict:
                 ref = _first_ref(m.get("source_refs"))
                 out.update(value=m["normalized_date_start"], doc=ref.get("doc"), ref=ref)
                 break
+    # A date read from a scanned (OCR'd) page that no sentence of the checked
+    # text supports is not a verified fact: OCR misreads digits.
+    if out["value"] and not (out.get("ref") or {}).get("excerpt") and             "| OCR:" in (texts.get(out.get("doc") or "", "") or ""):
+        out["unverified"] = "OCR"
     return out
 
 

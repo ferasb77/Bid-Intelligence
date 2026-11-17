@@ -1,0 +1,272 @@
+{
+ "note": "Phoenix Beta live FAST run 15 (2026-11-17), INJAZ ToR: evaluation_criteria exactly as extracted, incl. the heading-only duplicates",
+ "source_doc": "tor_for_gil_trainer_-design_thinking.pdf",
+ "evaluation_criteria": [
+  {
+   "stage": "Expertise: Demonstrated proficiency in training youth on Lean Startup frameworks or enterprise development.",
+   "weight": "25%",
+   "threshold": null,
+   "source_doc": "tor_for_gil_trainer_-design_thinking.pdf",
+   "source_refs": [
+    {
+     "page": 3,
+     "sheet": null,
+     "excerpt": "Expertise: Demonstrated proficiency in training youth on Lean Startup frameworks or enterprise development. (25%)",
+     "section": "EVALUATION CRITERIA",
+     "source_doc": "tor_for_gil_trainer_-design_thinking.pdf"
+    }
+   ],
+   "weight_unit": "Percent",
+   "parent_stage": "Technical Evaluation",
+   "weight_basis": "Within Parent",
+   "evaluation_role": "Award Criterion"
+  },
+  {
+   "stage": "Knowledge: Strong grasp of the Sustainable Development Goals (SDGs) and the local business landscape.",
+   "weight": "15%",
+   "threshold": null,
+   "source_doc": "tor_for_gil_trainer_-design_thinking.pdf",
+   "source_refs": [
+    {
+     "page": 3,
+     "sheet": null,
+     "excerpt": "Knowledge: Strong grasp of the Sustainable Development Goals (SDGs) and the local business landscape. (15%)",
+     "section": "EVALUATION CRITERIA",
+     "source_doc": "tor_for_gil_trainer_-design_thinking.pdf"
+    }
+   ],
+   "weight_unit": "Percent",
+   "parent_stage": "Technical Evaluation",
+   "weight_basis": "Within Parent",
+   "evaluation_role": "Award Criterion"
+  },
+  {
+   "stage": "Soft Skills: Strong storytelling and motivational capacity to engage and inspire young learners.",
+   "weight": "10%",
+   "threshold": null,
+   "source_doc": "tor_for_gil_trainer_-design_thinking.pdf",
+   "source_refs": [
+    {
+     "page": 3,
+     "sheet": null,
+     "excerpt": "Soft Skills: Strong storytelling and motivational capacity to engage and inspire young learners. (10%)",
+     "section": "EVALUATION CRITERIA",
+     "source_doc": "tor_for_gil_trainer_-design_thinking.pdf"
+    }
+   ],
+   "weight_unit": "Percent",
+   "parent_stage": "Technical Evaluation",
+   "weight_basis": "Within Parent",
+   "evaluation_role": "Award Criterion"
+  },
+  {
+   "stage": "Technical Literacy: Competence in utilizing digital tools, reporting platforms, and educational media.",
+   "weight": "10%",
+   "threshold": null,
+   "source_doc": "tor_for_gil_trainer_-design_thinking.pdf",
+   "source_refs": [
+    {
+     "page": 3,
+     "sheet": null,
+     "excerpt": "Technical Literacy: Competence in utilizing digital tools, reporting platforms, and educational media. (10%)",
+     "section": "EVALUATION CRITERIA",
+     "source_doc": "tor_for_gil_trainer_-design_thinking.pdf"
+    }
+   ],
+   "weight_unit": "Percent",
+   "parent_stage": "Technical Evaluation",
+   "weight_basis": "Within Parent",
+   "evaluation_role": "Award Criterion"
+  },
+  {
+   "stage": "Technical Evaluation",
+   "weight": "60%",
+   "threshold": null,
+   "source_doc": "tor_for_gil_trainer_-design_thinking.pdf",
+   "source_refs": [
+    {
+     "page": 3,
+     "sheet": null,
+     "excerpt": "1. Technical Evaluation – 60% The technical score will assess:",
+     "section": "EVALUATION CRITERIA",
+     "source_doc": "tor_for_gil_trainer_-design_thinking.pdf"
+    }
+   ],
+   "weight_unit": "Percent",
+   "parent_stage": null,
+   "weight_basis": "Overall",
+   "evaluation_role": "Structural Container"
+  },
+  {
+   "stage": "Proposed Rate per Training Hour (40%) - Competitiveness and cost-effectiveness of the hourly rate.",
+   "weight": "40%",
+   "threshold": null,
+   "source_doc": "tor_for_gil_trainer_-design_thinking.pdf",
+   "source_refs": [
+    {
+     "page": 3,
+     "sheet": null,
+     "excerpt": "Proposed Rate per Training Hour (40%) - Competitiveness and cost-effectiveness of the hourly rate.",
+     "section": "EVALUATION CRITERIA",
+     "source_doc": "tor_for_gil_trainer_-design_thinking.pdf"
+    }
+   ],
+   "weight_unit": "Percent",
+   "parent_stage": "Financial Evaluation",
+   "weight_basis": "Within Parent",
+   "evaluation_role": "Award Criterion"
+  },
+  {
+   "stage": "Financial Evaluation",
+   "weight": "40%",
+   "threshold": null,
+   "source_doc": "tor_for_gil_trainer_-design_thinking.pdf",
+   "source_refs": [
+    {
+     "page": 3,
+     "sheet": null,
+     "excerpt": "2. Financial Evaluation – 40% The financial score will assess:",
+     "section": "EVALUATION CRITERIA",
+     "source_doc": "tor_for_gil_trainer_-design_thinking.pdf"
+    }
+   ],
+   "weight_unit": "Percent",
+   "parent_stage": null,
+   "weight_basis": "Overall",
+   "evaluation_role": "Structural Container"
+  },
+  {
+   "stage": "Expertise",
+   "weight": "25%",
+   "threshold": null,
+   "source_doc": "tor_for_gil_trainer_-design_thinking.pdf",
+   "source_refs": [
+    {
+     "page": 3,
+     "sheet": null,
+     "excerpt": "Expertise: Demonstrated proficiency in training youth on Lean Startup frameworks or enterprise development. (25%)",
+     "section": null,
+     "source_doc": "tor_for_gil_trainer_-design_thinking.pdf"
+    }
+   ],
+   "weight_unit": "Percent",
+   "parent_stage": "Technical Evaluation",
+   "weight_basis": "Within Parent",
+   "evaluation_role": "Award Criterion"
+  },
+  {
+   "stage": "Knowledge",
+   "weight": "15%",
+   "threshold": null,
+   "source_doc": "tor_for_gil_trainer_-design_thinking.pdf",
+   "source_refs": [
+    {
+     "page": 3,
+     "sheet": null,
+     "excerpt": "Knowledge: Strong grasp of the Sustainable Development Goals (SDGs) and the local business landscape. (15%)",
+     "section": null,
+     "source_doc": "tor_for_gil_trainer_-design_thinking.pdf"
+    }
+   ],
+   "weight_unit": "Percent",
+   "parent_stage": "Technical Evaluation",
+   "weight_basis": "Within Parent",
+   "evaluation_role": "Award Criterion"
+  },
+  {
+   "stage": "Soft Skills",
+   "weight": "10%",
+   "threshold": null,
+   "source_doc": "tor_for_gil_trainer_-design_thinking.pdf",
+   "source_refs": [
+    {
+     "page": 3,
+     "sheet": null,
+     "excerpt": "Soft Skills: Strong storytelling and motivational capacity to engage and inspire young learners. (10%)",
+     "section": null,
+     "source_doc": "tor_for_gil_trainer_-design_thinking.pdf"
+    }
+   ],
+   "weight_unit": "Percent",
+   "parent_stage": "Technical Evaluation",
+   "weight_basis": "Within Parent",
+   "evaluation_role": "Award Criterion"
+  },
+  {
+   "stage": "Technical Literacy",
+   "weight": "10%",
+   "threshold": null,
+   "source_doc": "tor_for_gil_trainer_-design_thinking.pdf",
+   "source_refs": [
+    {
+     "page": 3,
+     "sheet": null,
+     "excerpt": "Technical Literacy: Competence in utilizing digital tools, reporting platforms, and educational media. (10%)",
+     "section": null,
+     "source_doc": "tor_for_gil_trainer_-design_thinking.pdf"
+    }
+   ],
+   "weight_unit": "Percent",
+   "parent_stage": "Technical Evaluation",
+   "weight_basis": "Within Parent",
+   "evaluation_role": "Award Criterion"
+  },
+  {
+   "stage": "Technical Evaluation",
+   "weight": "60%",
+   "threshold": null,
+   "source_doc": "tor_for_gil_trainer_-design_thinking.pdf",
+   "source_refs": [
+    {
+     "page": 3,
+     "sheet": null,
+     "excerpt": "Technical Evaluation – 60% The technical score will assess:",
+     "section": null,
+     "source_doc": "tor_for_gil_trainer_-design_thinking.pdf"
+    }
+   ],
+   "weight_unit": "Percent",
+   "parent_stage": null,
+   "weight_basis": "Overall",
+   "evaluation_role": "Structural Container"
+  },
+  {
+   "stage": "Proposed Rate per Training Hour",
+   "weight": "40%",
+   "threshold": null,
+   "source_doc": "tor_for_gil_trainer_-design_thinking.pdf",
+   "source_refs": [
+    {
+     "page": 3,
+     "sheet": null,
+     "excerpt": "Proposed Rate per Training Hour (40%) - Competitiveness and cost-effectiveness of the hourly rate.",
+     "section": null,
+     "source_doc": "tor_for_gil_trainer_-design_thinking.pdf"
+    }
+   ],
+   "weight_unit": "Percent",
+   "parent_stage": "Financial Evaluation",
+   "weight_basis": "Within Parent",
+   "evaluation_role": "Award Criterion"
+  },
+  {
+   "stage": "Financial Evaluation",
+   "weight": "40%",
+   "threshold": null,
+   "source_doc": "tor_for_gil_trainer_-design_thinking.pdf",
+   "source_refs": [
+    {
+     "page": 3,
+     "sheet": null,
+     "excerpt": "Financial Evaluation – 40% The financial score will assess:",
+     "section": null,
+     "source_doc": "tor_for_gil_trainer_-design_thinking.pdf"
+    }
+   ],
+   "weight_unit": "Percent",
+   "parent_stage": null,
+   "weight_basis": "Overall",
+   "evaluation_role": "Structural Container"
+  }
+ ]
+}

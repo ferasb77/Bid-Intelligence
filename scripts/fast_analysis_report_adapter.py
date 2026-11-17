@@ -890,6 +890,11 @@ def _merged_doc_metadata(result: FastAnalysisResult) -> dict:
     title = merged.get("title")
     if title:
         cleaned_title = re.sub(r'^(?:SERVICES\s+AGREEMENT\s+for|GENERAL\s+SERVICE\s+AGREEMENT|Request\s+for\s+Proposals\s+(?:RFP\d+[-\w]*\s+)?for)\s*', '', title, flags=re.I).strip()
+        # "Request for Proposals No. 2026/45: <title>" (the reference is its own field)
+        cleaned_title = re.sub(
+            r'^(?:Request\s+for\s+(?:Proposals?|Quotations?|Tenders?|Offers?)|Invitation\s+to\s+(?:Tender|Bid)|'
+            r'Tender|RF[PQT])\s*(?:No\.?|Number|#)\s*[\w/.\-]+\s*[:\-–—]\s*(?=\S)',
+            '', cleaned_title, flags=re.I).strip() or cleaned_title
         if cleaned_title:
             merged["title"] = cleaned_title
 

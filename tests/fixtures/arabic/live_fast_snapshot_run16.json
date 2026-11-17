@@ -1,0 +1,1403 @@
+{
+ "result": {
+  "ambiguities": {
+   "pricing_stage_ambiguity": [],
+   "scope_distinct_milestones": [],
+   "category_date_distinctions": [
+    {
+     "type": "CATEGORY_DATE_DISTINCTION",
+     "scope": [],
+     "occurrences": [
+      {
+       "date": "2026-12-15",
+       "rank": null,
+       "unit": null,
+       "scope": {
+        "lot": null,
+        "category": null,
+        "component": null
+       },
+       "family": "MILESTONE",
+       "duration": null,
+       "source_doc": "ملحق تعديل رقم 1.pdf",
+       "source_refs": [
+        {
+         "page": 1,
+         "sheet": null,
+         "excerpt": "تم تمديد آخر موعد لتقديم العروض ليصبح ١٥ كانون الأول ٢٠٢٦",
+         "section": null,
+         "source_doc": "ملحق تعديل رقم 1.pdf"
+        }
+       ],
+       "option_count": null,
+       "semantic_kind": "SUBMISSION_DEADLINE",
+       "original_value": "15 December 2026"
+      },
+      {
+       "date": "2026-11-30",
+       "rank": null,
+       "unit": null,
+       "scope": {
+        "lot": null,
+        "category": null,
+        "component": null
+       },
+       "family": "MILESTONE",
+       "duration": null,
+       "source_doc": "كراسة الشروط.pdf",
+       "source_refs": [
+        {
+         "page": 1,
+         "sheet": null,
+         "excerpt": "آخر موعد لتقديم العروض هو ٣٠ تشرين الثاني ٢٠٢٦ الساعة ١٢:٠٠ ظهرا",
+         "section": null,
+         "source_doc": "كراسة الشروط.pdf"
+        }
+       ],
+       "option_count": null,
+       "semantic_kind": "SUBMISSION_DEADLINE",
+       "original_value": "30 November 2026 at 12:00 noon",
+       "original_value_arabic": "٣٠ تشرين الثاني ٢٠٢٦ الساعة ١٢:٠٠ ظهرا"
+      }
+     ],
+     "milestone_kind": "SUBMISSION_DEADLINE"
+    }
+   ],
+   "evaluation_weight_conflicts": []
+  },
+  "page_limits": {},
+  "requirements": [
+   {
+    "category": "Supporting",
+    "source_doc": "جدول الكميات.xlsx",
+    "description": "Pricing calculation formula: Training session (جلسة تدريبية) - Quantity: 6; Final report (تقرير ختامي) - Quantity: 1. Unit prices and totals to be provided by bidder.",
+    "source_docs": [
+     "جدول الكميات.xlsx"
+    ],
+    "source_refs": [
+     {
+      "page": null,
+      "sheet": "جدول الكميات",
+      "excerpt": "البند / Item | الكمية / Quantity | سعر الوحدة / Unit price | المجموع / Total; جلسة تدريبية / Training session | 6; تقرير ختامي / Final report | 1",
+      "section": null,
+      "source_doc": "جدول الكميات.xlsx"
+     }
+    ],
+    "applicability": "CONTRACT_WIDE",
+    "semantic_type": "COMMERCIAL_OBLIGATION",
+    "duplicate_count": 1,
+    "source_refs_all": [
+     {
+      "page": null,
+      "sheet": "جدول الكميات",
+      "excerpt": "البند / Item | الكمية / Quantity | سعر الوحدة / Unit price | المجموع / Total; جلسة تدريبية / Training session | 6; تقرير ختامي / Final report | 1",
+      "section": null,
+      "source_doc": "جدول الكميات.xlsx"
+     }
+    ],
+    "source_variants": [
+     "Pricing calculation formula: Training session (جلسة تدريبية) - Quantity: 6; Final report (تقرير ختامي) - Quantity: 1. Unit prices and totals to be provided by bidder."
+    ],
+    "applicability_basis": "semantic_type",
+    "applicable_category_ids": []
+   },
+   {
+    "category": "Mandatory",
+    "source_doc": "ملحق تعديل رقم 1.pdf",
+    "description": "A certificate of non-conviction must be attached for the lead trainer.",
+    "source_docs": [
+     "ملحق تعديل رقم 1.pdf"
+    ],
+    "source_refs": [
+     {
+      "page": 1,
+      "sheet": null,
+      "excerpt": "يجب إرفاق شهادة عدم محكومية للمدرب الرئيسي",
+      "section": null,
+      "source_doc": "ملحق تعديل رقم 1.pdf"
+     }
+    ],
+    "applicability": "UNKNOWN",
+    "semantic_type": "UNKNOWN",
+    "duplicate_count": 1,
+    "source_refs_all": [
+     {
+      "page": 1,
+      "sheet": null,
+      "excerpt": "يجب إرفاق شهادة عدم محكومية للمدرب الرئيسي",
+      "section": null,
+      "source_doc": "ملحق تعديل رقم 1.pdf"
+     }
+    ],
+    "source_variants": [
+     "A certificate of non-conviction must be attached for the lead trainer."
+    ],
+    "applicability_basis": "not_stated",
+    "applicable_category_ids": []
+   },
+   {
+    "category": "Mandatory",
+    "source_doc": "كراسة الشروط.pdf",
+    "description": "Scope of Work: Implementation of six training sessions for youth aged 18 to 28 years; Preparation of training materials in Arabic language; Submission of a final report within 15 days of completion of training.",
+    "source_docs": [
+     "كراسة الشروط.pdf"
+    ],
+    "source_refs": [
+     {
+      "page": 1,
+      "sheet": null,
+      "excerpt": "تنفيذ ست جلسات تدريبية للشباب من عمر ١٨ إلى ٢٨ سنة.\nإعداد المواد التدريبية باللغة العربية.\nتقديم تقرير ختامي خلال ١٥ يوما من انتهاء التدريب",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "applicability": "UNKNOWN",
+    "semantic_type": "SCOPE_ITEM",
+    "duplicate_count": 1,
+    "source_refs_all": [
+     {
+      "page": 1,
+      "sheet": null,
+      "excerpt": "تنفيذ ست جلسات تدريبية للشباب من عمر ١٨ إلى ٢٨ سنة.\nإعداد المواد التدريبية باللغة العربية.\nتقديم تقرير ختامي خلال ١٥ يوما من انتهاء التدريب",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "source_variants": [
+     "Scope of Work: Implementation of six training sessions for youth aged 18 to 28 years; Preparation of training materials in Arabic language; Submission of a final report within 15 days of completion of training."
+    ],
+    "applicability_basis": "not_stated",
+    "applicable_category_ids": []
+   },
+   {
+    "category": "Mandatory",
+    "source_doc": "كراسة الشروط.pdf",
+    "description": "Mandatory Submission Mechanics: Proposals must be submitted via email to tenders@rural-dev.example.org.",
+    "source_docs": [
+     "كراسة الشروط.pdf"
+    ],
+    "source_refs": [
+     {
+      "page": 2,
+      "sheet": null,
+      "excerpt": "ترسل العروض عبر البريد الإلكتروني إلى tenders@rural-dev.example.org",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "applicability": "SUBMISSION_WIDE",
+    "semantic_type": "SUBMISSION_REQUIREMENT",
+    "duplicate_count": 1,
+    "source_refs_all": [
+     {
+      "page": 2,
+      "sheet": null,
+      "excerpt": "ترسل العروض عبر البريد الإلكتروني إلى tenders@rural-dev.example.org",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "source_variants": [
+     "Mandatory Submission Mechanics: Proposals must be submitted via email to tenders@rural-dev.example.org."
+    ],
+    "applicability_basis": "semantic_type",
+    "applicable_category_ids": []
+   },
+   {
+    "category": "Mandatory",
+    "source_doc": "كراسة الشروط.pdf",
+    "description": "Pricing Requirement: All prices must be inclusive of all taxes and fees.",
+    "source_docs": [
+     "كراسة الشروط.pdf"
+    ],
+    "source_refs": [
+     {
+      "page": 2,
+      "sheet": null,
+      "excerpt": "يجب أن تكون الأسعار شاملة لجميع الضرائب والرسوم",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "applicability": "CONTRACT_WIDE",
+    "semantic_type": "COMMERCIAL_OBLIGATION",
+    "duplicate_count": 1,
+    "source_refs_all": [
+     {
+      "page": 2,
+      "sheet": null,
+      "excerpt": "يجب أن تكون الأسعار شاملة لجميع الضرائب والرسوم",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "source_variants": [
+     "Pricing Requirement: All prices must be inclusive of all taxes and fees."
+    ],
+    "applicability_basis": "semantic_type",
+    "applicable_category_ids": []
+   },
+   {
+    "category": "Mandatory",
+    "source_doc": "كراسة الشروط.pdf",
+    "description": "Payment Terms: Payment is made in two installments: 50% after training completion and 50% after acceptance of the final report.",
+    "source_docs": [
+     "كراسة الشروط.pdf"
+    ],
+    "source_refs": [
+     {
+      "page": 2,
+      "sheet": null,
+      "excerpt": "يتم الدفع على دفعتين: ٥٠٪ بعد التدريب و٥٠٪ بعد قبول التقرير الختامي",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "applicability": "CONTRACT_WIDE",
+    "semantic_type": "COMMERCIAL_OBLIGATION",
+    "duplicate_count": 1,
+    "source_refs_all": [
+     {
+      "page": 2,
+      "sheet": null,
+      "excerpt": "يتم الدفع على دفعتين: ٥٠٪ بعد التدريب و٥٠٪ بعد قبول التقرير الختامي",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "source_variants": [
+     "Payment Terms: Payment is made in two installments: 50% after training completion and 50% after acceptance of the final report."
+    ],
+    "applicability_basis": "semantic_type",
+    "applicable_category_ids": []
+   }
+  ],
+  "wall_seconds": 18.801952,
+  "source_languages": {
+   "كراسة الشروط.pdf": "ar",
+   "جدول الكميات.xlsx": "mixed",
+   "ملحق تعديل رقم 1.pdf": "ar"
+  },
+  "batched_documents": [],
+  "skipped_documents": [],
+  "buyer_intelligence": null,
+  "commercial_clauses": [
+   {
+    "topic": "Payment Schedule and Milestones",
+    "source_doc": "كراسة الشروط.pdf",
+    "clause_kind": "PAYMENT_WITHHOLDING_SETOFF",
+    "source_fact": "Payment is made in two installments: 50% after completion of training and 50% after acceptance of the final report.",
+    "source_refs": [
+     {
+      "page": 2,
+      "sheet": null,
+      "excerpt": "يتم الدفع على دفعتين: ٥٠٪ بعد التدريب و٥٠٪ بعد قبول التقرير الختامي.",
+      "section": "٦. شروط الدفع",
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ]
+   },
+   {
+    "topic": "Pricing Inclusivity and Tax Treatment",
+    "source_doc": "كراسة الشروط.pdf",
+    "clause_kind": "PRICING_ESCALATION",
+    "source_fact": "Prices must be inclusive of all taxes and fees.",
+    "source_refs": [
+     {
+      "page": 2,
+      "sheet": null,
+      "excerpt": "يجب أن تكون الأسعار شاملة لجميع الضرائب والرسوم.",
+      "section": "٥. العرض المالي",
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ]
+   },
+   {
+    "topic": "Criminal clearance certificate for lead trainer",
+    "source_doc": "ملحق تعديل رقم 1.pdf",
+    "clause_kind": "BACKGROUND_CHECK_CLEARANCE",
+    "source_fact": "A certificate of non-conviction must be attached for the lead trainer.",
+    "source_refs": [
+     {
+      "page": 1,
+      "sheet": null,
+      "excerpt": "يجب إرفاق شهادة عدم محكومية للمدرب الرئيسي.",
+      "section": null,
+      "source_doc": "ملحق تعديل رقم 1.pdf"
+     }
+    ]
+   }
+  ],
+  "documents_by_route": {
+   "IDENTITY_EVAL_REQ": [
+    "جدول الكميات.xlsx",
+    "كراسة الشروط.pdf",
+    "ملحق تعديل رقم 1.pdf"
+   ]
+  },
+  "typed_observations": [
+   {
+    "date": null,
+    "rank": null,
+    "unit": null,
+    "scope": {
+     "lot": null,
+     "category": null,
+     "component": null
+    },
+    "family": "IDENTITY",
+    "duration": null,
+    "source_doc": "ملحق تعديل رقم 1.pdf",
+    "source_refs": [
+     {
+      "page": 1,
+      "sheet": null,
+      "excerpt": "طلب عروض رقم ٢٠٢٦/٤٥",
+      "section": null,
+      "source_doc": "ملحق تعديل رقم 1.pdf"
+     }
+    ],
+    "option_count": null,
+    "semantic_kind": "SOLICITATION_NUMBER",
+    "original_value": "2026/45"
+   },
+   {
+    "date": null,
+    "rank": null,
+    "unit": null,
+    "scope": {
+     "lot": null,
+     "category": null,
+     "component": null
+    },
+    "family": "IDENTITY",
+    "duration": null,
+    "source_doc": "ملحق تعديل رقم 1.pdf",
+    "source_refs": [
+     {
+      "page": 1,
+      "sheet": null,
+      "excerpt": "ملحق تعديل رقم (١)",
+      "section": null,
+      "source_doc": "ملحق تعديل رقم 1.pdf"
+     }
+    ],
+    "option_count": null,
+    "semantic_kind": "DOCUMENT_TITLE",
+    "original_value": "Addendum No. 1"
+   },
+   {
+    "date": null,
+    "rank": null,
+    "unit": null,
+    "scope": {
+     "lot": null,
+     "category": null,
+     "component": null
+    },
+    "family": "MILESTONE",
+    "duration": null,
+    "source_doc": "ملحق تعديل رقم 1.pdf",
+    "source_refs": [
+     {
+      "page": 1,
+      "sheet": null,
+      "excerpt": "ملحق تعديل رقم (١)",
+      "section": null,
+      "source_doc": "ملحق تعديل رقم 1.pdf"
+     }
+    ],
+    "option_count": null,
+    "semantic_kind": "AMENDMENT_DATE",
+    "original_value": "Addendum No. 1"
+   },
+   {
+    "date": "2026-12-15",
+    "rank": null,
+    "unit": null,
+    "scope": {
+     "lot": null,
+     "category": null,
+     "component": null
+    },
+    "family": "MILESTONE",
+    "duration": null,
+    "source_doc": "ملحق تعديل رقم 1.pdf",
+    "source_refs": [
+     {
+      "page": 1,
+      "sheet": null,
+      "excerpt": "تم تمديد آخر موعد لتقديم العروض ليصبح ١٥ كانون الأول ٢٠٢٦",
+      "section": null,
+      "source_doc": "ملحق تعديل رقم 1.pdf"
+     }
+    ],
+    "option_count": null,
+    "semantic_kind": "SUBMISSION_DEADLINE",
+    "original_value": "15 December 2026"
+   },
+   {
+    "date": null,
+    "rank": null,
+    "unit": null,
+    "scope": {
+     "lot": null,
+     "category": null,
+     "component": null
+    },
+    "family": "IDENTITY",
+    "duration": null,
+    "source_doc": "كراسة الشروط.pdf",
+    "source_refs": [
+     {
+      "page": 1,
+      "sheet": null,
+      "excerpt": "وزارة التنمية الريفية",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "option_count": null,
+    "semantic_kind": "BUYER_NAME",
+    "original_value": "Ministry of Rural Development",
+    "original_value_arabic": "وزارة التنمية الريفية"
+   },
+   {
+    "date": null,
+    "rank": null,
+    "unit": null,
+    "scope": {
+     "lot": null,
+     "category": null,
+     "component": null
+    },
+    "family": "IDENTITY",
+    "duration": null,
+    "source_doc": "كراسة الشروط.pdf",
+    "source_refs": [
+     {
+      "page": 1,
+      "sheet": null,
+      "excerpt": "طلب عروض رقم ٢٠٢٦/٤٥",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "option_count": null,
+    "semantic_kind": "SOLICITATION_NUMBER",
+    "original_value": "2026/45"
+   },
+   {
+    "date": null,
+    "rank": null,
+    "unit": null,
+    "scope": {
+     "lot": null,
+     "category": null,
+     "component": null
+    },
+    "family": "IDENTITY",
+    "duration": null,
+    "source_doc": "كراسة الشروط.pdf",
+    "source_refs": [
+     {
+      "page": 1,
+      "sheet": null,
+      "excerpt": "تقديم خدمات التدريب على ريادة الأعمال للشباب",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "option_count": null,
+    "semantic_kind": "OPPORTUNITY_TITLE",
+    "original_value": "Provision of Entrepreneurship Training Services for Youth",
+    "original_value_arabic": "تقديم خدمات التدريب على ريادة الأعمال للشباب"
+   },
+   {
+    "date": "2026-11-30",
+    "rank": null,
+    "unit": null,
+    "scope": {
+     "lot": null,
+     "category": null,
+     "component": null
+    },
+    "family": "MILESTONE",
+    "duration": null,
+    "source_doc": "كراسة الشروط.pdf",
+    "source_refs": [
+     {
+      "page": 1,
+      "sheet": null,
+      "excerpt": "آخر موعد لتقديم العروض هو ٣٠ تشرين الثاني ٢٠٢٦ الساعة ١٢:٠٠ ظهرا",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "option_count": null,
+    "semantic_kind": "SUBMISSION_DEADLINE",
+    "original_value": "30 November 2026 at 12:00 noon",
+    "original_value_arabic": "٣٠ تشرين الثاني ٢٠٢٦ الساعة ١٢:٠٠ ظهرا"
+   }
+  ],
+  "doc_metadata_by_doc": {
+   "كراسة الشروط.pdf": {
+    "title": "Request for Proposals No. 2026/45: Provision of Entrepreneurship Training Services for Youth",
+    "client": "Ministry of Rural Development",
+    "file_number": "2026/45",
+    "title_original": "طلب عروض رقم ٢٠٢٦/٤٥ تقديم خدمات التدريب على ريادة الأعمال للشباب",
+    "client_original": "وزارة التنمية الريفية",
+    "submission_time": "12:00 noon",
+    "submission_deadline": "2026-11-30"
+   },
+   "جدول الكميات.xlsx": {},
+   "ملحق تعديل رقم 1.pdf": {
+    "title": "Addendum No. 1",
+    "file_number": "2026/45",
+    "title_original": "ملحق تعديل رقم (١)",
+    "submission_deadline": "2026-12-15"
+   }
+  },
+  "evaluation_criteria": [
+   {
+    "stage": "Technical Proposal",
+    "weight": "70%",
+    "threshold": null,
+    "source_doc": "كراسة الشروط.pdf",
+    "source_refs": [
+     {
+      "page": 2,
+      "sheet": null,
+      "excerpt": "العرض الفني ٧٠٪",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "weight_unit": "Percent",
+    "parent_stage": "Evaluation Criteria",
+    "weight_basis": "Overall",
+    "evaluation_role": "Award Criterion"
+   },
+   {
+    "stage": "Previous Experience",
+    "weight": "30%",
+    "threshold": null,
+    "source_doc": "كراسة الشروط.pdf",
+    "source_refs": [
+     {
+      "page": 2,
+      "sheet": null,
+      "excerpt": "الخبرة السابقة ٣٠٪",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "weight_unit": "Percent",
+    "parent_stage": "Technical Proposal",
+    "weight_basis": "Within Parent",
+    "evaluation_role": "Award Criterion"
+   },
+   {
+    "stage": "Methodology",
+    "weight": "25%",
+    "threshold": null,
+    "source_doc": "كراسة الشروط.pdf",
+    "source_refs": [
+     {
+      "page": 2,
+      "sheet": null,
+      "excerpt": "المنهجية ٢٥٪",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "weight_unit": "Percent",
+    "parent_stage": "Technical Proposal",
+    "weight_basis": "Within Parent",
+    "evaluation_role": "Award Criterion"
+   },
+   {
+    "stage": "Work Team",
+    "weight": "15%",
+    "threshold": null,
+    "source_doc": "كراسة الشروط.pdf",
+    "source_refs": [
+     {
+      "page": 2,
+      "sheet": null,
+      "excerpt": "فريق العمل ١٥٪",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "weight_unit": "Percent",
+    "parent_stage": "Technical Proposal",
+    "weight_basis": "Within Parent",
+    "evaluation_role": "Award Criterion"
+   },
+   {
+    "stage": "Financial Proposal",
+    "weight": "30%",
+    "threshold": null,
+    "source_doc": "كراسة الشروط.pdf",
+    "source_refs": [
+     {
+      "page": 2,
+      "sheet": null,
+      "excerpt": "العرض المالي ٣٠٪",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "weight_unit": "Percent",
+    "parent_stage": "Evaluation Criteria",
+    "weight_basis": "Overall",
+    "evaluation_role": "Award Criterion"
+   },
+   {
+    "stage": "Valid Commercial Registration",
+    "weight": null,
+    "threshold": "Must possess a valid commercial registration",
+    "source_doc": "كراسة الشروط.pdf",
+    "source_refs": [
+     {
+      "page": 2,
+      "sheet": null,
+      "excerpt": "يجب أن يكون لدى المتنافس سجل تجاري ساري المفعول",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "weight_unit": "None",
+    "parent_stage": "Eligibility Conditions",
+    "weight_basis": "Unknown",
+    "evaluation_role": "Qualification / Gate"
+   },
+   {
+    "stage": "Lead Trainer Experience",
+    "weight": null,
+    "threshold": "5 years minimum experience",
+    "source_doc": "كراسة الشروط.pdf",
+    "source_refs": [
+     {
+      "page": 2,
+      "sheet": null,
+      "excerpt": "يجب ألا تقل خبرة المدرب الرئيسي عن خمس سنوات",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "weight_unit": "None",
+    "parent_stage": "Eligibility Conditions",
+    "weight_basis": "Unknown",
+    "evaluation_role": "Qualification / Gate"
+   }
+  ],
+  "pricing_occurrences": [],
+  "source_translations": {
+   "model": "claude-haiku-4-5-20251001",
+   "schema": "source-translations/1",
+   "status": "COMPLETE",
+   "summary": {
+    "checked": 31,
+    "segments": 32,
+    "withheld": 1,
+    "not_translated": 0
+   },
+   "documents": {
+    "كراسة الشروط.pdf": {
+     "language": "ar",
+     "segments": [
+      {
+       "line": 1,
+       "page": 1,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "Ministry of Rural Development",
+       "original": "وزارة التنمية الريفية"
+      },
+      {
+       "line": 2,
+       "page": 1,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "Request for Proposals No. 2026/45",
+       "original": "طلب عروض رقم ٢٠٢٦/٤٥"
+      },
+      {
+       "line": 3,
+       "page": 1,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "Provision of Entrepreneurship Training Services for Youth",
+       "original": "تقديم خدمات التدريب على ريادة الأعمال للشباب"
+      },
+      {
+       "line": 4,
+       "page": 1,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "1. Introduction",
+       "original": "١. مقدمة"
+      },
+      {
+       "line": 5,
+       "page": 1,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "The Ministry of Rural Development invites qualified companies to submit proposals for the implementation of a training program.",
+       "original": "تدعو وزارة التنمية الريفية الشركات المؤهلة إلى تقديم عروضها لتنفيذ برنامج تدريبي."
+      },
+      {
+       "line": 6,
+       "page": 1,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "The deadline for submission of proposals is 30 November 2026 at 12:00 noon.",
+       "original": "آخر موعد لتقديم العروض هو ٣٠ تشرين الثاني ٢٠٢٦ الساعة ١٢:٠٠ ظهرا."
+      },
+      {
+       "line": 7,
+       "page": 1,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "2. Scope of Work",
+       "original": "٢. نطاق العمل"
+      },
+      {
+       "line": 8,
+       "page": 1,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "Implementation of six training sessions for youth aged 18 to 28 years.",
+       "original": "تنفيذ ست جلسات تدريبية للشباب من عمر ١٨ إلى ٢٨ سنة."
+      },
+      {
+       "line": 9,
+       "page": 1,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "Preparation of training materials in Arabic language.",
+       "original": "إعداد المواد التدريبية باللغة العربية."
+      },
+      {
+       "line": 10,
+       "page": 1,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "Submission of a final report within 15 days of completion of training.",
+       "original": "تقديم تقرير ختامي خلال ١٥ يوما من انتهاء التدريب."
+      },
+      {
+       "line": 13,
+       "page": 2,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "3. Eligibility Requirements",
+       "original": "٣. شروط الأهلية"
+      },
+      {
+       "line": 14,
+       "page": 2,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "The bidder must have a valid commercial registration.",
+       "original": "يجب أن يكون لدى المتنافس سجل تجاري ساري المفعول."
+      },
+      {
+       "line": 15,
+       "page": 2,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "The lead trainer must have no less than five years of experience.",
+       "original": "يجب ألا تقل خبرة المدرب الرئيسي عن خمس سنوات."
+      },
+      {
+       "line": 16,
+       "page": 2,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "4. Evaluation Criteria",
+       "original": "٤. معايير التقييم"
+      },
+      {
+       "line": 17,
+       "page": 2,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "Technical Proposal 70%",
+       "original": "العرض الفني ٧٠٪"
+      },
+      {
+       "line": 18,
+       "page": 2,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "Previous Experience 30%",
+       "original": "الخبرة السابقة ٣٠٪"
+      },
+      {
+       "line": 19,
+       "page": 2,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "Methodology 25%",
+       "original": "المنهجية ٢٥٪"
+      },
+      {
+       "line": 20,
+       "page": 2,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "Work Team 15%",
+       "original": "فريق العمل ١٥٪"
+      },
+      {
+       "line": 21,
+       "page": 2,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "Financial Proposal 30%",
+       "original": "العرض المالي ٣٠٪"
+      },
+      {
+       "line": 22,
+       "page": 2,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "5. Financial Proposal",
+       "original": "٥. العرض المالي"
+      },
+      {
+       "line": 23,
+       "page": 2,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "Prices must be inclusive of all taxes and fees.",
+       "original": "يجب أن تكون الأسعار شاملة لجميع الضرائب والرسوم."
+      },
+      {
+       "line": 24,
+       "page": 2,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "6. Payment Terms",
+       "original": "٦. شروط الدفع"
+      },
+      {
+       "line": 25,
+       "page": 2,
+       "sheet": null,
+       "issues": [
+        "number not in original: 2"
+       ],
+       "status": "WITHHELD",
+       "english": "Payment is made in two installments: 50% after training and 50% after acceptance of the final report.",
+       "original": "يتم الدفع على دفعتين: ٥٠٪ بعد التدريب و٥٠٪ بعد قبول التقرير الختامي."
+      },
+      {
+       "line": 26,
+       "page": 2,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "7. Submission of Proposals",
+       "original": "٧. تقديم العروض"
+      },
+      {
+       "line": 27,
+       "page": 2,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "Proposals are to be sent by email to tenders@rural-dev.example.org",
+       "original": "ترسل العروض عبر البريد الإلكتروني إلى tenders@rural-dev.example.org"
+      }
+     ]
+    },
+    "جدول الكميات.xlsx": {
+     "language": "mixed",
+     "segments": [
+      {
+       "line": 1,
+       "page": null,
+       "sheet": "جدول الكميات",
+       "issues": [],
+       "status": "CHECKED",
+       "english": "Row 1: Item | Quantity | Unit Price | Total",
+       "original": "Row 1: البند / Item | الكمية / Quantity | سعر الوحدة / Unit price | المجموع / Total"
+      },
+      {
+       "line": 2,
+       "page": null,
+       "sheet": "جدول الكميات",
+       "issues": [],
+       "status": "CHECKED",
+       "english": "Row 2: Training Session | 6",
+       "original": "Row 2: جلسة تدريبية / Training session | 6"
+      },
+      {
+       "line": 3,
+       "page": null,
+       "sheet": "جدول الكميات",
+       "issues": [],
+       "status": "CHECKED",
+       "english": "Row 3: Final Report | 1",
+       "original": "Row 3: تقرير ختامي / Final report | 1"
+      }
+     ]
+    },
+    "ملحق تعديل رقم 1.pdf": {
+     "language": "ar",
+     "segments": [
+      {
+       "line": 1,
+       "page": 1,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "Addendum No. (1)",
+       "original": "ملحق تعديل رقم (١)"
+      },
+      {
+       "line": 2,
+       "page": 1,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "Request for Proposals No. 2026/45",
+       "original": "طلب عروض رقم ٢٠٢٦/٤٥"
+      },
+      {
+       "line": 3,
+       "page": 1,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "The deadline for submission of proposals has been extended to 15 December 2026.",
+       "original": "تم تمديد آخر موعد لتقديم العروض ليصبح ١٥ كانون الأول ٢٠٢٦."
+      },
+      {
+       "line": 4,
+       "page": 1,
+       "sheet": null,
+       "issues": [],
+       "status": "CHECKED",
+       "english": "A certificate of non-conviction for the lead trainer must be attached.",
+       "original": "يجب إرفاق شهادة عدم محكومية للمدرب الرئيسي."
+      }
+     ]
+    }
+   },
+   "languages": {
+    "كراسة الشروط.pdf": "ar",
+    "جدول الكميات.xlsx": "mixed",
+    "ملحق تعديل رقم 1.pdf": "ar"
+   },
+   "created_at": "2026-11-17T13:19:50.729506+00:00"
+  },
+  "canonical_milestones": [
+   {
+    "label": "AMENDMENT_DATE",
+    "scope": {},
+    "confidence": "high",
+    "source_refs": [
+     {
+      "page": 1,
+      "sheet": null,
+      "excerpt": "ملحق تعديل رقم (١)",
+      "section": null,
+      "source_doc": "ملحق تعديل رقم 1.pdf"
+     }
+    ],
+    "ambiguity_state": "resolved",
+    "original_wording": [
+     "Addendum No. 1"
+    ],
+    "normalized_date_end": null,
+    "normalized_date_start": null
+   },
+   {
+    "label": "SUBMISSION_DEADLINE",
+    "scope": {},
+    "confidence": "high",
+    "source_refs": [
+     {
+      "page": 1,
+      "sheet": null,
+      "excerpt": "تم تمديد آخر موعد لتقديم العروض ليصبح ١٥ كانون الأول ٢٠٢٦",
+      "section": null,
+      "source_doc": "ملحق تعديل رقم 1.pdf"
+     }
+    ],
+    "ambiguity_state": "resolved",
+    "original_wording": [
+     "15 December 2026"
+    ],
+    "normalized_date_end": "2026-12-15",
+    "normalized_date_start": "2026-12-15"
+   },
+   {
+    "label": "SUBMISSION_DEADLINE",
+    "scope": {},
+    "confidence": "high",
+    "source_refs": [
+     {
+      "page": 1,
+      "sheet": null,
+      "excerpt": "آخر موعد لتقديم العروض هو ٣٠ تشرين الثاني ٢٠٢٦ الساعة ١٢:٠٠ ظهرا",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "ambiguity_state": "resolved",
+    "original_wording": [
+     "30 November 2026 at 12:00 noon"
+    ],
+    "normalized_date_end": "2026-11-30",
+    "normalized_date_start": "2026-11-30"
+   }
+  ],
+  "category_scope_items": {},
+  "package_completeness": {
+   "warning": null,
+   "is_complete": true,
+   "has_identity_signal": true,
+   "has_substantive_body": true,
+   "only_supporting_docs_present": false
+  },
+  "deterministic_seconds": 0.001497,
+  "document_relationships": {
+   "كراسة الشروط.pdf": {
+    "confidence": "low",
+    "related_to": null,
+    "relationship": "INDEPENDENT_SOURCE"
+   },
+   "جدول الكميات.xlsx": {
+    "confidence": "low",
+    "related_to": null,
+    "relationship": "INDEPENDENT_SOURCE"
+   },
+   "ملحق تعديل رقم 1.pdf": {
+    "confidence": "low",
+    "related_to": null,
+    "relationship": "INDEPENDENT_SOURCE"
+   }
+  },
+  "evaluation_occurrences": [],
+  "focused_sections_found": {},
+  "deterministic_service_scope": null,
+  "scoped_criterion_evaluation": {
+   "||work team": {
+    "weight": "15%",
+    "criterion": "Work Team",
+    "scoped_key": "||work team",
+    "constraints": [],
+    "source_docs": [
+     "كراسة الشروط.pdf"
+    ],
+    "source_refs": [
+     {
+      "page": 2,
+      "sheet": null,
+      "excerpt": "فريق العمل ١٥٪",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "minimum_score": null,
+    "category_scope": "",
+    "parent_heading": "Technical Proposal",
+    "criterion_label": "Work Team",
+    "response_prompt": null,
+    "weight_variants": [
+     "15%"
+    ],
+    "evaluation_stage": null,
+    "occurrence_count": 1,
+    "required_examples": [],
+    "provenance_version": "1.3",
+    "requested_evidence": [],
+    "authoritative_source": "كراسة الشروط.pdf",
+    "minimum_score_variants": [],
+    "personnel_requirements": [],
+    "methodology_requirements": [],
+    "authoritative_source_role": "PRIMARY_SOLICITATION",
+    "response_prompt_truncated": false
+   },
+   "||methodology": {
+    "weight": "25%",
+    "criterion": "Methodology",
+    "scoped_key": "||methodology",
+    "constraints": [],
+    "source_docs": [
+     "كراسة الشروط.pdf"
+    ],
+    "source_refs": [
+     {
+      "page": 2,
+      "sheet": null,
+      "excerpt": "المنهجية ٢٥٪",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "minimum_score": null,
+    "category_scope": "",
+    "parent_heading": "Technical Proposal",
+    "criterion_label": "Methodology",
+    "response_prompt": null,
+    "weight_variants": [
+     "25%"
+    ],
+    "evaluation_stage": null,
+    "occurrence_count": 1,
+    "required_examples": [],
+    "provenance_version": "1.3",
+    "requested_evidence": [],
+    "authoritative_source": "كراسة الشروط.pdf",
+    "minimum_score_variants": [],
+    "personnel_requirements": [],
+    "methodology_requirements": [],
+    "authoritative_source_role": "PRIMARY_SOLICITATION",
+    "response_prompt_truncated": false
+   },
+   "||financial proposal": {
+    "weight": "30%",
+    "criterion": "Financial Proposal",
+    "scoped_key": "||financial proposal",
+    "constraints": [],
+    "source_docs": [
+     "كراسة الشروط.pdf"
+    ],
+    "source_refs": [
+     {
+      "page": 2,
+      "sheet": null,
+      "excerpt": "العرض المالي ٣٠٪",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "minimum_score": null,
+    "category_scope": "",
+    "parent_heading": "Evaluation Criteria",
+    "criterion_label": "Financial Proposal",
+    "response_prompt": null,
+    "weight_variants": [
+     "30%"
+    ],
+    "evaluation_stage": null,
+    "occurrence_count": 1,
+    "required_examples": [],
+    "provenance_version": "1.3",
+    "requested_evidence": [],
+    "authoritative_source": "كراسة الشروط.pdf",
+    "minimum_score_variants": [],
+    "personnel_requirements": [],
+    "methodology_requirements": [],
+    "authoritative_source_role": "PRIMARY_SOLICITATION",
+    "response_prompt_truncated": false
+   },
+   "||technical proposal": {
+    "weight": "70%",
+    "criterion": "Technical Proposal",
+    "scoped_key": "||technical proposal",
+    "constraints": [],
+    "source_docs": [
+     "كراسة الشروط.pdf"
+    ],
+    "source_refs": [
+     {
+      "page": 2,
+      "sheet": null,
+      "excerpt": "العرض الفني ٧٠٪",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "minimum_score": null,
+    "category_scope": "",
+    "parent_heading": "Evaluation Criteria",
+    "criterion_label": "Technical Proposal",
+    "response_prompt": null,
+    "weight_variants": [
+     "70%"
+    ],
+    "evaluation_stage": null,
+    "occurrence_count": 1,
+    "required_examples": [],
+    "provenance_version": "1.3",
+    "requested_evidence": [],
+    "authoritative_source": "كراسة الشروط.pdf",
+    "minimum_score_variants": [],
+    "personnel_requirements": [],
+    "methodology_requirements": [],
+    "authoritative_source_role": "PRIMARY_SOLICITATION",
+    "response_prompt_truncated": false
+   },
+   "||previous experience": {
+    "weight": "30%",
+    "criterion": "Previous Experience",
+    "scoped_key": "||previous experience",
+    "constraints": [],
+    "source_docs": [
+     "كراسة الشروط.pdf"
+    ],
+    "source_refs": [
+     {
+      "page": 2,
+      "sheet": null,
+      "excerpt": "الخبرة السابقة ٣٠٪",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "minimum_score": null,
+    "category_scope": "",
+    "parent_heading": "Technical Proposal",
+    "criterion_label": "Previous Experience",
+    "response_prompt": null,
+    "weight_variants": [
+     "30%"
+    ],
+    "evaluation_stage": null,
+    "occurrence_count": 1,
+    "required_examples": [],
+    "provenance_version": "1.3",
+    "requested_evidence": [],
+    "authoritative_source": "كراسة الشروط.pdf",
+    "minimum_score_variants": [],
+    "personnel_requirements": [],
+    "methodology_requirements": [],
+    "authoritative_source_role": "PRIMARY_SOLICITATION",
+    "response_prompt_truncated": false
+   },
+   "||lead trainer experience": {
+    "weight": null,
+    "criterion": "Lead Trainer Experience",
+    "scoped_key": "||lead trainer experience",
+    "constraints": [],
+    "source_docs": [
+     "كراسة الشروط.pdf"
+    ],
+    "source_refs": [
+     {
+      "page": 2,
+      "sheet": null,
+      "excerpt": "يجب ألا تقل خبرة المدرب الرئيسي عن خمس سنوات",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "minimum_score": "5 years minimum experience",
+    "category_scope": "",
+    "parent_heading": "Eligibility Conditions",
+    "criterion_label": "Lead Trainer Experience",
+    "response_prompt": null,
+    "weight_variants": [],
+    "evaluation_stage": null,
+    "occurrence_count": 1,
+    "required_examples": [],
+    "provenance_version": "1.3",
+    "requested_evidence": [],
+    "authoritative_source": "كراسة الشروط.pdf",
+    "minimum_score_variants": [
+     "5 years minimum experience"
+    ],
+    "personnel_requirements": [],
+    "methodology_requirements": [],
+    "authoritative_source_role": "PRIMARY_SOLICITATION",
+    "response_prompt_truncated": false
+   },
+   "||valid commercial registration": {
+    "weight": null,
+    "criterion": "Valid Commercial Registration",
+    "scoped_key": "||valid commercial registration",
+    "constraints": [],
+    "source_docs": [
+     "كراسة الشروط.pdf"
+    ],
+    "source_refs": [
+     {
+      "page": 2,
+      "sheet": null,
+      "excerpt": "يجب أن يكون لدى المتنافس سجل تجاري ساري المفعول",
+      "section": null,
+      "source_doc": "كراسة الشروط.pdf"
+     }
+    ],
+    "minimum_score": "Must possess a valid commercial registration",
+    "category_scope": "",
+    "parent_heading": "Eligibility Conditions",
+    "criterion_label": "Valid Commercial Registration",
+    "response_prompt": null,
+    "weight_variants": [],
+    "evaluation_stage": null,
+    "occurrence_count": 1,
+    "required_examples": [],
+    "provenance_version": "1.3",
+    "requested_evidence": [],
+    "authoritative_source": "كراسة الشروط.pdf",
+    "minimum_score_variants": [
+     "Must possess a valid commercial registration"
+    ],
+    "personnel_requirements": [],
+    "methodology_requirements": [],
+    "authoritative_source_role": "PRIMARY_SOLICITATION",
+    "response_prompt_truncated": false
+   }
+  },
+  "deterministic_procurement_facts": [],
+  "deterministic_response_guidelines": [],
+  "scoped_criterion_response_prompts": {},
+  "deterministic_criterion_response_prompts": {}
+ },
+ "created_at": "2026-11-17T13:20:10.163949+00:00",
+ "schema_version": "1.3",
+ "telemetry_summary": {
+  "total_calls": 7,
+  "input_tokens": 13179,
+  "wall_seconds": 18.801952,
+  "output_tokens": 5200,
+  "provider_calls": 7,
+  "telemetry_rows": 7,
+  "other_provider_calls": 0,
+  "split_exhausted_rows": 0,
+  "failed_provider_calls": 0,
+  "provider_call_attempts": 7,
+  "recovery_or_retry_calls": 1,
+  "recovery_provider_calls": 1,
+  "successful_provider_calls": 7,
+  "unknown_provider_status_rows": 0,
+  "non_provider_bookkeeping_rows": 0,
+  "targeted_retry_provider_calls": 1,
+  "usage_reported_provider_calls": 7,
+  "planned_focused_provider_calls": 0,
+  "planned_primary_provider_calls": 6,
+  "truncation_recovery_provider_calls": 0
+ },
+ "analysis_engine_version": "fast-analysis-v4"
+}
