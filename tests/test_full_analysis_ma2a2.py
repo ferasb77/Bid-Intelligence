@@ -258,4 +258,5 @@ def test_prompts_carry_explicit_output_bounds():
     assert "NEVER quote or restate" in fa._SHARED_RULES
     assert '{"completeness_note"' in fa._RECONCILIATION_RULES
     assert fa.SPECIALIST_MAX_OUTPUT_TOKENS == 3000
-    assert fa.RECONCILIATION_MAX_OUTPUT_TOKENS == 3000
+    # raised from 3000: the contract's own maximum (25 items) did not fit (live beta run 17)
+    assert fa.RECONCILIATION_MAX_OUTPUT_TOKENS == 8000

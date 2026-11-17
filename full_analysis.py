@@ -68,13 +68,21 @@ SPECIALIST_VERSION = "ma-1.2"
 #: restated canonical text) after live run 32 showed 3 of 7 calls ending
 #: with stop_reason="max_tokens".
 RECONCILIATION_VERSION = "ma-1.1"
+#: "ma-1.1" output ceiling raised 3000 -> 8000 (2026-11-17). The reconciliation
+#: contract itself allows up to 25 items (8 risks, 5 contradictions, 6
+#: ambiguities, 6 confirmations) with ids, domains and a 1-2 sentence detail;
+#: live Phoenix Beta run 17 spent ~3000 tokens on just 8 risks + 4
+#: contradictions (~250 output tokens per item) and was cut off before the
+#: remaining lists. 3000 could not hold the contract's own maximum; 8000 does
+#: (25 x ~250 + note) with margin. The ceiling is part of
+#: reconciliation_contract_digest(), so earlier results are not reused.
 
 #: Model used for every specialist and the reconciliation stage. Same
 #: provider client/invocation helper Fast Analysis already uses
 #: (config.execute_messages_create) -- no second model-call stack.
 FULL_ANALYSIS_MODEL = "claude-haiku-4-5-20251001"
 SPECIALIST_MAX_OUTPUT_TOKENS = 3000
-RECONCILIATION_MAX_OUTPUT_TOKENS = 3000
+RECONCILIATION_MAX_OUTPUT_TOKENS = 8000
 
 #: Bounded concurrency (task section 11). Never unbounded, never one
 #: thread per finding, never nested pools.

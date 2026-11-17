@@ -283,7 +283,19 @@ _NUM_WORDS = {
     "اربعون": 40, "اربعين": 40, "خمسون": 50, "خمسين": 50, "ستون": 60, "ستين": 60, "سبعون": 70, "سبعين": 70,
     "ثمانون": 80, "ثمانين": 80, "تسعون": 90, "تسعين": 90, "مائه": 100, "مئه": 100, "الف": 1000,
     "يومين": 2, "شهرين": 2, "سنتين": 2, "عامين": 2, "اسبوعين": 2,
+    # masculine duals common in procurement text (nominative -ان and oblique -ين)
+    "يومان": 2, "شهران": 2, "عامان": 2, "اسبوعان": 2, "قسطين": 2, "قسطان": 2,
+    "ظرفين": 2, "ظرفان": 2, "مغلفين": 2, "مغلفان": 2, "مرتين": 2, "مرتان": 2,
 }
+
+#: Feminine dual: a noun ending in ة takes ت before the dual ending ("دفعة" ->
+#: "دفعتين"/"دفعتان", "نسخة" -> "نسختين", "مرحلة" -> "مرحلتين"). Unlike the
+#: masculine -ين ending (also the sound plural: "المدربين" = trainers), "-تين/-تان"
+#: on a stem of three or more letters is a dual, so it states the number 2.
+#: Words that only look like it are excluded explicitly.
+_FEM_DUAL = re.compile(r"[ء-ي]{3,}ت(?:ين|ان)")
+_NOT_DUAL = {"ستين", "بساتين", "سلاطين", "شياطين", "ثلاثين", "براكين", "دكاكين"}
+_ATTACHED_PREFIXES = ("و", "ف", "ب", "ل", "ك")
 _EN_NUM_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
                  "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "fifteen": 15, "twenty": 20, "thirty": 30,
                  "forty": 40, "fifty": 50, "sixty": 60, "ninety": 90, "hundred": 100, "thousand": 1000}
@@ -312,7 +324,18 @@ def _arabic_word_numbers(key: str) -> set[str]:
         w2 = w2[2:] if w2.startswith("ال") and w2[2:] in _NUM_WORDS else w2
         if w2 in _NUM_WORDS:
             out.add(str(_NUM_WORDS[w2]))
+        elif _is_feminine_dual(w):
+            out.add("2")
     return out
+
+
+def _is_feminine_dual(word: str) -> bool:
+    """"دفعتين", "بدفعتين", "والنسختين" -> True; "المدربين", "ستين" -> False."""
+    candidates = [word]
+    if word.startswith(_ATTACHED_PREFIXES):
+        candidates.append(word[1:])
+    candidates += [c[2:] for c in list(candidates) if c.startswith("ال")]
+    return any(c not in _NOT_DUAL and c not in _NUM_WORDS and _FEM_DUAL.fullmatch(c) for c in candidates)
 
 
 def gregorian_months_in_arabic(text: str) -> set[int]:

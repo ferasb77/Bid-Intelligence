@@ -248,6 +248,28 @@ def apply_translation(seg: dict, english: str) -> dict:
     return seg
 
 
+def revalidate(translations: dict | None, documents: list[tuple[str, str]] | None = None) -> dict:
+    """The saved translation payload re-checked with the CURRENT deterministic
+    rules (no model call): each saved rendering is checked again against its
+    original line, and lines on OCR'd pages (re-derived from the documents'
+    own page markers) get the scanned-page number rule. A snapshot saved
+    before a verifier correction is therefore reported exactly as a new run
+    would be -- in both directions. The input is not modified."""
+    import copy
+    t = copy.deepcopy(translations or {})
+    texts = dict(documents or [])
+    for name, d in (t.get("documents") or {}).items():
+        ocr = ocr_line_indices(texts[name]) if name in texts else set()
+        for seg in d.get("segments") or []:
+            if seg.get("line") in ocr:
+                seg["ocr"] = True
+            if seg.get("status") in (CHECKED, WITHHELD) and seg.get("english"):
+                apply_translation(seg, seg["english"])
+    if t.get("documents"):
+        t["summary"] = summarize(t)
+    return t
+
+
 def summarize(payload: dict) -> dict:
     segs = [s for d in (payload.get("documents") or {}).values() for s in d.get("segments") or []]
     return {"segments": len(segs), "checked": sum(s["status"] == CHECKED for s in segs),

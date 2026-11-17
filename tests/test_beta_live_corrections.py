@@ -290,3 +290,131 @@ def test_live_arabic_deadline_amendment_and_weights_unchanged(live_reports):
     for text in (live_reports.snap, live_reports.full):
         assert "15 December 2026" in text and "30 November 2026" in text
         assert "60%" not in text  # the withheld payment line stays out
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Follow-up (2026-11-17): Arabic number words, eligibility vs weighted
+# criteria, reconciliation output ceiling
+# ═══════════════════════════════════════════════════════════════════════
+
+import arabic_text as at
+
+PAYMENT_AR = "يتم الدفع على دفعتين: ٥٠٪ بعد التدريب و٥٠٪ بعد قبول التقرير الختامي."
+PAYMENT_EN = "Payment is made in two installments: 50% after training and 50% after acceptance of the final report."
+
+
+class TestArabicNumberWords:
+    def test_live_payment_line_now_checked(self):
+        assert at.check_translation(PAYMENT_AR, PAYMENT_EN) == []
+
+    @pytest.mark.parametrize("original,english", [
+        ("تقدم العروض في نسختين ورقيتين", "Proposals are submitted in two paper copies"),
+        ("ينفذ المشروع على مرحلتين", "The project is implemented in two phases"),
+        ("يسدد المبلغ على قسطين", "The amount is paid in two instalments"),
+        ("تقدم العروض في ظرفين منفصلين", "Proposals are submitted in two separate envelopes"),
+        ("والدفعتان متساويتان", "and the two payments are equal"),
+    ])
+    def test_duals_state_two(self, original, english):
+        assert at.check_translation(original, english) == []
+
+    @pytest.mark.parametrize("original,english,issue", [
+        (PAYMENT_AR, PAYMENT_EN.replace("two", "three"), "3"),            # wrong count still caught
+        (PAYMENT_AR, PAYMENT_EN.replace("50% after training", "60% after training"), "60"),
+        ("يجب على المدربين تقديم العروض", "The trainers must submit two proposals", "2"),  # plural, not dual
+        ("خلال ستين يوما", "within two days", "2"),                       # "sixty", not a dual
+    ])
+    def test_evidence_matching_not_weakened(self, original, english, issue):
+        issues = at.check_translation(original, english)
+        assert issues and issue in " ".join(issues)
+
+    def test_saved_snapshot_revalidated_in_reports(self, live_reports):
+        # run 16 persisted the payment line as WITHHELD; reports re-check it with
+        # the current verifier (no model call) and now publish it with its original
+        pay = live_reports.facts["payment"]
+        assert [p["text"] for p in pay] == [PAYMENT_EN] and pay[0]["original"] == PAYMENT_AR
+        assert pay[0]["doc"] == RFP and pay[0]["page"] == 2
+        for text in (live_reports.snap, live_reports.full):
+            assert "two installments: 50% after training" in text
+        assert "could not be checked" not in live_reports.facts["translation_note"]
+
+    def test_revalidate_does_not_mutate_and_keeps_failures(self):
+        t = {"documents": {"a.pdf": {"segments": [
+            {"line": 1, "page": 1, "original": PAYMENT_AR, "english": PAYMENT_EN, "status": sx.WITHHELD,
+             "issues": ["number not in original: 2"]},
+            {"line": 2, "page": 1, "original": "العرض الفني ٧٠٪", "english": "Technical proposal 60%",
+             "status": sx.CHECKED, "issues": []}]}}}
+        before = copy.deepcopy(t)
+        out = sx.revalidate(t)
+        assert t == before
+        s1, s2 = out["documents"]["a.pdf"]["segments"]
+        assert s1["status"] == sx.CHECKED and s2["status"] == sx.WITHHELD
+        assert out["summary"]["checked"] == 1 and out["summary"]["withheld"] == 1
+
+
+class TestEligibilityVsWeightedCriteria:
+    def test_gates_leave_the_weights_table(self, live_reports):
+        f = live_reports.facts
+        assert [(c["stage"], c["weight"]) for c in f["criteria"]] == [
+            ("Technical Proposal", "70%"), ("Previous Experience", "30%"), ("Methodology", "25%"),
+            ("Work Team", "15%"), ("Financial Proposal", "30%")]
+        quals = {q["text"]: q for q in f["qualifications"]}
+        reg = quals["The bidder must have a valid commercial registration."]
+        assert reg["doc"] == RFP and reg["page"] == 2 and "سجل تجاري" in reg["original"]
+        lead = quals["The lead trainer must have no less than five years of experience."]
+        assert "خبرة المدرب الرئيسي" in lead["original"]
+        for text in (live_reports.snap, live_reports.full):
+            weights_table = text.split("Evaluation criteria and weights", 1)[1][:600]
+            assert "Valid Commercial Registration" not in weights_table
+            assert "Lead Trainer Experience" not in weights_table
+            assert "valid commercial registration" in text
+
+    def test_gate_without_matching_qualification_is_added_with_its_reference(self):
+        import phoenix_reports as pr
+        doc = ("rfp.pdf", "[[SOURCE: rfp.pdf | PAGE: 4]]\nEVALUATION\nTechnical 60%\nPrice 40%\n"
+                          "Bidders must hold ISO 9001 certification.")
+
+        def ref(e):
+            return [{"source_doc": "rfp.pdf", "page": 4, "excerpt": e}]
+        result = {"evaluation_criteria": [
+            {"stage": "Technical", "weight": "60%", "parent_stage": None, "evaluation_role": "Award Criterion",
+             "source_refs": ref("Technical 60%")},
+            {"stage": "Price", "weight": "40%", "parent_stage": None, "evaluation_role": "Award Criterion",
+             "source_refs": ref("Price 40%")},
+            {"stage": "ISO 9001", "weight": None, "parent_stage": "Mandatory Requirements",
+             "evaluation_role": "Qualification / Gate",
+             "source_refs": ref("Bidders must hold ISO 9001 certification.")}]}
+        f = pr.build_facts(bid={"id": 1, "title": "T", "client": "C"}, fast_result=result, documents=[doc],
+                           analysis_date="2026-11-17", run_id=1)
+        assert [c["stage"] for c in f["criteria"]] == ["Technical", "Price"]
+        gate = [q for q in f["qualifications"] if q.get("kind") == "eligibility"]
+        assert gate and gate[0]["text"] == "Bidders must hold ISO 9001 certification." and gate[0]["page"] == 4
+
+    def test_unweighted_container_with_children_stays(self):
+        import phoenix_reports as pr
+        c = [{"stage": "Mandatory Criteria", "weight": None, "parent": None, "role": "Structural Container"},
+             {"stage": "M1", "weight": None, "parent": "Mandatory Criteria", "role": "Qualification / Gate"}]
+        assert not pr._is_eligibility_gate(c[0], c) and pr._is_eligibility_gate(c[1], c)
+        weighted = {"stage": "Experience", "weight": "20%", "parent": "Eligibility", "role": "Qualification / Gate"}
+        assert not pr._is_eligibility_gate(weighted, [weighted])
+
+    def test_english_injaz_criteria_unchanged(self):
+        import phoenix_reports as pr
+        result = json.loads((FIX / "injaz_fast_result.json").read_text(encoding="utf-8"))
+        text = (FIX / "injaz_design_thinking_tor.txt").read_text(encoding="utf-8")
+        f = pr.build_facts(bid={"id": 15, "title": "Trainer for Design Thinking", "client": "INJAZ Lebanon"},
+                           fast_result=result, documents=[("tor_for_gil_trainer_-design_thinking.pdf", text)],
+                           analysis_date="2026-11-17", run_id=10)
+        assert {c["weight"] for c in f["criteria"]} >= {"60%", "40%", "25%", "15%", "10%"}
+        assert not [q for q in f["qualifications"] if q.get("kind") == "eligibility"]
+
+
+def test_reconciliation_ceiling_holds_the_contracts_own_maximum():
+    import full_analysis as fa
+    rules = " ".join(fa._RECONCILIATION_RULES.split())
+    caps = {"cross_domain_risks": 8, "contradictions": 5, "unresolved_ambiguities": 6,
+            "human_confirmation_required": 6}
+    for name, n in caps.items():
+        assert f"{n} {name}" in rules, name
+    # live run 17: 8 risks + 4 contradictions used the whole 3000-token ceiling (~250 tokens/item)
+    assert sum(caps.values()) * 250 + 300 <= fa.RECONCILIATION_MAX_OUTPUT_TOKENS
+    assert fa.RECONCILIATION_MAX_OUTPUT_TOKENS <= 16000  # non-streaming call stays well within SDK limits

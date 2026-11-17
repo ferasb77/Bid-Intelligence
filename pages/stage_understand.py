@@ -995,8 +995,10 @@ def page_understand(bid_id: int):
     reqs = tenancy.get_requirements_authenticated(_token, bid_id)
     docs = tenancy.get_documents_authenticated(_token, bid_id)
     analysis_result = tenancy.get_latest_analysis_result_authenticated(_token, bid_id, "FAST")
-    st.session_state[_TRANSLATIONS_KEY] = ((((analysis_result or {}).get("fast_analysis_result_snapshot") or {})
-                                            .get("result") or {}).get("source_translations") or {})
+    import source_translation
+    st.session_state[_TRANSLATIONS_KEY] = source_translation.revalidate(
+        (((analysis_result or {}).get("fast_analysis_result_snapshot") or {}).get("result") or {})
+        .get("source_translations") or {})
 
     # Decode JSON fields from brief_row if present
     exec_summary = _resolve_customer_safe_summary(bid, brief_row, analysis_result)

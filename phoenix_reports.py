@@ -309,6 +309,24 @@ def resolve_criteria(criteria: list[dict]) -> list[dict]:
 # FACT MODEL
 # ═══════════════════════════════════════════════════════════════════════
 
+_GATE_ROLE = re.compile(r"gate|qualification|pass\s*/?\s*fail|eligib", re.I)
+_GATE_LABEL = re.compile(r"eligib|mandatory|pass\s*/?\s*fail|qualifying|minimum requirement|"
+                         r"شروط\s*(?:ال)?(?:أهلية|اهلية|تأهيل|تاهيل)|متطلبات\s*(?:ال)?إلزامية", re.I)
+
+
+def _is_eligibility_gate(c: dict, criteria: list[dict]) -> bool:
+    """A pass/fail condition (FAST role "Qualification / Gate", or an unweighted
+    entry under an eligibility/mandatory heading) -- unless it carries a
+    published weight or is the parent of other criteria."""
+    if c.get("weight"):
+        return False
+    own = pdg.fold(c.get("stage") or "")
+    if any(pdg.fold(o.get("parent") or "") == own for o in criteria if o is not c):
+        return False
+    return bool(_GATE_ROLE.search(c.get("role") or "")
+                or _GATE_LABEL.search(f"{c.get('parent') or ''} {c.get('stage') or ''}"))
+
+
 def _verified(documents, excerpt: str) -> bool:
     """An extracted excerpt is publishable only if it is found in the documents."""
     e = pdg.norm(excerpt)
@@ -468,11 +486,14 @@ def build_facts(*, bid: dict, fast_result: dict, documents: list[tuple[str, str]
     bilingual = bool(translations.get("documents")) or any(
         pdg._ARABIC_CHAR.search(t or "") for _, t in originals)
     if bilingual:
+        # saved renderings re-checked with the current verifier (no model call)
+        translations = sx.revalidate(translations, originals)
         docs = sx.english_view(originals, translations)
         r = sx.localize_fast_result(r, originals, translations)
         if previous_result:
             previous_result = sx.localize_fast_result(
-                previous_result, originals, previous_result.get("source_translations") or translations)
+                previous_result, originals,
+                sx.revalidate(previous_result.get("source_translations") or translations))
     else:
         docs = originals
     secs = pdg.by_key(pdg.sections(docs))
@@ -535,8 +556,19 @@ def build_facts(*, bid: dict, fast_result: dict, documents: list[tuple[str, str]
         if w and pdg.fold(str(w)) not in pdg.fold(ref["excerpt"]):
             w = None  # weight not visible in its own excerpt -> not published
         criteria.append({"stage": pdg.norm(ec.get("stage")), "weight": w, "parent": ec.get("parent_stage"),
-                         "threshold": ec.get("threshold"), "ref": ref})
-    criteria = resolve_criteria(criteria)
+                         "threshold": ec.get("threshold"), "ref": ref, "role": ec.get("evaluation_role")})
+    # Pass/fail eligibility conditions are not weighted evaluation criteria:
+    # they are reported with the qualifications, in the buyer's own words and
+    # with their own (original-language) reference -- never in the weights table.
+    gates = [c for c in criteria if _is_eligibility_gate(c, criteria)]
+    criteria = resolve_criteria([c for c in criteria if not any(c is g for g in gates)])
+    for c in criteria:
+        c.pop("role", None)
+    for g in gates:
+        item = {"text": g["ref"]["excerpt"] or g["stage"], **g["ref"], "label": g["stage"], "kind": "eligibility"}
+        if not any(ct._similar(item["text"], q["text"]) > 0.6 or pdg.fold(item["text"]) in pdg.fold(q["text"])
+                   or pdg.fold(q["text"]) in pdg.fold(item["text"]) for q in qualifications):
+            qualifications.append(item)
     eval_text = [] if criteria else _items(secs, "evaluation")
 
     # ── submission documents; pricing kept apart from the document list ──
