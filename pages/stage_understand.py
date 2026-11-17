@@ -93,7 +93,29 @@ def _source_view_expander(label, source_refs, key_suffix=""):
             excerpt = ref.get("excerpt")
             st.markdown(f"**{doc}**{' — ' + loc if loc else ''}")
             if excerpt:
-                st.markdown(f"> {excerpt}")
+                _render_excerpt(excerpt, ref.get("source_doc"))
+
+
+_TRANSLATIONS_KEY = "_understand_source_translations"
+
+
+def _render_excerpt(excerpt: str, doc: str | None = None) -> None:
+    """A source excerpt. Arabic evidence is shown exactly as extracted,
+    right-to-left, with the checked English rendering of its lines (when
+    one exists) underneath; English excerpts render as before."""
+    import arabic_text
+    if not arabic_text.has_arabic(excerpt):
+        st.markdown(f"> {excerpt}")
+        return
+    import source_translation
+    st.markdown(arabic_text.rtl_html(excerpt, style="font-size:.92rem;line-height:1.8;color:#EDEAE3;"
+                                     "border-right:3px solid #C9A96E;padding:.25rem .7rem;margin:.2rem 0"),
+                unsafe_allow_html=True)
+    english = source_translation.rendering_for_excerpt(st.session_state.get(_TRANSLATIONS_KEY), doc, excerpt)
+    if english:
+        st.caption(f"English rendering (machine translation, numbers and dates checked): {english}")
+    else:
+        st.caption("No checked English rendering is available for this excerpt.")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -642,7 +664,7 @@ def _render_change_proposal_row(change: dict, bid_id: int, organization_id: str,
                 loc = f"page {s['page']}" if s.get("page") else (s.get("section") or "")
                 st.markdown(f"**{loc or 'Source excerpt'}**")
                 if s.get("excerpt"):
-                    st.markdown(f"> {s['excerpt']}")
+                    _render_excerpt(s["excerpt"], s.get("source_doc") or s.get("doc"))
 
     if decision == "pending":
         c_approve, c_reject = st.columns(2)
@@ -973,6 +995,8 @@ def page_understand(bid_id: int):
     reqs = tenancy.get_requirements_authenticated(_token, bid_id)
     docs = tenancy.get_documents_authenticated(_token, bid_id)
     analysis_result = tenancy.get_latest_analysis_result_authenticated(_token, bid_id, "FAST")
+    st.session_state[_TRANSLATIONS_KEY] = ((((analysis_result or {}).get("fast_analysis_result_snapshot") or {})
+                                            .get("result") or {}).get("source_translations") or {})
 
     # Decode JSON fields from brief_row if present
     exec_summary = _resolve_customer_safe_summary(bid, brief_row, analysis_result)

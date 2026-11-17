@@ -640,6 +640,36 @@ _SOURCE_REF_RULES = """CRITICAL SOURCE TRACEABILITY RULES:
      "section": "<str or null>", "excerpt": "<1-2 sentence verbatim quote from text>"}]
 """
 
+# Arabic / bilingual sources. Appended ONLY when the text being processed
+# contains Arabic (see _language_rules), so prompts for English documents
+# are unchanged. Descriptive fields are written in English for the English
+# reports; excerpts stay verbatim in the source language because they are
+# the evidence the reports verify against the document text.
+_ARABIC_LANGUAGE_RULES = """
+LANGUAGE RULES (this text is wholly or partly in Arabic):
+- "excerpt" in source_refs MUST be copied verbatim from the text in its ORIGINAL language and script
+  (Arabic stays Arabic, with the digits exactly as printed). Never translate an excerpt.
+- Write every other text field (stage, parent_stage, topic, source_fact, description, title, client,
+  original_value, labels) in English, translating faithfully from the procurement meaning in context
+  -- e.g. "العرض الفني" = Technical Proposal, "العرض المالي" = Financial Proposal, "الضمان الابتدائي" =
+  bid bond, "الضمان النهائي" = performance bond, "آخر موعد لتقديم العروض" = proposal submission
+  deadline, "ملحق" = addendum only when it amends the tender (otherwise annex). Keep modal force:
+  يجب/يلتزم = must/shall, يجوز = may, لا يجوز = must not.
+- Numbers, weights and percentages: Western digits, values unchanged (٢٥٪ -> 25%).
+- Dates: return YYYY-MM-DD only for a Gregorian date fully stated in the text (Levantine month names
+  count: تشرين الثاني = November, كانون الأول = December, ...). Never convert a Hijri date to
+  Gregorian -- leave a Hijri-only date null and keep it in original_value.
+- doc_metadata: also return "title_original" and "client_original" copied verbatim from the text.
+- Do not infer anything the text does not state. Where Arabic and English versions of the same
+  document disagree, extract both; do not choose one unless the documents state which prevails.
+"""
+
+
+def _language_rules(text: str) -> str:
+    import arabic_text
+    return _ARABIC_LANGUAGE_RULES if arabic_text.has_arabic(text or "") else ""
+
+
 _EVAL_SCHEMA = """
 Extract EVERY stated evaluation-criterion point/weight value, preserving every distinct
 occurrence even if the same criterion label repeats with a different value elsewhere in this
@@ -890,7 +920,7 @@ def _build_prompt(route: str, filename: str, chunk_text: str) -> str:
         "- [[SOURCE: <filename> | PAGE: <page_no>]]\n"
         "- [[SOURCE: <filename> | SHEET: <sheet_name> | ROWS: <range>]]\n"
         "- [[SOURCE: <filename> | SECTION: <heading>]]\n\n"
-        + _SOURCE_REF_RULES + "\n" + schema
+        + _SOURCE_REF_RULES + "\n" + schema + _language_rules(chunk_text)
     )
     return header + f"\n\nDOCUMENT TO PROCESS ({filename}):\n" + chunk_text
 
@@ -1110,6 +1140,7 @@ def extract_fast_batch(filenames: list[str], texts_by_name: dict[str, str], api_
         "across several short documents in one request.\n"
         "The text contains deterministic source markers:\n"
         "- [[SOURCE: <filename> | SECTION: <heading>]]\n\n" + _SOURCE_REF_RULES + "\n" + schema
+        + _language_rules(combined)
     )
     request_text = header + "\n\nDOCUMENTS TO PROCESS:\n" + combined
     call_index = len(telemetry)
@@ -1166,6 +1197,7 @@ def _build_focused_prompt(schema: str, filename: str, section_text: str) -> str:
         "over ONE small, pre-selected section of a document -- not the whole document.\n"
         "The text contains deterministic source markers:\n"
         "- [[SOURCE: <filename> | PAGE: <page_no>]]\n\n" + _SOURCE_REF_RULES + "\n" + schema
+        + _language_rules(section_text)
     )
     return header + f"\n\nSECTION TEXT ({filename}):\n" + section_text
 
@@ -1618,6 +1650,12 @@ class FastAnalysisResult:
     #   document_provenance.assess_package_completeness).
     package_completeness: dict | None = None
     deterministic_procurement_facts: list = field(default_factory=list)
+    # Arabic / bilingual support (schema 1.3, additive): detected language
+    # per document ('en' | 'ar' | 'mixed' | 'unknown'), and the controlled,
+    # line-linked English rendering of Arabic lines used by the English
+    # reports (see source_translation.py). Empty for English packages.
+    source_languages: dict = field(default_factory=dict)
+    source_translations: dict = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -1645,7 +1683,9 @@ class FastAnalysisResult:
 # scoped_criterion_evaluation, category_scope_items. No existing field
 # changed shape or meaning, so an older 1.x payload still deserializes
 # correctly (the new fields fall back to their dataclass defaults).
-FAST_ANALYSIS_RAW_SNAPSHOT_SCHEMA_VERSION = "1.2"
+# 1.2 -> 1.3: purely additive -- source_languages, source_translations
+# (Arabic / bilingual source support).
+FAST_ANALYSIS_RAW_SNAPSHOT_SCHEMA_VERSION = "1.3"
 
 # Every FastAnalysisResult field EXCEPT `telemetry`, which is deliberately
 # reduced to a compact audit summary rather than stored verbatim -- see

@@ -350,7 +350,21 @@ def load_facts(bid_id: int, organization_id: str, run_id: int, session) -> dict:
 
 def _ref(item) -> str:
     r = pr.ref_text(item) if item else ""
-    return f' <span style="color:#8C8A84;font-size:.74rem">[{fav.esc(r)}]</span>' if r else ""
+    return (f' <span style="color:#8C8A84;font-size:.74rem">[{fav.esc(r)}]</span>' if r else "") + _original(item)
+
+
+def _original(item) -> str:
+    """Original Arabic evidence behind a translated statement, right-to-left,
+    collapsed under the English line (English layout unchanged)."""
+    orig = (item or {}).get("original") if isinstance(item, dict) else None
+    if not orig:
+        return ""
+    import arabic_text
+    return ('<details style="margin:.1rem 0 .2rem"><summary style="color:#8C8A84;font-size:.72rem;cursor:pointer">'
+            'Original Arabic</summary>'
+            + arabic_text.rtl_html(orig, escape=fav.esc, style="font-size:.86rem;color:#D8D4CA;line-height:1.7;"
+                                   "padding:.2rem .5rem;border-right:2px solid #C9A96E")
+            + "</details>")
 
 
 def _heading(text: str) -> None:
@@ -462,7 +476,8 @@ def _tab_evaluation(f: dict) -> None:
                 w += f' <span style="color:#8C8A84">of {fav.esc(c["parent"])}</span>'
             trs.append(f'<tr><td style="padding:.3rem .6rem .3rem 0">{name}</td>'
                        f'<td style="padding:.3rem .6rem;white-space:nowrap">{w}</td>'
-                       f'<td style="padding:.3rem 0;color:#8C8A84;font-size:.74rem">{fav.esc(pr.ref_text(c["ref"]))}</td></tr>')
+                       f'<td style="padding:.3rem 0;color:#8C8A84;font-size:.74rem">{fav.esc(pr.ref_text(c["ref"]))}'
+                       f'{_original(c["ref"])}</td></tr>')
         st.markdown('<table style="font-size:.84rem;border-collapse:collapse;width:100%">'
                     '<tr style="color:#A9A69D"><td>Criterion</td><td style="padding:0 .6rem">Weight</td><td>Source</td></tr>'
                     + "".join(trs) + "</table>", unsafe_allow_html=True)

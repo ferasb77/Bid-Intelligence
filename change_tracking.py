@@ -23,8 +23,12 @@ from difflib import SequenceMatcher
 
 import procurement_digest as pdg
 
-_AMEND_NAME = re.compile(r"(addend|amend|corrigend|errat|clarif|bulletin|revision|revised|q\s*&\s*a|questions)", re.I)
-_AMEND_TEXT = re.compile(r"\b(addendum|amendment|corrigendum|clarification(s)? (no|notice|#)|bid bulletin|erratum)\b", re.I)
+_AMEND_NAME = re.compile(r"(addend|amend|corrigend|errat|clarif|bulletin|revision|revised|q\s*&\s*a|questions"
+                         # Arabic: amendment, clarification(s), enquiries/answers. A bare "ملحق"
+                         # (annex OR addendum) is deliberately not enough on its own.
+                         r"|تعديل|توضيح|إيضاح|ايضاح|استفسار|إجابات|اجابات|ملحق\s*تعديل)", re.I)
+_AMEND_TEXT = re.compile(r"\b(addendum|amendment|corrigendum|clarification(s)? (no|notice|#)|bid bulletin|erratum)\b"
+                         r"|(ملحق|إشعار|اشعار)\s*(تعديل|توضيح|إيضاح)|تعديل\s*رقم|(?:محضر|رد)\s*(?:على\s*)?الاستفسارات", re.I)
 _OBLIGATION = re.compile(r"\b(must|shall|required|requirement|mandatory|is extended|has been (extended|changed|amended|revised)|replaced?|supersede[sd]?|now)\b", re.I)
 
 

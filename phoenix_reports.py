@@ -88,8 +88,27 @@ def Paragraph(text, style):  # noqa: N802
     return _RLParagraph(text, style)
 
 
+_ARABIC_RUN = re.compile(r"[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]"
+                        r"[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿\s\d\W]*"
+                        r"[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]|"
+                        r"[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]")
+
+
+def latin_only(v) -> str:
+    """The reports are English and their fonts have no Arabic glyphs: any
+    Arabic text that reaches the PDF (e.g. a user-typed Arabic title) is
+    shown as a marker, never as unreadable boxes. Arabic-Indic digits become
+    Western digits. The original Arabic is available in the app."""
+    import arabic_text
+    s = str(v if v is not None else "")
+    if not arabic_text.has_arabic(s) and not re.search(r"[٠-٩۰-۹]", s):
+        return s
+    s = _ARABIC_RUN.sub(lambda m: "[Arabic text]" if arabic_text.has_arabic(m.group(0)) else m.group(0), s)
+    return arabic_text.to_western_digits(s)
+
+
 def esc(v) -> str:
-    return _xml_escape(str(v if v is not None else ""))
+    return _xml_escape(latin_only(v))
 
 
 def fmt_date(v) -> str:
@@ -124,7 +143,8 @@ def ref_text(ref: dict | None) -> str:
 
 def _set_alias(f: dict) -> None:
     names = [d["name"] for d in f.get("documents") or []]
-    _ctx.alias = {names[0]: ""} if len(names) == 1 else {n: f"D{i}" for i, n in enumerate(names, 1)}
+    single = len(names) == 1 and not pdg._ARABIC_CHAR.search(names[0])
+    _ctx.alias = {names[0]: ""} if single else {n: f"D{i}" for i, n in enumerate(names, 1)}
 
 
 def clip(text: str, n: int) -> str:
@@ -299,8 +319,11 @@ def _verified(documents, excerpt: str) -> bool:
 
 def _ref_from(source_refs) -> dict:
     r = (source_refs or [{}])[0] or {}
-    return {"doc": r.get("source_doc"), "page": r.get("page"), "sheet": r.get("sheet"),
-            "excerpt": pdg.norm(r.get("excerpt") or "")}
+    out = {"doc": r.get("source_doc"), "page": r.get("page"), "sheet": r.get("sheet"),
+           "excerpt": pdg.norm(r.get("excerpt") or "")}
+    if r.get("excerpt_original"):  # Arabic source (see source_translation.localize_fast_result)
+        out["original"] = r["excerpt_original"]
+    return out
 
 
 def _items(secs: dict, key: str, *, drop_leadin: bool = False) -> list[dict]:
@@ -431,9 +454,27 @@ def build_facts(*, bid: dict, fast_result: dict, documents: list[tuple[str, str]
                 analysis_date: str | None = None, run_id: int | None = None) -> dict:
     """Verified fact model shared by both reports."""
     import bid_identity
+    import source_translation as sx
     import workbook_intelligence as wbi
     r = fast_result or {}
-    docs = list(documents or [])
+    originals = list(documents or [])
+    # Arabic / bilingual packages: every deterministic step below reads the
+    # line-linked English view (checked renderings of the original lines,
+    # same markers and page/sheet positions), and FAST's Arabic excerpts are
+    # replaced by the checked rendering of the original lines that contain
+    # them. Unsupported renderings are left out, so nothing below can
+    # publish an unchecked translation. English packages are untouched.
+    translations = r.get("source_translations") or {}
+    bilingual = bool(translations.get("documents")) or any(
+        pdg._ARABIC_CHAR.search(t or "") for _, t in originals)
+    if bilingual:
+        docs = sx.english_view(originals, translations)
+        r = sx.localize_fast_result(r, originals, translations)
+        if previous_result:
+            previous_result = sx.localize_fast_result(
+                previous_result, originals, previous_result.get("source_translations") or translations)
+    else:
+        docs = originals
     secs = pdg.by_key(pdg.sections(docs))
     sub = pdg.submission_instructions(docs)
 
@@ -446,7 +487,11 @@ def build_facts(*, bid: dict, fast_result: dict, documents: list[tuple[str, str]
     title = bid.get("title") if bid.get("title") not in (None, "", bid_identity.PLACEHOLDER_TITLE) else None
     title = title or merged.get("title") or bid.get("title")
     org = bid.get("client") if bid.get("client") not in (None, "", bid_identity.PLACEHOLDER_CLIENT) else None
-    org = org or (merged.get("client") if merged.get("client") and pdg.corpus_contains(docs, merged["client"]) else None)
+    org = org or (merged.get("client") if merged.get("client") and (
+        pdg.corpus_contains(docs, merged["client"])
+        or (bilingual and sx.original_grounded(merged.get("client_original"), originals))) else None)
+    if bilingual and title and bid_identity._words(title) == [] and merged.get("title"):
+        title = merged["title"]  # an Arabic-only bid title cannot be printed in the English report
     reference = merged.get("file_number") or bid.get("file_number")
     if reference and not pdg.corpus_contains(docs, str(reference)):
         reference = bid.get("file_number") or None
@@ -555,7 +600,7 @@ def build_facts(*, bid: dict, fast_result: dict, documents: list[tuple[str, str]
         doc_basis.append({"name": name, "amending": ct.is_amending_document(name, text),
                           "pages": len(pages) or None, "workbook": wbi.is_workbook(name)})
 
-    return {
+    facts = {
         "bid_id": bid.get("id"), "run_id": run_id,
         "identity": {"title": title, "organization": org, "reference": reference, "location": location},
         "deadline": deadline, "submission": sub, "required_docs": required, "key_dates": key_dates,
@@ -565,7 +610,21 @@ def build_facts(*, bid: dict, fast_result: dict, documents: list[tuple[str, str]
         "pricing": pricing, "budget": budget, "payment": payment, "clauses": clauses,
         "changes": changes, "workbooks": workbooks, "matters": matters,
         "documents": doc_basis, "analysis_date": analysis_date or date.today().isoformat(),
+        "languages": r.get("source_languages") or (sx.document_languages(originals) if bilingual else {}),
+        "translation_note": sx.payload_summary_line(translations) if bilingual else None,
     }
+    if bilingual:
+        # Original Arabic evidence for every located English statement, for
+        # display in the app (the PDFs stay English).
+        idx = sx.EvidenceIndex(originals, translations)
+        if not translations.get("documents"):
+            facts["translation_note"] = ("Arabic text in the source documents could not be rendered in English "
+                                         "for this analysis; statements from it are not included. Re-run the "
+                                         "analysis to include them.")
+        for d in facts["documents"]:
+            d["language"] = facts["languages"].get(d["name"])
+        sx.annotate_with_originals({k: v for k, v in facts.items() if k not in ("documents", "workbooks")}, idx)
+    return facts
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -794,10 +853,16 @@ def _basis_note(f: dict, extra: str = "") -> Paragraph:
         if d["workbook"]:
             tag.append("workbook")
         alias = (getattr(_ctx, "alias", None) or {}).get(d["name"])
-        names.append((f"{alias} " if alias else "") + d["name"] + (f" ({', '.join(tag)})" if tag else ""))
+        if d.get("language") in ("ar", "mixed"):
+            tag.append("Arabic" if d["language"] == "ar" else "Arabic/English")
+        shown_name = d["name"]
+        if pdg._ARABIC_CHAR.search(shown_name):  # listed by alias; the name itself is shown in the app
+            shown_name = "file with Arabic name" + (f" (.{shown_name.rsplit('.', 1)[-1]})" if "." in shown_name else "")
+        names.append((f"{alias} " if alias else "") + shown_name + (f" ({', '.join(tag)})" if tag else ""))
     txt = (f"<b>Document basis.</b> {esc('; '.join(names))}. Analysis date {esc(fmt_date(f['analysis_date']))}. "
            f"Statements are the documents' own words, with page/sheet references; values entered by a Phoenix "
-           f"user and external sources are labelled as such. Nothing here is a recommendation on whether to bid.{extra}")
+           f"user and external sources are labelled as such. Nothing here is a recommendation on whether to bid."
+           f"{(' ' + esc(f['translation_note'])) if f.get('translation_note') else ''}{extra}")
     return Paragraph(txt, _st["note"])
 
 
@@ -811,7 +876,7 @@ def _on_page(label):
         canvas.setFillColor(MUTED)
         canvas.drawString(MARGIN, 0.43 * inch, f"PHOENIX BID INTELLIGENCE · {label}")
         canvas.setFont("Body", 7.2)
-        canvas.drawRightString(PAGE_W - MARGIN - 0.3 * inch, 0.43 * inch, getattr(doc, "_px_header", "")[:60])
+        canvas.drawRightString(PAGE_W - MARGIN - 0.3 * inch, 0.43 * inch, latin_only(getattr(doc, "_px_header", ""))[:60])
         canvas.setFillColor(GOLD)
         canvas.setFont("BodyMed", 7.6)
         canvas.drawRightString(PAGE_W - MARGIN, 0.43 * inch, str(canvas.getPageNumber()))
@@ -825,7 +890,7 @@ def _build(story: list, label: str, f: dict) -> bytes:
     header = " · ".join(x for x in (ident.get("organization"), ident.get("reference")) if x)
     doc = BaseDocTemplate(buf, pagesize=base.LETTER, leftMargin=MARGIN, rightMargin=MARGIN,
                           topMargin=0.6 * inch, bottomMargin=0.8 * inch,
-                          title=f"{label.title()} — {ident.get('title') or 'Opportunity'}",
+                          title=latin_only(f"{label.title()} — {ident.get('title') or 'Opportunity'}"),
                           author="Phoenix Bid Intelligence", invariant=1)
     doc._px_header = header
     doc.addPageTemplates([PageTemplate(id="Body", frames=[Frame(

@@ -53,9 +53,25 @@ def norm(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "")).strip()
 
 
+_ARABIC_CHAR = re.compile(r"[؀-ۿﭐ-﷿ﹰ-﻿]")
+
+
 def fold(s: str) -> str:
-    """Case/space/punctuation-insensitive form used to verify text against documents."""
-    s = (s or "").lower().replace("–", "-").replace("—", "-").replace("’", "'")
+    """Case/space/punctuation-insensitive form used to verify text against documents.
+
+    Arabic letters are kept (in arabic_text.match_key form: diacritics,
+    tatweel and letter variants folded, Arabic-Indic digits -> 0-9), so an
+    Arabic excerpt verifies against Arabic source text. Before this, every
+    Arabic letter folded away: an Arabic excerpt reduced to nothing (never
+    verifiable) or to its bare digits (matchable anywhere). Text without
+    Arabic characters folds exactly as before."""
+    s = s or ""
+    if _ARABIC_CHAR.search(s):
+        import arabic_text
+        s = arabic_text.match_key(s)
+        s = s.replace("–", "-").replace("—", "-").replace("’", "'")
+        return re.sub(r"[^a-z0-9%@.ء-ي]+", " ", s).strip()
+    s = s.lower().replace("–", "-").replace("—", "-").replace("’", "'")
     return re.sub(r"[^a-z0-9%@.]+", " ", s).strip()
 
 

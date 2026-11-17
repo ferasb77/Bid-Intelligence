@@ -55,12 +55,28 @@ def grounded_identity(merged_identity: dict, corpus_texts: list[str]) -> dict:
         words = _words(title)
         if words and sum(1 for w in words if w in corpus_words) / len(words) >= _TITLE_MIN_WORD_COVERAGE:
             out["title"] = title
+        elif _original_grounded((merged_identity or {}).get("title_original"), corpus_texts):
+            out["title"] = title
 
     client = _clean((merged_identity or {}).get("client"))
     if client and len(client) <= _MAX_CLIENT and _norm(client) != _norm(PLACEHOLDER_CLIENT):
         if _norm(client) in corpus:
             out["client"] = client
+        elif _original_grounded((merged_identity or {}).get("client_original"), corpus_texts):
+            out["client"] = client
     return out
+
+
+def _original_grounded(original, corpus_texts: list[str]) -> bool:
+    """Arabic packages: the English title/client is FAST's rendering of an
+    Arabic original. It is accepted only when that original occurs verbatim
+    (Arabic-aware matching) in the documents."""
+    import arabic_text
+    import procurement_digest as pdg
+    original = _clean(original)
+    if not original or not arabic_text.has_arabic(original) or len(pdg.fold(original)) < 4:
+        return False
+    return pdg.fold(original) in pdg.fold(" ".join(t for t in corpus_texts if isinstance(t, str)))
 
 
 def resolve_from_fast_result(result, corpus_texts: list[str]) -> dict:

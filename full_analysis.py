@@ -828,10 +828,25 @@ def _allowed_category_rules(slice_payload) -> str:
             'from the objects below -- never a title, label, page reference or document name.\n')
 
 
+#: Appended only when the canonical objects carry Arabic text, so English
+#: packages keep byte-identical specialist prompts (and contract digests).
+_ARABIC_SOURCE_RULES = """
+- LANGUAGE: some canonical objects quote Arabic source text. Read it with its procurement meaning
+  in context (e.g. العرض الفني = technical proposal, الضمان الابتدائي = bid bond, ملحق = addendum
+  only when it amends the tender). Write every "title" and "detail" in English. Keep the modal force
+  of the source (يجب = must, يجوز = may). A translation is never a stronger or weaker obligation
+  than the Arabic states; where the meaning is uncertain, type the finding AMBIGUITY.
+- Where Arabic and English versions disagree, report the disagreement; never assume one language
+  prevails unless an object states which version governs.
+"""
+
+
 def _build_specialist_prompt(specialist_id: str, slice_payload) -> str:
     body = json.dumps(_thaw(slice_payload)["objects"], indent=1, ensure_ascii=False, default=str)
+    import arabic_text
     return (
         SPECIALIST_BRIEFS[specialist_id].strip() + "\n" + _SHARED_RULES +
+        (_ARABIC_SOURCE_RULES if arabic_text.has_arabic(body) else "") +
         _allowed_category_rules(slice_payload) +
         "\nCANONICAL OBJECTS (the complete and only material available to you):\n" + body
     )

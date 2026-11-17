@@ -340,34 +340,248 @@ from stage_d_projection import SYNTHESIS_PROMPT as STAGE_D_SYNTHESIS_PROMPT
 
 # ── DOCUMENT TEXT EXTRACTORS & DETERMINISTIC MARKERS ─────────────────────────
 
+def _pdf_arabic_line_text(line: dict) -> str:
+    """One PDF text line rebuilt in logical reading order from glyph positions.
+
+    MuPDF already reorders right-to-left runs, but it reverses Arabic-Indic
+    digit runs with them ("٣٠" -> "٠٣", "٢٠٢٦" -> "٦٢٠٢") -- unacceptable
+    for dates, weights and amounts. Here the glyphs are taken in visual
+    (left-to-right x) order -- the order they are painted, independent of
+    how the producer ordered the content stream -- and converted to logical
+    order by arabic_text.logical_from_visual (simplified Unicode bidi rules:
+    numbers, Latin words and e-mail addresses stay left-to-right).
+
+    Glyph clusters keep their own character order: combining marks stay on
+    their glyph, and the extra code points of a ligature glyph stay together.
+    Microsoft Word writes the lam-alef ligature as a zero-width alef placed
+    before the lam; it is re-attached after the lam ("لا"). Word spacing is
+    taken from the glyph geometry (stray space glyphs inside a word are
+    ignored)."""
+    import unicodedata
+    import arabic_text as _at
+    alefs = "اأإآٱ"
+    clusters: list[dict] = []
+    spaces: list[float] = []
+    pending_alef = ""
+    for span in line.get("spans") or []:
+        size = float(span.get("size") or 10)
+        for ch in span.get("chars") or []:
+            c = unicodedata.normalize("NFKC", ch.get("c") or "") if _at.has_arabic(ch.get("c") or "") else (ch.get("c") or "")
+            if not c or c == "\xad":
+                continue  # empty / soft hyphen (invisible)
+            x0, _, x1, _ = ch.get("bbox") or (0, 0, 0, 0)
+            if c.isspace():
+                spaces.append((x0 + x1) / 2)
+                continue
+            zero = x1 - x0 < 0.01
+            if zero and c in alefs:
+                pending_alef += c  # possibly the alef of a following lam-alef ligature
+                continue
+            if pending_alef:
+                if c[0] == "ل":
+                    c = c + pending_alef
+                elif clusters:
+                    clusters[-1]["t"] += pending_alef
+                else:
+                    c = pending_alef + c
+                pending_alef = ""
+            if clusters and (unicodedata.combining(c[0]) or (zero and abs(ch["origin"][0] - clusters[-1]["ox"]) < 0.01)):
+                clusters[-1]["t"] += c
+                continue
+            clusters.append({"t": c, "ox": ch["origin"][0], "x0": x0, "x1": x1, "size": size})
+    if pending_alef and clusters:
+        clusters[-1]["t"] += pending_alef
+    if not clusters:
+        return ""
+    clusters.sort(key=lambda k: (k["x0"] + k["x1"]) / 2)
+    visual: list[str] = [clusters[0]["t"]]
+    for prev, cur in zip(clusters, clusters[1:]):
+        gap = cur["x0"] - prev["x1"]
+        size = max(prev["size"], cur["size"])
+        spaced = any(prev["x1"] - 0.5 <= s <= cur["x0"] + 0.5 for s in spaces)
+        if gap >= 0.15 * size or (spaced and gap >= 0.04 * size):
+            visual.append(" ")
+        visual.append(cur["t"])
+    return re.sub(r" {2,}", " ", _at.logical_from_visual(visual)).strip()
+
+
+def _merge_baseline_lines(lines: list[dict]) -> list[dict]:
+    """Within one text block, horizontal lines sharing a baseline are one
+    visual line: producers often emit an RTL line's number or Latin runs as
+    separate line objects, which would otherwise come out as stray lines."""
+    out: list[dict] = []
+    for line in lines:
+        direction = line.get("dir") or (1, 0)
+        chars = [c for s in line.get("spans") or [] for c in s.get("chars") or []]
+        if not chars or abs(direction[1]) >= 0.01:
+            out.append(line)
+            continue
+        y = chars[0]["origin"][1]
+        size = float((line.get("spans") or [{}])[0].get("size") or 10)
+        prev = out[-1] if out else None
+        if prev is not None and prev.get("_y") is not None and abs(prev["_y"] - y) < 0.35 * size:
+            prev["spans"] = list(prev["spans"]) + list(line.get("spans") or [])
+            continue
+        out.append(dict(line, spans=list(line.get("spans") or []), _y=y))
+    return out
+
+
+def _pdf_page_text(page) -> tuple[str, dict]:
+    """Page text; pages carrying Arabic are rebuilt from glyph positions
+    (see _pdf_arabic_line_text) and their presentation-form glyphs mapped
+    to base letters. Pages without Arabic are returned exactly as before."""
+    import arabic_text as _at
+    text = page.get_text()
+    if not _at.has_arabic(text):
+        return text.strip(), {}
+    try:
+        raw = page.get_text("rawdict")
+        lines = []
+        for block in raw.get("blocks") or []:
+            for line in _merge_baseline_lines(block.get("lines") or []):
+                direction = line.get("dir") or (1, 0)
+                chars = "".join(c.get("c", "") for s in line.get("spans") or [] for c in s.get("chars") or [])
+                if _at.has_arabic(chars) and abs(direction[1]) < 0.01:
+                    lines.append(_pdf_arabic_line_text(line))
+                else:
+                    lines.append(chars.replace("\xa0", " ").rstrip())
+        rebuilt = "\n".join(ln for ln in lines if ln.strip())
+    except Exception:
+        rebuilt = text
+    repaired, info = _at.repair_extracted_text(rebuilt, fix_visual_order=False)
+    info["glyph_order_rebuilt"] = rebuilt is not text
+    return repaired.strip(), info
+
+
+#: A page with fewer usable characters than this is treated as having no
+#: text layer (scanned) when it carries an image.
+_OCR_MIN_PAGE_CHARS = 40
+_OCR_LANGUAGES = "ara+eng"
+_OCR_DPI = 300
+_ocr_cache: dict[str, str] = {}
+_ocr_lock = None
+
+
+def _page_is_image(page) -> bool:
+    """True when images cover at least half of the page -- a scanned page,
+    not a text page with a logo."""
+    try:
+        area = abs(page.rect)
+        covered = 0.0
+        for info in page.get_image_info():
+            import fitz
+            covered += abs(fitz.Rect(info["bbox"]) & page.rect)
+        return area > 0 and covered / area >= 0.5
+    except Exception:
+        return False
+
+
+def ocr_status() -> dict:
+    """Whether Arabic OCR can run here: Tesseract (used through PyMuPDF, no
+    extra Python package) with the 'ara' and 'eng' language data present.
+    Never sends anything off the server."""
+    out = {"engine": "tesseract", "available": False, "languages": [], "tessdata": None}
+    try:
+        import fitz
+        tessdata = fitz.get_tessdata()
+    except Exception:
+        return out
+    if not tessdata or not os.path.isdir(tessdata):
+        return out
+    langs = sorted(f[:-len(".traineddata")] for f in os.listdir(tessdata) if f.endswith(".traineddata"))
+    out.update(tessdata=tessdata, languages=langs, available="ara" in langs and "eng" in langs)
+    return out
+
+
+def _ocr_page(page, key: str) -> str:
+    """Tesseract OCR of one page (Arabic + English), cached in-process by
+    document hash and page number -- reports re-read the same documents."""
+    global _ocr_lock
+    import threading
+    import arabic_text as _at
+    if _ocr_lock is None:
+        _ocr_lock = threading.Lock()
+    with _ocr_lock:
+        if key in _ocr_cache:
+            return _ocr_cache[key]
+    tp = page.get_textpage_ocr(language=_OCR_LANGUAGES, dpi=_OCR_DPI, full=True)
+    text, _ = _at.repair_extracted_text(page.get_text(textpage=tp), fix_visual_order=None)
+    text = text.strip()
+    with _ocr_lock:
+        if len(_ocr_cache) > 2000:
+            _ocr_cache.clear()
+        _ocr_cache[key] = text
+    return text
+
+
 def extract_pdf_with_metadata(file_bytes: bytes, filename: str) -> tuple[str, dict]:
-    """Extract PDF text with per-page [[SOURCE: filename | PAGE: N]] markers and metadata."""
-    meta = {"page_count": 0, "pages": {}}
-    
+    """Extract PDF text with per-page [[SOURCE: filename | PAGE: N]] markers and metadata.
+
+    Arabic pages are rebuilt in logical order from glyph positions. A page
+    without a usable text layer (scanned) is OCR'd with Arabic + English
+    Tesseract when -- and only when -- normal extraction is insufficient;
+    such a page's marker carries ``| OCR: tesseract`` and meta["ocr"]
+    records what happened (status APPLIED / UNAVAILABLE / NOT_NEEDED)."""
+    meta = {"page_count": 0, "pages": {}, "ocr": {"status": "NOT_NEEDED", "pages": []}, "arabic_pages": []}
+
     # 1. Try PyMuPDF (fitz)
     try:
         import fitz
         doc = fitz.open(stream=file_bytes, filetype="pdf")
         pages = []
         meta["page_count"] = len(doc)
+        texts = {}
         for i, page in enumerate(doc, 1):
-            t = page.get_text().strip()
+            t, info = _pdf_page_text(page)
+            texts[i] = t
+            if info:
+                meta["arabic_pages"].append(i)
+        scanned = [i for i, page in enumerate(doc, 1)
+                   if len(re.sub(r"\s+", "", texts[i])) < _OCR_MIN_PAGE_CHARS and _page_is_image(page)]
+        ocr_pages: set[int] = set()
+        if scanned:
+            status = ocr_status()
+            if not status["available"]:
+                meta["ocr"] = {"status": "UNAVAILABLE", "pages": scanned,
+                               "reason": "Arabic OCR (Tesseract 'ara') is not installed on this server"}
+            else:
+                digest = hashlib.sha256(file_bytes).hexdigest()
+                for i in scanned:
+                    try:
+                        t = _ocr_page(doc[i - 1], f"{digest}:{i}")
+                    except Exception as exc:
+                        meta["ocr"].setdefault("errors", []).append(f"page {i}: {type(exc).__name__}")
+                        continue
+                    if len(re.sub(r"\s+", "", t)) > len(re.sub(r"\s+", "", texts[i])):
+                        texts[i] = t
+                        ocr_pages.add(i)
+                meta["ocr"] = {"status": "APPLIED" if ocr_pages else "NO_TEXT_FOUND", "pages": sorted(ocr_pages),
+                               "engine": "tesseract", "languages": _OCR_LANGUAGES, "dpi": _OCR_DPI,
+                               **({"errors": meta["ocr"]["errors"]} if meta["ocr"].get("errors") else {})}
+        for i in sorted(texts):
+            t = texts[i]
             if t:
                 meta["pages"][i] = t
-                pages.append(f"[[SOURCE: {filename} | PAGE: {i}]]\n{t}")
+                flag = " | OCR: tesseract" if i in ocr_pages else ""
+                pages.append(f"[[SOURCE: {filename} | PAGE: {i}{flag}]]\n{t}")
         if pages:
             return "\n\n".join(pages), meta
+        if meta["ocr"]["status"] == "UNAVAILABLE":
+            return (f"[[SOURCE: {filename}]]\n[Scanned PDF: no text layer; Arabic OCR is not available on this "
+                    f"server]", meta)
     except Exception:
         pass
 
     # 2. Try pypdf fallback
     try:
         import pypdf
+        import arabic_text as _at
         reader = pypdf.PdfReader(io.BytesIO(file_bytes))
         pages = []
         meta["page_count"] = len(reader.pages)
         for i, page in enumerate(reader.pages, 1):
             t = (page.extract_text() or "").strip()
+            t, _ = _at.repair_extracted_text(t)
             if t:
                 meta["pages"][i] = t
                 pages.append(f"[[SOURCE: {filename} | PAGE: {i}]]\n{t}")
@@ -597,8 +811,18 @@ def extract_docx_with_metadata(file_bytes: bytes, filename: str) -> tuple[str, d
         state = {"heading": "Header", "after_table": False, "table_index": -1}
 
         def style_name(p) -> str:
+            # Arabic-localized Word templates name heading styles "عنوان 1";
+            # their style id stays "Heading1" -- both mark a heading.
             try:
-                return Paragraph(p, doc).style.name or ""
+                style = Paragraph(p, doc).style
+                name = style.name or ""
+                if name.startswith("Heading"):
+                    return name
+                sid = getattr(style, "style_id", "") or ""
+                if re.match(r"(?i)^heading\s*\d", sid) or re.match(r"(?i)^heading\s*\d", name) \
+                        or name.startswith("عنوان "):
+                    return "Heading"
+                return name
             except Exception:
                 return ""
 
@@ -922,11 +1146,34 @@ def extract_xls_with_metadata(file_bytes: bytes, filename: str) -> tuple[str, di
                 pass
 
 
+def decode_text_bytes(file_bytes: bytes, errors: str = "replace") -> str:
+    """Decode a text/CSV file: UTF-8 (with or without BOM), UTF-16 with BOM,
+    then Windows Arabic (cp1256, what Arabic Excel exports as 'CSV') --
+    only when UTF-8 is invalid. Never silently drops characters."""
+    if file_bytes.startswith((b"\xff\xfe", b"\xfe\xff")):
+        try:
+            return file_bytes.decode("utf-16")
+        except UnicodeDecodeError:
+            pass
+    try:
+        return file_bytes.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        pass
+    try:
+        text = file_bytes.decode("cp1256")
+        import arabic_text as _at
+        if _at.has_arabic(text):
+            return text
+    except UnicodeDecodeError:
+        pass
+    return file_bytes.decode("utf-8", errors=errors)
+
+
 def extract_csv_with_metadata(file_bytes: bytes, filename: str) -> tuple[str, dict]:
     """Extract CSV text with real row coordinate markers."""
     meta = {"rows_count": 0, "non_empty_rows": set()}
     try:
-        text_content = file_bytes.decode("utf-8", errors="replace")
+        text_content = decode_text_bytes(file_bytes)
         reader = csv.reader(io.StringIO(text_content))
         rows_text = []
         for r_idx, row in enumerate(reader, 1):
@@ -960,7 +1207,7 @@ def extract_document_with_metadata(file_bytes: bytes, filename: str) -> tuple[st
     elif name_lower.endswith(".csv"):
         return extract_csv_with_metadata(file_bytes, filename)
     elif name_lower.endswith(".txt") or name_lower.endswith(".md"):
-        txt = file_bytes.decode("utf-8", errors="ignore")
+        txt = decode_text_bytes(file_bytes, errors="ignore")
         return f"[[SOURCE: {filename}]]\n" + txt, {"type": "text", "len": len(txt)}
     else:
         # Unsupported format (e.g. .doc)
@@ -1021,6 +1268,31 @@ def _zip_entry_exceeds_limits(entry: "zipfile.ZipInfo", running_total_bytes: int
     return None
 
 
+def zip_entry_display_name(entry: "zipfile.ZipInfo") -> str:
+    """The entry's real file name. ZIP tools that do not set the UTF-8 flag
+    (macOS Archive Utility, many Windows tools) store Arabic names as raw
+    UTF-8 or Windows/DOS Arabic code-page bytes, which Python decodes as
+    cp437 mojibake. Re-decode those bytes; leave genuinely cp437 names alone."""
+    name = entry.filename
+    if entry.flag_bits & 0x800:
+        return name
+    try:
+        raw = name.encode("cp437")
+    except UnicodeEncodeError:
+        return name
+    if raw.isascii():
+        return name
+    for codec in ("utf-8", "cp1256", "cp720"):
+        try:
+            decoded = raw.decode(codec)
+        except UnicodeDecodeError:
+            continue
+        import arabic_text as _at
+        if codec == "utf-8" or _at.has_arabic(decoded):
+            return decoded
+    return name
+
+
 def unpack_procurement_package(raw_files: list[tuple[str, bytes]]) -> tuple[list[tuple[str, bytes]], list[str]]:
     """
     Unpack uploaded files, safely extracting ZIP archives.
@@ -1062,6 +1334,12 @@ def unpack_procurement_package(raw_files: list[tuple[str, bytes]]) -> tuple[list
                         if unsafe_reason:
                             warnings.append(f"Security Alert: Skipped unsafe file path in archive ({unsafe_reason}): {entry_name}")
                             continue
+                        # Real (e.g. Arabic) name for display/storage; the
+                        # safety check above ran on the raw stored name and
+                        # is repeated on the decoded one.
+                        decoded_name = zip_entry_display_name(entry).replace("\\", "/")
+                        if decoded_name != entry_name and not _zip_entry_path_is_unsafe(decoded_name):
+                            entry_name = decoded_name
 
                         # Skip hidden OS files
                         base_entry = os.path.basename(entry_name)
