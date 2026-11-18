@@ -721,6 +721,11 @@ def build_facts(*, bid: dict, fast_result: dict, documents: list[tuple[str, str]
         # limitation to disclose (the extraction pass's own gaps affected
         # facts that are no longer printed from it)
         facts["coverage_note"] = coverage_limitation({"coverage_gaps": verified["coverage_gaps"]})
+        # FACT-n ids exactly as the Full Analysis specialists were given them
+        # (the reading verified when Fast Analysis completed), so specialist
+        # findings can be checked against, and referenced to, these facts.
+        import procurement_facts as pf
+        facts["fact_index"] = pf.fact_index((r.get("report_facts") or {}).get("verified"))
     if bilingual:
         # Original Arabic evidence for every located English statement, for
         # display in the app (the PDFs stay English).
@@ -1379,9 +1384,12 @@ TOPIC_LABELS = {"initiative": "Initiative named in the procurement", "programme"
                 "profile": "Organisation profile"}
 
 
-def render_assessment(f: dict, *, full_status: str | None = None, research: dict | None = None) -> dict:
+def render_assessment(f: dict, *, full_status: str | None = None, research: dict | None = None,
+                      specialist: list | None = None) -> dict:
+    """`specialist`: the Full Analysis reconciled findings. Used only in facts
+    mode, where they can be checked against the verified facts they cite."""
     if f.get("mode") == "facts":
-        return _render_assessment_facts(f, full_status=full_status, research=research)
+        return _render_assessment_facts(f, full_status=full_status, research=research, specialist=specialist)
     _set_alias(f)
     shown = _Shown()
     story = [_title_block("FULL · BID OPPORTUNITY ASSESSMENT", f), Spacer(1, 8)]
@@ -1699,7 +1707,45 @@ def _render_snapshot_facts(f: dict) -> dict:
     return {"pdf": _build(story, "OPPORTUNITY SNAPSHOT", f), "filename": report_filename(f, SNAPSHOT)}
 
 
-def _render_assessment_facts(f: dict, *, full_status: str | None = None, research: dict | None = None) -> dict:
+_SPECIALIST_GROUPS = (
+    ("Risks and points needing attention", ("RISK", "ATTENTION_ITEM")),
+    ("Ambiguities to clarify with the buyer", ("AMBIGUITY",)),
+    ("Specialist interpretation", ("INTERPRETATION",)),
+    ("Not stated in the documents", ("GAP",)),
+)
+
+
+def _specialist_blocks(f: dict, specialist: list | None) -> list:
+    """Full Analysis specialist findings that rest on verified facts (see
+    procurement_facts.specialist_findings), labelled as analysis."""
+    import procurement_facts as pf
+    index = f.get("fact_index") or {}
+    if not specialist or not index:
+        return []
+    sel = pf.specialist_findings(specialist, index)
+    blocks = []
+    if sel["shown"]:
+        blocks.append(Paragraph(
+            "Analysis by the Full Bid Intelligence specialists. Each point interprets the document-verified facts "
+            "on the pages cited; it is analysis, not a statement from the documents.", _st["note"]))
+    for label, types in _SPECIALIST_GROUPS:
+        lines = []
+        for s in [s for s in sel["shown"] if s["type"] in types][:16]:
+            pages = sorted({str(r.get("page") or r.get("sheet")) for r in s["refs"] if r.get("page") or r.get("sheet")},
+                           key=lambda p: (len(p), p))
+            ref = f' <font size="7" color="#7A7A7A">[based on p.{", ".join(pages)}]</font>' if pages else ""
+            body = f"<b>{esc(s['title'])}.</b> {esc(brief(s['detail'], 360))}" if s["detail"] else f"<b>{esc(s['title'])}</b>"
+            lines.append(_RLParagraph(body + ref, _st["bul"], bulletText="•"))
+        blocks += _headed(label, lines)
+    withheld = sum(sel["withheld"].values())
+    if withheld:
+        why = "; ".join(f"{n} {r}" for r, n in sorted(sel["withheld"].items(), key=lambda x: -x[1]))
+        blocks.append(Paragraph(f"{withheld} further specialist findings are not shown ({why}).", _st["note"]))
+    return blocks
+
+
+def _render_assessment_facts(f: dict, *, full_status: str | None = None, research: dict | None = None,
+                             specialist: list | None = None) -> dict:
     _set_alias(f)
     shown = _Shown()
     story = [_title_block("FULL · BID OPPORTUNITY ASSESSMENT", f), Spacer(1, 8)]
@@ -1711,6 +1757,8 @@ def _render_assessment_facts(f: dict, *, full_status: str | None = None, researc
             n += 1
             _emit(story, _sec(n, title), blocks)
 
+    spec = _specialist_blocks(f, specialist)
+    shift = 1 if [b for b in spec if b is not None] else 0  # section numbers after "Specialist Analysis"
     rows = _facts_glance(f, shown, identity=False)
     top = [c for c in f["criteria"] if c["level"] == 0 and c["weight"]]
     if top:
@@ -1718,13 +1766,13 @@ def _render_assessment_facts(f: dict, *, full_status: str | None = None, researc
                      + _rt(top[0]["ref"])))
     methods = f["submission"].get("methods") or []
     if len(methods) > 1:
-        rows.append(("Submission", f"{len(methods)} permitted submission methods — section 6"))
+        rows.append(("Submission", f"{len(methods)} permitted submission methods — section {6 + shift}"))
     if f["budget"]:
         rows.append(("Budget (as stated)", _fact_cell(f["budget"], shown, 1)))
     if f["changes"]:
         k = {kind: sum(1 for c in f["changes"] if c["kind"] == kind) for kind in ("NEW", "UPDATED", "CONFLICT")}
         rows.append(("Changes in later documents", esc(", ".join(f"{v} {kk.lower()}" for kk, v in k.items() if v))
-                     + " — section 5"))
+                     + f" — section {5 + shift}"))
     about_ctx = [it["text"] for it in f["about"]][:2]
     rows.append(("External buyer research", esc(_research_status_line(research, about_ctx))))
     section("Executive Intelligence Summary", _kv_rows(rows))
@@ -1760,6 +1808,8 @@ def _render_assessment_facts(f: dict, *, full_status: str | None = None, researc
     if f["workbooks"]:
         blocks += _headed("Spreadsheets in the package", [_workbook_table(f["workbooks"])])
     section("Evaluation and Commercial Intelligence", blocks)
+
+    section("Specialist Analysis", spec)
 
     blocks = []
     if f["changes"]:

@@ -260,3 +260,141 @@ def test_assignment_delivery_field_becomes_a_verified_location_fact():
     f = pr.build_facts(bid={"id": 8}, documents=DOCS, analysis_date="2026-11-18",
                        fast_result={"report_facts": {"facts": [GOOD[0], GOOD[2]], "coverage_gaps": []}})
     assert f["identity"]["location"] is None  # missing -> disclosed as not identified, never guessed
+
+
+@pytest.mark.parametrize("statement,quote", [
+    ("Quotations sent by e-mail will be accepted.", "Quotations sent by e-mail will not be accepted."),
+    ("Bidders with a conflict of interest will be disqualified.",
+     "Bidders with a conflict of interest will not necessarily be disqualified."),
+    ("An advance payment of 15% will be made against an advance payment guarantee.",
+     "An advance payment of 15% may be made only against an advance payment guarantee."),
+    ("Joint ventures are permitted.", "Joint ventures are permitted except for firms registered abroad."),
+    ("Quotations must be submitted through the e-tender portal.",
+     "Quotations may be submitted either through the e-tender portal or by hand delivery to Room 12."),
+    ("Bidders must provide a site visit report.", "Bidders may provide a site visit report."),
+    ("Bidders may submit a site visit report.", "Bidders must submit a site visit report."),
+    ("Late bids will be accepted unless the deadline is extended.",
+     "Late bids will not be accepted unless the deadline is extended."),
+])
+def test_a_reversed_negation_condition_alternative_or_modality_is_never_printed_as_a_summary(statement, quote):
+    assert not pf.supported(statement, quote)
+    doc = [("x.pdf", f"[[SOURCE: x.pdf | PAGE: 1]]\n{quote}\n")]
+    v = pf.verify({"facts": [{"category": "SUBMISSION_RULE", "statement": statement, "quote": quote, "page": 1,
+                              "doc": "x.pdf"}]}, doc)
+    assert v["facts"][0]["verbatim"] and v["facts"][0]["text"] == quote
+
+
+@pytest.mark.parametrize("statement,quote", [
+    ("Quotations may be submitted through the e-tender portal.",
+     "Quotations may be submitted either through the e-tender portal or by hand delivery to Room 12."),
+    ("An advance payment of 15% may be paid only against an advance payment guarantee.",
+     "An advance payment of 15% may be made only against an advance payment guarantee."),
+    ("Late bids will not be accepted.", "Bids received after the deadline will not be accepted; late bids will "
+                                        "not be accepted."),
+])
+def test_faithful_rephrasing_keeps_its_qualifiers_and_passes(statement, quote):
+    assert pf.supported(statement, quote)
+
+
+# ── Full Analysis: verified facts in, specialist findings checked out ──────
+
+def _verified():
+    v = pf.verify({"facts": GOOD}, DOCS)
+    return {"assignment": v["assignment"], "facts": v["facts"]}
+
+
+def test_package_without_verified_facts_keeps_its_fingerprint_and_slices():
+    """Intentional vs unintended change: a run WITHOUT verified facts (every
+    historical run) gets byte-identical slices, prompts and fingerprint; a run
+    WITH them gets a different fingerprint, so its Full Analysis is not served
+    from results produced without them."""
+    import full_analysis as fa
+    from types import SimpleNamespace
+    base = SimpleNamespace(doc_metadata_by_doc={DOC: {"title": "Survey"}}, requirements=[], typed_observations=[],
+                           category_scope_items={"General": ["survey"]}, page_limits={})
+    old = fa.build_canonical_package(base)
+    new = fa.build_canonical_package(SimpleNamespace(**vars(base), report_facts={"verified": _verified()}))
+    assert old.verified_facts == () and len(new.verified_facts) == len(GOOD)
+    assert "verified_facts_contract" not in fa.full_analysis_fingerprint_inputs(old)
+    assert fa.compute_full_analysis_fingerprint(old) != fa.compute_full_analysis_fingerprint(new)
+    for sid in fa.SPECIALIST_IDS:
+        o, n = fa.build_specialist_input(old, sid), fa.build_specialist_input(new, sid)
+        assert fa.OBJ_VERIFIED_FACT not in o["objects"]
+        assert "VERIFIED_FACT objects" not in fa._build_specialist_prompt(sid, o)
+        got = {x["category"] for x in n["objects"].get(fa.OBJ_VERIFIED_FACT, ())}
+        assert got <= fa.SPECIALIST_FACT_CATEGORIES[sid]
+        if got:
+            assert "VERIFIED_FACT objects" in fa._build_specialist_prompt(sid, n)
+    sched = fa.build_specialist_input(new, fa.SPECIALIST_SCHEDULE_SUBMISSION)["objects"][fa.OBJ_VERIFIED_FACT]
+    assert {x["category"] for x in sched} >= {"SUBMISSION_METHOD", "CLARIFICATION"}
+    # the FACT-n numbering the specialists see is the numbering the reports resolve
+    idx = pf.fact_index(_verified())
+    assert {o["canonical_id"]: o["statement"] for o in new.verified_facts} == {k: v["text"] for k, v in idx.items()}
+
+
+def _finding(ftype, title, detail="", ids=("FACT-3",), severity="HIGH"):
+    return {"finding_type": ftype, "title": title, "detail": detail, "canonical_ids": list(ids), "severity": severity}
+
+
+def test_a_finding_claiming_documented_information_is_missing_is_withheld():
+    idx = pf.fact_index(_verified())
+    for f in (_finding("GAP", "Submission method not specified", ids=()),
+              _finding("AMBIGUITY", "Performance guarantee amount not defined", ids=()),
+              _finding("RISK", "Pipe condition survey experience unspecified")):
+        assert pf.contradicted(f, idx) is not None, f["title"]
+    kept = _finding("GAP", "No weights assigned to evaluation criteria", ids=())
+    assert pf.contradicted(kept, idx) is None
+    sel = pf.specialist_findings([_finding("GAP", "Submission method not specified", ids=()), kept], idx)
+    assert [s["title"] for s in sel["shown"]] == ["No weights assigned to evaluation criteria"]
+    assert sel["withheld"] == {"contradicted by a verified fact": 1}
+
+
+def test_specialist_findings_must_rest_on_verified_facts_and_add_nothing_unstated():
+    idx = pf.fact_index(_verified())
+    key = next(k for k, v in idx.items() if v["category"] == "GUARANTEE")
+    sel = pf.specialist_findings([
+        _finding("RISK", "Bank guarantee ties up working capital",
+                 f"The 10% performance guarantee ({key}) must be funded early. Late provision leads to "
+                 "disqualification.", ids=(key,)),
+        _finding("RISK", "Guarantee could reach 25% of value", "Up to 25% may be required.", ids=(key,)),
+        _finding("RISK", "Unsupported concern", "No citation.", ids=("REQ-1",)),
+        _finding("INTERPRETATION", "Canonical objects lack a budget field", ids=(key,)),
+        _finding("FACT", "A guarantee is required", ids=(key,)),
+    ], idx)
+    assert [s["title"] for s in sel["shown"]] == ["Bank guarantee ties up working capital"]
+    shown = sel["shown"][0]
+    assert shown["detail"] == "The 10% performance guarantee must be funded early."  # no id, no added consequence
+    assert shown["refs"][0]["page"] == 2
+    assert sel["withheld"] == {"with a figure or date not in the cited facts": 1,
+                               "not grounded in a verified fact": 1,
+                               "about the analysis data rather than the documents": 1}
+
+
+def test_assessment_prints_checked_specialist_analysis_with_pages(built):
+    import pymupdf
+    f, _, _ = built
+    f = dict(f, fact_index=pf.fact_index(_verified()))  # as stored when Fast Analysis completes
+    idx = f["fact_index"]
+    key = next(k for k, v in idx.items() if v["category"] == "PAYMENT")
+    pdf = pr.render_assessment(f, full_status="COMPLETE", specialist=[
+        _finding("RISK", "Advance payment needs a matching guarantee",
+                 f"Cash flow depends on obtaining the advance payment guarantee ({key}).", ids=(key,)),
+        _finding("GAP", "Submission method not specified", ids=()),
+    ])["pdf"]
+    text = re.sub(r"\s+", " ", " ".join(p.get_text() for p in pymupdf.open(stream=pdf, filetype="pdf")))
+    assert "Specialist Analysis" in text and "Advance payment needs a matching guarantee" in text
+    assert "[based on p.2]" in text and key not in text
+    assert "Submission method not specified" not in text
+    assert "1 further specialist findings are not shown (1 contradicted by a verified fact)" in text
+    without = re.sub(r"\s+", " ", " ".join(p.get_text() for p in pymupdf.open(
+        stream=pr.render_assessment(f, full_status="COMPLETE")["pdf"], filetype="pdf")))
+    assert "Specialist Analysis" not in without
+
+
+def test_fast_facts_pass_stores_the_verified_reading_for_full_analysis(monkeypatch):
+    import analysis_service as svc
+    monkeypatch.setattr(pf, "extract", lambda docs, key, **kw: {"schema": pf.SCHEMA, "facts": list(GOOD),
+                                                                "coverage_gaps": []})
+    payload = svc._start_report_facts(DOCS, "key", 1, 2, None).result(timeout=30)
+    assert payload["verified"]["assignment"]["category"] == "ASSIGNMENT"
+    assert len(payload["verified"]["facts"]) == len(GOOD) - 1

@@ -297,8 +297,10 @@ def _numbers(text: str) -> set[str]:
     return {re.sub(r"[,]", "", n).rstrip(".:/") for n in _NUM.findall(text or "")}
 
 
-def supported(statement: str, quote: str) -> bool:
-    """Every number, e-mail address and URL in the statement occurs in the quote."""
+def supported(statement: str, quote: str, *, summary: bool = False) -> bool:
+    """Every number, e-mail address and URL in the statement occurs in the
+    quote, its wording is supported by the quote, and it keeps the quote's
+    negations, conditions, alternatives and modality (see _qualifiers_kept)."""
     qf = pdg.fold(quote)
     qnums = _numbers(quote) | {n for n in _numbers(qf)}
     if not _numbers(statement) <= qnums:
@@ -309,7 +311,53 @@ def supported(statement: str, quote: str) -> bool:
     for u in _URLISH.findall(statement or ""):
         if pdg.fold(u.rstrip(".,)")) not in qf:
             return False
-    return _word_support(statement, quote) >= MIN_WORD_SUPPORT
+    return _word_support(statement, quote) >= MIN_WORD_SUPPORT and _qualifiers_kept(statement, quote,
+                                                                                    summary=summary)
+
+
+# Words that change what a sentence commits to. A statement may rephrase its
+# quote, but it may not drop or add a negation, a condition or exception, an
+# alternative, or turn a permission into an obligation (or back): if it does,
+# the quote itself is printed instead. Deliberately strict -- a false alarm
+# only means the verbatim quote is shown.
+_NEGATION = re.compile(r"\b(?:not|no|never|none|nor|neither|cannot|without|non)\b|n't\b", re.I)
+_CONDITION = re.compile(r"\b(?:if|unless|only|provided|subject to|except|excepting|excluding|conditional\w*|"
+                        r"in (?:the )?case|where applicable|as applicable|if applicable)\b", re.I)
+# (a bare "or" is usually a list -- "inquiries or regrets" -- so only explicit
+# choice markers count as an alternative)
+_ALTERNATIVE = re.compile(r"\b(?:either|alternatively|alternative|optional\w*|option|and/or)\b", re.I)
+_PERMISSION = re.compile(r"\b(?:may|can|could|optional\w*|option|permitted|allowed|either|alternatively|"
+                         r"discretion|reserves?)\b", re.I)
+_OBLIGATION = re.compile(r"\b(?:must|shall|required|requires?|mandatory|obligat\w*|need to|has to|have to|"
+                         r"will be|is to|are to)\b", re.I)
+
+
+def _qualifiers_kept(statement: str, quote: str, *, summary: bool = False) -> bool:
+    """`summary`: the statement condenses several passages (the assignment),
+    so it may leave qualifiers out, but it still may not add a negation or
+    an option the passages do not state."""
+    s, whole = statement or "", quote or ""
+    if _PERMISSION.search(s) and not (_PERMISSION.search(whole) or _ALTERNATIVE.search(whole)
+                                      or re.search(r"\bor\b", whole, re.I)):
+        return False  # an obligation or plain statement presented as optional
+    if _NEGATION.search(s) and not _NEGATION.search(whole):
+        return False  # a negation the source does not state
+    if summary:
+        return True
+    # What the statement may not DROP is judged on the quote sentences it
+    # actually restates (most of whose words it carries): a quote often
+    # holds a neighbouring sentence that is a separate fact.
+    sentences = [x for x in re.split(r"(?<=[.;:!?])\s+", whole) if x.strip()]
+    q = " ".join(x for x in sentences if _word_support(x, s) >= 0.5) or whole
+    if _NEGATION.search(q) and not _NEGATION.search(s):
+        return False  # a negation dropped
+    if _CONDITION.search(q) and not _CONDITION.search(s):
+        return False  # a condition or exception dropped
+    if _ALTERNATIVE.search(q) and not (_ALTERNATIVE.search(s) or _PERMISSION.search(s)):
+        return False  # alternatives presented as the only way
+    if _PERMISSION.search(q) and not _PERMISSION.search(s) and _OBLIGATION.search(s):
+        return False  # a permission presented as an obligation
+    return True
 
 
 # A statement may rephrase, but its substance must come from the quote: at
@@ -411,11 +459,12 @@ def verify(payload: dict | None, documents: list[tuple[str, str]], *, context: l
 
 
 def _shown_quote(quote: str) -> str:
-    """A quote printed in place of an unsupported statement: its first passage
-    (quotes joined with an ellipsis are shown one passage at a time), with a
-    capital first letter."""
-    first = pdg.norm(re.split(r"\.\.\.|…", quote)[0]).rstrip(" ,;") or quote
-    return first[:1].upper() + first[1:]
+    """A quote printed in place of an unsupported statement: every passage
+    (passages the model joined with an ellipsis are separated by " … "), with
+    a capital first letter -- nothing the quote states is dropped."""
+    parts = [pdg.norm(p).strip(" ,;") for p in re.split(r"\.\.\.|…", quote)]
+    text = " … ".join(p for p in parts if p) or quote
+    return text[:1].upper() + text[1:]
 
 
 def _repeats(item: dict, kept: list[dict]) -> bool:
@@ -445,7 +494,7 @@ def _assignment(idx: "_Index", f: dict, evidence: str = "") -> dict | None:
         return None
     stmt = pdg.norm(str(f.get("statement") or ""))
     joined = " ".join(t for t, _ in located)
-    exact = bool(stmt) and supported(stmt, joined + " " + evidence)
+    exact = bool(stmt) and supported(stmt, joined + " " + evidence, summary=True)
     seg = located[0][1]
     return {"category": "ASSIGNMENT", "text": stmt if exact else located[0][0], "quote": joined,
             "doc": seg["doc"], "page": seg["page"], "sheet": seg["sheet"], "verbatim": not exact, "fact": True}
@@ -488,3 +537,154 @@ def extract(documents: list[tuple[str, str]], api_key: str | None = None, *, cli
                                else "UNREADABLE_RESPONSE")})
     return {"schema": SCHEMA, "model": FACTS_MODEL, "facts": facts, "coverage_gaps": gaps,
             "chunks": len(parts), "seconds": round(time.monotonic() - t0, 2), "telemetry": telemetry}
+
+
+# ── Full Analysis specialist findings checked against the verified facts ──
+
+def fact_index(verified: dict | None) -> dict[str, dict]:
+    """FACT-n -> verified fact, numbered exactly as the Full Analysis canonical
+    package numbers them (the assignment first, then the facts in order)."""
+    if not isinstance(verified, dict):
+        return {}
+    items = ([verified["assignment"]] if verified.get("assignment") else []) + list(verified.get("facts") or [])
+    return {f"FACT-{i}": f for i, f in enumerate(items, 1) if isinstance(f, dict) and f.get("text")}
+
+
+# A finding that says something is missing, unstated or undefined.
+_ABSENCE = re.compile(
+    r"\b(?:not|never|no)\b[^.;:]{0,50}?\b(?:stated|specified|defined|provided|given|identified|disclosed|included|"
+    r"mentioned|addressed|set out|documented|indicated)\b|\b(?:undefined|unspecified|unstated|missing|absent|"
+    r"lacks?|lacking|omit\w*|silent)\b", re.I)
+# Words that describe the claim of absence, or the analysis's own data, rather than its topic.
+_ABSENCE_WORDS = set("""not never no stated specified defined undefined unspecified unstated provided given
+identified disclosed included mentioned addressed documented indicated missing absent lack lacks lacking omitted
+silent referenced unclear exact explicit explicitly field fields canonical object objects value values null
+document documents procurement rfp tender bidder bidders lau buyer""".split())
+# Internal vocabulary: a finding about the analysis's own data, not about the procurement.
+_INTERNAL = re.compile(r"\bcanonical\b|\b(?:object|field)s?\b|\bnull\b", re.I)
+# Canonical-id citations inside specialist prose ("FACT-18", "REQ-2", "CRIT-best-value").
+_CANONICAL_REF = re.compile(r"\s*\(?\b(?:FACT|REQ|CRIT|SCOPE|OBL|MS|DOC|CAT|REL)-[A-Za-z0-9-]+\)?"
+                            r"|\b(?:IDENT|SUBMISSION|PKG)\b")
+
+
+def _without_refs(text: str) -> str:
+    text = _CANONICAL_REF.sub("", text or "")
+    text = re.sub(r"\b(?:and|or)\s+(?=[,.;]|and\b|together\b|establish|require|state|indicate|include|list|"
+                  r"permit|mandate)", "", text)
+    text = re.sub(r"^\s*(?:and\s+)?together\s+", "", text)
+    text = pdg.norm(re.sub(r"\s+([,.;])", r"\1", text)).lstrip(",.; ")
+    return _sentences_capitalised(text)
+
+
+def _sentences_capitalised(text: str) -> str:
+    return re.sub(r"(^|[.!?]\s+)([a-z])", lambda m: m.group(1) + m.group(2).upper(), text)
+
+
+# Consequences a specialist may not add to what its cited facts state.
+_CONSEQUENCE = re.compile(r"\b(?:disqualif\w*|reject\w*|exclu\w*|invalid\w*|terminat\w*|penalt\w*|forfeit\w*|"
+                          r"dismiss\w*|ineligib\w*|void)\b", re.I)
+
+
+def _without_new_consequences(detail: str, evidence: str) -> str:
+    """The detail without any sentence that attaches a consequence
+    (disqualification, rejection, exclusion, termination, penalty ...) the
+    cited facts do not state."""
+    have = {m.group(0).lower()[:6] for m in _CONSEQUENCE.finditer(evidence or "")}
+    keep = [s for s in re.split(r"(?<=[.!?])\s+", detail or "")
+            if all(m.group(0).lower()[:6] in have for m in _CONSEQUENCE.finditer(s))]
+    return " ".join(keep).strip()
+
+
+_ISO_DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
+_MONTHS = ("January February March April May June July August September October November December").split()
+
+
+def _topic_stems(title: str) -> list[str]:
+    out = []
+    for t in _tokens(title):
+        if t.isdigit() or len(t) <= 2 or t in _STOP or t in _ABSENCE_WORDS:
+            continue
+        s = t[:5]
+        if s not in out:
+            out.append(s)
+    return out
+
+
+def contradicted(finding: dict, index: dict[str, dict]) -> dict | None:
+    """The verified fact that already states what `finding` says is missing,
+    or None. Only claims of absence are tested: a verified fact covering at
+    least two thirds (and at least two) of the claim's topic words states the
+    matter, so the claim contradicts the documents."""
+    title = str(finding.get("title") or "")
+    if finding.get("finding_type") not in ("GAP", "AMBIGUITY") and not _ABSENCE.search(title):
+        return None
+    topic = _topic_stems(title)
+    if len(topic) < 2:
+        return None
+    need = max(2, -(-2 * len(topic) // 3))
+    for f in index.values():
+        have = set(_stems(f"{f.get('text', '')} {str(f.get('category') or '').replace('_', ' ')}"))
+        if sum(t in have for t in topic) >= need:
+            return f
+    return None
+
+
+def _iso_to_text(text: str) -> str:
+    return _ISO_DATE.sub(lambda m: f"{int(m.group(3))} {_MONTHS[int(m.group(2)) - 1]} {m.group(1)}"
+                         if 1 <= int(m.group(2)) <= 12 else m.group(0), text or "")
+
+
+SPECIALIST_SHOWN_TYPES = ("RISK", "AMBIGUITY", "INTERPRETATION", "ATTENTION_ITEM", "GAP")
+
+
+def specialist_findings(findings: list[dict] | None, index: dict[str, dict]) -> dict:
+    """The Full Analysis findings a report may print, each grounded in the
+    verified facts it cites: {"shown": [...], "withheld": {reason: n}}.
+
+    Kept: risks, ambiguities, interpretations, attention items and gaps that
+    cite at least one verified fact (a gap needs none -- it states an
+    absence), whose figures and dates all occur in the facts they cite, that
+    do not merely restate one fact, and that no verified fact contradicts.
+    Each shown finding carries "refs": the cited facts (for page references)."""
+    shown, withheld = [], {}
+
+    def drop(reason):
+        withheld[reason] = withheld.get(reason, 0) + 1
+
+    sev = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+    for f in sorted((f for f in findings or [] if isinstance(f, dict)),
+                    key=lambda f: sev.get(str(f.get("severity")), 1)):
+        ftype = str(f.get("finding_type") or "").upper()
+        title, detail = _without_refs(str(f.get("title") or "")), _without_refs(str(f.get("detail") or ""))
+        if ftype not in SPECIALIST_SHOWN_TYPES or not title:
+            continue
+        if _INTERNAL.search(f"{title} {detail}"):
+            drop("about the analysis data rather than the documents")
+            continue
+        refs = [index[i] for i in f.get("canonical_ids") or [] if i in index]
+        if ftype != "GAP" and not refs:
+            drop("not grounded in a verified fact")
+            continue
+        if contradicted(f, index) is not None:
+            drop("contradicted by a verified fact")
+            continue
+        evidence = " ".join(r.get("text", "") + " " + r.get("quote", "") for r in refs)
+        if refs:
+            detail = _without_new_consequences(detail, evidence)
+        claim = _iso_to_text(f"{title} {detail}")
+        if refs and not _numbers(claim) <= (_numbers(evidence) | _numbers(pdg.fold(evidence))):
+            drop("with a figure or date not in the cited facts")
+            continue
+        if ftype == "ATTENTION_ITEM" and refs and _word_support(title, evidence) >= 0.8:
+            drop("restating a verified fact")
+            continue
+        stems = set(_topic_stems(title))
+        if any(len(stems & s["_stems"]) >= max(2, (min(len(stems), len(s["_stems"])) + 1) // 2) for s in shown):
+            drop("repeating another finding")
+            continue
+        shown.append({"type": ftype, "severity": f.get("severity"), "title": title,
+                      "detail": _iso_to_text(detail), "refs": refs, "_stems": stems,
+                      "produced_by": list(f.get("produced_by") or [])})
+    for s in shown:
+        s.pop("_stems", None)
+    return {"shown": shown, "withheld": withheld}

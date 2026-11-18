@@ -137,6 +137,10 @@ OBJ_CATEGORY_SCOPE_ITEM = "CATEGORY_SCOPE_ITEM"
 OBJ_COMMERCIAL_OBLIGATION = "COMMERCIAL_OBLIGATION"
 OBJ_SCOPED_MILESTONE = "SCOPED_MILESTONE"
 OBJ_SUBMISSION_MECHANICS = "SUBMISSION_MECHANICS"
+#: A statement from the documents checked against its verbatim source quote
+#: (procurement_facts.verify, run when Fast Analysis completed). Present
+#: only for runs whose snapshot carries verified report facts.
+OBJ_VERIFIED_FACT = "VERIFIED_FACT"
 
 CANONICAL_OBJECT_TYPES = (
     OBJ_PROCUREMENT_IDENTITY, OBJ_DOCUMENT_ROLE, OBJ_DOCUMENT_RELATIONSHIP,
@@ -177,6 +181,26 @@ SPECIALIST_INPUT_TYPES: dict[str, frozenset] = {
         OBJ_PROCUREMENT_IDENTITY, OBJ_SERVICE_CATEGORY, OBJ_SCOPED_MILESTONE,
         OBJ_SUBMISSION_MECHANICS,
     }),
+}
+
+#: Which verified-fact categories (procurement_facts.CATEGORIES) each
+#: specialist receives -- the facts of its own domain, so its slice stays
+#: bounded and a fact never reaches a specialist it does not concern.
+#: VERIFIED_FACT objects are added to a slice ONLY when the run has them, so
+#: a package without verified facts keeps byte-identical slices, prompts and
+#: contract digests (existing Full Analysis fingerprints are unchanged).
+SPECIALIST_FACT_CATEGORIES: dict[str, frozenset] = {
+    SPECIALIST_PROCUREMENT_STRUCTURE: frozenset({
+        "ASSIGNMENT", "SUBMISSION_METHOD", "SUBMISSION_DEADLINE", "AWARD", "BUDGET", "BUYER_CONTEXT"}),
+    SPECIALIST_REQUIREMENTS_COMPLIANCE: frozenset({
+        "ELIGIBILITY", "QUALIFICATION", "PROPOSAL_CONTENT", "SUBMISSION_RULE", "GUARANTEE"}),
+    SPECIALIST_EVALUATION_INTELLIGENCE: frozenset({"EVALUATION", "AWARD", "QUALIFICATION"}),
+    SPECIALIST_SCOPE_DELIVERABLES: frozenset({
+        "ASSIGNMENT", "SCOPE", "DELIVERABLE", "DELIVERY_LOCATION", "SCHEDULE"}),
+    SPECIALIST_COMMERCIAL_CONTRACTUAL: frozenset({
+        "PRICING", "BUDGET", "PAYMENT", "GUARANTEE", "CONTRACT_TERM", "OTHER"}),
+    SPECIALIST_SCHEDULE_SUBMISSION: frozenset({
+        "SCHEDULE", "SUBMISSION_DEADLINE", "SUBMISSION_METHOD", "SUBMISSION_RULE", "CLARIFICATION"}),
 }
 
 #: Capabilities NO specialist has (task section 3 / 21). Asserted by the
@@ -313,6 +337,7 @@ class CanonicalPackage:
     milestones: tuple
     submission_mechanics: MappingProxyType
     canonical_ids: frozenset
+    verified_facts: tuple = ()
 
     def objects_of_type(self, object_type: str) -> tuple:
         return _PACKAGE_ACCESSORS[object_type](self)
@@ -334,7 +359,29 @@ _PACKAGE_ACCESSORS = {
     OBJ_COMMERCIAL_OBLIGATION: lambda p: p.commercial_obligations,
     OBJ_SCOPED_MILESTONE: lambda p: p.milestones,
     OBJ_SUBMISSION_MECHANICS: lambda p: (dict(p.submission_mechanics),),
+    OBJ_VERIFIED_FACT: lambda p: p.verified_facts,
 }
+
+
+def _verified_fact_objects(result) -> tuple:
+    """The run's verified report facts as canonical objects (FACT-n), or ()
+    when the snapshot has none. Only facts whose quote was located in the
+    source and whose statement passed verification are stored as verified;
+    an unsupported statement is carried as its verbatim quote."""
+    rf = getattr(result, "report_facts", None) or {}
+    verified = rf.get("verified") if isinstance(rf, dict) else None
+    if not isinstance(verified, dict):
+        return ()
+    items = ([verified["assignment"]] if verified.get("assignment") else []) + list(verified.get("facts") or [])
+    out = []
+    for i, f in enumerate(items, 1):
+        if not isinstance(f, dict) or not f.get("text"):
+            continue
+        out.append({"canonical_id": f"FACT-{i}", "object_type": OBJ_VERIFIED_FACT,
+                    "category": f.get("category"), "statement": _clip(f.get("text"), MAX_TEXT_CHARS_PER_ITEM),
+                    "verbatim": bool(f.get("verbatim")), "priority": f.get("priority") or 2,
+                    "source_doc": f.get("doc"), "page": f.get("page") or f.get("sheet")})
+    return tuple(out)
 
 
 def _slug(text: str, limit: int = 48) -> str:
@@ -610,9 +657,10 @@ def build_canonical_package(
             if d["identity_role"] == canon.IDENTITY_ROLE_RESPONSE_FORM],
     }
 
+    verified_facts = _verified_fact_objects(result)
     canonical_ids = {"IDENT", "SUBMISSION", "PKG"}
     for group in (document_roles, document_relationships, service_categories, requirements,
-                  scoped_criteria, category_scope_items, commercial_obligations, milestones):
+                  scoped_criteria, category_scope_items, commercial_obligations, milestones, verified_facts):
         canonical_ids |= {o["canonical_id"] for o in group}
 
     digest_payload = {
@@ -622,6 +670,8 @@ def build_canonical_package(
         "commercial_obligations": list(commercial_obligations),
         "milestones": list(milestones), "submission": submission,
     }
+    if verified_facts:  # (absent -> the digest of a run without facts is unchanged)
+        digest_payload["verified_facts"] = list(verified_facts)
 
     return CanonicalPackage(
         bid_id=bid_id,
@@ -639,6 +689,7 @@ def build_canonical_package(
         milestones=milestones,
         submission_mechanics=MappingProxyType(submission),
         canonical_ids=frozenset(canonical_ids),
+        verified_facts=verified_facts,
     )
 
 
@@ -675,6 +726,12 @@ def build_specialist_input(package: CanonicalPackage, specialist_id: str) -> Map
             continue
         objects = list(package.objects_of_type(object_type))[:MAX_ITEMS_PER_SLICE_SECTION]
         slice_payload[object_type] = objects
+    wanted = SPECIALIST_FACT_CATEGORIES.get(specialist_id, frozenset())
+    facts = sorted((o for o in package.verified_facts if o.get("category") in wanted),
+                   key=lambda o: o.get("priority") or 2)[:MAX_ITEMS_PER_SLICE_SECTION]
+    if facts:
+        slice_payload[OBJ_VERIFIED_FACT] = facts
+        permitted = permitted | {OBJ_VERIFIED_FACT}
     return _freeze({
         "specialist_id": specialist_id,
         "package_digest": package.package_digest,
@@ -849,12 +906,29 @@ _ARABIC_SOURCE_RULES = """
 """
 
 
+#: Appended only when the slice carries VERIFIED_FACT objects.
+_VERIFIED_FACT_RULES = """
+- VERIFIED_FACT objects (FACT-*) are statements from the documents, each checked
+  against its verbatim source text. A matter they state IS stated in the documents:
+  never report it as missing, unspecified or undefined (not as a GAP, not as an
+  AMBIGUITY), even when no other canonical object covers it. Report a GAP only for
+  something no object, including the verified facts, states. Cite FACT-* ids for
+  findings that rest on them.
+"""
+
+
+def verified_fact_contract_digest() -> str:
+    return _digest({"rules": _VERIFIED_FACT_RULES,
+                    "categories": {k: sorted(v) for k, v in SPECIALIST_FACT_CATEGORIES.items()}})
+
+
 def _build_specialist_prompt(specialist_id: str, slice_payload) -> str:
     body = json.dumps(_thaw(slice_payload)["objects"], indent=1, ensure_ascii=False, default=str)
     import arabic_text
     return (
         SPECIALIST_BRIEFS[specialist_id].strip() + "\n" + _SHARED_RULES +
         (_ARABIC_SOURCE_RULES if arabic_text.has_arabic(body) else "") +
+        (_VERIFIED_FACT_RULES if OBJ_VERIFIED_FACT in _thaw(slice_payload)["objects"] else "") +
         _allowed_category_rules(slice_payload) +
         "\nCANONICAL OBJECTS (the complete and only material available to you):\n" + body
     )
@@ -1856,6 +1930,7 @@ def full_analysis_fingerprint_inputs(package: CanonicalPackage) -> dict:
         "specialists": specialist_contract_digests(),
         "reconciliation": {"reconciliation_version": RECONCILIATION_VERSION,
                            "contract_digest": reconciliation_contract_digest()},
+        **({"verified_facts_contract": verified_fact_contract_digest()} if package.verified_facts else {}),
     }
 
 

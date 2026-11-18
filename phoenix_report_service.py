@@ -128,5 +128,7 @@ def assessment_pdf(bid_id: int, full_run_id: int) -> dict:
     if not source:
         raise ValueError("this Full Analysis run has no source FAST analysis")
     facts = build_facts_for_run(bid_id, int(source))
+    bundle = full_analysis_service.get_full_analysis_result(bid_id, full_run_id) or {}
     return pr.render_assessment(facts, full_status=status.get("status"),
-                                research=buyer_research.for_report(bid_id, full_run_id))
+                                research=buyer_research.for_report(bid_id, full_run_id),
+                                specialist=((bundle.get("result") or {}).get("reconciled_findings")))

@@ -661,9 +661,18 @@ def _start_report_facts(documents: list[tuple[str, str]], api_key: str, bid_id, 
                         docs = source_translation.english_view(documents, payload)
                 except Exception:
                     pass  # untranslated Arabic lines are simply not read
-            return procurement_facts.extract(
+            payload = procurement_facts.extract(
                 docs, api_key, telemetry_context={"workflow": "fast_analysis", "bid_id": bid_id,
                                                   "analysis_run_id": run_id})
+            try:
+                # The verified reading, kept with the payload so Full Analysis
+                # specialists can be given it without re-reading the documents.
+                # Reports still re-verify against the documents themselves.
+                v = procurement_facts.verify(payload, docs)
+                payload["verified"] = {"assignment": v["assignment"], "facts": v["facts"]}
+            except Exception:
+                pass
+            return payload
         pool = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"report-facts-{run_id}")
         future = pool.submit(work)
         pool.shutdown(wait=False)
