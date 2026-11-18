@@ -118,11 +118,14 @@ with tab_users:
     st.dataframe(
         [{"Email": u["email"],
           "Status": "Disabled" if u["disabled"] else "Active",
-          "Password set / signed in": "yes" if u["last_sign_in_at"] else "not yet",
+          "Password set": pa.password_setup_status(u),
           "Platform admin": "yes" if u["is_platform_admin"] else "",
           "Memberships": _fmt_memberships(u["memberships"]),
           "Last sign-in": u["last_sign_in_at"] or "—"} for u in users],
         use_container_width=True, hide_index=True)
+    st.caption("'Password set' is recorded when a user saves a password through a setup link. "
+               "'Unknown' users were created before this was recorded: if one cannot sign in, issue a new "
+               "setup link. 'Last sign-in' alone does not prove a password exists (opening a setup link sets it).")
 
     with st.form("create_user", clear_on_submit=True):
         st.markdown("**Create user** (no password is set; issue a setup link afterwards)")

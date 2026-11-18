@@ -336,6 +336,26 @@ class TestOwnerWorkflows(unittest.TestCase):
         self.assertTrue(users["owner@example.com"]["is_platform_admin"])
         self.assertEqual(users["client-admin@phoenix.example"]["memberships"][0]["role"], "admin")
 
+    def test_password_status_is_never_inferred_from_last_sign_in(self):
+        before = "2026-11-17T17:28:41+00:00"
+        after = "2026-11-19T00:00:00+00:00"
+        status = pa.password_setup_status
+        # Pre-tracking users (e.g. accounts created before this change) are
+        # "unknown" whether or not they have signed in -- never "yes"/"no".
+        self.assertEqual(status({"created_at": before, "last_sign_in_at": after}),
+                         "unknown (created before tracking)")
+        self.assertEqual(status({"created_at": before}), "unknown (created before tracking)")
+        self.assertEqual(status({"created_at": after, "last_sign_in_at": after}), "not yet")
+        self.assertEqual(status({"created_at": before, "password_set_at": after}), "yes")
+        self.assertEqual(status({"created_at": after, "is_platform_admin": True}), "n/a (platform admin)")
+
+    def test_list_users_reads_password_stamp(self):
+        w = self.w
+        w.sb.users[w.member].user_metadata = {"password_set_at": "2026-11-18T15:00:00Z"}
+        users = {u["email"]: u for u in pa.list_users(w.owner, OWNER_EMAIL, sb=w.sb)}
+        self.assertEqual(users["member@phoenix.example"]["password_set_at"], "2026-11-18T15:00:00Z")
+        self.assertIsNone(users["client-admin@phoenix.example"]["password_set_at"])
+
     def test_expired_ban_counts_as_active(self):
         u = SimpleNamespace(banned_until=(datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat())
         self.assertFalse(pa.user_is_disabled(u))
@@ -592,8 +612,12 @@ class TestStaticBoundaries(unittest.TestCase):
 
     def test_service_layer_never_sets_auth_role_or_metadata(self):
         src = self._read("platform_admin.py")
-        for forbidden in ('"role": "service_role"', "app_metadata", "user_metadata", '"password"'):
+        for forbidden in ('"role": "service_role"', "app_metadata", '"user_metadata":', '"password"'):
             self.assertNotIn(forbidden, src)
+        # user_metadata is only ever READ (the informational password_set_at
+        # stamp written by the user's own setup form), never written.
+        self.assertEqual(src.count("user_metadata"), 1)
+        self.assertIn('_attr(u, "user_metadata")', src)
 
     def test_migration_is_fail_closed(self):
         sql = self._read(os.path.join("migrations", "024_platform_super_admin.sql")).lower()

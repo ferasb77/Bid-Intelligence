@@ -511,21 +511,12 @@ class TestInviteCallback(unittest.TestCase):
 
     @patch("tenancy.resolve_organization_context")
     @patch("auth_session.get_auth_client")
-    def test_successful_invite_verification_resolves_authcontext(self, mock_get_auth_client, mock_resolve):
+    def test_invite_requires_password_setup_not_an_app_session(self, mock_get_auth_client, mock_resolve):
+        """An invite link must lead to password creation: it opens the
+        password-setup form only (no application session, no AuthContext),
+        and its single-use token is not redeemed until a password is saved."""
         import streamlit as st
         import auth_session
-        from tenancy import AuthContext
-
-        mock_client = MagicMock()
-        mock_session = MagicMock(access_token="at-invite", refresh_token="rt-invite", expires_at=time.time() + 3600)
-        mock_user = MagicMock(id="ed5ccf11-8f6e-4975-85db-f2d1cf84660b", email="feras@enablemygrowth.com")
-        mock_client.auth.verify_otp.return_value = MagicMock(session=mock_session, user=mock_user)
-        mock_get_auth_client.return_value = mock_client
-        mock_resolve.return_value = AuthContext(
-            user_id="ed5ccf11-8f6e-4975-85db-f2d1cf84660b", email="feras@enablemygrowth.com",
-            organization_id="4326b564-8cc5-4463-9304-9a589f08cc91",
-            organization_name="Enable My Growth Internal", role="owner",
-        )
 
         qp = self._mock_query_params(token_hash="real-token-hash-value", type="invite")
         st.session_state.clear()
@@ -533,18 +524,15 @@ class TestInviteCallback(unittest.TestCase):
             result = auth_session.handle_invite_callback()
 
         self.assertTrue(result.ok)
-        self.assertEqual(result.user_id, "ed5ccf11-8f6e-4975-85db-f2d1cf84660b")
-        mock_client.auth.verify_otp.assert_called_once_with(
-            {"token_hash": "real-token-hash-value", "type": "invite"}
-        )
-        stored_session = st.session_state[auth_session.SESSION_KEY]
-        self.assertEqual(stored_session["access_token"], "at-invite")
-        context = st.session_state[auth_session.AUTH_CONTEXT_KEY]
-        self.assertEqual(context.organization_id, "4326b564-8cc5-4463-9304-9a589f08cc91")
-        self.assertEqual(context.role, "owner")
+        self.assertTrue(auth_session.password_setup_required())
+        self.assertNotIn(auth_session.SESSION_KEY, st.session_state)
+        self.assertNotIn(auth_session.AUTH_CONTEXT_KEY, st.session_state)
+        mock_get_auth_client.assert_not_called()
+        mock_resolve.assert_not_called()
         # one-time token stripped from the URL after processing
         self.assertNotIn("token_hash", qp)
         self.assertNotIn("type", qp)
+        st.session_state.clear()
 
     @patch("tenancy.resolve_organization_context")
     @patch("auth_session.get_auth_client")
@@ -610,7 +598,7 @@ class TestInviteCallback(unittest.TestCase):
         mock_client.auth.verify_otp.side_effect = Exception("Token has expired or is invalid")
         mock_get_auth_client.return_value = mock_client
 
-        qp = self._mock_query_params(token_hash="stale-token", type="invite")
+        qp = self._mock_query_params(token_hash="stale-token", type="email")
         with patch.object(st, "query_params", qp):
             result = auth_session.handle_invite_callback()
 

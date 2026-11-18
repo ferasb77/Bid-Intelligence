@@ -250,6 +250,25 @@ def _all_auth_users(sb) -> list:
         page += 1
 
 
+# The client app began recording password_set_at at this deployment. A user
+# created before it may have set a password without the stamp, so the absence
+# of a stamp is only meaningful for users created after it.
+PASSWORD_TRACKING_SINCE = datetime(2026, 11, 18, 14, 0, tzinfo=timezone.utc)
+
+
+def password_setup_status(row: dict) -> str:
+    """Display value for the Super Admin "Password set" column. Never infers
+    a password from last_sign_in_at (redeeming a setup link sets it too)."""
+    if row.get("is_platform_admin"):
+        return "n/a (platform admin)"
+    if row.get("password_set_at"):
+        return "yes"
+    created = _parse_ts(row.get("created_at"))
+    if created is None or created < PASSWORD_TRACKING_SINCE:
+        return "unknown (created before tracking)"
+    return "not yet"
+
+
 def list_users(actor_user_id: str, actor_email: str, sb=None) -> list[dict]:
     sb = _client(sb)
     require_platform_admin(actor_user_id, actor_email, "list_users", sb)
@@ -272,6 +291,10 @@ def list_users(actor_user_id: str, actor_email: str, sb=None) -> list[dict]:
             "email": _attr(u, "email") or "",
             "created_at": _attr(u, "created_at"),
             "last_sign_in_at": _attr(u, "last_sign_in_at"),
+            # Stamped by the client app when the setup form saves a password.
+            # last_sign_in_at is NOT evidence of a password: GoTrue also sets
+            # it when a setup (recovery) link is redeemed.
+            "password_set_at": (_attr(u, "user_metadata") or {}).get("password_set_at"),
             "disabled": user_is_disabled(u),
             "is_platform_admin": uid in admins,
             "memberships": by_user.get(uid, []),

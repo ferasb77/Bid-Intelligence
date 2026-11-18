@@ -51,6 +51,16 @@ from auth_client import get_auth_client
 SESSION_KEY = "bi_auth_session"
 AUTH_CONTEXT_KEY = "bi_auth_context"
 RECOVERY_SESSION_KEY = "bi_recovery_session"
+# A password-setup link (Super Admin setup link = type=recovery, or a GoTrue
+# invite = type=invite) whose one-time token_hash has been read from the URL
+# but NOT yet redeemed. The token is redeemed only when the user submits a
+# new password, so a refresh, closed tab or dropped connection before that
+# point leaves the original link usable instead of silently spending it.
+PENDING_SETUP_KEY = "bi_pending_password_setup"
+PASSWORD_SETUP_TYPES = ("recovery", "invite")
+PASSWORD_SET_METADATA_KEY = "password_set_at"
+SETUP_LINK_UNUSABLE_MESSAGE = ("This setup link is invalid, expired or has already been used. "
+                               "Ask your administrator for a new link.")
 INVALID_CREDENTIALS_MESSAGE = "Incorrect email address or password."
 # 'invite' -- the original Supabase Auth invite-acceptance flow, valid only
 # once per user (Supabase's invite endpoint refuses to re-send once an
@@ -109,6 +119,7 @@ def sign_in(email: str, password: str) -> AuthResult:
 
     import streamlit as st
     st.session_state.pop(RECOVERY_SESSION_KEY, None)
+    st.session_state.pop(PENDING_SETUP_KEY, None)
     st.session_state.pop(AUTH_CONTEXT_KEY, None)
     st.session_state[SESSION_KEY] = {
         "access_token": session.access_token,
@@ -157,6 +168,7 @@ def sign_out() -> None:
     st.session_state.pop(SESSION_KEY, None)
     st.session_state.pop(AUTH_CONTEXT_KEY, None)
     st.session_state.pop(RECOVERY_SESSION_KEY, None)
+    st.session_state.pop(PENDING_SETUP_KEY, None)
 
 
 def current_session() -> dict | None:
@@ -211,6 +223,19 @@ def handle_invite_callback() -> AuthResult:
         st.query_params.pop("type", None)
         return AuthResult(ok=False, error=f"unsupported callback type: {otp_type}")
 
+    if otp_type in PASSWORD_SETUP_TYPES:
+        # First-time setup / reset: never grant an application session here,
+        # and do not redeem the single-use token yet -- update_recovered_
+        # password() redeems it together with the new password. Strip it
+        # from the URL now; it is held only in server-side session state.
+        st.query_params.pop("token_hash", None)
+        st.query_params.pop("type", None)
+        st.session_state.pop(SESSION_KEY, None)
+        st.session_state.pop(AUTH_CONTEXT_KEY, None)
+        st.session_state.pop(RECOVERY_SESSION_KEY, None)
+        st.session_state[PENDING_SETUP_KEY] = {"token_hash": token_hash, "type": otp_type}
+        return AuthResult(ok=True)
+
     try:
         client = get_auth_client()
         resp = client.auth.verify_otp({"token_hash": token_hash, "type": otp_type})
@@ -229,9 +254,6 @@ def handle_invite_callback() -> AuthResult:
     if not session or not user:
         return AuthResult(ok=False, error="invite verification did not return a valid session")
 
-    if otp_type == "recovery":
-        return _store_recovery_session(session, user)
-
     st.session_state.pop(RECOVERY_SESSION_KEY, None)
     st.session_state[SESSION_KEY] = {
         "access_token": session.access_token,
@@ -245,6 +267,13 @@ def handle_invite_callback() -> AuthResult:
     st.session_state[AUTH_CONTEXT_KEY] = tenancy.resolve_organization_context(user.id, user.email)
 
     return AuthResult(ok=True, user_id=user.id, email=user.email)
+
+
+def password_setup_required() -> bool:
+    """True while a setup link is pending or a recovery session is open --
+    app.py must render the password form and nothing else."""
+    import streamlit as st
+    return bool(st.session_state.get(RECOVERY_SESSION_KEY) or st.session_state.get(PENDING_SETUP_KEY))
 
 
 def session_principal():
@@ -455,7 +484,7 @@ def handle_fragment_session_callback() -> AuthResult:
     if not session or not user:
         return AuthResult(ok=False, error="fragment session callback did not return a valid session")
 
-    if callback_type == "recovery":
+    if callback_type in PASSWORD_SETUP_TYPES:
         return _store_recovery_session(session, user)
 
     st.session_state.pop(RECOVERY_SESSION_KEY, None)
@@ -478,6 +507,7 @@ def _store_recovery_session(session, user) -> AuthResult:
     import streamlit as st
     st.session_state.pop(SESSION_KEY, None)
     st.session_state.pop(AUTH_CONTEXT_KEY, None)
+    st.session_state.pop(PENDING_SETUP_KEY, None)
     st.session_state[RECOVERY_SESSION_KEY] = {
         "access_token": session.access_token,
         "refresh_token": session.refresh_token,
@@ -487,28 +517,52 @@ def _store_recovery_session(session, user) -> AuthResult:
 
 
 def update_recovered_password(password: str, confirmation: str) -> AuthResult:
-    """Update only the verified recovery user, through the public auth client."""
+    """Update only the verified recovery user, through the public auth client.
+    A pending setup link is redeemed here (verify_otp), only after the new
+    password has passed local validation."""
     import streamlit as st
     stored = st.session_state.get(RECOVERY_SESSION_KEY)
-    if not stored:
-        return AuthResult(ok=False, error="Open a fresh password-reset link first.")
+    pending = st.session_state.get(PENDING_SETUP_KEY)
+    if not stored and not pending:
+        return AuthResult(ok=False, error="Open your setup link again, or ask your administrator for a new one.")
     if not password or len(password) < 8:
         return AuthResult(ok=False, error="Use a password with at least 8 characters.")
     if password != confirmation:
         return AuthResult(ok=False, error="The passwords do not match.")
+    if not stored:
+        # Redeem the pending link now; the same client (holding the session
+        # verify_otp just issued) performs the update and the local sign-out.
+        try:
+            client = get_auth_client()
+            resp = client.auth.verify_otp({"token_hash": pending["token_hash"], "type": pending["type"]})
+        except Exception:
+            resp = None
+        session = getattr(resp, "session", None)
+        user = getattr(resp, "user", None)
+        if not session or not user:
+            st.session_state.pop(PENDING_SETUP_KEY, None)
+            return AuthResult(ok=False, error=SETUP_LINK_UNUSABLE_MESSAGE)
+        _store_recovery_session(session, user)
+        stored = st.session_state[RECOVERY_SESSION_KEY]
+    else:
+        try:
+            client = get_auth_client()
+            response = client.auth.set_session(stored["access_token"], stored["refresh_token"])
+            if not response.session or not response.user or response.user.id != stored["user_id"]:
+                raise ValueError("Invalid recovery session")
+            # Preserve rotated refresh credentials if the password update needs a retry.
+            stored["access_token"] = response.session.access_token
+            stored["refresh_token"] = response.session.refresh_token
+        except Exception:
+            st.session_state.pop(RECOVERY_SESSION_KEY, None)
+            return AuthResult(ok=False, error="Your setup session has expired. Ask your administrator for a new setup link.")
     try:
-        client = get_auth_client()
-        response = client.auth.set_session(stored["access_token"], stored["refresh_token"])
-        if not response.session or not response.user or response.user.id != stored["user_id"]:
-            raise ValueError("Invalid recovery session")
-        # Preserve rotated refresh credentials if the password update needs a retry.
-        stored["access_token"] = response.session.access_token
-        stored["refresh_token"] = response.session.refresh_token
-    except Exception:
-        st.session_state.pop(RECOVERY_SESSION_KEY, None)
-        return AuthResult(ok=False, error="Your reset session has expired. Request a fresh password-reset link.")
-    try:
-        response = client.auth.update_user({"password": password})
+        # The metadata stamp is informational only (Super Admin "Password
+        # set" column); it never grants or denies access.
+        response = client.auth.update_user({
+            "password": password,
+            "data": {PASSWORD_SET_METADATA_KEY: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())},
+        })
         if not response.user or response.user.id != stored["user_id"]:
             raise ValueError("Password update did not return the recovery user")
     except Exception:
@@ -526,12 +580,12 @@ def update_recovered_password(password: str, confirmation: str) -> AuthResult:
 def render_password_recovery() -> None:
     """Render before normal authentication/tenancy gates; survives form reruns."""
     import streamlit as st
-    st.markdown("## Reset your password")
-    st.caption("Choose a new password for your account.")
+    st.markdown("## Set your password")
+    st.caption("Choose a password for your account. You will use it with your email address to sign in.")
     with st.form("password_recovery", clear_on_submit=True):
         password = st.text_input("New password", type="password")
         confirmation = st.text_input("Confirm new password", type="password")
-        submitted = st.form_submit_button("Update password", type="primary")
+        submitted = st.form_submit_button("Save password", type="primary")
     if submitted:
         result = update_recovered_password(password, confirmation)
         if result.ok:
