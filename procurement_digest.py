@@ -219,8 +219,14 @@ def sections(documents: list[tuple[str, str]]) -> list[dict]:
     pending_number = None  # a clause number on its own line ("3.2.", "5A", "(c)") opens the next item
     lines = content_lines(documents)
     templates = _template_pages(lines)
+    in_list = False  # after a lead-in ("... covering at least the following areas:") until a sentence ends
     for ln in lines:
         text = ln["text"]
+        after_lead_in = in_list
+        if text.rstrip().endswith(":") and len(text.split()) >= 4:
+            in_list = True
+        elif text.rstrip().endswith("."):
+            in_list = False
         if cur is not None and cur["doc"] != ln["doc"]:
             cur = None  # a section never runs on into the next document
         if _BULLET_ONLY.match(text):
@@ -232,6 +238,9 @@ def sections(documents: list[tuple[str, str]]) -> list[dict]:
         # after a bullet or a list reference ("1A", "(c)") comes a list entry, never a heading;
         # after a clause number ("15.0") a heading may follow
         listing = pending_bullet or bool(pending_number and not re.match(r"^\d{1,3}(?:\.\d{1,2})*\.?$", pending_number))
+        # an un-numbered title-like line inside a lead-in list ("Background", "Timeline") is
+        # an entry of that list, not a section heading
+        listing = listing or (after_lead_in and pending_number is None and not _NUMBERING.match(text))
         key = None if listing else _heading_key(text)
         on_template = (ln["doc"], ln.get("page")) in templates
         if key:

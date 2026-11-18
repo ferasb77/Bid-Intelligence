@@ -270,3 +270,16 @@ def test_unreadable_response_end_to_end_produces_a_gap():
                              telemetry=telemetry)
     gaps = fa._telemetry_audit_summary(telemetry, 1.0)["coverage_gaps"]
     assert [(g["pages"], g["reason"]) for g in gaps] == [("1", "UNREADABLE_RESPONSE")]
+
+
+def test_titles_listed_after_a_lead_in_are_list_entries_not_sections():
+    # "Detailed technical proposal covering at least the following areas:" followed by
+    # "Background" / "Timeline" -- the proposal's required contents, not the RFP's own sections
+    docs = [("rfp.pdf", "[[SOURCE: rfp.pdf | PAGE: 1]]\n- \nSome bullet before any section.\n"
+                        "B5. Proposal Requirements\nThe technical proposal must include at least the following areas:\n"
+                        "Background\nProposed Methodology\nTimeline\nOverview of Deliverables\n"
+                        "References for three clients.\n2. Financial Proposal Requirements\n"
+                        "Detailed financial proposal with breakdown of costs per training day.\n")]
+    keys = [(s["key"], s["heading"]) for s in pdg.sections(docs)]
+    assert keys == [("pricing", "Financial Proposal Requirements")]
+    assert pr.build_facts(bid={"id": 2}, fast_result={}, documents=docs, analysis_date="2026-11-18")["synopsis"] == []
