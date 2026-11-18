@@ -25,12 +25,15 @@ lookup, not something that should depend on a not-yet-written RLS policy.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import auth_client
 import database as db
 from database import format_requirement_payload
+
+_log = logging.getLogger(__name__)
 
 # ── Roles ─────────────────────────────────────────────────────────────────
 VALID_ROLES = ("owner", "admin", "member")
@@ -802,6 +805,136 @@ def delete_document_for_organization(bid_id: int, doc_id: int, organization_id: 
     if not doc or int(doc.get("bid_id", -1)) != int(bid_id):
         raise AccessDeniedError(f"document {doc_id} does not belong to bid {bid_id}")
     db.delete_document(doc_id, bid_id=bid_id)
+
+
+# ── Bid deletion (organization Owner/Admin; migration 026) ───────────────
+#: Existing organization_members roles that may delete a bid of their org.
+BID_DELETION_ROLES = ("owner", "admin")
+
+_BID_DELETION_MESSAGES = {
+    "not_authorized": "Only an Owner or Admin of this organization can delete bids.",
+    "not_found": "That bid was not found. It may already have been deleted.",
+    "analysis_in_progress": "An analysis of this bid is still running. Wait for it to finish, "
+                            "or mark it as stuck, before deleting the bid.",
+    "research_in_progress": "Buyer research for this bid is still running. Wait for it to finish "
+                            "before deleting the bid.",
+    "used_by_organizational_memory": "Organizational memory was derived from this bid, so it cannot "
+                                     "be deleted.",
+}
+
+
+class BidDeletionError(Exception):
+    """The bid was NOT deleted. `reason` is one of _BID_DELETION_MESSAGES's
+    keys (or 'failed'); str(err) is a message fit to show the user."""
+
+    def __init__(self, reason: str, message: str | None = None):
+        self.reason = reason
+        super().__init__(message or _BID_DELETION_MESSAGES.get(reason)
+                         or "The bid could not be deleted. Nothing was changed.")
+
+
+def can_delete_bids(role: str | None) -> bool:
+    """Whether a membership role may delete bids (UI visibility only; the
+    database re-checks the CURRENT membership on every deletion)."""
+    return (role or "").lower() in BID_DELETION_ROLES
+
+
+def _research_running(bid_id: int) -> bool:
+    try:
+        import buyer_research
+        runs = (db.get_client().table("analysis_runs").select("id").eq("bid_id", bid_id)
+                .eq("analysis_mode", "FULL").execute().data or [])
+        return any((buyer_research.load(bid_id, int(r["id"])) or {}).get("status") == "RUNNING" for r in runs)
+    except Exception:
+        return False
+
+
+def process_bid_storage_cleanup(organization_id: str, ids: list[int] | None = None) -> dict:
+    """Remove queued Storage objects of deleted bids of `organization_id`
+    (all queued ones, or only `ids`). Each removed object's queue entry is
+    cleared; a failure is recorded on the entry (attempts, last_error) and
+    the entry stays for the next attempt. Returns {"removed": n, "pending": n}."""
+    sb = db.get_service_client()
+    q = sb.table("bid_storage_cleanup").select("*").eq("organization_id", organization_id)
+    if ids is not None:
+        if not ids:
+            return {"removed": 0, "pending": 0}
+        q = q.in_("id", [int(i) for i in ids])
+    rows = q.order("id").execute().data or []
+    removed = pending = 0
+    for row in rows:
+        try:
+            sb.storage.from_(row["bucket_id"]).remove([row["object_name"]])
+            sb.table("bid_storage_cleanup").delete().eq("id", row["id"]).execute()
+            removed += 1
+        except Exception as exc:
+            pending += 1
+            _log.error("bid storage cleanup failed: org=%s bid=%s object=%s error=%s", organization_id,
+                       row.get("bid_id"), row.get("object_name"), type(exc).__name__)
+            try:
+                sb.table("bid_storage_cleanup").update({
+                    "attempts": int(row.get("attempts") or 0) + 1,
+                    "last_error": f"{type(exc).__name__}: {exc}"[:500],
+                    "last_attempt_at": datetime.now(timezone.utc).isoformat(),
+                }).eq("id", row["id"]).execute()
+            except Exception:
+                pass
+    return {"removed": removed, "pending": pending}
+
+
+def delete_bid_for_organization(bid_id: int, organization_id: str, actor_user_id: str) -> dict:
+    """Delete a bid and everything that belongs only to it: its documents
+    and versions, FAST/FULL/CHECK runs and results, reports, requirements,
+    decisions, amendments/reviews and other bid-owned rows (one database
+    transaction, migration 026), then its Storage objects.
+
+    Authorization is server-side and twofold: the current session must be
+    the active session of `actor_user_id` in `organization_id`, and the
+    database itself re-checks that this user's account is active and that
+    they CURRENTLY hold Owner or Admin in the organization that owns the
+    bid. Another organization's bid is reported as not found.
+
+    Raises BidDeletionError (nothing changed) or SessionAccessRevokedError.
+    Returns {"bid_id", "title", "reference", "storage_removed",
+    "storage_pending"}; storage_pending > 0 means the bid is deleted but some
+    Storage objects remain queued for cleanup (logged, retried)."""
+    _require_active_session(organization_id)
+    provider = _session_principal_provider
+    principal = provider() if provider is not None else NO_SESSION_CONTEXT
+    if principal is not NO_SESSION_CONTEXT and str(principal.user_id) != str(actor_user_id):
+        raise SessionAccessRevokedError("actor_mismatch")
+    if not bid_id or not organization_id or not actor_user_id:
+        raise BidDeletionError("not_found")
+    if _research_running(int(bid_id)):
+        raise BidDeletionError("research_in_progress")
+    try:
+        res = db.get_service_client().rpc("delete_bid_as_organization_admin", {
+            "p_bid_id": int(bid_id), "p_organization_id": str(organization_id),
+            "p_actor_user_id": str(actor_user_id)}).execute().data
+    except Exception as exc:
+        _log.error("bid deletion failed: org=%s bid=%s error=%s: %s", organization_id, bid_id,
+                   type(exc).__name__, exc)
+        raise BidDeletionError("failed")
+    if isinstance(res, list):
+        res = res[0] if len(res) == 1 else None
+    if not isinstance(res, dict) or res.get("ok") is not True:
+        reason = res.get("reason") if isinstance(res, dict) else "failed"
+        raise BidDeletionError(reason if reason in _BID_DELETION_MESSAGES else "failed")
+    _log.info("bid deleted: org=%s bid=%s by=%s storage_objects=%d", organization_id, bid_id,
+              actor_user_id, len(res.get("storage_objects") or []))
+    cleanup = {"removed": 0, "pending": len(res.get("cleanup_ids") or [])}
+    try:
+        cleanup = process_bid_storage_cleanup(organization_id, res.get("cleanup_ids") or [])
+    except Exception as exc:
+        _log.error("bid storage cleanup failed: org=%s bid=%s error=%s", organization_id, bid_id,
+                   type(exc).__name__)
+    try:
+        # Earlier deletions' leftovers get another attempt.
+        process_bid_storage_cleanup(organization_id)
+    except Exception:
+        pass
+    return {"bid_id": int(bid_id), "title": res.get("title"), "reference": res.get("reference"),
+            "storage_removed": cleanup["removed"], "storage_pending": cleanup["pending"]}
 
 
 def download_analysis_report_for_organization(

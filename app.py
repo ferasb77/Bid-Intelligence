@@ -1,7 +1,7 @@
 import streamlit as st
 import base64, json, re
 from datetime import date, datetime
-from database import (init_db, get_bid, update_bid, delete_bid,
+from database import (init_db, get_bid, update_bid,
                       get_deliverables, upsert_deliverable, delete_deliverable,
                       get_requirements, upsert_requirement, delete_requirement,
                       get_tasks, upsert_task, delete_task,
@@ -324,13 +324,64 @@ def page_dashboard():
 # ═════════════════════════════════════════════════════════════════════════════
 # PAGE: ALL BIDS
 # ═════════════════════════════════════════════════════════════════════════════
+def _render_bid_delete_confirmation(bids: list[dict]) -> None:
+    """The confirmation for a Delete Bid request from the directory (Owner/
+    Admin only). Nothing is deleted until the user types DELETE and
+    confirms; Cancel just closes it."""
+    pending = st.session_state.get("bid_delete_pending")
+    target = next((b for b in bids if int(b["id"]) == int(pending)), None) if pending else None
+    if not target:
+        st.session_state.pop("bid_delete_pending", None)
+        return
+    ref = target.get("file_number") or "—"
+    with st.container(border=True):
+        st.markdown("### 🗑 Delete bid")
+        st.markdown(f"**{target['title']}**  \nReference: **{ref}** · Client: {target.get('client') or '—'}")
+        st.warning("Deleting this bid permanently removes it together with its uploaded documents, "
+                   "FAST and Full analyses, reports, requirements, decisions and all other information "
+                   "belonging to it. This cannot be undone.")
+        typed = st.text_input("Type DELETE to confirm", key=f"bid_delete_typed_{target['id']}")
+        c1, c2 = st.columns(2)
+        confirm = c1.button("Delete bid permanently", type="primary", use_container_width=True,
+                            disabled=typed.strip() != "DELETE", key=f"bid_delete_confirm_{target['id']}")
+        if c2.button("Cancel", use_container_width=True, key=f"bid_delete_cancel_{target['id']}"):
+            st.session_state.pop("bid_delete_pending", None)
+            st.rerun()
+        if confirm and typed.strip() == "DELETE":
+            try:
+                out = _tenancy.delete_bid_for_organization(int(target["id"]), _ctx.organization_id, _ctx.user_id)
+            except _tenancy.BidDeletionError as e:
+                st.error(f"The bid was not deleted. {e}")
+                return
+            except _tenancy.SessionAccessRevokedError:
+                st.error("The bid was not deleted: your access could not be confirmed. Please sign in again.")
+                return
+            st.session_state.pop("bid_delete_pending", None)
+            if st.session_state.get("active_bid") and int(st.session_state.active_bid) == int(target["id"]):
+                st.session_state.active_bid = None
+            msg = f"Deleted bid “{out.get('title') or target['title']}” (reference {out.get('reference') or '—'})."
+            if out.get("storage_pending"):
+                msg += (f" {out['storage_pending']} stored file(s) could not be removed yet; they are "
+                        "recorded and will be removed on a later attempt.")
+            st.session_state["bid_delete_notice"] = msg
+            st.rerun()
+
+
 def page_all_bids():
     st.markdown("# All Bids")
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
+    notice = st.session_state.pop("bid_delete_notice", None)
+    if notice:
+        st.success(notice)
     bids = _tenancy.list_bids_authenticated(_access_token)
     if not bids:
         st.markdown('<div class="empty-state">No bids yet.</div>', unsafe_allow_html=True)
         return
+    can_delete = _tenancy.can_delete_bids(_ctx.role)
+    if can_delete:
+        _render_bid_delete_confirmation(bids)
+    else:
+        st.session_state.pop("bid_delete_pending", None)
     for b in bids:
         pct = (b["req_done"]/b["req_count"]*100) if b["req_count"] else 0
         c1,c2,c3,c4,c5 = st.columns([3.5,1.5,1.5,2,1])
@@ -342,6 +393,9 @@ def page_all_bids():
         c4.markdown(readiness_bar(pct) if b["req_count"] else '<span style="color:#6E6C66;font-size:.75rem">Readiness not tracked</span>', unsafe_allow_html=True)
         if c5.button("Open →", key=f"all_{b['id']}"):
             go("stage_understand", b["id"])
+        if can_delete and c5.button("🗑 Delete", key=f"all_del_{b['id']}", help="Delete this bid (Owner/Admin)"):
+            st.session_state["bid_delete_pending"] = int(b["id"])
+            st.rerun()
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -699,9 +753,7 @@ def page_bid_overview(bid_id):
             sub_dl  = c1.date_input("Submission Deadline",    value=_parse_date(bid.get("submission_deadline")))
             clar_dl = c2.date_input("Clarification Deadline", value=_parse_date(bid.get("clarification_deadline")))
             notes = st.text_area("Notes", value=bid.get("notes") or "", height=80)
-            c1,c2 = st.columns([3,1])
-            save = c1.form_submit_button("Save Changes", use_container_width=True)
-            dell = c2.form_submit_button("🗑 Delete Bid", use_container_width=True)
+            save = st.form_submit_button("Save Changes", use_container_width=True)
         if save:
             update_bid(bid_id,{"title":title,"client":client,"file_number":file_no,"stage":stage,
                 "sensitivity":sens,"owner":owner,"value_cad":val or None,
@@ -709,10 +761,6 @@ def page_bid_overview(bid_id):
                 "clarification_deadline":str(clar_dl) if clar_dl else None,"notes":notes})
             st.success("Saved.")
             st.rerun()
-        if dell:
-            delete_bid(bid_id)
-            st.session_state.active_bid = None
-            go("all_bids")
 
 # ═════════════════════════════════════════════════════════════════════════════
 # PAGE: COMPLIANCE MATRIX

@@ -961,11 +961,20 @@ def get_analysis_result(run_id: int) -> dict | None:
     return _one(get_client().table("analysis_results").select("*").eq("run_id", run_id).execute())
 
 
+def _require_bid_exists(bid_id: int) -> None:
+    """Background writers (analysis reports, buyer research) call this just
+    before writing a bid-scoped Storage object, so work that finishes after
+    its bid was deleted does not leave an orphaned object behind."""
+    if not (get_client().table("bids").select("id").eq("id", int(bid_id)).execute().data or []):
+        raise LookupError(f"bid {bid_id} no longer exists")
+
+
 def upload_analysis_report(bid_id: int, run_id: int, pdf_bytes: bytes) -> str:
     """Upload a rendered analysis-run report PDF to the same Storage bucket
     and convention as `save_upload` uses for source documents. Returns the
     storage_path to persist on the analysis_runs row."""
     sb = get_client()
+    _require_bid_exists(bid_id)
     storage_path = f"{bid_id}/analysis_reports/{run_id}.pdf"
     sb.storage.from_(BUCKET).upload(
         storage_path, pdf_bytes,
@@ -980,6 +989,9 @@ def upload_json_object(storage_path: str, payload: dict) -> str:
     cleaned = (storage_path or "").strip()
     if not cleaned or ".." in cleaned or cleaned.startswith("/"):
         raise ValueError("invalid storage path")
+    head = cleaned.split("/", 1)[0]
+    if head.isdigit():
+        _require_bid_exists(int(head))
     get_client().storage.from_(BUCKET).upload(
         cleaned, _json.dumps(payload, default=str).encode("utf-8"),
         file_options={"content-type": "application/json", "upsert": "true"})
