@@ -3407,6 +3407,19 @@ pass — the audit's one fix was already correct as commissioned.
 > been inspected for the same drift. See
 > `BID_INTELLIGENCE_SUPER_ADMIN_REVOCATION_CORRECTION_REPORT.md`.
 
+> **Migration 026 (admin bid deletion) — external state, 2026-11-19:**
+> `migrations/026_admin_bid_deletion.sql` (`bid_storage_cleanup` queue;
+> service_role-only `delete_bid_as_organization_admin`; the bid-history
+> append-only/immutability guards yield only to that whole-bid deletion) is
+> applied **only to the isolated Phoenix beta database** (as
+> `supabase_admin`, single transaction, re-applied to prove idempotence).
+> The original guard functions were saved on the beta host
+> (`/tmp/p0/m026/rollback_functions.sql`). It is **NOT applied** to the
+> operational Oracle database or the hosted Supabase project. The Bids
+> Directory's Delete action (Owner/Admin only, typed `DELETE`
+> confirmation) ships in image `phoenix-beta-bid-delete-1` (commit
+> `4eccdfd`); live acceptance: `scripts/verify_bid_deletion_beta_live.py`.
+
 ## Where NOT to look first
 
 Do not begin ordinary task orientation by reading the ~99 root-level
