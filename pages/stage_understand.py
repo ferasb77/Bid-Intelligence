@@ -309,14 +309,12 @@ def _render_fast_analysis_panel(bid_id: int, rfp_docs: list, procurement_state: 
             f'{f" in {duration:.0f}s" if isinstance(duration, (int, float)) else ""} '
             f'</div>',
             unsafe_allow_html=True)
-        if (telemetry.get("split_exhausted_rows") or 0) > 0:
-            # Some dense passages exceeded the extraction limit even after
-            # splitting; what was read is kept, the remainder is not.
-            st.markdown(
-                '<div class="warn-box">⚠️ Some dense sections of the source document could not be read in full, '
-                'so a requirement or contract condition from those sections may be missing here and in the '
-                'Opportunity Snapshot. Check the RFP directly before relying on anything being absent.</div>',
-                unsafe_allow_html=True)
+        import phoenix_reports as _pr
+        coverage = _pr.coverage_limitation(telemetry)
+        if coverage:
+            # Some passages exceeded the extraction limit even after splitting
+            # (or returned an unreadable response); what was read is kept.
+            st.markdown(f'<div class="warn-box">⚠️ {_html.escape(coverage)}</div>', unsafe_allow_html=True)
         _render_fast_analysis_governance_note(run, procurement_state)
         c1, c2 = st.columns(2)
         # Phoenix: the FAST stage presents exactly one PDF -- the Opportunity

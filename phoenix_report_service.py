@@ -74,6 +74,12 @@ def _fast_result(run_id: int) -> dict:
     return ((res.get("fast_analysis_result_snapshot") or {}).get("result")) or {}
 
 
+def _fast_coverage(run_id: int) -> dict:
+    """The run's telemetry summary (coverage_gaps / split_exhausted_rows)."""
+    res = db.get_analysis_result(run_id) or {}
+    return (res.get("fast_analysis_result_snapshot") or {}).get("telemetry_summary") or {}
+
+
 def build_facts_for_run(bid_id: int, run_id: int) -> dict:
     run = db.get_analysis_run(run_id)
     if not run or int(run.get("bid_id")) != int(bid_id) or run.get("analysis_mode") != "FAST":
@@ -89,7 +95,8 @@ def build_facts_for_run(bid_id: int, run_id: int) -> dict:
     return pr.build_facts(
         bid=db.get_bid(bid_id) or {"id": bid_id}, fast_result=_fast_result(run_id), documents=texts,
         files=files, previous_result=prev_result, previous_doc_names=prev_names,
-        analysis_date=str(run.get("completed_at") or run.get("created_at") or "")[:10] or None, run_id=run_id)
+        analysis_date=str(run.get("completed_at") or run.get("created_at") or "")[:10] or None, run_id=run_id,
+        coverage=_fast_coverage(run_id))
 
 
 def snapshot_pdf(bid_id: int, run_id: int) -> dict:

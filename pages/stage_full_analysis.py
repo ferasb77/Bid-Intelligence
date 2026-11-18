@@ -502,8 +502,8 @@ def _tab_evaluation(f: dict) -> None:
 
 def _tab_commercial(f: dict) -> None:
     for title, key, n in (("Pricing", "pricing", 240), ("Budget (as stated)", "budget", 240),
-                          ("Payment terms", "payment", 300)):
-        if f[key]:
+                          ("Securities and guarantees", "securities", 240), ("Payment terms", "payment", 300)):
+        if f.get(key):
             _heading(title)
             _facts_list(f[key], n)
     if f["clauses"]:
@@ -513,8 +513,15 @@ def _tab_commercial(f: dict) -> None:
     if sub.get("channel"):
         ms = (sub.get("method_sentences") or [None])[0]
         rows.append(("Method", f"<strong>{fav.esc(sub['channel'])}</strong>"
-                     + (" to " + ", ".join(fav.esc(e["email"]) for e in sub["emails"]) if sub.get("emails") else "")
+                     + (" to " + ", ".join(fav.esc(e["email"]) for e in sub["emails"])
+                        if sub.get("emails") and sub["channel"] == "Email"
+                        else (" — " + fav.esc(pr.brief(ms["text"], 160)) if ms else ""))
                      + _ref(ms)))
+    contacts = [c for c in sub.get("contact_emails") or []
+                if c["email"].lower() not in {e["email"].lower() for e in sub.get("emails") or []}]
+    if contacts:
+        rows.append(("Contact e-mail (as printed)", ", ".join(fav.esc(c["email"]) for c in contacts)
+                     + _ref(contacts[0].get("sentence"))))
     if pr._subject_text(sub):
         rows.append(("Subject line", fav.esc(pr._subject_text(sub)) + _ref(sub["subject_rule"])))
     if pr._late_text(sub):

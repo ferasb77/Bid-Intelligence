@@ -42,7 +42,20 @@ from extractor import (
 
 FAST_MODEL = "claude-haiku-4-5-20251001"          # unchanged model (audit does not propose changing this)
 FAST_TEMPERATURE = 0.0
-FAST_MAX_OUTPUT_TOKENS = 4000                     # bounded and smaller than Deep Verify's 8000 (audit S 8)
+# Output ceiling per call. Was 4000 (audit S 8). The first long real package
+# (2B OPCO ITB, 189 pages, Phoenix runs 21/22, 2026-11-18) showed dense
+# contract text producing ~0.5 output tokens per input character in the
+# commercial pass: 20 of 66 calls hit 4000 and even the split halves
+# (~11-15k chars) truncated, leaving 7 passages per run only partly read
+# and spending ~400 s of model time on truncated output that was then
+# re-extracted. 16000 fits a full 24k-char chunk at that density; only
+# generated tokens are billed, and the bounded split below remains for
+# anything that still exceeds it.
+FAST_MAX_OUTPUT_TOKENS = 16000
+# Chunks of one document are independent requests; up to this many run at
+# once (results are merged in document order, so the output is unchanged).
+# With max_document_concurrency=2 tasks that is at most 6 calls in flight.
+FAST_CHUNK_CONCURRENCY = 3
 FAST_MAX_CHUNK_CHARS = 24000                      # larger than Deep Verify's 12000: narrower schemas produce
                                                    # much less output per input character, so larger input
                                                    # chunks are safe without approaching the output ceiling --
@@ -986,6 +999,7 @@ def _call_fast_chunk(route: str, filename: str, chunk_text: str, api_key: str, c
             "input_tokens": None, "output_tokens": None, "stop_reason": None,
             "parse_status": None, "error": f"{type(exc).__name__}: {exc}",
             "parent_call_index": parent_call_index, "split_trigger_reason": split_trigger_reason,
+            "pages": _chunk_pages(chunk_text),
             # Phase 5E.1: this row exists BECAUSE execute_messages_create()
             # was actually invoked and raised -- a genuine attempted (and
             # failed) provider call, never bookkeeping, regardless of its
@@ -1006,9 +1020,22 @@ def _call_fast_chunk(route: str, filename: str, chunk_text: str, api_key: str, c
         "stop_reason": getattr(response, "stop_reason", None),
         "parse_status": parse_status, "error": None,
         "parent_call_index": parent_call_index, "split_trigger_reason": split_trigger_reason,
-        "provider_call_attempted": True,
+        "provider_call_attempted": True, "pages": _chunk_pages(chunk_text),
     })
     return data if isinstance(data, dict) else {}
+
+
+_PAGE_MARKER = re.compile(r"\[\[SOURCE:[^\]|]*\|\s*PAGE:\s*(\d+)\s*\]\]")
+
+
+def _chunk_pages(chunk_text: str) -> str | None:
+    """'52-54' for a chunk whose source markers name pages 52..54 (None when
+    the chunk carries no page marker, e.g. a workbook sheet)."""
+    pages = [int(p) for p in _PAGE_MARKER.findall(chunk_text or "")]
+    if not pages:
+        return None
+    lo, hi = min(pages), max(pages)
+    return str(lo) if lo == hi else f"{lo}-{hi}"
 
 
 def _split_chunk_for_recovery(chunk_text: str) -> list[str]:
@@ -1064,56 +1091,89 @@ def extract_fast_document(filename: str, doc_text: str, api_key: str, *, route: 
     route = route or route_document(filename)
     chunks = _deep_chunk_document_text(doc_text, max_chunk_chars=FAST_MAX_CHUNK_CHARS)
     result = _empty_result(route)
-    for chunk in chunks:
-        call_index = len(telemetry)
-        data = _call_fast_chunk(route, filename, chunk, api_key, client, call_index, telemetry)
-        stop_reason = telemetry[call_index].get("stop_reason")
-        _merge_chunk_result(result, data)
 
-        if stop_reason == "max_tokens":
-            subchunks = _split_chunk_for_recovery(chunk)
-            if len(subchunks) < 2:
+    def process(chunk: str) -> tuple[list, list]:
+        local: list = []
+        return _extract_one_chunk(route, filename, chunk, api_key, client, local), local
+
+    if len(chunks) > 1 and FAST_CHUNK_CONCURRENCY > 1:
+        with ThreadPoolExecutor(max_workers=min(FAST_CHUNK_CONCURRENCY, len(chunks))) as pool:
+            outcomes = list(pool.map(process, chunks))
+    else:
+        outcomes = [process(c) for c in chunks]
+    # Merge strictly in document order and renumber telemetry as if the
+    # chunks had run one after another, so the result and the call indexes
+    # are those of the sequential run.
+    for datas, local in outcomes:
+        base = len(telemetry)
+        for row in local:
+            row["call_index"] += base
+            if row.get("parent_call_index") is not None:
+                row["parent_call_index"] += base
+            telemetry.append(row)
+        for data in datas:
+            _merge_chunk_result(result, data)
+    return result
+
+
+def _extract_one_chunk(route: str, filename: str, chunk: str, api_key: str, client,
+                       telemetry: list) -> list[dict]:
+    """The per-chunk body of extract_fast_document (logic unchanged): the
+    initial call, then bounded split recovery on max_tokens, or one targeted
+    retry on a missing required field. Returns every call's parsed data in
+    the order it is merged."""
+    datas: list[dict] = []
+    call_index = len(telemetry)
+    data = _call_fast_chunk(route, filename, chunk, api_key, client, call_index, telemetry)
+    stop_reason = telemetry[call_index].get("stop_reason")
+    datas.append(data)
+
+    if stop_reason == "max_tokens":
+        subchunks = _split_chunk_for_recovery(chunk)
+        if len(subchunks) < 2:
+            telemetry.append({
+                "call_index": len(telemetry), "call_kind": "split_exhausted",
+                "filename": filename, "route": route, "model": None,
+                "request_bytes": 0, "chunk_chars": len(chunk),
+                "call_started_at": None, "call_ended_at": None, "latency_seconds": 0.0,
+                "input_tokens": None, "output_tokens": None, "stop_reason": None,
+                "parse_status": "BOUNDED_SPLIT_EXHAUSTED", "error": None,
+                "parent_call_index": call_index, "split_trigger_reason": "max_tokens",
+                "pages": _chunk_pages(chunk),
+                # Phase 5E.1: pure bookkeeping -- no provider request was
+                # ever made for this row (recovery gave up before trying).
+                "provider_call_attempted": False,
+            })
+            return datas
+        for label, sub in zip(("split_recovery_a", "split_recovery_b"), subchunks):
+            sub_index = len(telemetry)
+            sub_data = _call_fast_chunk(route, filename, sub, api_key, client, sub_index,
+                                        telemetry, call_kind=label,
+                                        parent_call_index=call_index,
+                                        split_trigger_reason="max_tokens")
+            datas.append(sub_data)
+            if telemetry[sub_index].get("stop_reason") == "max_tokens":
+                # No silent recursion: a split subcall that itself
+                # truncates is NOT split again.
                 telemetry.append({
                     "call_index": len(telemetry), "call_kind": "split_exhausted",
                     "filename": filename, "route": route, "model": None,
-                    "request_bytes": 0, "chunk_chars": len(chunk),
+                    "request_bytes": 0, "chunk_chars": len(sub),
                     "call_started_at": None, "call_ended_at": None, "latency_seconds": 0.0,
                     "input_tokens": None, "output_tokens": None, "stop_reason": None,
                     "parse_status": "BOUNDED_SPLIT_EXHAUSTED", "error": None,
-                    "parent_call_index": call_index, "split_trigger_reason": "max_tokens",
-                    # Phase 5E.1: pure bookkeeping -- no provider request was
-                    # ever made for this row (recovery gave up before trying).
+                    "parent_call_index": sub_index, "split_trigger_reason": "max_tokens",
+                    "pages": _chunk_pages(sub),
                     "provider_call_attempted": False,
                 })
-                continue
-            for label, sub in zip(("split_recovery_a", "split_recovery_b"), subchunks):
-                sub_index = len(telemetry)
-                sub_data = _call_fast_chunk(route, filename, sub, api_key, client, sub_index,
-                                            telemetry, call_kind=label,
-                                            parent_call_index=call_index,
-                                            split_trigger_reason="max_tokens")
-                _merge_chunk_result(result, sub_data)
-                if telemetry[sub_index].get("stop_reason") == "max_tokens":
-                    # No silent recursion: a split subcall that itself
-                    # truncates is NOT split again.
-                    telemetry.append({
-                        "call_index": len(telemetry), "call_kind": "split_exhausted",
-                        "filename": filename, "route": route, "model": None,
-                        "request_bytes": 0, "chunk_chars": len(sub),
-                        "call_started_at": None, "call_ended_at": None, "latency_seconds": 0.0,
-                        "input_tokens": None, "output_tokens": None, "stop_reason": None,
-                        "parse_status": "BOUNDED_SPLIT_EXHAUSTED", "error": None,
-                        "parent_call_index": sub_index, "split_trigger_reason": "max_tokens",
-                        "provider_call_attempted": False,
-                    })
-        elif not _has_required_fields(route, data):
-            # v1/v2's original bounded single same-content retry -- unrelated
-            # to truncation, unchanged.
-            retry_index = len(telemetry)
-            retry_data = _call_fast_chunk(route, filename, chunk, api_key, client, retry_index,
-                                          telemetry, call_kind="targeted_retry")
-            _merge_chunk_result(result, retry_data)
-    return result
+    elif not _has_required_fields(route, data):
+        # v1/v2's original bounded single same-content retry -- unrelated
+        # to truncation, unchanged.
+        retry_index = len(telemetry)
+        retry_data = _call_fast_chunk(route, filename, chunk, api_key, client, retry_index,
+                                      telemetry, call_kind="targeted_retry")
+        datas.append(retry_data)
+    return datas
 
 
 def extract_fast_batch(filenames: list[str], texts_by_name: dict[str, str], api_key: str,
@@ -1843,6 +1903,24 @@ def _telemetry_audit_summary(telemetry: list, wall_seconds: float) -> dict:
     usage_reported = [c for c in provider_entries
                       if c.get("input_tokens") is not None or c.get("output_tokens") is not None]
 
+    # Passages whose content may be missing from the result: a split
+    # subchunk that still hit the output ceiling, or a chunk none of whose
+    # responses could be read. Pages come from the chunk's source markers.
+    coverage_gaps = []
+    for c in entries:
+        if c.get("parse_status") == "BOUNDED_SPLIT_EXHAUSTED":
+            coverage_gaps.append({"filename": c.get("filename"), "route": c.get("route"),
+                                  "pages": c.get("pages"), "reason": "OUTPUT_LIMIT"})
+    readable = {(c.get("filename"), c.get("route"), c.get("pages")) for c in provider_entries
+                if c.get("parse_status") not in ("FAILED", None) and c.get("error") is None}
+    for c in provider_entries:
+        key = (c.get("filename"), c.get("route"), c.get("pages"))
+        if (c.get("parse_status") == "FAILED" or c.get("error")) and key not in readable:
+            readable.add(key)
+            coverage_gaps.append({"filename": key[0], "route": key[1], "pages": key[2],
+                                  "reason": "UNREADABLE_RESPONSE" if c.get("parse_status") == "FAILED"
+                                  else "CALL_FAILED"})
+
     # Legacy metric, computed exactly as it always was -- never redefined.
     legacy_recovery_or_retry_calls = sum(
         1 for c in entries if c.get("call_kind") not in ("initial", "batch"))
@@ -1863,6 +1941,7 @@ def _telemetry_audit_summary(telemetry: list, wall_seconds: float) -> dict:
         "other_provider_calls": other_provider,
         "non_provider_bookkeeping_rows": len(bookkeeping_entries),
         "split_exhausted_rows": split_exhausted_rows,
+        "coverage_gaps": coverage_gaps,
         "unknown_provider_status_rows": len(unknown_status_entries),
         # -- token totals: actual reported usage only (instruction 6) --
         # a failed attempt contributes zero tokens but was still counted

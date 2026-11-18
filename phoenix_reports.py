@@ -187,7 +187,8 @@ def brief(text: str, n: int = 150) -> str:
 
 def doc_name(text: str) -> str:
     """'Updated CV - Highlighting relevant experience' -> 'Updated CV'."""
-    t = pdg.norm(text).rstrip(":.")
+    t = re.sub(r"[,;]?\s*(?:and|or)?$", "", pdg.norm(text).rstrip(":.,; ")).strip(" ,;")  # list-joining tails
+    t = re.sub(r'^["“](.+)["”]$', r"\1", t)
     for sep in (" - ", " – ", ": "):
         if sep in t and len(t.split(sep)[0]) >= 3:
             return t.split(sep)[0].strip()
@@ -360,6 +361,18 @@ def _is_subhead(text: str) -> bool:
     return len(t.split()) <= 6 and not re.search(r"[.:;,%]$", t) and not re.search(r"\d{2,}", t)
 
 
+_COLUMN_WORDS = {"ref", "no", "nr", "title", "description", "format", "deadline", "due", "date", "item", "qty",
+                 "quantity", "unit", "phase", "stage", "responsible", "party", "remarks", "deliverable",
+                 "deliverables", "output", "outputs", "required", "milestone", "submission", "s"}
+
+
+def _is_column_header(text: str) -> bool:
+    """A table's column-header row read as text ("Phase Ref.", "Deliverable
+    title") -- a layout label, not a deliverable or a document."""
+    words = re.findall(r"[a-z]+", text.lower())
+    return 0 < len(words) <= 4 and all(w in _COLUMN_WORDS for w in words)
+
+
 def _groups(items: list[dict]) -> list[dict]:
     """Items grouped under the document's own sub-headings (lead-ins dropped)."""
     groups: list[dict] = []
@@ -394,8 +407,28 @@ def location_kind(text: str) -> str:
 _LOCATION_LABEL = {"delivery": "Delivery location", "programme": "Programme locations",
                    "unspecified": "Location (as documented)"}
 
+_RECEIPT = re.compile(r"\b(bids?|proposals?|offers?|tenders?|quotations?|applications?)\b.{0,80}"
+                      r"\b(received|submitted|delivered|lodged)\b", re.I)
 _LOCATION = re.compile(r"\b(locations?|venues?|place of (performance|delivery)|delivered (in|at)|on-?site at)\b", re.I)
 _BUDGET = re.compile(r"\b(budget|ceiling|not (to )?exceed|maximum (contract |total )?(value|amount)|estimated (contract )?value)\b", re.I)
+# A budget statement names a budget/ceiling AND states an amount; "shall not
+# exceed the Contract Price" in a liability or damages clause is a cap on
+# liability, not the buyer's budget.
+_AMOUNT = re.compile(r"(?:\b(?:USD|US\$|EUR|GBP|CAD|AUD|AED|SAR|QAR|KWD|OMR|BHD|EGP|JOD|LBP|SDG|CHF)|[$€£])[:\s]{0,2}\d"
+                     r"|\d[\d,.]*\s?(?:USD|EUR|GBP|CAD|AUD|AED|SAR|dollars|euros)\b", re.I)
+# Securities the bidder must provide (bid bond, performance guarantee, retention):
+# commercial obligations -- reported with the commercial terms, never as qualifications.
+_SECURITY = re.compile(r"\b(bid bond|bid security|tender (bond|security)|performance (bond|security|guarantee)|"
+                       r"bank guarantee|retention( money)?|parent company guarantee|advance payment (bond|guarantee))\b", re.I)
+_PERCENT = re.compile(r"\d+(?:\.\d+)?\s?%|\bpercent\b", re.I)
+def _states_security(text: str) -> bool:
+    """A security named together with its own amount or percentage (within a
+    short span) -- not a payment milestone that merely mentions a guarantee."""
+    vals = [m.start() for rx in (_AMOUNT, _PERCENT) for m in rx.finditer(text)]
+    return any(abs(m.start() - v) <= 90 for m in _SECURITY.finditer(text) for v in vals)
+
+
+_NOT_BUDGET = re.compile(r"\b(liab\w*|damages|indemn\w*|penalt\w*|insurance|guarantee|bond|security)\b", re.I)
 _PRICING = re.compile(r"\b(rate|price|pricing|cost|quotation|quote|currency|vat|tax|inclusive|lump.?sum|fee)\b", re.I)
 _COST_BEARING = re.compile(r"(borne by|charged (on|to) the (service provider|contractor|supplier|bidder|consultant)|"
                            r"at the (contractor|supplier|consultant|bidder)'?s? (own )?(cost|expense)|"
@@ -437,6 +470,12 @@ def _quantities(docs, exclude: list[str]) -> list[dict]:
     return out[:5]
 
 
+_DOC_NOUN = re.compile(r"\b(forms?|certificates?|letters?|proposals?|cv|cvs|resumes?|profiles?|statements?|"
+                       r"declarations?|licen[cs]es?|registrations?|bonds?|guarantees?|copy|copies|quotations?|"
+                       r"offers?|plans?|methodology|portfolios?|references?|evidence|documents?|"
+                       r"schedules?|samples?|undertakings?|affidavits?|pricing|price)\b", re.I)
+
+
 def _required_docs(secs: dict) -> list[dict]:
     """Submission documents as the buyer numbered them: name + its own
     sub-points (e.g. Quotation -> rate basis). Method, deadline, subject-line
@@ -460,6 +499,8 @@ def _required_docs(secs: dict) -> list[dict]:
         for it in s["items"]:
             if pdg.EMAIL.search(it["text"]) or skip.search(it["text"]) or it["text"].endswith(":"):
                 continue
+            if not _DOC_NOUN.search(it["text"]):
+                continue  # "General Submission Requirements" is a heading, not a document
             if len(it["text"]) <= 120:
                 out.append({"name": doc_name(it["text"]), "text": it["text"], "details": [],
                             **{k: it.get(k) for k in ("doc", "page", "sheet")}})
@@ -469,8 +510,11 @@ def _required_docs(secs: dict) -> list[dict]:
 def build_facts(*, bid: dict, fast_result: dict, documents: list[tuple[str, str]],
                 files: list[tuple[str, bytes]] | None = None,
                 previous_result: dict | None = None, previous_doc_names: list[str] | None = None,
-                analysis_date: str | None = None, run_id: int | None = None) -> dict:
-    """Verified fact model shared by both reports."""
+                analysis_date: str | None = None, run_id: int | None = None,
+                coverage: dict | None = None) -> dict:
+    """Verified fact model shared by both reports. `coverage` is the FAST
+    run's telemetry summary (coverage_gaps / split_exhausted_rows): passages
+    the extraction could not read in full are disclosed, never hidden."""
     import bid_identity
     import source_translation as sx
     import workbook_intelligence as wbi
@@ -516,7 +560,9 @@ def build_facts(*, bid: dict, fast_result: dict, documents: list[tuple[str, str]
     reference = merged.get("file_number") or bid.get("file_number")
     if reference and not pdg.corpus_contains(docs, str(reference)):
         reference = bid.get("file_number") or None
-    location = next((s for s in pdg.find_sentences(docs, _LOCATION.pattern, 3) if len(s["text"]) <= 180), None)
+    # "received ... at the proper location" is about where bids arrive, not where the work happens
+    location = next((s for s in pdg.find_sentences(docs, _LOCATION.pattern, 3) if len(s["text"]) <= 180
+                     and not _RECEIPT.search(s["text"]) and not s["text"].isupper()), None)  # not a table header
     if location:
         location = dict(location, kind=location_kind(location["text"]))
 
@@ -540,7 +586,16 @@ def build_facts(*, bid: dict, fast_result: dict, documents: list[tuple[str, str]
             ref = _ref_from(q.get("source_refs"))
             if "scope" in (q.get("description") or "").lower() and _verified(docs, ref["excerpt"]):
                 scope.append({"text": ref["excerpt"], **ref})
-    deliverables = [it for it in _items(secs, "deliverables", drop_leadin=True) if not _is_subhead(it["text"])]
+    def _deliverable(it):
+        return (it.get("listed") or not _is_subhead(it["text"])) and not _is_column_header(it["text"])
+    deliverables = [it for it in _items(secs, "deliverables", drop_leadin=True) if _deliverable(it)]
+    # The first deliverables list is the one the snapshot summarises; long
+    # packages repeat deliverables per phase with full descriptions (kept for
+    # the Assessment).
+    primary = next(([it for it in s["items"] if _deliverable(it)
+                     and not (it["text"].endswith(":") and len(it["text"]) < 120)]
+                    for s in secs.get("deliverables") or []
+                    if any(_deliverable(it) for it in s["items"])), [])
     timeline = _items(secs, "timeline")
     qualifications = [it for it in _items(secs, "qualifications", drop_leadin=True) if not _is_subhead(it["text"])]
     general = _items(secs, "general", drop_leadin=True)
@@ -578,8 +633,10 @@ def build_facts(*, bid: dict, fast_result: dict, documents: list[tuple[str, str]
         if _PRICING.search(d["name"]):
             pricing += d["details"]
     pricing += [it for it in _items(secs, "pricing", drop_leadin=True) if it not in pricing and not _is_subhead(it["text"])]
-    budget = pdg.find_sentences(docs, _BUDGET.pattern, 2)
+    budget = [s for s in pdg.located_sentences(docs) if _BUDGET.search(s["text"]) and _AMOUNT.search(s["text"])
+              and not _NOT_BUDGET.search(s["text"])][:2]
     payment = _items(secs, "payment", drop_leadin=True)
+    securities = [s for s in pdg.located_sentences(docs) if len(s["text"]) <= 400 and _states_security(s["text"])][:3]
     clauses = []
     for cc in r.get("commercial_clauses") or []:
         ref = _ref_from(cc.get("source_refs"))
@@ -639,13 +696,14 @@ def build_facts(*, bid: dict, fast_result: dict, documents: list[tuple[str, str]
         "identity": {"title": title, "organization": org, "reference": reference, "location": location},
         "deadline": deadline, "submission": sub, "required_docs": required, "key_dates": key_dates,
         "overview": overview, "synopsis": ov_sents[:2], "about": about, "scope": scope,
-        "deliverables": deliverables, "timeline": timeline, "qualifications": qualifications, "general": general,
+        "deliverables": deliverables, "deliverables_primary": primary, "timeline": timeline, "qualifications": qualifications, "general": general,
         "quantities": quantities, "criteria": criteria, "eval_text": eval_text,
-        "pricing": pricing, "budget": budget, "payment": payment, "clauses": clauses,
+        "pricing": pricing, "budget": budget, "securities": securities, "payment": payment, "clauses": clauses,
         "changes": changes, "workbooks": workbooks, "matters": matters,
         "documents": doc_basis, "analysis_date": analysis_date or date.today().isoformat(),
         "languages": r.get("source_languages") or (sx.document_languages(originals) if bilingual else {}),
         "translation_note": sx.payload_summary_line(translations) if bilingual else None,
+        "coverage_note": coverage_limitation(coverage),
     }
     if bilingual:
         # Original Arabic evidence for every located English statement, for
@@ -751,7 +809,8 @@ def _kv(rows: list[tuple[str, str]]) -> Table:
 
 
 def _label(kind: str) -> str:
-    color = {"NEW": GREEN, "UPDATED": AMBER, "CONFLICT": RED, "UNVERIFIED": AMBER}.get(kind, "#6B675F")
+    color = {"NEW": GREEN, "UPDATED": AMBER, "CONFLICT": RED, "UNVERIFIED": AMBER,
+             "COVERAGE LIMITATION": AMBER}.get(kind, "#6B675F")
     text = {"NEW": "NEW INFORMATION", "UPDATED": "UPDATED INFORMATION", "CONFLICT": "UNRESOLVED CONFLICT",
             "UNVERIFIED": "UNVERIFIED (OCR)"}.get(kind, kind)
     return f'<font name="BodyMed" color="{color}" size="7.2">{text}</font>'
@@ -863,13 +922,23 @@ def _method_text(sub: dict) -> str | None:
     if not (sub.get("channel") or sub.get("method_sentences")):
         return None
     ms = (sub.get("method_sentences") or [None])[0]
-    if sub.get("emails"):
+    if sub.get("emails") and sub.get("channel") == "Email":
         # Referenced to the sentence that states the address itself.
         ms = sub["emails"][0].get("sentence") or ms
         val = f"<b>{esc(sub.get('channel') or 'Email')}</b> to " + ", ".join(esc(e["email"]) for e in sub["emails"])
     else:
         val = f"<b>{esc(sub.get('channel') or 'As instructed')}</b>" + (f" — {esc(brief(ms['text'], 160))}" if ms else "")
     return val + _rt(ms)
+
+
+def _contact_text(sub: dict) -> str | None:
+    """E-mail addresses printed as contact details (not as the place the offer
+    is sent), so they are never mistaken for the submission method."""
+    cs = [c for c in sub.get("contact_emails") or [] if c["email"].lower() not in
+          {e["email"].lower() for e in sub.get("emails") or []}]
+    if not cs:
+        return None
+    return ", ".join(esc(c["email"]) for c in cs) + _rt(cs[0].get("sentence") or cs[0])
 
 
 def _research_status_line(research: dict | None, context: list[str] | None = None) -> str:
@@ -880,6 +949,34 @@ def _research_status_line(research: dict | None, context: list[str] | None = Non
     return {"RUNNING": "In progress when this report was generated",
             "FAILED": "Attempted; did not complete",
             "SKIPPED": "Not run — buyer organisation not identified"}.get(state, "Not yet run for this analysis")
+
+
+def coverage_limitation(summary: dict | None) -> str | None:
+    """Plain-language statement of the passages FAST could not read in full,
+    from a run's telemetry summary; None when the whole package was read.
+    Runs analysed before page ranges were recorded report the count only."""
+    s = summary or {}
+    gaps = [g for g in s.get("coverage_gaps") or [] if isinstance(g, dict)]
+    count = len(gaps) or int(s.get("split_exhausted_rows") or 0)
+    if not count:
+        return None
+
+    def first_page(p):
+        try:
+            return int(str(p).split("-")[0])
+        except ValueError:
+            return 10 ** 6
+    pages = sorted({str(g["pages"]) for g in gaps if g.get("pages")}, key=first_page)
+    docs = sorted({g.get("filename") for g in gaps if g.get("filename")})
+    where = ""
+    if pages:
+        where = f" (page{'s' if len(pages) > 1 or '-' in pages[0] else ''} {', '.join(pages)}"
+        where += f" of {docs[0]})" if len(docs) == 1 else ")"
+    elif not gaps:
+        where = " (the pages concerned were not recorded for this analysis)"
+    return (f"FAST could not read {count} passage{'s' if count != 1 else ''} of the source in full{where}. "
+            f"Requirements, contract conditions or dates on those pages may be missing from what FAST extracted; "
+            f"check those pages in the documents before relying on anything being absent.")
 
 
 def _basis_note(f: dict, extra: str = "") -> Paragraph:
@@ -960,10 +1057,14 @@ def report_filename(f: dict, kind: str) -> str:
     return f"{key}_{'Opportunity_Snapshot' if kind == SNAPSHOT else 'Bid_Opportunity_Assessment'}.pdf"
 
 
+_SNAPSHOT_SCOPE_GROUPS = 6  # the snapshot shows the first scope topics; the Assessment lists them all
+
+
 def _scope_blocks(f: dict, shown: _Shown, *, detailed: bool) -> list:
     """Scope as the buyer's own topic labels (FAST) or one line per item (FULL)."""
     out = []
-    for g in _groups(f["scope"]):
+    groups = _groups(f["scope"])
+    for g in groups if detailed else groups[:_SNAPSHOT_SCOPE_GROUPS]:
         line = None if detailed else _topic_line(g, shown)
         if line is not None:
             out.append(line)
@@ -971,6 +1072,9 @@ def _scope_blocks(f: dict, shown: _Shown, *, detailed: bool) -> list:
         if g["heading"]:
             out.append(Paragraph(f"<i>{esc(g['heading'])}</i>", _st["body"]))
         out += _lines(g["items"], shown, n=160 if detailed else 120, limit=None if detailed else 5)
+    if not detailed and len(groups) > _SNAPSHOT_SCOPE_GROUPS:
+        out.append(Paragraph(f"{len(groups) - _SNAPSHOT_SCOPE_GROUPS} further scope topics are set out in the "
+                             f"documents and listed in the Bid Opportunity Assessment.", _st["note"]))
     return out
 
 
@@ -990,10 +1094,15 @@ def _req_table(pairs: list[tuple[str | None, dict]], shown: _Shown, *, n: int) -
     return [_table(["Area", "Requirement (summary)", "Source"], rows, [BODY_W * 0.25, BODY_W * 0.62, BODY_W * 0.13])]
 
 
-def _deliverables_block(f: dict, shown: _Shown) -> list:
-    items = [it for it in f["deliverables"] if not shown.seen(it["text"])]
+def _deliverables_block(f: dict, shown: _Shown, *, primary: bool = False) -> list:
+    source = f.get("deliverables_primary") if primary and f.get("deliverables_primary") else f["deliverables"]
+    items = [it for it in source if not shown.seen(it["text"])]
     if not items:
         return []
+    if primary and len(source) < len(f["deliverables"]):
+        return _deliverables_block(dict(f, deliverables=source), shown) + [Paragraph(
+            "Deliverables are described in further detail elsewhere in the documents; the Bid Opportunity "
+            "Assessment lists them.", _st["note"])]
     if all(len(it["text"]) <= 90 for it in items):
         shown.add(*[it["text"] for it in items])
         txt = "; ".join(it["text"].rstrip(".") for it in items)
@@ -1038,13 +1147,16 @@ def render_snapshot(f: dict) -> dict:
 
     # 1. Opportunity at a Glance
     section("Opportunity at a Glance", [_kv(_glance_rows(f, shown, synopsis_sentences=1))])
+    if f.get("coverage_note"):
+        story.append(Paragraph(f'{_label("COVERAGE LIMITATION")} {esc(f["coverage_note"])}', _st["note"]))
+        story.append(Spacer(1, 4))
 
     # 2. Scope and Delivery Essentials
     blocks = []
     sc = _scope_blocks(f, shown, detailed=False)
     if sc:
         blocks += _headed("Services", sc)
-    dv = _deliverables_block(f, shown)
+    dv = _deliverables_block(f, shown, primary=True)
     if dv:
         blocks += _headed("Deliverables", dv)
     qb = _quantity_block(f, shown)
@@ -1081,6 +1193,10 @@ def render_snapshot(f: dict) -> dict:
         if not shown.seen(b["text"]):
             shown.add(b["text"])
             rows.append(("Budget (as stated)", esc(brief(b["text"], 170)) + _rt(b)))
+    secs_ = [x for x in f.get("securities") or [] if not shown.seen(x["text"])]
+    if secs_:
+        shown.add(*[x["text"] for x in secs_])
+        rows.append(("Securities and guarantees", "<br/>".join(esc(brief(x["text"], 170)) + _rt(x) for x in secs_)))
     if f["payment"]:
         shown.add(*[p["text"] for p in f["payment"]])
         rows.append(("Payment", "<br/>".join(esc(brief(p["text"], 230)) + _rt(p) for p in f["payment"][:2])))
@@ -1089,6 +1205,8 @@ def render_snapshot(f: dict) -> dict:
     mt = _method_text(f["submission"])
     if mt:
         rows.append(("Submission method", mt))
+    if _contact_text(f["submission"]):
+        rows.append(("Contact e-mail (as printed)", _contact_text(f["submission"])))
     if _subject_text(f["submission"]):
         rows.append(("Subject line", esc(_subject_text(f["submission"])) + _rt(f["submission"]["subject_rule"])))
     if _late_text(f["submission"]):
@@ -1222,6 +1340,9 @@ def render_assessment(f: dict, *, full_status: str | None = None, research: dict
     about_ctx = [(sentences_of(it["text"]) or [it["text"]])[0] for it in f["about"]][:2]
     rows.append(("External buyer research", esc(_research_status_line(research, about_ctx))))
     section("Executive Intelligence Summary", [_kv(rows)])
+    if f.get("coverage_note"):
+        story.append(Paragraph(f'{_label("COVERAGE LIMITATION")} {esc(f["coverage_note"])}', _st["note"]))
+        story.append(Spacer(1, 4))
 
     # 2. Opportunity and Delivery Requirements
     blocks = []
@@ -1276,6 +1397,9 @@ def render_assessment(f: dict, *, full_status: str | None = None, research: dict
     bu = _lines(f["budget"], shown, n=180)
     if bu:
         blocks += _headed("Budget (as stated)", bu)
+    se = _lines(f.get("securities") or [], shown, n=200)
+    if se:
+        blocks += _headed("Securities and guarantees", se)
     pa = _lines(f["payment"], shown, n=240, limit=3)
     if pa:
         blocks += _headed("Payment terms", pa)
@@ -1310,6 +1434,10 @@ def render_assessment(f: dict, *, full_status: str | None = None, research: dict
         rows.append(["Submission method", mt.split(' <font size="7"')[0],
                      Paragraph(esc(ref_text(((sub.get("emails") or [{}])[0].get("sentence"))
                                             or (sub.get("method_sentences") or [None])[0])), _st["cell_s"])])
+    if _contact_text(sub):
+        cs = _contact_text(sub)
+        rows.append(["Contact e-mail (as printed)", cs.split(' <font size="7"')[0],
+                     Paragraph(esc(ref_text(sub["contact_emails"][0].get("sentence"))), _st["cell_s"])])
     if _subject_text(sub):
         rows.append(["Subject line", esc(_subject_text(sub)), Paragraph(esc(ref_text(sub["subject_rule"])), _st["cell_s"])])
     if _late_text(sub):
