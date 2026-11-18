@@ -29,6 +29,7 @@ Zero model calls. Pure functions over persisted data + document text.
 """
 from __future__ import annotations
 
+import copy
 import io
 import re
 import threading
@@ -38,6 +39,7 @@ from xml.sax.saxutils import escape as _xml_escape
 from reportlab.lib.colors import HexColor
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import inch
+from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import (
     BaseDocTemplate, Frame, KeepTogether, PageTemplate, Paragraph as _RLParagraph, Spacer, Table,
     TableStyle,
@@ -1092,19 +1094,77 @@ def _on_page(label):
 
 
 def _build(story: list, label: str, f: dict) -> bytes:
-    buf = io.BytesIO()
     ident = f["identity"]
     header = " · ".join(x for x in (ident.get("organization"), ident.get("reference")) if x)
-    doc = BaseDocTemplate(buf, pagesize=base.LETTER, leftMargin=MARGIN, rightMargin=MARGIN,
-                          topMargin=0.6 * inch, bottomMargin=0.8 * inch,
-                          title=latin_only(f"{label.title()} — {ident.get('title') or 'Opportunity'}"),
-                          author="Phoenix Bid Intelligence", invariant=1)
-    doc._px_header = header
-    doc.addPageTemplates([PageTemplate(id="Body", frames=[Frame(
-        MARGIN, 0.8 * inch, BODY_W, PAGE_H - 1.4 * inch, id="body", leftPadding=0, rightPadding=0,
-        topPadding=0, bottomPadding=0)], onPage=_on_page(label))])
-    doc.build(story)
-    return buf.getvalue()
+    title = latin_only(f"{label.title()} — {ident.get('title') or 'Opportunity'}")
+
+    def render(flowables, bottom: float = 0.8) -> tuple[bytes, int]:
+        buf = io.BytesIO()
+        doc = BaseDocTemplate(buf, pagesize=base.LETTER, leftMargin=MARGIN, rightMargin=MARGIN,
+                              topMargin=0.6 * inch, bottomMargin=bottom * inch, title=title,
+                              author="Phoenix Bid Intelligence", invariant=1)
+        doc._px_header = header
+        doc.addPageTemplates([PageTemplate(id="Body", frames=[Frame(
+            MARGIN, bottom * inch, BODY_W, PAGE_H - (0.6 + bottom) * inch, id="body", leftPadding=0,
+            rightPadding=0, topPadding=0, bottomPadding=0)], onPage=_on_page(label))])
+        doc.build(copy.deepcopy(list(flowables)))  # (a build mutates its flowables)
+        return buf.getvalue(), doc.page
+
+    out, pages = render(story)
+    # The closing notes: the trailing note paragraphs (disclaimer, document basis).
+    n = len(story)
+    while n and (isinstance(story[n - 1], Spacer) or _compact_closing(story[n - 1]) is not None):
+        n -= 1
+    body, closing = list(story[:n]), [x for x in story[n:] if not isinstance(x, Spacer)]
+    if closing and body and pages > 1 and render(body)[1] < pages:
+        # The closing notes alone ran onto a final page. Set them compactly
+        # (without the space before them); if they still do not fit, keep
+        # them together with the last content block, so the final page
+        # never holds the notes alone.
+        compact = [Spacer(1, 2)] + [_compact_closing(x) for x in closing]
+        out2, pages2 = render(body + compact)
+        if pages2 < pages:
+            out = out2
+        else:
+            out = render(_with_closing_kept(body, closing))[0]
+    return out
+
+
+def _with_closing_kept(body: list, closing: list) -> list:
+    """The story with the closing notes kept together with the end of the
+    last content block, so the final page never holds the notes alone. A
+    last table taller than the space left is split, its final rows moving
+    to the next page with the notes."""
+    frame_h = PAGE_H - 1.4 * inch
+    scratch = Canvas(io.BytesIO(), pagesize=base.LETTER)
+
+    def height(items) -> float:
+        total = 0.0
+        for x in copy.deepcopy(list(items)):
+            x.canv = scratch  # (KeepTogether measures its content on a canvas)
+            total += x.wrap(BODY_W, frame_h)[1]
+        return total
+
+    last = body[-1]
+    items = list(getattr(last, "_content", None) or [last]) if isinstance(last, KeepTogether) else [last]
+    notes = [Spacer(1, 6)] + closing
+    if isinstance(items[-1], Table):
+        table = copy.deepcopy(items[-1])
+        h = table.wrap(BODY_W, frame_h)[1]
+        parts = table.split(BODY_W, max(1.0, h - height(notes) - 24))
+        if len(parts) == 2:
+            lead = items[:-1] + [parts[0]]
+            return body[:-1] + [KeepTogether(lead) if len(lead) > 1 else lead[0], KeepTogether([parts[1]] + notes)]
+    return body[:-1] + [KeepTogether(items + notes)]
+
+
+_CLOSING_COMPACT = ParagraphStyle("px_note_compact", parent=_st["note"], fontSize=7.0, leading=8.6)
+
+
+def _compact_closing(flowable):
+    if not isinstance(flowable, _RLParagraph) or getattr(flowable.style, "name", "") != _st["note"].name:
+        return None
+    return _RLParagraph(flowable.text, _CLOSING_COMPACT)
 
 
 def _emit(story: list, head: list, blocks: list) -> bool:

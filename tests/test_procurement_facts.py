@@ -398,3 +398,65 @@ def test_fast_facts_pass_stores_the_verified_reading_for_full_analysis(monkeypat
     payload = svc._start_report_facts(DOCS, "key", 1, 2, None).result(timeout=30)
     assert payload["verified"]["assignment"]["category"] == "ASSIGNMENT"
     assert len(payload["verified"]["facts"]) == len(GOOD) - 1
+
+
+@pytest.mark.parametrize("claim,evidence", [
+    # a possible consequence stated as certain / automatic
+    ("Late guarantee triggers disqualification", "Failure to provide the guarantee may result in disqualification."),
+    ("Automatic rejection of unsigned offers", "Unsigned offers may be rejected."),
+    # an absolute the source does not state
+    ("Unlimited rework at no additional cost", "The consultant shall revise the report at no additional cost."),
+    ("Price alone will not decide the award", "The contract will be awarded on best value or on lowest price."),
+    # an approximate figure stated as exact
+    ("Site visits strictly capped at 3 days", "Site visits should last no more than about 3 days."),
+    ("Payment arrives 30 days after invoice", "Payment is made around 30 days after the invoice."),
+    # a possibility stated as a requirement or precondition
+    ("Award contingent on extra eligibility documents",
+     "The buyer may require additional documents from the shortlisted bidder before award."),
+    ("Bidders must attend an interview", "Shortlisted bidders may be asked to attend an interview."),
+    # an exclusivity the source does not state
+    ("Payment on written acceptance only", "Payment is made after written acceptance of each deliverable."),
+])
+def test_specialist_claims_may_not_be_stronger_than_their_evidence(claim, evidence):
+    assert pf.overstates(claim, evidence)
+
+
+@pytest.mark.parametrize("claim,evidence", [
+    ("Missing guarantee may lead to disqualification", "Failure to provide the guarantee may result in disqualification."),
+    ("Payment arrives about 30 days after invoice", "Payment is made around 30 days after the invoice."),
+    ("Revisions are at no additional cost", "The consultant shall revise the report at no additional cost."),
+    ("Two trainers are mandatory", "The provider is required to assign two trainers to every session."),
+    ("Buyer may require extra documents before award",
+     "The buyer may require additional documents from the shortlisted bidder before award."),
+    ("Advance payment conditional on a guarantee",
+     "An advance payment may be made only against an advance payment guarantee."),
+])
+def test_faithful_specialist_claims_pass(claim, evidence):
+    assert pf.overstates(claim, evidence) is None
+
+
+def test_overstated_title_withholds_the_finding_and_unsupported_detail_is_dropped():
+    idx = pf.fact_index(_verified())
+    key = next(k for k, v in idx.items() if v["category"] == "PAYMENT")
+    sel = pf.specialist_findings([
+        _finding("RISK", "Advance payment is automatic", ids=(key,)),
+        _finding("RISK", "Advance payment depends on a guarantee",
+                 "An advance payment of 15% may be made only against an advance payment guarantee. "
+                 "The buyer probably has a tight cash position and expects bidders to finance the survey.",
+                 ids=(key,)),
+    ], idx)
+    assert [s["title"] for s in sel["shown"]] == ["Advance payment depends on a guarantee"]
+    assert sel["shown"][0]["detail"] == "An advance payment of 15% may be made only against an advance payment guarantee."
+    assert sel["withheld"] == {"stating more than the cited facts": 1}
+
+
+def test_closing_note_never_sits_alone_on_the_final_page(built):
+    """However the content falls, the last page carries content, not only the closing note."""
+    import pymupdf
+    f, _, _ = built
+    for n in range(0, 60, 3):
+        g = dict(f, scope=[dict(f["deliverables"][0], text=f"Survey task {i} of the trunk-main network, item {i}.")
+                           for i in range(n)])
+        doc = pymupdf.open(stream=pr.render_assessment(g, full_status="COMPLETE")["pdf"], filetype="pdf")
+        last = [b[4] for b in doc[-1].get_text("blocks") if b[4].strip() and not b[4].startswith("PHOENIX")]
+        assert not (doc.page_count > 1 and all(t.startswith(("Document basis", "bid.", "text.")) for t in last)), n

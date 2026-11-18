@@ -585,14 +585,74 @@ _CONSEQUENCE = re.compile(r"\b(?:disqualif\w*|reject\w*|exclu\w*|invalid\w*|term
                           r"dismiss\w*|ineligib\w*|void)\b", re.I)
 
 
-def _without_new_consequences(detail: str, evidence: str) -> str:
-    """The detail without any sentence that attaches a consequence
-    (disqualification, rejection, exclusion, termination, penalty ...) the
-    cited facts do not state."""
-    have = {m.group(0).lower()[:6] for m in _CONSEQUENCE.finditer(evidence or "")}
-    keep = [s for s in re.split(r"(?<=[.!?])\s+", detail or "")
-            if all(m.group(0).lower()[:6] in have for m in _CONSEQUENCE.finditer(s))]
-    return " ".join(keep).strip()
+# Words that make a claim absolute. A finding may use one only if its cited
+# facts do ("unlimited", "automatic", "strictly", "alone" ...).
+_ABSOLUTE = re.compile(r"\b(?:automatic\w*|unlimited|limitless|unconditional\w*|strict\w*|always|never|alone|"
+                       r"solely|sole|exclusive\w*|absolute\w*|invariabl\w*|guaranteed|certain(?:ly)?|"
+                       r"no exceptions?|without exception|in all cases|hard|only)\b", re.I)
+# A requirement or precondition, and one the source only makes possible
+# ("may require", "may be asked to").
+_OBLIGATION = re.compile(r"\b(?:must|shall|mandatory|compulsory|required?|requires|obligat\w*|contingent|"
+                         r"conditional|prerequisite\w*)\b", re.I)
+_HEDGED_OBLIGATION = re.compile(r"\b(?:may|might|could|can)\s+(?:also\s+)?(?:be\s+)?"
+                                r"(?:requir\w*|request\w*|ask\w*|demand\w*|call\w* for)\b", re.I)
+_FIRM_OBLIGATION = re.compile(r"\b(?:must|shall|mandatory|compulsory|is required|are required|requires|"
+                              r"contingent|conditional|subject to|only (?:if|upon|after|against))\b", re.I)
+_HEDGE = re.compile(r"\b(?:may|might|could|can|possibl\w*|potential\w*|reserves?|discretion\w*|risk\w*|likely)\b",
+                    re.I)
+_APPROX = re.compile(r"\b(?:about|approximately|approx|around|roughly|some|nearly|almost|up to|no more than|"
+                     r"at most|not exceeding|maximum of)\b", re.I)
+_APPROX_NUMBER = re.compile(r"\b(?:about|approximately|approx\.?|around|roughly|some|nearly|almost|up to)\s+"
+                            r"(\d+(?:[.,]\d+)?)", re.I)
+
+
+def _sentences(text: str) -> list[str]:
+    return [x for x in re.split(r"(?<=[.!?;])\s+", text or "") if x.strip()]
+
+
+def overstates(claim: str, evidence: str) -> str | None:
+    """Why `claim` (one sentence of a specialist finding, or its title) says
+    more than its cited `evidence`, or None. It may not:
+    - add a consequence (disqualification, rejection, penalty ...) the facts do not state;
+    - state firmly a consequence the facts only make possible ("may result in");
+    - drop the approximation from a figure ("about 20 minutes" -> "20 minutes");
+    - state as a requirement or precondition what the facts only make possible ("may require");
+    - add an absolute ("unlimited", "automatic", "strictly", "alone", "only") the facts do not use;
+    - add a negation the facts do not contain."""
+    ev = evidence or ""
+    ev_sentences = _sentences(ev)
+    for m in _CONSEQUENCE.finditer(claim):
+        stem = m.group(0).lower()[:6]
+        holding = [s for s in ev_sentences if any(x.group(0).lower()[:6] == stem for x in _CONSEQUENCE.finditer(s))]
+        if not holding:
+            return "a consequence the facts do not state"
+        if all(_HEDGE.search(s) for s in holding) and not _HEDGE.search(claim):
+            return "a possible consequence stated as certain"
+    if (_OBLIGATION.search(claim) and not _HEDGE.search(claim) and _HEDGED_OBLIGATION.search(ev)
+            and not _FIRM_OBLIGATION.search(_HEDGED_OBLIGATION.sub(" ", ev))):
+        return "a possibility stated as a requirement"
+    approx = {m.group(1) for m in _APPROX_NUMBER.finditer(ev)}
+    if approx & _numbers(claim) and not _APPROX.search(claim):
+        return "an approximate figure stated as exact"
+    for m in _ABSOLUTE.finditer(claim):
+        if not re.search(r"\b" + re.escape(m.group(0).lower()[:5]), ev, re.I):
+            return "an absolute the facts do not state"
+    if _NEGATION.search(claim) and not _NEGATION.search(ev):
+        return "a negation the facts do not state"
+    return None
+
+
+#: A detail sentence is printed only if at least this share of its words
+#: come from the cited facts: the explanation stays tied to the evidence, and
+#: speculation or advice phrased as a requirement ("Bidders must ...") that
+#: the facts do not state is left out (the title carries the point).
+MIN_DETAIL_SUPPORT = 0.5
+
+
+def _without_overstatements(detail: str, evidence: str) -> str:
+    """The detail without any sentence that says more than the cited facts."""
+    return " ".join(s for s in _sentences(detail)
+                    if overstates(s, evidence) is None and _word_support(s, evidence) >= MIN_DETAIL_SUPPORT).strip()
 
 
 _ISO_DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
@@ -670,7 +730,10 @@ def specialist_findings(findings: list[dict] | None, index: dict[str, dict]) -> 
             continue
         evidence = " ".join(r.get("text", "") + " " + r.get("quote", "") for r in refs)
         if refs:
-            detail = _without_new_consequences(detail, evidence)
+            if overstates(title, evidence):
+                drop("stating more than the cited facts")
+                continue
+            detail = _without_overstatements(detail, evidence)
         claim = _iso_to_text(f"{title} {detail}")
         if refs and not _numbers(claim) <= (_numbers(evidence) | _numbers(pdg.fold(evidence))):
             drop("with a figure or date not in the cited facts")
