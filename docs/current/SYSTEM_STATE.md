@@ -44,6 +44,53 @@ implemented, not aspirational — it replaced an earlier flat, fragmented
 navigation (see `docs/BID_INTELLIGENCE_STREAMLINING_AUDIT.md` if the task
 needs that history).
 
+## Phoenix Beta FAST/FULL reporting baseline (2026-11-18)
+
+The Phoenix Beta reports are the FAST **Opportunity Snapshot** and the FULL
+**Bid Opportunity Assessment** (`phoenix_reports.py`, loaded by
+`phoenix_report_service.py`). Product rules are in
+`docs/product/BID_INTELLIGENCE_PRODUCT_BRIEF.md`.
+
+Release baseline:
+
+| | |
+|---|---|
+| Branch | `feature/super-admin-mvp` |
+| Commit | `ee003db` |
+| Image | `phoenix-beta-p0-facts-4` |
+| Environment | Phoenix Beta only, not operational |
+| Rollback container | `bid-intelligence-beta-prev-p0-facts-3` |
+| Tests | 4,007 pass; the 6 failures are the existing freeze checks in `test_check2b/2c/2d` |
+
+The incident record is `PHOENIX_BETA_P0_ANALYSIS_RELIABILITY_CLOSURE_REPORT.md`.
+
+- **Facts pass.** `procurement_facts.py` runs alongside FAST
+  (`analysis_service._start_report_facts`). It extracts procurement facts in
+  defined categories, each with verbatim quotes and page references, using
+  the same model as FAST. They are stored additively as `report_facts` in the
+  FAST snapshot (schema 1.4).
+- **Verification.** At report time, `procurement_facts.verify`
+  deterministically re-checks every fact against the source text. It checks
+  the quote's location, the statement's numbers, emails and qualifiers, and
+  that negations, conditions and alternatives are preserved. Facts that fail
+  are dropped. Statements the quote does not fully support are replaced by
+  the quote.
+- **Report modes.** Runs with verified facts render in "facts" mode; older
+  runs keep the earlier "digest" rendering unchanged. Nothing is re-analysed
+  automatically.
+- **FULL.** Specialists receive the relevant verified facts. Their findings
+  appear in the Assessment's "Specialist Analysis" section, labelled as
+  analysis, only if they pass `procurement_facts.specialist_findings`. A
+  finding is withheld if it is ungrounded, contradicts a verified fact,
+  repeats facts, or overstates its cited evidence. The withheld count is
+  disclosed in the report.
+- **Known limits.** The checks are rule-based, so they are not exhaustive and
+  are conservative. Model output varies between runs. Coverage of unfamiliar
+  RFPs is still under validation.
+- **Bids.** Beta holds real Phoenix bids, including LAU and 2B OPCO. The
+  INJAZ material is a local regression fixture only, not a live Phoenix Beta
+  bid.
+
 ## Current major subsystems
 
 - **Fast Analysis** (`fast_analysis.py`, orchestrated by `analysis_service.py`) — the

@@ -64,8 +64,9 @@ Bid Intelligence is an AI-enabled procurement intelligence platform. It helps co
 | 2. Opportunity and Delivery Requirements | Consolidated scope, deliverables, obligations, capabilities and commitments, as compact summary tables with references | Shows what a bid commits Phoenix to, without copying the RFP |
 | 3. Buyer Intelligence | Targeted external facts relevant to *this* opportunity: programmes, published priorities, partnerships, funding and comparable activities. Dated, sourced and verified against the page content | Shows something the RFP does not |
 | 4. Evaluation and Commercial Intelligence | Published criteria and weights (with the hierarchy rendered correctly), pricing requirements, commercial and contractual obligations, and supporting workbooks | Shows how bids are judged and what they cost |
-| 5. Material Information and Amendments | New Information and Updated Information (with the previous value and the superseding source), and other material facts. Empty sections are omitted | Shows how the package evolved |
-| 6. Management Decision Reference | Submission logistics, user-entered values and open items. No repetition and no recommendations | A factual checklist for the decision meeting |
+| 5. Specialist Analysis | Points from the FULL specialists that are grounded in the verified facts on the cited pages and no stronger than those facts (consequences, alternatives, approximations and conditions kept), labelled as analysis | The intelligence FULL adds beyond FAST, without presenting interpretation as document fact |
+| 6. Material Information and Amendments | New Information and Updated Information (with the previous value and the superseding source), and other material facts. Empty sections are omitted | Shows how the package evolved |
+| 7. Management Decision Reference | Submission logistics, user-entered values and open items. No repetition and no recommendations | A factual checklist for the decision meeting |
 
 ## 6. Factual-reporting and Buyer Intelligence principles
 
@@ -84,7 +85,7 @@ Bid Intelligence is an AI-enabled procurement intelligence platform. It helps co
   - Separate historical facts from current ones, and never imply that older funding or partnerships apply to the current programme.
   - Do not repeat what the RFP already says except for brief context.
   - Prefer facts relevant to this opportunity over generic profiles.
-- **Specialist output.** Specialist interpretations, risk claims and gap claims are working notes. They are never presented as verified facts.
+- **Specialist output.** Specialist interpretations, risk claims and gap claims are never presented as verified facts. The Assessment shows only those grounded in the cited verified facts and no stronger than them, labelled as analysis. The rest remain working notes in the app.
 
 ## 7. Evolving procurement packages
 
@@ -110,12 +111,7 @@ Bid Intelligence is not:
 
 A change to workflows, intelligence or reports is acceptable only if all of the following hold:
 1. Every statement in its output can be traced to a document page or sheet, a verified URL with a date, or a labelled user entry.
-2. The INJAZ golden case still holds:
-   - correct weights;
-   - email submission to the documented recipients;
-   - the four document categories;
-   - the six-session programme for youth aged 18–28;
-   - quotation based on 5 days × 3 hours.
+2. The existing regression fixtures still pass. These include the historical INJAZ fixture, a local test case and not a live Phoenix Beta bid, which checks correct weights, email submission to the documented recipients, the four document categories, the six-session programme for youth aged 18–28, and a quotation based on 5 days × 3 hours.
 3. Addendum handling still produces New/Updated labels, keeps prior values, shows each condition once, and adds no invented prices.
 4. The rendered PDF pages have been inspected for repetition, verbatim excess, pagination and decision-neutral language.
 5. FAST and FULL remain distinct, and FULL adds buyer and commercial depth.
@@ -124,4 +120,4 @@ A change to workflows, intelligence or reports is acceptable only if all of the 
 
 - **Scope.** The doctrine's Proposal Compliance and Organizational Intelligence capabilities are not part of the Phoenix Beta interface.
 - **Unknowns.** "Unknowns remain visible" (Principle 5) applies only to unknowns *verified* against the documents. The beta never reports an empty AI field as missing information.
-- **Inference.** The doctrine allows labelled inference. The beta reports present facts and source-supported calculations only. Specialist inference stays in Detailed Findings working notes, which are restricted to findings backed by canonical evidence.
+- **Inference.** The doctrine allows labelled inference. The beta reports present facts and source-supported calculations only. Specialist inference stays in the app's working notes, except that the Assessment's Specialist Analysis section shows findings that pass verification against the cited facts, labelled as analysis.
