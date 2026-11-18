@@ -204,6 +204,11 @@ class _Shown:
     def add(self, *texts) -> None:
         self._t.extend(pdg.fold(t) for t in texts if t)
 
+    def same(self, text: str) -> bool:
+        """Exactly this statement was printed already (facts are distinct
+        statements; one may legitimately contain another's words)."""
+        return pdg.fold(text) in self._t
+
     def seen(self, text: str) -> bool:
         ft = pdg.fold(text)
         if not ft:
@@ -704,7 +709,18 @@ def build_facts(*, bid: dict, fast_result: dict, documents: list[tuple[str, str]
         "languages": r.get("source_languages") or (sx.document_languages(originals) if bilingual else {}),
         "translation_note": sx.payload_summary_line(translations) if bilingual else None,
         "coverage_note": coverage_limitation(coverage),
+        "mode": "digest",
     }
+    # Typed, source-verified facts from the FAST run (procurement_facts.py)
+    # replace every keyword-based classification above. Older runs, which
+    # have none, keep the document-digest reading.
+    verified = _report_facts(r, docs, context=[title, org, reference])
+    if verified and verified["facts"]:
+        _apply_report_facts(facts, verified)
+        # the reports now rest on the facts pass: its unread passages are the
+        # limitation to disclose (the extraction pass's own gaps affected
+        # facts that are no longer printed from it)
+        facts["coverage_note"] = coverage_limitation({"coverage_gaps": verified["coverage_gaps"]})
     if bilingual:
         # Original Arabic evidence for every located English statement, for
         # display in the app (the PDFs stay English).
@@ -717,6 +733,50 @@ def build_facts(*, bid: dict, fast_result: dict, documents: list[tuple[str, str]
             d["language"] = facts["languages"].get(d["name"])
         sx.annotate_with_originals({k: v for k, v in facts.items() if k not in ("documents", "workbooks")}, idx)
     return facts
+
+
+def _report_facts(r: dict, docs: list[tuple[str, str]], *, context: list | None = None) -> dict | None:
+    import procurement_facts as pf
+    payload = r.get("report_facts")
+    if not isinstance(payload, dict) or not payload.get("facts"):
+        return None
+    return pf.verify(payload, docs, context=[str(c) for c in context or [] if c])
+
+
+def _apply_report_facts(facts: dict, verified: dict) -> None:
+    """Fill the report fields from verified, model-classified facts. A field
+    with no fact stays empty -- nothing is filled in from keyword matches."""
+    import procurement_facts as pf
+    cat = pf.by_category(verified)
+    g = lambda k: list(cat.get(k) or [])  # noqa: E731
+    loc = g("DELIVERY_LOCATION")
+    facts["identity"]["location"] = dict(loc[0], kind="delivery") if loc else None
+    facts["synopsis"] = [verified["assignment"]] if verified.get("assignment") else []
+    facts["overview"] = []
+    facts["about"] = g("BUYER_CONTEXT")
+    facts["scope"] = g("SCOPE")
+    facts["deliverables"] = facts["deliverables_primary"] = g("DELIVERABLE")
+    facts["schedule"] = g("SCHEDULE")
+    facts["timeline"], facts["quantities"], facts["general"] = [], [], []
+    facts["eligibility"] = g("ELIGIBILITY")
+    facts["qualifications"] = g("QUALIFICATION")
+    facts["eval_text"] = g("EVALUATION")
+    facts["award"] = g("AWARD")
+    facts["proposal_content"] = g("PROPOSAL_CONTENT")
+    facts["required_docs"] = [{"name": it["text"], "details": [], "doc": it["doc"], "page": it["page"],
+                               "sheet": it.get("sheet")} for it in facts["proposal_content"]]
+    sub = facts["submission"]
+    sub.update(channel=None, method_sentences=[], emails=[], contact_emails=[], subject_rule=None,
+               late_rule=None, methods=g("SUBMISSION_METHOD"), rules=g("SUBMISSION_DEADLINE") + g("SUBMISSION_RULE"),
+               questions=g("CLARIFICATION"))
+    facts["pricing"] = g("PRICING")
+    facts["budget"] = g("BUDGET")
+    facts["payment"] = g("PAYMENT")
+    facts["securities"] = g("GUARANTEE")
+    facts["clauses"] = [{"topic": None, "text": it["text"], "ref": it} for it in g("CONTRACT_TERM")]
+    facts["matters"] = [m for m in facts["matters"] if m.get("kind")] + [
+        {"text": it["text"], "kind": None, "ref": it} for it in g("OTHER")]
+    facts["mode"] = "facts"
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -979,6 +1039,11 @@ def coverage_limitation(summary: dict | None) -> str | None:
             f"check those pages in the documents before relying on anything being absent.")
 
 
+_BASIS_DIGEST = "Statements are the documents' own words, with page/sheet references;"
+_BASIS_FACTS = ("Each statement summarises the documents and was checked against the quoted source text on the "
+                "cited page; every figure, date and address in it appears in that text.")
+
+
 def _basis_note(f: dict, extra: str = "") -> Paragraph:
     names = []
     for d in f["documents"]:
@@ -997,7 +1062,7 @@ def _basis_note(f: dict, extra: str = "") -> Paragraph:
             shown_name = "file with Arabic name" + (f" (.{shown_name.rsplit('.', 1)[-1]})" if "." in shown_name else "")
         names.append((f"{alias} " if alias else "") + shown_name + (f" ({', '.join(tag)})" if tag else ""))
     txt = (f"<b>Document basis.</b> {esc('; '.join(names))}. Analysis date {esc(fmt_date(f['analysis_date']))}. "
-           f"Statements are the documents' own words, with page/sheet references; values entered by a Phoenix "
+           f"{_BASIS_FACTS + ' Values' if f.get('mode') == 'facts' else _BASIS_DIGEST + ' values'} entered by a Phoenix "
            f"user and external sources are labelled as such. Nothing here is a recommendation on whether to bid."
            f"{(' ' + esc(f['translation_note'])) if f.get('translation_note') else ''}{extra}")
     return Paragraph(txt, _st["note"])
@@ -1134,6 +1199,8 @@ def _material_facts(f: dict, shown: _Shown, limit: int) -> list:
 # ═══════════════════════════════════════════════════════════════════════
 
 def render_snapshot(f: dict) -> dict:
+    if f.get("mode") == "facts":
+        return _render_snapshot_facts(f)
     _set_alias(f)
     shown = _Shown()
     story = [_title_block("FAST · OPPORTUNITY SNAPSHOT", f), Spacer(1, 8)]
@@ -1313,6 +1380,8 @@ TOPIC_LABELS = {"initiative": "Initiative named in the procurement", "programme"
 
 
 def render_assessment(f: dict, *, full_status: str | None = None, research: dict | None = None) -> dict:
+    if f.get("mode") == "facts":
+        return _render_assessment_facts(f, full_status=full_status, research=research)
     _set_alias(f)
     shown = _Shown()
     story = [_title_block("FULL · BID OPPORTUNITY ASSESSMENT", f), Spacer(1, 8)]
@@ -1505,3 +1574,244 @@ def _workbook_table(workbooks: list[dict]) -> Table:
         rows.append([f"<b>{esc(wb['name'])}</b><br/>" + "<br/>".join(sheets), purpose, link])
     return _table(["Workbook / sheets", "Purpose", "RFP / addendum reference"], rows,
                   [BODY_W * 0.42, BODY_W * 0.22, BODY_W * 0.36])
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# REPORTS FROM VERIFIED FACTS (runs with report facts; see procurement_facts)
+# Each statement is a model-classified fact whose quote was found in the
+# source and whose numbers, addresses and links all occur in that quote.
+# ═══════════════════════════════════════════════════════════════════════
+
+_FACT_N = 420  # facts are already concise; the cap only guards against a run-on quote
+
+
+def _fact_lines(items: list[dict], shown: _Shown, *, limit: int | None = None, more: str | None = None) -> list:
+    fresh = [it for it in items if not shown.same(it["text"])]
+    out = []
+    for it in fresh[:limit] if limit else fresh:
+        out.append(_RLParagraph(f"{esc(brief(it['text'], _FACT_N))}{_rt(it)}", _st["bul"], bulletText="•"))
+        shown.add(it["text"])
+    if limit and more and len(fresh) > limit:
+        out.append(Paragraph(f"The Bid Opportunity Assessment lists {len(fresh) - limit} more.", _st["note"]))
+    return out
+
+
+def _fact_cell(items: list[dict], shown: _Shown, limit: int | None = None) -> str | None:
+    fresh = [it for it in items if not shown.same(it["text"])][:limit]
+    if not fresh:
+        return None
+    shown.add(*[it["text"] for it in fresh])
+    return "<br/>".join(esc(brief(it["text"], _FACT_N)) + _rt(it) for it in fresh)
+
+
+def _weighted(f: dict) -> bool:
+    return any(c.get("weight") for c in f["criteria"])
+
+
+_NOT_EXTRACTED = "Not identified in the extracted facts; check the documents."
+
+
+def _facts_glance(f: dict, shown: _Shown, *, identity: bool = True) -> list[tuple[str, str]]:
+    ident, rows = f["identity"], []
+    if identity:
+        for label, key in (("Buyer", "organization"), ("Title", "title"), ("Reference", "reference")):
+            if ident.get(key):
+                rows.append((label, esc(ident[key])))
+    if f["synopsis"]:
+        a = f["synopsis"][0]
+        rows.append(("The assignment", esc(a["text"]) + _rt(a)))
+        shown.add(a["text"])
+    if ident.get("location"):
+        rows.append(("Delivery location", _fact_cell([ident["location"]], shown)))
+    else:
+        rows.append(("Delivery location", esc(_NOT_EXTRACTED)))
+    if f.get("schedule"):
+        rows.append(("Duration and schedule", _fact_cell(f["schedule"], shown, 1)))
+    dv = _deadline_value(f)
+    if dv:
+        rows.append(("Submission deadline", dv))
+    return [(k, v) for k, v in rows if v]
+
+
+def _kv_rows(rows: list) -> list:
+    rows = [(k, v) for k, v in rows if v]
+    return [_kv(rows)] if rows else []
+
+
+def _render_snapshot_facts(f: dict) -> dict:
+    _set_alias(f)
+    shown = _Shown()
+    story = [_title_block("FAST · OPPORTUNITY SNAPSHOT", f), Spacer(1, 8)]
+    n = 0
+
+    def section(title, blocks):
+        nonlocal n
+        if [b for b in blocks if b is not None]:
+            n += 1
+            _emit(story, _sec(n, title), blocks)
+
+    section("Opportunity at a Glance", [_kv(_facts_glance(f, shown))])
+    if f.get("coverage_note"):
+        story.append(Paragraph(f'{_label("COVERAGE LIMITATION")} {esc(f["coverage_note"])}', _st["note"]))
+        story.append(Spacer(1, 4))
+
+    blocks = []
+    blocks += _headed("Services", _fact_lines(f["scope"], shown, limit=4, more="scope items are listed"))
+    blocks += _headed("Deliverables", _fact_lines(f["deliverables"], shown, limit=6, more="deliverables are listed"))
+    blocks += _headed("Schedule", _fact_lines(f.get("schedule") or [], shown, limit=2))
+    section("Scope and Deliverables", blocks)
+
+    blocks = []
+    blocks += _headed("Eligibility", _fact_lines(f.get("eligibility") or [], shown, limit=3,
+                                                 more="eligibility conditions are listed"))
+    blocks += _headed("Qualifications sought", _fact_lines(f["qualifications"], shown, limit=4,
+                                                           more="qualification requirements are listed"))
+    if _weighted(f):
+        blocks += _headed("Evaluation criteria and weights", _criteria_table(f, compact=True))
+    else:
+        blocks += _headed("Evaluation", _fact_lines(f["eval_text"], shown, limit=3))
+    blocks += _headed("Award", _fact_lines(f.get("award") or [], shown, limit=2))
+    section("Eligibility, Evaluation and Award", blocks)
+
+    sub = f["submission"]
+    methods = sub.get("methods") or []
+    section("Submission", _kv_rows([
+        ("Submission methods" if len(methods) > 1 else "Submission method", _fact_cell(methods, shown, 4)),
+        ("Proposal must contain", _fact_cell(f.get("proposal_content") or [], shown, 4)),
+        ("Submission rules", _fact_cell(sub.get("rules") or [], shown, 3)),
+        ("Questions", _fact_cell(sub.get("questions") or [], shown, 1))]))
+
+    section("Commercial Essentials", _kv_rows([
+        ("Budget (as stated)", _fact_cell(f["budget"], shown, 2)),
+        ("Pricing basis", _fact_cell(f["pricing"], shown, 2)),
+        ("Payment", _fact_cell(f["payment"], shown, 1)),
+        ("Securities and guarantees", _fact_cell(f.get("securities") or [], shown, 3)),
+        ("Contract terms", _fact_cell([{"text": c["text"], **(c["ref"] or {})} for c in f["clauses"]], shown, 2))]))
+
+    section("Additional Material Facts", _material_facts(f, shown, 2))
+    if f["changes"]:
+        story.append(Spacer(1, 4))
+        story.append(Paragraph(f"Changes introduced by later documents ({len(f['changes'])}) are listed with their "
+                               f"previous values in the Bid Opportunity Assessment and on the Understand page.",
+                               _st["note"]))
+    story.append(Spacer(1, 6))
+    story.append(_basis_note(f))
+    return {"pdf": _build(story, "OPPORTUNITY SNAPSHOT", f), "filename": report_filename(f, SNAPSHOT)}
+
+
+def _render_assessment_facts(f: dict, *, full_status: str | None = None, research: dict | None = None) -> dict:
+    _set_alias(f)
+    shown = _Shown()
+    story = [_title_block("FULL · BID OPPORTUNITY ASSESSMENT", f), Spacer(1, 8)]
+    n = 0
+
+    def section(title, blocks):
+        nonlocal n
+        if [b for b in blocks if b is not None]:
+            n += 1
+            _emit(story, _sec(n, title), blocks)
+
+    rows = _facts_glance(f, shown, identity=False)
+    top = [c for c in f["criteria"] if c["level"] == 0 and c["weight"]]
+    if top:
+        rows.append(("Evaluation basis", esc(" / ".join(f"{c['stage']} {c['weight']}" for c in top))
+                     + _rt(top[0]["ref"])))
+    methods = f["submission"].get("methods") or []
+    if len(methods) > 1:
+        rows.append(("Submission", f"{len(methods)} permitted submission methods — section 6"))
+    if f["budget"]:
+        rows.append(("Budget (as stated)", _fact_cell(f["budget"], shown, 1)))
+    if f["changes"]:
+        k = {kind: sum(1 for c in f["changes"] if c["kind"] == kind) for kind in ("NEW", "UPDATED", "CONFLICT")}
+        rows.append(("Changes in later documents", esc(", ".join(f"{v} {kk.lower()}" for kk, v in k.items() if v))
+                     + " — section 5"))
+    about_ctx = [it["text"] for it in f["about"]][:2]
+    rows.append(("External buyer research", esc(_research_status_line(research, about_ctx))))
+    section("Executive Intelligence Summary", _kv_rows(rows))
+    if f.get("coverage_note"):
+        story.append(Paragraph(f'{_label("COVERAGE LIMITATION")} {esc(f["coverage_note"])}', _st["note"]))
+        story.append(Spacer(1, 4))
+
+    blocks = []
+    blocks += _headed("Scope of work", _fact_lines(f["scope"], shown, limit=25))
+    blocks += _headed("Deliverables", _fact_lines(f["deliverables"], shown, limit=40))
+    blocks += _headed("Schedule and duration", _fact_lines(f.get("schedule") or [], shown, limit=10))
+    blocks += _headed("Eligibility", _fact_lines(f.get("eligibility") or [], shown, limit=12))
+    blocks += _headed("Qualifications sought", _fact_lines(f["qualifications"], shown, limit=15))
+    section("Opportunity and Delivery Requirements", blocks)
+
+    blocks = []
+    blocks += _headed("Context from the procurement documents", _fact_lines(f["about"], shown, limit=3))
+    blocks += _headed("Verified external research", _research_blocks(research, context=about_ctx))
+    section("Buyer Intelligence", blocks)
+
+    blocks = []
+    if _weighted(f):
+        blocks += _headed("Evaluation criteria and weights", _criteria_table(f, compact=False))
+    blocks += _headed("Evaluation method", _fact_lines(f["eval_text"], shown, limit=10))
+    blocks += _headed("Award", _fact_lines(f.get("award") or [], shown, limit=8))
+    blocks += _headed("What the proposal must contain", _fact_lines(f.get("proposal_content") or [], shown, limit=20))
+    blocks += _headed("Pricing", _fact_lines(f["pricing"], shown, limit=10))
+    blocks += _headed("Budget (as stated)", _fact_lines(f["budget"], shown, limit=4))
+    blocks += _headed("Securities and guarantees", _fact_lines(f.get("securities") or [], shown, limit=8))
+    blocks += _headed("Payment terms", _fact_lines(f["payment"], shown, limit=8))
+    blocks += _headed("Material contract terms", _fact_lines(
+        [{"text": c["text"], **(c["ref"] or {})} for c in f["clauses"]], shown, limit=15))
+    if f["workbooks"]:
+        blocks += _headed("Spreadsheets in the package", [_workbook_table(f["workbooks"])])
+    section("Evaluation and Commercial Intelligence", blocks)
+
+    blocks = []
+    if f["changes"]:
+        blocks.append(_table(["Item", "Previous / superseded", "Introduced by"], _change_rows(f["changes"]),
+                             [BODY_W * 0.52, BODY_W * 0.30, BODY_W * 0.18]))
+        shown.add(*[str(c["current"]) for c in f["changes"]])
+    elif not any(d["amending"] for d in f["documents"]):
+        blocks.append(Paragraph("No addendum, clarification or amendment is among the documents analysed.",
+                                _st["note"]))
+    blocks += _headed("Other material facts", _material_facts(f, shown, 10))
+    section("Material Information and Amendments", blocks)
+
+    sub, rows = f["submission"], []
+
+    def add(label, items, limit=None):
+        for it in [it for it in items if not shown.same(it["text"])][:limit]:
+            rows.append([esc(label), esc(brief(it["text"], _FACT_N)), Paragraph(esc(ref_text(it)), _st["cell_s"])])
+            shown.add(it["text"])
+    add("Submission method", sub.get("methods") or [])
+    add("Submission rule", sub.get("rules") or [], 12)
+    add("Questions", sub.get("questions") or [], 3)
+    for k in f["key_dates"]:
+        rows.append([esc(k["label"]), esc(fmt_date(k["value"])), Paragraph(esc(ref_text(k["ref"])), _st["cell_s"])])
+    d = f["deadline"]
+    if d["manual"]:
+        rows.append(["Phoenix user entry", f"Submission deadline entered manually as {esc(fmt_date(d['manual']))}",
+                     Paragraph("Phoenix user", _st["cell_s"])])
+    open_items = []
+    if d["conflict"] and not d["amended_from"]:
+        open_items.append("submission deadline stated differently across documents")
+    if d.get("unverified") == "OCR":
+        open_items.append("submission deadline read by OCR from a scanned page, not verified")
+    open_items += [f"{c['topic'].lower()} stated differently" for c in f["changes"] if c["kind"] == "CONFLICT"]
+    open_items += [f"purpose of {w['name']} not confirmed from its contents" for w in f["workbooks"]
+                   if not w.get("purpose")]
+    if open_items:
+        rows.append(["Open items", esc("; ".join(open_items)), ""])
+    blocks = []
+    if rows:
+        blocks.append(_table(["Matter", "As documented", "Source"], rows,
+                             [BODY_W * 0.22, BODY_W * 0.58, BODY_W * 0.20]))
+    blocks.append(Paragraph("This reference organises documented facts for the bid decision. It does not recommend "
+                            "whether to bid and contains no scores, probabilities or suitability judgements.",
+                            _st["note"]))
+    section("Management Decision Reference", blocks)
+
+    extra = ""
+    if full_status == "PARTIAL":
+        extra = (" Full analysis completed partially: specialist reconciliation did not finish, so this assessment "
+                 "relies on the document-verified facts above; specialist working notes remain in the app.")
+    elif full_status:
+        extra = " Specialist working notes and detailed evidence remain in the app."
+    story.append(Spacer(1, 6))
+    story.append(_basis_note(f, extra))
+    return {"pdf": _build(story, "BID OPPORTUNITY ASSESSMENT", f), "filename": report_filename(f, ASSESSMENT)}

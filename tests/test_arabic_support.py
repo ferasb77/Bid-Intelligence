@@ -406,13 +406,15 @@ def pipeline():
 class TestEndToEnd:
     def test_languages_detected_and_translation_persisted_in_snapshot(self, pipeline):
         r = pipeline.snapshot["result"]
-        assert pipeline.snapshot["schema_version"] == "1.3"
+        assert pipeline.snapshot["schema_version"] == "1.4"
         assert r["source_languages"] == {RFP: "ar", ADD: "ar", XLS: "mixed"}
         assert r["source_translations"]["status"] == "COMPLETE"
         assert r["source_translations"]["summary"]["withheld"] == 1
 
     def test_fast_prompts_carry_arabic_language_rules_and_verbatim_excerpts(self, pipeline):
-        fast = [p for p in pipeline.model.prompts if not p.startswith(sx.TRANSLATION_PROMPT)]
+        import procurement_facts as pf
+        fast = [p for p in pipeline.model.prompts
+                if not p.startswith(sx.TRANSLATION_PROMPT) and not p.startswith(pf.PROMPT[:60])]
         assert fast and all("LANGUAGE RULES (this text is wholly or partly in Arabic)" in p for p in fast)
         r = pipeline.snapshot["result"]  # persisted evidence stays in the original Arabic
         assert r["evaluation_criteria"][0]["source_refs"][0]["excerpt"] == "العرض الفني ٧٠٪"

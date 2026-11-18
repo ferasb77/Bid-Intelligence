@@ -424,8 +424,10 @@ def _tab_overview(bid_id: int, status: dict, view: dict, f: dict | None) -> None
         rows.append(("Reference", fav.esc(ident["reference"])))
     if _deadline_html(f):
         rows.append(("Submission deadline", _deadline_html(f)))
+    if ident.get("location"):
+        rows.append(("Delivery location", fav.esc(ident["location"]["text"]) + _ref(ident["location"])))
     if f["synopsis"]:
-        rows.append(("Synopsis", fav.esc(" ".join(s["text"] for s in f["synopsis"])) + _ref(f["synopsis"][0])))
+        rows.append(("The assignment" if f.get("mode") == "facts" else "Synopsis", fav.esc(" ".join(s["text"] for s in f["synopsis"])) + _ref(f["synopsis"][0])))
     top = [c for c in f["criteria"] if c["level"] == 0 and c["weight"]]
     if top:
         rows.append(("Evaluation basis", fav.esc(" / ".join(f"{c['stage']} {c['weight']}" for c in top))
@@ -451,9 +453,10 @@ def _tab_requirements(f: dict) -> None:
                             unsafe_allow_html=True)
             _facts_list(g["items"])
     for title, key in (("Workflow and timeline", "timeline"), ("Deliverables", "deliverables"),
-                       ("Stated quantities and durations", "quantities"), ("Qualifications sought", "qualifications"),
-                       ("General requirements", "general")):
-        items = [it for it in f[key] if not (key == "timeline" and pr._is_subhead(it["text"]))]
+                       ("Schedule and duration", "schedule"),
+                       ("Stated quantities and durations", "quantities"), ("Eligibility", "eligibility"),
+                       ("Qualifications sought", "qualifications"), ("General requirements", "general")):
+        items = [it for it in f.get(key) or [] if not (key == "timeline" and pr._is_subhead(it["text"]))]
         if items:
             _heading(title)
             _facts_list(items)
@@ -488,9 +491,12 @@ def _tab_evaluation(f: dict) -> None:
                 notes.append(f"{p['stage']} {p['weight']} = " + " + ".join(str(k["weight"]) for k in kids))
         if notes:
             st.caption("Sub-criterion weights are shares of the total score, as their sums show: " + "; ".join(notes) + ".")
-    elif f["eval_text"]:
-        _heading("Evaluation criteria and weights")
+    if f["eval_text"] and (f.get("mode") == "facts" or not f["criteria"]):
+        _heading("Evaluation method" if f["criteria"] else "Evaluation criteria and weights")
         _facts_list(f["eval_text"])
+    if f.get("award"):
+        _heading("Award")
+        _facts_list(f["award"])
     evidence = [dict(x, text=f"{d['name']}: {x['text']}") for d in f["required_docs"]
                 if not pr._PRICING.search(d["name"]) for x in d["details"]]
     if evidence:
@@ -510,6 +516,10 @@ def _tab_commercial(f: dict) -> None:
         _heading("Material contract terms")
         _facts_list([{"text": c["text"], **(c["ref"] or {})} for c in f["clauses"]])
     sub, rows = f["submission"], []
+    for title, key in (("Submission methods", "methods"), ("Submission rules", "rules"), ("Questions", "questions")):
+        if sub.get(key):
+            _heading(title)
+            _facts_list(sub[key], 400)
     if sub.get("channel"):
         ms = (sub.get("method_sentences") or [None])[0]
         rows.append(("Method", f"<strong>{fav.esc(sub['channel'])}</strong>"

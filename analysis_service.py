@@ -489,6 +489,10 @@ def _execute_fast_analysis_run(run_id: int, bid_id: int, docs: list[dict], api_k
         # English reports use (source_translation.py) runs alongside the
         # engine. English-only packages make no extra call.
         translation_future = _start_source_translation(documents, api_key, bid_id, run_id)
+        # The report facts the Phoenix reports are built from (one pass over
+        # the package; Arabic text is read through its checked English
+        # rendering, so it waits for the translation).
+        facts_future = _start_report_facts(documents, api_key, bid_id, run_id, translation_future)
         # Frozen V4 engine call -- unmodified signature, unmodified behavior.
         # on_task_done is a purely observational Phase 2 hook (see
         # fast_analysis.py's docstring for that parameter) -- it does not
@@ -498,6 +502,7 @@ def _execute_fast_analysis_run(run_id: int, bid_id: int, docs: list[dict], api_k
             documents, api_key, max_document_concurrency=MAX_DOCUMENT_CONCURRENCY,
             on_task_done=progress.on_task_done)
         _attach_source_translation(result, documents, translation_future)
+        _attach_report_facts(result, facts_future)
         # Ambiguity detection (engine step 4) has already run, synchronously,
         # inside the call above by the time it returns -- this is a real
         # completion event, not a guess.
@@ -638,6 +643,48 @@ def _attach_source_translation(result, documents, future) -> None:
     except Exception as exc:
         result.source_translations = {"schema": "source-translations/1", "status": "FAILED",
                                       "error": f"{type(exc).__name__}: {exc}"[:300], "documents": {}}
+
+
+def _start_report_facts(documents: list[tuple[str, str]], api_key: str, bid_id, run_id, translation_future):
+    """Background report-facts pass (procurement_facts.py). Never raises."""
+    try:
+        import concurrent.futures
+
+        def work():
+            import procurement_facts
+            docs = documents
+            if translation_future is not None:
+                try:
+                    import source_translation
+                    payload = translation_future.result(timeout=900)
+                    if payload.get("documents"):
+                        docs = source_translation.english_view(documents, payload)
+                except Exception:
+                    pass  # untranslated Arabic lines are simply not read
+            return procurement_facts.extract(
+                docs, api_key, telemetry_context={"workflow": "fast_analysis", "bid_id": bid_id,
+                                                  "analysis_run_id": run_id})
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"report-facts-{run_id}")
+        future = pool.submit(work)
+        pool.shutdown(wait=False)
+        return future
+    except Exception:
+        return None
+
+
+def _attach_report_facts(result, future) -> None:
+    """Record the report-facts payload on the result (persisted in the raw
+    snapshot). A failure never fails the run: the reports then fall back to
+    the document-digest reading and say nothing they cannot support."""
+    if future is None:
+        return
+    try:
+        payload = future.result(timeout=1200)
+        payload.pop("telemetry", None)  # usage is recorded per call in model_usage_events
+        result.report_facts = payload
+    except Exception as exc:
+        result.report_facts = {"schema": "report-facts/1", "status": "FAILED",
+                               "error": f"{type(exc).__name__}: {exc}"[:300], "facts": []}
 
 
 def _content_to_dict(content) -> dict:

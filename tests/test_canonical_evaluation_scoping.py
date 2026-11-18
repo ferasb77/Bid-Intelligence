@@ -463,7 +463,7 @@ class TestFastAnalysisResultWiring:
         import fast_analysis as fa
 
         payload = fa.serialize_fast_analysis_result(_wired_result(), engine_version="test")
-        assert payload["schema_version"] == "1.3"
+        assert payload["schema_version"] == "1.4"
         restored = fa.deserialize_fast_analysis_result(payload)
         assert restored.scoped_criterion_response_prompts == _wired_result().scoped_criterion_response_prompts
         assert restored.scoped_criterion_evaluation

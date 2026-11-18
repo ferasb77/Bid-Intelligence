@@ -1716,6 +1716,11 @@ class FastAnalysisResult:
     # reports (see source_translation.py). Empty for English packages.
     source_languages: dict = field(default_factory=dict)
     source_translations: dict = field(default_factory=dict)
+    # Report facts (schema 1.4, additive): typed procurement facts with
+    # verbatim quotes, classified by meaning (procurement_facts.py). The
+    # Opportunity Snapshot and Bid Opportunity Assessment are built from
+    # them; runs without them keep the document-digest reading.
+    report_facts: dict = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -1745,7 +1750,8 @@ class FastAnalysisResult:
 # correctly (the new fields fall back to their dataclass defaults).
 # 1.2 -> 1.3: purely additive -- source_languages, source_translations
 # (Arabic / bilingual source support).
-FAST_ANALYSIS_RAW_SNAPSHOT_SCHEMA_VERSION = "1.3"
+# 1.3 -> 1.4: purely additive -- report_facts (procurement_facts.py).
+FAST_ANALYSIS_RAW_SNAPSHOT_SCHEMA_VERSION = "1.4"
 
 # Every FastAnalysisResult field EXCEPT `telemetry`, which is deliberately
 # reduced to a compact audit summary rather than stored verbatim -- see
