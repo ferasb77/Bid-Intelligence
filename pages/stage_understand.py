@@ -309,6 +309,14 @@ def _render_fast_analysis_panel(bid_id: int, rfp_docs: list, procurement_state: 
             f'{f" in {duration:.0f}s" if isinstance(duration, (int, float)) else ""} '
             f'</div>',
             unsafe_allow_html=True)
+        if (telemetry.get("split_exhausted_rows") or 0) > 0:
+            # Some dense passages exceeded the extraction limit even after
+            # splitting; what was read is kept, the remainder is not.
+            st.markdown(
+                '<div class="warn-box">⚠️ Some dense sections of the source document could not be read in full, '
+                'so a requirement or contract condition from those sections may be missing here and in the '
+                'Opportunity Snapshot. Check the RFP directly before relying on anything being absent.</div>',
+                unsafe_allow_html=True)
         _render_fast_analysis_governance_note(run, procurement_state)
         c1, c2 = st.columns(2)
         # Phoenix: the FAST stage presents exactly one PDF -- the Opportunity
@@ -908,6 +916,31 @@ def _resolve_canonical_deadlines(bid: dict, brief_row: dict, analysis_result: di
     return sub_deadline, clar_deadline
 
 
+def _fast_requirement_fallback(oi: dict) -> tuple[list, list, dict]:
+    """Phoenix Beta: FAST is advisory and never writes bid_briefs, and the
+    beta offers no governed baseline -- so an ungoverned bid has no brief
+    and the Requirements tab would report that nothing was identified while
+    the saved FAST result holds the extracted submission requirements,
+    mandatory conditions and any published weights. Returns them in the
+    shapes the tab already renders: (submission_requirements,
+    qualification_gates, evaluation weights by category). Display only."""
+    esc = lambda v: _html.escape(str(v))
+    rr = _ensure_dict(oi.get("response_requirements"))
+    sub_reqs = [
+        {"item": esc(c.get("description") or c.get("item")), "details": esc(c.get("notes") or "")}
+        for c in _ensure_list(rr.get("checklist"))
+        if isinstance(c, dict) and (c.get("description") or c.get("item"))
+    ]
+    sub_reqs += [{"item": esc(s)} for s in _ensure_list(rr.get("other_requirements"))
+                 if isinstance(s, str) and s.strip()]
+    evaluation = _ensure_dict(oi.get("evaluation"))
+    gates = [{"type": "Mandatory", "requirement": esc(g)}
+             for g in _ensure_list(evaluation.get("gate_examples")) if isinstance(g, str) and g.strip()]
+    weights = {k: v for k, v in _ensure_dict(evaluation.get("weights_by_category")).items()
+               if _ensure_list(v)}
+    return sub_reqs, gates, weights
+
+
 def _resolve_customer_safe_summary(bid: dict, brief_row: dict, analysis_result: dict | None) -> str:
     """Resolve customer-facing executive summary. Never renders internal benchmark,
     migration, or QA fixture wording."""
@@ -1014,6 +1047,12 @@ def page_understand(bid_id: int):
     sub_reqs = _ensure_list(brief_row.get("submission_requirements"))
     key_dates = _ensure_list(brief_row.get("key_dates"))
     citations = _ensure_dict(brief_row.get("source_citations"))
+    fast_eval_weights = {}
+    if not brief_row and analysis_result:
+        # No governed brief: show what the saved FAST result extracted
+        # (a governed brief always takes precedence; nothing is written).
+        sub_reqs, qual_gates, fast_eval_weights = _fast_requirement_fallback(
+            _ensure_dict(analysis_result.get("structured_intelligence")))
 
     # ── HEADER & OPPORTUNITY IDENTITY ─────────────────────────────────────────
     st.markdown('<div style="font-size:.72rem;color:#C9A96E;text-transform:uppercase;letter-spacing:.12em;font-weight:600">STAGE 1 · UNDERSTAND</div>', unsafe_allow_html=True)
@@ -1292,6 +1331,23 @@ def page_understand(bid_id: int):
                     '</div>',
                     unsafe_allow_html=True
                 )
+        elif fast_eval_weights:
+            # Shown exactly as published -- no hierarchy or totals inferred.
+            for label, rows in fast_eval_weights.items():
+                st.markdown(f"**{_html.escape(str(label))}**")
+                for row in _ensure_list(rows):
+                    if not isinstance(row, dict):
+                        continue
+                    wt = _html.escape(str(row.get("weight") or ""))
+                    st.markdown(
+                        f'<div style="background:#111118;border:1px solid #292832;border-radius:4px;'
+                        f'padding:.55rem .9rem;margin:.3rem 0;font-size:.85rem">'
+                        f'<strong>{_html.escape(str(row.get("criterion") or "Criterion"))}</strong>'
+                        f'{(" — <span style=color:#27AE60;font-weight:700>" + wt + "</span>") if wt else ""}'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+            st.caption("Weights as published in the procurement documents. Source references are in the Sources tab.")
         else:
             st.markdown('<div class="empty-state">No evaluation weighting identified.</div>', unsafe_allow_html=True)
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
@@ -1325,11 +1381,11 @@ def page_understand(bid_id: int):
                     f'</div>',
                     unsafe_allow_html=True
                 )
-        else:
-            st.markdown('<div class="empty-state">No commercial structure identified.</div>', unsafe_allow_html=True)
         pricing = _ensure_dict(oi.get("pricing_and_commercial"))
         pricing_points = _ensure_list(pricing.get("points"))
         raw_pricing_occ = _ensure_list(pricing.get("raw_pricing_occurrences"))
+        if not commercial and not pricing_points and not raw_pricing_occ:
+            st.markdown('<div class="empty-state">No commercial structure identified.</div>', unsafe_allow_html=True)
         if pricing_points or raw_pricing_occ:
             st.markdown("#### 💰 Pricing & Payment Terms")
             for p in pricing_points:

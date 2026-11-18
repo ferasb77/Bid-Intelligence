@@ -316,7 +316,7 @@ def page_dashboard():
             c1.markdown(f"**{b['client']}** · {b['title'][:45]}")
             c2.markdown(f'<span style="color:#A9A69D;font-size:.8rem">{b.get("owner") or "—"}</span>', unsafe_allow_html=True)
             c3.markdown(_deadline_label(b), unsafe_allow_html=True)
-            c4.markdown(readiness_bar(pct) if b["req_count"] else '<span style="color:#6E6C66;font-size:.75rem">No requirements</span>', unsafe_allow_html=True)
+            c4.markdown(readiness_bar(pct) if b["req_count"] else '<span style="color:#6E6C66;font-size:.75rem">Readiness not tracked</span>', unsafe_allow_html=True)
             if c5.button("Open", key=f"dash_{b['id']}"):
                 go("stage_understand", b["id"])
         st.markdown("")
@@ -339,7 +339,7 @@ def page_all_bids():
         c2.markdown(stage_badge(b["stage"]), unsafe_allow_html=True)
         c3.markdown(_deadline_label(b), unsafe_allow_html=True)
         c3.markdown(f'<span style="color:#6E6C66;font-size:.72rem">{b.get("submission_deadline") or "—"}</span>', unsafe_allow_html=True)
-        c4.markdown(readiness_bar(pct) if b["req_count"] else '<span style="color:#6E6C66;font-size:.75rem">No requirements</span>', unsafe_allow_html=True)
+        c4.markdown(readiness_bar(pct) if b["req_count"] else '<span style="color:#6E6C66;font-size:.75rem">Readiness not tracked</span>', unsafe_allow_html=True)
         if c5.button("Open →", key=f"all_{b['id']}"):
             go("stage_understand", b["id"])
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
