@@ -15,7 +15,8 @@ PROD = [os.path.join(ENGINE, f) for f in os.listdir(ENGINE) if f.endswith(".py")
 #: names of real buyers, clients and evaluation packages that must never appear
 #: in production engine code or prompts
 FORBIDDEN = re.compile(r"\b(?:LAU|Lebanese American|OPCO|2B ?OPCO|INJAZ|Phoenix|Bank of Canada|Calgar\w*|"
-                       r"Northwind|NRA-SYN)\b", re.I)
+                       r"Northwind|NRA-SYN|Meridian Coastal|MCWA|GovTech|Ngultrum|CSCS|ICFR|Energy Secure|DEOS|"
+                       r"Tomorrow.s Leaders|Adaptive Leadership|Heifetz|Vacancy\.proc|sokhen)\b", re.I)
 
 
 def _src(p):

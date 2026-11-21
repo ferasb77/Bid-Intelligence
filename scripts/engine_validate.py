@@ -36,7 +36,7 @@ def _items(rep: dict) -> list[str]:
     for sec in rep.get("sections") or []:
         for g in sec.get("groups") or [{"title": "", "items": sec.get("items") or []}]:
             for it in g.get("items") or []:
-                prev = " ".join(p.get("statement", "") for p in it.get("previous") or [])
+                prev = " ".join("(previously: " + p.get("statement", "") + ")" for p in it.get("previous") or [])
                 out.append(f"[{sec['title']}] {it['text']} {' '.join(it.get('labels') or [])} {prev}")
         for p in sec.get("analysis") or []:
             out.append(f"[analysis] {p['heading']}: {p['analysis']}")
