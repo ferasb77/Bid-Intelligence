@@ -1857,3 +1857,51 @@ def get_check_semantic_batches(run_id: int) -> list[dict]:
 def get_check_adjudications(run_id: int) -> list[dict]:
     return _paged_rows(lambda: get_client().table("check_adjudications").select("*")
                        .eq("run_id", run_id).order("ordinal"))
+
+
+# ── Intelligence engine runs (migrations/027_engine_runs.sql) ────────────────
+# Reached only through engine/service.py, itself only reached through
+# tenancy.py's require_bid_access() wrappers. organization_id is written with
+# every row; the migration's trigger rejects a row whose organization does
+# not own the bid.
+
+def upload_bytes_object(storage_path: str, data: bytes, content_type: str) -> str:
+    """Upload a generated artifact (engine result JSON, report PDF) to the
+    bid-documents bucket under a bid-scoped path."""
+    cleaned = (storage_path or "").strip()
+    if not cleaned or ".." in cleaned or cleaned.startswith("/"):
+        raise ValueError("invalid storage path")
+    head = cleaned.split("/", 1)[0]
+    if not head.isdigit():
+        raise ValueError("engine artifacts must live under a bid prefix")
+    _require_bid_exists(int(head))
+    get_client().storage.from_(BUCKET).upload(cleaned, data,
+                                              file_options={"content-type": content_type, "upsert": "true"})
+    return cleaned
+
+
+def create_engine_run(bid_id: int, organization_id: str, *, engine_version: str, package_hash: str,
+                      documents: list, model_config: dict, created_by: str | None = None,
+                      previous_run_id: int | None = None) -> dict:
+    return _one(get_client().table("engine_runs").insert({
+        "bid_id": bid_id, "organization_id": organization_id, "status": "QUEUED",
+        "engine_version": engine_version, "package_hash": package_hash, "documents": documents,
+        "model_config": model_config, "created_by": created_by, "previous_run_id": previous_run_id,
+    }).execute())
+
+
+def update_engine_run(run_id: int, bid_id: int, fields: dict) -> dict | None:
+    allowed = {"status", "verification", "record", "result_path", "fast_pdf_path", "full_pdf_path",
+               "failure_reason", "started_at", "completed_at", "last_progress_at"}
+    clean = {k: v for k, v in fields.items() if k in allowed}
+    return _one(get_client().table("engine_runs").update(clean)
+                .eq("id", run_id).eq("bid_id", bid_id).execute())
+
+
+def get_engine_runs(bid_id: int, *, limit: int = 20) -> list[dict]:
+    return _rows(get_client().table("engine_runs").select("*").eq("bid_id", bid_id)
+                 .order("created_at", desc=True).order("id", desc=True).limit(limit).execute())
+
+
+def get_engine_run(run_id: int, bid_id: int) -> dict | None:
+    return _one(get_client().table("engine_runs").select("*").eq("id", run_id).eq("bid_id", bid_id).execute())

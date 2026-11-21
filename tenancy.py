@@ -3145,3 +3145,41 @@ def load_submission_evidence_package_for_organization(bid_id: int, organization_
     items = db.get_submission_evidence_items(bid_id, package_snapshot_id)
     return sp.package_from_persisted_rows(bid_id, organization_id, snapshot["package_digest"], docs, items,
                                           manifest=snapshot.get("manifest") or ())
+
+
+# ── Intelligence engine (engine/service.py) ────────────────────────────────
+# Same boundary as every privileged operation: organization ownership of the
+# bid is verified before any document is read, any row written or any model
+# called. The engine itself only ever reads this bid's documents.
+
+def start_engine_analysis_for_organization(bid_id: int, organization_id: str, *, created_by: str | None = None,
+                                           execution: str = "background") -> dict:
+    require_bid_access(bid_id, organization_id)
+    from engine import service
+    return service.start(bid_id, organization_id, created_by=created_by, execution=execution)
+
+
+def get_engine_status_for_organization(bid_id: int, organization_id: str, run_id: int | None = None) -> dict | None:
+    require_bid_access(bid_id, organization_id)
+    from engine import service
+    return service.status(bid_id, run_id)
+
+
+def get_engine_result_for_organization(bid_id: int, organization_id: str, run_id: int) -> dict | None:
+    require_bid_access(bid_id, organization_id)
+    from engine import service
+    return service.result(bid_id, run_id)
+
+
+def export_engine_pdf_for_organization(bid_id: int, organization_id: str, run_id: int, kind: str) -> bytes | None:
+    require_bid_access(bid_id, organization_id)
+    if kind not in ("FAST", "FULL"):
+        raise ValueError("kind must be FAST or FULL")
+    from engine import service
+    return service.pdf(bid_id, run_id, kind)
+
+
+def close_interrupted_engine_run_for_organization(bid_id: int, organization_id: str, run_id: int) -> None:
+    require_bid_access(bid_id, organization_id)
+    from engine import service
+    service.mark_interrupted(bid_id, run_id)

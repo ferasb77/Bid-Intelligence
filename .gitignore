@@ -63,3 +63,6 @@ tmp/
 *.swp
 *.swo
 .DS_Store
+
+# engine local artifacts (cost ledger, evaluation outputs)
+.engine_runs/

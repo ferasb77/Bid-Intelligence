@@ -22,6 +22,15 @@ from pages.stage_debrief import page_debrief
 from pages.settings_firm import page_settings_firm
 from pages.stage_memory import page_memory
 from pages.stage_full_analysis import page_full_analysis
+from pages.stage_engine import page_engine
+
+
+def _engine_ui_enabled() -> bool:
+    """The evidence-based engine page is shown only where ENGINE_UI_ENABLED=1
+    (deployment flag; off unless explicitly configured)."""
+    import os
+    return os.getenv("ENGINE_UI_ENABLED", "").strip() == "1"
+
 from pages.stage_check_assurance import page_check_assurance
 from pdf_export import generate_compliance_pdf
 from brand import dashboard_brand_html, sidebar_brand_html
@@ -238,6 +247,7 @@ with st.sidebar:
             stages_nav = {
                 "💡  1. UNDERSTAND": "stage_understand",
                 "🧬  Full Bid Intelligence": "stage_full_analysis",
+                **({"🔬  Evidence-Based Analysis": "stage_engine"} if _engine_ui_enabled() else {}),
                 "⚖️  2. DECIDE":     "stage_decide",
             }
             # Phoenix Beta simplification: BUILD, CHECK (Proposal Assurance),
@@ -2258,6 +2268,8 @@ elif page in ("stage_understand", "bid_overview"):
     page_understand(bid_id)
 elif page == "stage_full_analysis":
     page_full_analysis(bid_id)
+elif page == "stage_engine" and _engine_ui_enabled():
+    page_engine(bid_id)
 elif page in ("stage_decide", "clarifications", "ai_analyst"):
     page_decide(bid_id)
 # Phoenix Beta simplification: BUILD / CHECK / SUBMIT / Debrief page keys
