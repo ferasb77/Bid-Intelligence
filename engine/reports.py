@@ -22,7 +22,7 @@ FAST_SECTIONS = [
     ("Eligibility and Qualification", ["ELIGIBILITY", "QUALIFICATION"]),
     ("Submission Instructions and Deadlines", ["DEADLINE", "SUBMISSION_METHOD", "SUBMISSION_REQUIREMENT"]),
     ("Mandatory Forms and Documents", ["REQUIRED_DOCUMENT"]),
-    ("Guarantees and Financial Thresholds", ["GUARANTEE", "FINANCIAL_THRESHOLD"]),
+    ("Commercial, Payment and Financial Terms", ["PRICING", "PAYMENT", "GUARANTEE", "FINANCIAL_THRESHOLD"]),
     ("Evaluation and Award", ["EVALUATION"]),
     ("Disqualification and Rejection Risks", ["DISQUALIFICATION"]),
     ("Scope and Principal Deliverables", ["SCOPE", "DELIVERABLE", "DURATION"]),
@@ -115,7 +115,11 @@ def _item(group: list[dict]) -> dict:
                                              for p in e["previous"]) + ")"
     if e.get("applicability") == "AMBIGUOUS" and e.get("uncertainty"):
         text += f" Unclear: {e['uncertainty']}"
-    return {"text": text, "refs": refs, "labels": labels, "entry_ids": [x["entry_id"] for x in group],
+    # verbatim source grounding: the quote the statement was verified against
+    quote = e.get("quote") or ""
+    if quote and normalize(quote) != normalize(e.get("statement") or ""):
+        text += f' Source text: "{" ".join(quote.split())}"'
+    return {"text": text, "quote": quote, "refs": refs, "labels": labels, "entry_ids": [x["entry_id"] for x in group],
             "materiality": max((x.get("materiality") for x in group), key=lambda m: {"CRITICAL": 3, "MATERIAL": 2}
                                .get(m, 1))}
 
