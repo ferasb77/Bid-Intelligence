@@ -12,7 +12,7 @@ import re
 
 from engine import schema
 from engine.providers import Analyst, ProviderError, UsageLedger
-from engine.verify import _EMAIL, _numbers, normalize, tokens
+from engine.verify import _EMAIL, STOPWORDS, _numbers, normalize, tokens
 
 REPORTABLE = {"CURRENT", "AMBIGUOUS", "DISPUTED", "CONFLICTED"}
 _LABEL = {"AMBIGUOUS": "Ambiguous in the source", "DISPUTED": "Interpretation disputed",
@@ -82,7 +82,20 @@ def _same(a: dict, b: dict) -> bool:
     if va != vb:
         return False
     ta, tb = set(tokens(a.get("statement"))), set(tokens(b.get("statement")))
-    return bool(ta and tb) and len(ta & tb) / len(ta | tb) >= 0.8
+    if not (ta and tb) or len(ta & tb) / len(ta | tb) < 0.8:
+        return False
+    return not _distinct_sources(a, b, ta, tb)
+
+
+def _distinct_sources(a: dict, b: dict, ta: set[str], tb: set[str]) -> bool:
+    """Two different source quotes whose statements differ by a content word that
+    one quote contains and the other does not (e.g. one document vs another) are
+    different provisions, however similar the rest of the wording."""
+    qa, qb = set(tokens(a.get("quote"))), set(tokens(b.get("quote")))
+    if not (qa and qb) or qa == qb:
+        return False
+    return any(t not in STOPWORDS and t in own and t not in other
+               for diff, own, other in ((ta - tb, qa, qb), (tb - ta, qb, qa)) for t in diff)
 
 
 def group_restatements(entries: list[dict]) -> list[list[dict]]:

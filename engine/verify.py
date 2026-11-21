@@ -17,6 +17,11 @@ _DIGITS = re.compile(r"\d+(?:[.,]\d+)*")
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _URL = re.compile(r"(?:https?://|www\.)[^\s)>\]]+", re.I)
 _ARABIC_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
+# function words that carry no requirement content on their own
+STOPWORDS = frozenset({"the", "a", "an", "of", "to", "and", "or", "in", "on", "for", "by", "be", "is", "are", "with",
+                       "as", "at", "any", "all", "its", "their", "this", "that", "which", "shall", "must", "will",
+                       "may", "should", "not", "no", "per", "from", "into", "than", "above", "below"})
+_SHORT = 3   # quotes with fewer tokens are only checked against their cited location
 
 
 def normalize(text: str) -> str:
@@ -69,9 +74,15 @@ def locate_quote(package: SourcePackage, quote: str, doc: str = "", label: str =
     """{"status": VERIFIED|RELOCATED|NOT_FOUND|EMPTY, "loc_id", "span": (start, end) token span,
     "spans_next": bool}. A quote may continue onto the next page of the same document."""
     parts = quote_parts(quote)
-    if not parts or sum(len(p) for p in parts) < 3:
-        return {"status": "EMPTY", "loc_id": None, "span": None}
+    n_tok = sum(len(p) for p in parts)
     cited = package.find_location(doc, label) if doc else None
+    if not parts:
+        return {"status": "EMPTY", "loc_id": None, "span": None}
+    if n_tok < _SHORT:
+        # a 1-2 word quote (a heading, a list item) is too short to relocate safely: it is checked
+        # only against its cited location, and only when it carries a content word
+        if cited is None or not any(len(t) > 1 and t not in STOPWORDS for p in parts for t in p):
+            return {"status": "EMPTY", "loc_id": None, "span": None}
 
     def try_loc(loc: Location) -> dict | None:
         hay = _loc_tokens(loc.text)
@@ -92,6 +103,8 @@ def locate_quote(package: SourcePackage, quote: str, doc: str = "", label: str =
         hit = try_loc(cited)
         if hit:
             return dict(hit, status="VERIFIED")
+    if n_tok < _SHORT:
+        return {"status": "NOT_FOUND", "loc_id": cited.loc_id, "span": None}
     order = []
     d = package.document(doc) if doc else None
     if d:

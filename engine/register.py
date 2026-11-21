@@ -68,11 +68,19 @@ def differences(a: dict, b: dict, *, a_finer: bool = False) -> list[str]:
     return out
 
 
+def _content(quote: str) -> set[str]:
+    return {t for t in tokens(quote) if t not in _STOP}
+
+
 def _dedupe(findings: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Folds a finding into an earlier one only when both rest on (nearly) the same
+    span with the same content words: a quote that adds a word the other lacks
+    (a list item under its heading) states a distinct requirement."""
     kept, dups = [], []
     for f in findings:
         twin = next((k for k in kept if overlap(f, k) >= 0.9 and _span(f) and _span(k)
                      and abs((_span(f)[2] - _span(f)[1]) - (_span(k)[2] - _span(k)[1])) <= 2
+                     and _content(f.get("quote") or "") == _content(k.get("quote") or "")
                      and not differences(f, k)), None)
         (dups if twin else kept).append(dict(f, duplicate_of=twin["id"]) if twin else f)
     return kept, dups
