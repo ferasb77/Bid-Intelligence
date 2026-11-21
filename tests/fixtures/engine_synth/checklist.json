@@ -1,17 +1,167 @@
-{"case": "Synthetic: harbour water-level sensors ITB + annex + clarifications", "items": [
- {"id":"S-01","kind":"ELIGIBILITY","source":"ITB 3.3","expect":"ISO 9001 certificate","all":["ISO 9001"],"fast":true},
- {"id":"S-02","kind":"ELIGIBILITY","source":"ITB 2.1","expect":"Legal registration","all":["legally registered"],"fast":true},
- {"id":"S-03","kind":"ELIGIBILITY","source":"ITB 2.2","expect":"Certified translation unless EN/FR","all":["translation","(unless|English)"],"fast":true},
- {"id":"S-04","kind":"ELIGIBILITY","source":"ITB 2.3","expect":"Two similar contracts >= EUR 200,000 in five years","all":["200,000"],"fast":true},
- {"id":"S-05","kind":"OMISSION","source":"ITB 4.1","expect":"Bid guarantee EUR 15,000 valid 120 days","all":["15,000","120"],"fast":true},
- {"id":"S-06","kind":"OMISSION","source":"ITB 4.2","expect":"Form E only where applicable","all":["Form E","applicable"],"fast":true},
- {"id":"S-07","kind":"OMISSION","source":"ITB 1.2","expect":"Sealed envelope or portal; e-mail not accepted","all":["(e-mail|email)","not"],"fast":true},
- {"id":"S-08","kind":"OMISSION","source":"BDS / ITB 4.3","expect":"Maximum budget EUR 480,000 excl. VAT; exceeding => rejection","all":["480,000"],"fast":true},
- {"id":"S-09","kind":"OMISSION","source":"ITB 4.4","expect":"80/20 and sub-criteria","all":["80%","20%"],"fast":true},
- {"id":"S-10","kind":"OMISSION","source":"ITB 4.5","expect":"70/100 technical threshold","all":["70"],"fast":true},
- {"id":"S-11","kind":"OMISSION","source":"ITB 3.4","expect":"One bid per bidder","all":["only one bid"],"fast":true},
- {"id":"S-12","kind":"CONTRADICTION","source":"BDS vs ITB 1.3","expect":"28 vs 30 June 2027 flagged","all":["28 June","30 June"],"fast":true},
- {"id":"S-13","kind":"INTERPRETATION","source":"Clarifications A1","expect":"Clarification deadline amended to 10 June 2027","all":["10 June 2027"],"fast":true,"forbid":["clarification[^.]*1 June 2027(?![^.]*(amended|previous|replaced))"]},
- {"id":"S-14","kind":"INTERPRETATION","source":"ITB 2.4","expect":"Telemetry experience is SHOULD","all":["should demonstrate"],"fast":false,"forbid":["must demonstrate experience with tide"]},
- {"id":"S-15","kind":"INTERPRETATION","source":"ITB 2.5","expect":"Joint ventures permitted","all":["joint ventures? (are|is) permitted"],"fast":false}
-]}
+{
+ "case": "Synthetic: harbour water-level sensors ITB + annex + clarifications",
+ "items": [
+  {
+   "id": "S-01",
+   "kind": "ELIGIBILITY",
+   "source": "ITB 3.3",
+   "expect": "ISO 9001 certificate",
+   "all": [
+    "ISO 9001"
+   ],
+   "fast": true
+  },
+  {
+   "id": "S-02",
+   "kind": "ELIGIBILITY",
+   "source": "ITB 2.1",
+   "expect": "Legal registration",
+   "all": [
+    "legally registered"
+   ],
+   "fast": true
+  },
+  {
+   "id": "S-03",
+   "kind": "ELIGIBILITY",
+   "source": "ITB 2.2",
+   "expect": "Certified translation unless EN/FR",
+   "all": [
+    "translation",
+    "(unless|English)"
+   ],
+   "fast": true
+  },
+  {
+   "id": "S-04",
+   "kind": "ELIGIBILITY",
+   "source": "ITB 2.3",
+   "expect": "Two similar contracts >= EUR 200,000 in five years",
+   "all": [
+    "200,000"
+   ],
+   "fast": true
+  },
+  {
+   "id": "S-05",
+   "kind": "OMISSION",
+   "source": "ITB 4.1",
+   "expect": "Bid guarantee EUR 15,000 valid 120 days",
+   "all": [
+    "15,000",
+    "120"
+   ],
+   "fast": true
+  },
+  {
+   "id": "S-06",
+   "kind": "OMISSION",
+   "source": "ITB 4.2",
+   "expect": "Form E only where applicable",
+   "all": [
+    "Form E",
+    "applicable"
+   ],
+   "fast": true
+  },
+  {
+   "id": "S-07",
+   "kind": "OMISSION",
+   "source": "ITB 1.2",
+   "expect": "Sealed envelope or portal; e-mail not accepted",
+   "all": [
+    "(e-mail|email)",
+    "not"
+   ],
+   "fast": true
+  },
+  {
+   "id": "S-08",
+   "kind": "OMISSION",
+   "source": "BDS / ITB 4.3",
+   "expect": "Maximum budget EUR 480,000 excl. VAT; exceeding => rejection",
+   "all": [
+    "480,000"
+   ],
+   "fast": true
+  },
+  {
+   "id": "S-09",
+   "kind": "OMISSION",
+   "source": "ITB 4.4",
+   "expect": "80/20 and sub-criteria",
+   "all": [
+    "80%",
+    "20%"
+   ],
+   "fast": true
+  },
+  {
+   "id": "S-10",
+   "kind": "OMISSION",
+   "source": "ITB 4.5",
+   "expect": "70/100 technical threshold",
+   "all": [
+    "70"
+   ],
+   "fast": true
+  },
+  {
+   "id": "S-11",
+   "kind": "OMISSION",
+   "source": "ITB 3.4",
+   "expect": "One bid per bidder",
+   "all": [
+    "only one bid"
+   ],
+   "fast": true
+  },
+  {
+   "id": "S-12",
+   "kind": "CONTRADICTION",
+   "source": "BDS vs ITB 1.3",
+   "expect": "28 vs 30 June 2027 flagged",
+   "all": [
+    "28 June",
+    "30 June"
+   ],
+   "fast": true
+  },
+  {
+   "id": "S-13",
+   "kind": "INTERPRETATION",
+   "source": "Clarifications A1",
+   "expect": "Clarification deadline amended to 10 June 2027",
+   "all": [
+    "10 June 2027"
+   ],
+   "fast": true,
+   "forbid": [
+    "^(?!.*(amended|previously)).*clarification[^.]*1 June 2027"
+   ]
+  },
+  {
+   "id": "S-14",
+   "kind": "INTERPRETATION",
+   "source": "ITB 2.4",
+   "expect": "Telemetry experience is SHOULD",
+   "all": [
+    "should demonstrate"
+   ],
+   "fast": false,
+   "forbid": [
+    "must demonstrate experience with tide"
+   ]
+  },
+  {
+   "id": "S-15",
+   "kind": "INTERPRETATION",
+   "source": "ITB 2.5",
+   "expect": "Joint ventures permitted",
+   "all": [
+    "joint ventures? (are|is) permitted"
+   ],
+   "fast": false
+  }
+ ]
+}

@@ -42,7 +42,9 @@ FULL_SECTIONS = [
         ("Deadlines and Schedule", ["DEADLINE"]), ("Submission Method", ["SUBMISSION_METHOD"]),
         ("Proposal Requirements", ["SUBMISSION_REQUIREMENT"]), ("Required Documents and Forms", ["REQUIRED_DOCUMENT"]),
         ("Disqualification and Rejection", ["DISQUALIFICATION"]),
-        ("Document Precedence", ["DOCUMENT_AUTHORITY"]), ("Other Provisions", ["OTHER", "IDENTITY"])]),
+        ("Document Precedence", ["DOCUMENT_AUTHORITY"]),
+        ("Changes to the Tender and Reserved Rights", ["AMENDMENT"]),
+        ("Other Provisions", ["OTHER", "IDENTITY"])]),
 ]
 
 ANALYSIS_SYSTEM = """You are a senior bid analyst writing for a consulting firm's management. You receive a \
@@ -211,7 +213,12 @@ def _kv_identity(an: dict, entries: list[dict]) -> list[tuple[str, str]]:
                      and e.get("materiality") == "CRITICAL"), None)
     if deadline:
         rows.append(("Key deadline", f"{deadline['statement']} [{_refs(deadline)[0]}]"))
-    method = next((e for e in entries if reportable(e) and e.get("category") == "SUBMISSION_METHOD"), None)
+    methods = [e for e in entries if reportable(e) and e.get("category") == "SUBMISSION_METHOD"
+               and e.get("modality") in ("MUST", "MAY", "IS")]
+    # the row names where to submit: prefer provisions that carry an address (e-mail or URL value)
+    methods.sort(key=lambda e: (not any(v.get("kind") in ("EMAIL", "URL") for v in e.get("values") or []),
+                                -_RANK.get(e.get("materiality"), 1)))
+    method = methods[0] if methods else None
     if method:
         rows.append(("Submission", f"{method['statement']} [{_refs(method)[0]}]"))
     return rows

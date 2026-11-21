@@ -143,7 +143,7 @@ def extract(analyst: Analyst, package: SourcePackage, ledger: UsageLedger, *, ta
             concurrency: int | None = None, progress=None) -> dict:
     """One analyst's complete, independent inventory of the package."""
     analyst.check_allowed(package.data_class)
-    us = units(package)
+    us = units(package, max_chars=int(os.getenv("ENGINE_UNIT_CHARS", "10000")))   # smaller units run in parallel
     ctx = {"documents": _doc_list(package), "definitions": package.definitions(), "outline": package.outline()}
     workers = concurrency or int(os.getenv("ENGINE_CONCURRENCY", "4"))
     results: dict[str, dict] = {}

@@ -404,3 +404,9 @@ def test_review_failure_fails_the_run():
         return base(purpose, system, user, schema)
     r = pipeline.run(pkg(), roles(ScriptedAnalyst(rev_fail, name="adj")), ledger=ledger())
     assert r.record["status"] == "FAILED" and "final review failed" in r.record["error"]["message"]
+
+
+def test_every_category_has_a_full_report_section():
+    from engine import schema
+    placed = {c for _, subs in reports.FULL_SECTIONS for _, cats in subs for c in cats}
+    assert set(schema.CATEGORIES) <= placed, set(schema.CATEGORIES) - placed
