@@ -806,7 +806,7 @@ def test_committed_migrations_are_unmodified_and_020_is_next():
     assert names[i - 1] == "019_section_draft_claim_mappings.sql"
     # CHECK-1 added 021, CHECK-2B added 022, R2A added 023, and the Super
     # Admin MVP added 024 and its revocation correction 025, and admin bid
-    # deletion added 026 after 020;
+    # deletion added 026, and the intelligence engine added 027 after 020;
     # MA-2A's own guarantee is only that 020 directly follows 019.
     assert names[i + 1:] in (
         [],
@@ -819,6 +819,9 @@ def test_committed_migrations_are_unmodified_and_020_is_next():
          "024_platform_super_admin.sql", "025_active_account_authorization.sql"],
         ["021_submission_evidence_registry.sql", "022_check_runs.sql", "023_enable_base_tables_tenant_rls.sql",
          "024_platform_super_admin.sql", "025_active_account_authorization.sql", "026_admin_bid_deletion.sql"],
+        ["021_submission_evidence_registry.sql", "022_check_runs.sql", "023_enable_base_tables_tenant_rls.sql",
+         "024_platform_super_admin.sql", "025_active_account_authorization.sql", "026_admin_bid_deletion.sql",
+         "027_engine_runs.sql"],
     )
 
 

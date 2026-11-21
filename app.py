@@ -247,9 +247,10 @@ with st.sidebar:
             stages_nav = {
                 "💡  1. UNDERSTAND": "stage_understand",
                 "🧬  Full Bid Intelligence": "stage_full_analysis",
-                **({"🔬  Evidence-Based Analysis": "stage_engine"} if _engine_ui_enabled() else {}),
                 "⚖️  2. DECIDE":     "stage_decide",
             }
+            if _engine_ui_enabled():   # evidence-based engine page (deployment flag, off by default)
+                stages_nav["🔬  Evidence-Based Analysis"] = "stage_engine"
             # Phoenix Beta simplification: BUILD, CHECK (Proposal Assurance),
             # SUBMIT and Debrief are not offered (code/tables/data untouched).
 
