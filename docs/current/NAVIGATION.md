@@ -40,6 +40,24 @@ Where to look, not what everything means. Read
 - Tests: `tests/test_understand_brief.py` plus the Fast Analysis adapter and
   report-adapter regression suites.
 
+**Intelligence engine (dual-analyst evidence register, 2026-11-21 rebuild)**
+- `engine/` -- the rebuilt FAST/FULL engine. Start at `engine/pipeline.py`
+  (stage order, verification status). `package.py` (documents -> locatable
+  pages/sections with readability), `extraction.py` (independent per-unit
+  extraction with per-location accounting; the prompts), `verify.py` (quote
+  and figure checks), `register.py` (reconciliation by verified source span),
+  `adjudicate.py`, `conflicts.py` (precedence only with verified authority),
+  `reports.py` (FAST/FULL composition + omission ledger), `review.py`,
+  `render.py` (PDF), `providers.py` (Claude / OpenAI / scripted; cost ledger),
+  `service.py` (app integration).
+- Constraints that block release: `docs/current/ENGINE_REBUILD_CONSTRAINTS.md`.
+- App: `pages/stage_engine.py` (shown only with `ENGINE_UI_ENABLED=1`),
+  `tenancy.*engine*_for_organization` wrappers, `database.*engine_run*`,
+  `migrations/027_engine_runs.sql` (NOT applied anywhere).
+- Local runs: `scripts/engine_run.py` (outputs in git-ignored `.engine_runs/`).
+- Tests: `tests/test_engine.py`, `tests/test_engine_constraints.py`; synthetic
+  material only in `tests/engine_synthetic.py` and `tests/fixtures/engine_synth/`.
+
 **Fast Analysis** (procurement extraction)
 - `fast_analysis.py` — the engine itself (routing, extraction, LLM calls,
   `FastAnalysisResult`, `serialize_fast_analysis_result`/`deserialize_fast_analysis_result`).

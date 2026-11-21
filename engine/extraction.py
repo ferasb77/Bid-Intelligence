@@ -49,7 +49,8 @@ a form IS a finding.
 of resolving it.
 9. Account for every SECTION_ID you are given: HAS_FINDINGS, NO_MATERIAL_PROVISIONS (say briefly what it \
 contains) or UNREADABLE (the text is garbled, missing or not interpretable).
-10. Do not evaluate, recommend or speculate. Record only what these documents say."""
+10. Category = what the provision governs for the bidder. The period for which a bid must remain valid is a SUBMISSION_REQUIREMENT (DURATION is the contract or delivery period). A clarification or amendment that changes a provision takes the category of the provision it changes; use AMENDMENT only for changes without a single affected provision.
+11. Do not evaluate, recommend or speculate. Record only what these documents say."""
 
 UNIT_TEMPLATE = """PACKAGE DOCUMENTS:
 {documents}
@@ -87,8 +88,10 @@ def _doc_list(package: SourcePackage) -> str:
 
 def _call_unit(analyst: Analyst, package: SourcePackage, unit: Unit, ctx: dict, ledger: UsageLedger) -> dict:
     ids = ", ".join(loc.loc_id for loc in unit.locations)
-    user = UNIT_TEMPLATE.format(documents=ctx["documents"], definitions=ctx["definitions"] or "(none found)",
+    full = UNIT_TEMPLATE.format(documents=ctx["documents"], definitions=ctx["definitions"] or "(none found)",
                                 outline=ctx["outline"] or "(none found)", doc=unit.doc, ids=ids, text=unit.text())
+    cut = full.index("Extract every material provision")
+    user = (full[:cut].rstrip(), full[cut:])     # package context is shared by every unit: cached
     return analyst.call_json(SYSTEM, user, schema.EXTRACTION_OUTPUT, purpose=f"extract:{unit.unit_id}",
                              ledger=ledger, data_class=package.data_class)
 

@@ -1,0 +1,7 @@
+[[SOURCE: Annex_Technical_Specification.txt | PAGE: 1]]
+ANNEX I - TECHNICAL SPECIFICATION
+Sensors shall measure water level with an accuracy of +/- 5 mm over a range of 0 to 10 m.
+Data shall be transmitted every 10 minutes to the Agency's existing data platform.
+The Supplier shall provide a warranty of 24 months from final acceptance.
+Installation at the four harbours must be completed within 6 months of contract signature.
+[[SOURCE: Annex_Technical_Specification.txt | PAGE: 2]]

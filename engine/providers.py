@@ -138,6 +138,12 @@ class Analyst:
         raise NotImplementedError
 
 
+def _flat(user) -> str:
+    """`user` is a string, or (shared_prefix, rest): the prefix is the part
+    repeated across calls of one run (package context), cached where supported."""
+    return user if isinstance(user, str) else "\n\n".join(user)
+
+
 def _parse_json(text: str) -> dict:
     text = (text or "").strip()
     if text.startswith("```"):
@@ -181,7 +187,9 @@ class AnthropicAnalyst(Analyst):
                         model=self.model, max_tokens=max_tokens, thinking={"type": "adaptive"},
                         output_config={"effort": self.effort, "format": {"type": "json_schema", "schema": schema}},
                         system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-                        messages=[{"role": "user", "content": user}]) as stream:
+                        messages=[{"role": "user", "content": user if isinstance(user, str) else [
+                            {"type": "text", "text": user[0], "cache_control": {"type": "ephemeral"}},
+                            {"type": "text", "text": user[1]}]}]) as stream:
                     msg = stream.get_final_message()
                 u.seconds = round(time.monotonic() - t0, 2)
                 us = msg.usage
@@ -260,7 +268,7 @@ class OpenAIAnalyst(Analyst):
             retry = False
             try:
                 resp = self.client().responses.create(
-                    model=self.model, instructions=system, input=user, max_output_tokens=max_tokens,
+                    model=self.model, instructions=system, input=_flat(user), max_output_tokens=max_tokens,
                     reasoning={"effort": self.reasoning_effort}, store=False,
                     text={"format": {"type": "json_schema", "name": "result", "schema": schema, "strict": True}})
                 u.seconds = round(time.monotonic() - t0, 2)
@@ -304,7 +312,7 @@ class ScriptedAnalyst(Analyst):
     def call_json(self, system, user, schema, *, purpose, ledger, data_class, max_tokens=32000):
         u = Usage(self.provider, self.model, purpose)
         try:
-            data = self.responder(purpose, system, user, schema)
+            data = self.responder(purpose, system, _flat(user), schema)
         except Exception as exc:
             u.status, u.error = "FAILED", str(exc)[:200]
             ledger.add(u)

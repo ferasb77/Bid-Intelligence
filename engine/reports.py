@@ -31,8 +31,9 @@ FULL_SECTIONS = [
     ("Opportunity and Delivery Requirements", [
         ("Scope", ["SCOPE"]), ("Deliverables and Activities", ["DELIVERABLE"]),
         ("Duration and Implementation", ["DURATION"]),
-        ("Eligibility", ["ELIGIBILITY"]), ("Qualifications", ["QUALIFICATION"]),
         ("Risks, Dependencies and Buyer Responsibilities", ["RISK_DEPENDENCY"])]),
+    ("Eligibility and Qualification", [
+        ("Eligibility", ["ELIGIBILITY"]), ("Qualifications", ["QUALIFICATION"])]),
     ("Evaluation and Commercial Intelligence", [
         ("Evaluation and Award", ["EVALUATION"]), ("Pricing", ["PRICING"]), ("Payment", ["PAYMENT"]),
         ("Guarantees and Securities", ["GUARANTEE"]), ("Financial Thresholds", ["FINANCIAL_THRESHOLD"]),
@@ -117,11 +118,28 @@ def _item(group: list[dict]) -> dict:
                                .get(m, 1))}
 
 
+_RANK = {"CRITICAL": 3, "MATERIAL": 2, "INFORMATIONAL": 1}
+
+
+def placement(e: dict, by_id: dict) -> tuple[str, str]:
+    """(category, materiality) under which an entry is reported. An amendment
+    or clarification that replaced a provision is reported where that provision
+    belongs, at least as prominently."""
+    cat, mat = e.get("category"), e.get("materiality")
+    if cat in ("AMENDMENT", "OTHER", "DOCUMENT_AUTHORITY") and e.get("previous"):
+        olds = [by_id[p["entry_id"]] for p in e["previous"] if p.get("entry_id") in by_id]
+        if olds:
+            cat = olds[0].get("category") or cat
+            mat = max([mat] + [o.get("materiality") for o in olds], key=lambda m: _RANK.get(m, 1))
+    return cat, mat
+
+
 def _items_for(entries: list[dict], cats: list[str], *, min_rank: int = 1) -> list[dict]:
-    rank = {"CRITICAL": 3, "MATERIAL": 2, "INFORMATIONAL": 1}
-    sel = [e for e in entries if e.get("category") in cats and reportable(e)
-           and rank.get(e.get("materiality"), 1) >= min_rank]
-    sel.sort(key=lambda e: (-rank.get(e.get("materiality"), 1), cats.index(e["category"])))
+    by_id = {e["entry_id"]: e for e in entries}
+    pl = {e["entry_id"]: placement(e, by_id) for e in entries}
+    sel = [e for e in entries if pl[e["entry_id"]][0] in cats and reportable(e)
+           and _RANK.get(pl[e["entry_id"]][1], 1) >= min_rank]
+    sel.sort(key=lambda e: (-_RANK.get(pl[e["entry_id"]][1], 1), cats.index(pl[e["entry_id"]][0])))
     return [_item(g) for g in group_restatements(sel)]
 
 
@@ -285,8 +303,10 @@ def _amendment_items(entries: list[dict]) -> list[dict]:
 
 def _ledger(entries: list[dict], placed: dict[str, list[str]]) -> dict:
     rows, violations = [], []
+    by_id = {e["entry_id"]: e for e in entries}
     for e in entries:
         where = placed.get(e["entry_id"], [])
+        pcat, pmat = placement(e, by_id)
         app = e.get("applicability")
         if where:
             reason = ""
@@ -302,7 +322,8 @@ def _ledger(entries: list[dict], placed: dict[str, list[str]]) -> dict:
         else:
             reason = "NOT PLACED"
             violations.append(e["entry_id"])
-        if reportable(e) and e.get("category") in schema.FAST_MANDATORY and e.get("materiality") == "CRITICAL" \
+        if reportable(e) and (e.get("category") in schema.FAST_MANDATORY or pcat in schema.FAST_MANDATORY) \
+                and "CRITICAL" in (e.get("materiality"), pmat) \
                 and not any(w.startswith("FAST") for w in where):
             violations.append(e["entry_id"])
         rows.append({"entry_id": e["entry_id"], "category": e.get("category"), "materiality": e.get("materiality"),

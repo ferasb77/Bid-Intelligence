@@ -88,8 +88,11 @@ def model_review(reviewer: Analyst, package: SourcePackage, composed: dict, entr
         return {"issues": [], "error": str(exc)[:300]}
 
 
-def apply_corrections(package: SourcePackage, entries: list[dict], issues: list[dict]) -> dict:
-    """Applies evidence-backed corrections in place; returns {"applied", "unresolved", "added"}."""
+def apply_corrections(package: SourcePackage, entries: list[dict], issues: list[dict],
+                      analysis: dict | None = None) -> dict:
+    """Applies evidence-backed corrections in place; returns {"applied", "unresolved", "added"}.
+    An analysis point the reviewer finds stronger than its evidence is withdrawn
+    (removing interpretation is always safe; strengthening never happens here)."""
     by_id = {e["entry_id"]: e for e in entries}
     applied, unresolved, added = [], [], []
     for iss in issues:
@@ -97,6 +100,17 @@ def apply_corrections(package: SourcePackage, entries: list[dict], issues: list[
         quote = (iss.get("quote") or "").strip()
         fix = (iss.get("corrected_statement") or "").strip()
         ids = [i for i in iss.get("entry_ids") or [] if i in by_id]
+        if t == "MISLEADING_ANALYSIS" and analysis and analysis.get("points"):
+            pts = analysis["points"]
+            best = max(len(set(p.get("entry_ids") or []) & set(ids)) for p in pts)
+            hit = [p for p in pts if best and len(set(p.get("entry_ids") or []) & set(ids)) == best]
+            if hit:
+                for p in hit:
+                    pts.remove(p)
+                    analysis.setdefault("rejected", []).append({"element": "point", "text": p.get("analysis"),
+                                                                "reason": "review: " + (iss.get("description") or "")[:200]})
+                applied.append(dict(iss, resolution=f"analysis point withdrawn ({len(hit)})"))
+                continue
         if t in ("DUPLICATION", "VERBOSITY"):
             unresolved.append(dict(iss, resolution="presentation note"))
             continue

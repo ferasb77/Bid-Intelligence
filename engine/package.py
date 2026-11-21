@@ -81,7 +81,7 @@ class SourcePackage:
         for loc in self.locations:
             counts[loc.status] = counts.get(loc.status, 0) + 1
         problems = [{"loc_id": loc.loc_id, "ref": loc.ref(), "status": loc.status, "note": loc.note}
-                    for loc in self.locations if loc.status in ("UNREADABLE", "MISSING", "OCR")]
+                    for loc in self.locations if loc.status in ("UNREADABLE", "MISSING", "OCR", "NEAR_EMPTY")]
         return {"locations": len(self.locations), "by_status": counts, "problems": problems,
                 "complete": not any(p["status"] in ("UNREADABLE", "MISSING") for p in problems)}
 

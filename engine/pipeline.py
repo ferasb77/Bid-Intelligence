@@ -178,7 +178,7 @@ def run(package: SourcePackage, roles: EngineRoles, *, ledger: UsageLedger | Non
     reviewer = roles.reviewer or roles.adjudicator
     det = review.deterministic_checks(composed, entries)
     mr = review.model_review(reviewer, package, composed, entries, ledger)
-    corr = review.apply_corrections(package, entries, [i for i in mr.get("issues") or []])
+    corr = review.apply_corrections(package, entries, [i for i in mr.get("issues") or []], out.analysis)
     composed = compose()
     det_after = review.deterministic_checks(composed, entries)
     out.review = {"deterministic_before": det, "deterministic_after": det_after, "model_issues": mr.get("issues"),

@@ -1,0 +1,42 @@
+[[SOURCE: ITB_Harbour_Sensors.txt | PAGE: 1]]
+MERIDIAN COASTAL WORKS AGENCY
+Invitation to Bid No. MCWA/ITB/2027/014
+Supply, Installation and Calibration of Harbour Water-Level Sensors
+Issue date: 2 May 2027
+[[SOURCE: ITB_Harbour_Sensors.txt | PAGE: 2]]
+BID DATA SHEET
+Contracting Authority: Meridian Coastal Works Agency
+Deadline for submission of bids: 28 June 2027 at 10:00 local time
+Deadline for requests for clarification: 1 June 2027
+Bid validity: 120 days from the deadline for submission of bids
+Currency of bid: Euro (EUR)
+Maximum budget: EUR 480,000 excluding VAT
+[[SOURCE: ITB_Harbour_Sensors.txt | PAGE: 3]]
+SECTION 1 - INSTRUCTIONS TO BIDDERS
+1.1 The Agency invites sealed bids for the supply, installation and calibration of 24 water-level sensors at four harbours.
+1.2 Bids shall be delivered in a sealed envelope to the Agency Registry, 14 Quay Street, Port Ellery, or uploaded to the e-procurement portal. Bids sent by e-mail will not be accepted.
+1.3 Bids must be received no later than 30 June 2027 at 10:00 local time.
+1.4 Bidders may submit questions in writing until the deadline for requests for clarification stated in the Bid Data Sheet.
+1.5 Clarifications published by the Agency form an integral part of the tender documents and prevail over them.
+[[SOURCE: ITB_Harbour_Sensors.txt | PAGE: 4]]
+SECTION 2 - ELIGIBILITY AND QUALIFICATION
+2.1 Bidders must be legally registered in their country of establishment.
+2.2 Foreign bidders must submit a certified translation of their registration certificate, unless the certificate is issued in English or French.
+2.3 The Bidder must have completed at least two contracts of similar nature, each with a value of not less than EUR 200,000, during the last five years.
+2.4 The Bidder should demonstrate experience with tide-gauge or water-level telemetry systems.
+2.5 Joint ventures are permitted. Each member of a joint venture shall be jointly and severally liable.
+[[SOURCE: ITB_Harbour_Sensors.txt | PAGE: 5]]
+SECTION 3 - GENERAL CONDITIONS OF PARTICIPATION
+3.1 Bidders shall bear all costs associated with the preparation of their bids.
+3.2 The Agency will reimburse no costs, whatever the outcome of the procedure.
+3.3 Only firms that hold a valid ISO 9001 certificate on the date of submission of bids are eligible to participate in this procedure.
+3.4 A bidder may submit only one bid, either individually or as a member of a joint venture.
+[[SOURCE: ITB_Harbour_Sensors.txt | PAGE: 6]]
+SECTION 4 - BID SECURITY, SUBMISSION CONTENT AND EVALUATION
+4.1 Each bid must be accompanied by a bid guarantee of EUR 15,000, valid for 120 days after the deadline for submission of bids.
+4.2 The bid shall include: Form A (Bid Submission Form), Form B (Financial Offer), Form C (Technical Proposal), Form D (Declaration of Honour) and Form E (Joint Venture Agreement, where applicable).
+4.3 Bids exceeding the maximum budget will be rejected.
+4.4 Evaluation: technical quality 80% and price 20%. Technical sub-criteria: methodology 40%, team 25%, maintenance plan 15%.
+4.5 Bids scoring fewer than 70 of 100 technical points will not be considered further.
+4.6 Payment: 30% advance payment against an advance payment guarantee of the same amount; 70% upon final acceptance.
+4.7 The Supplier will provide monthly progress reports during installation.

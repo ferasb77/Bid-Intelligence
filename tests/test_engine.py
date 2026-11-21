@@ -234,3 +234,31 @@ def test_cost_ledger_prices_known_models_and_flags_unknown():
     s = lg.summary()
     assert s["by_model"]["anthropic:claude-opus-5-5"]["cost_usd"] == 6.0
     assert s["cost_complete"] is False
+
+
+def test_amendment_is_reported_with_the_provision_it_changes():
+    entries = _deadline_entries()
+    cf.resolve(_conflict_adjudicator("The submission deadline in Section 3 is amended to 22 March 2027"),
+               pkg(), entries, [], ledger())
+    new = next(e for e in entries if "22 March" in e["statement"])
+    new["category"], new["materiality"] = "AMENDMENT", "MATERIAL"
+    comp = reports.compose(entries, an={}, conflicts={}, readability={}, run_meta={})
+    fast = next(s for s in comp["fast"]["sections"] if s["title"].startswith("Submission"))
+    assert any(new["entry_id"] in it["entry_ids"] for it in fast["items"])
+    assert comp["ledger"]["complete"]
+
+
+def test_review_withdraws_overstated_analysis_point():
+    an = {"points": [{"heading": "h", "analysis": "x", "entry_ids": ["E001", "E002"]},
+                     {"heading": "k", "analysis": "y", "entry_ids": ["E003"]}], "rejected": []}
+    entries = [{"entry_id": i} for i in ("E001", "E002", "E003")]
+    from engine import review
+    out = review.apply_corrections(pkg(), entries, [{"type": "MISLEADING_ANALYSIS", "entry_ids": ["E002"],
+                                                     "description": "stronger than source"}], an)
+    assert [p["heading"] for p in an["points"]] == ["k"] and out["applied"]
+
+
+def test_near_empty_page_is_disclosed():
+    p = build_package([{"name": "a.txt", "text": "[[SOURCE: a.txt | PAGE: 1]]\n" + "Bidders must register. " * 5 +
+                        "\n[[SOURCE: a.txt | PAGE: 2]]\n", "meta": {}}])
+    assert [x["status"] for x in p.readability()["problems"]] == ["NEAR_EMPTY"]
