@@ -14,7 +14,8 @@ import os
 
 from engine import schema
 from engine.package import SourcePackage, Unit, units
-from engine.providers import Analyst, ProviderError, ProviderNotAuthorized, ProviderUnavailable, UsageLedger
+from engine.providers import (Analyst, ProviderError, ProviderNotAuthorized, ProviderNotConfigured,
+                              ProviderUnavailable, UsageLedger)
 
 SYSTEM = """You are a senior procurement analyst. You read procurement documents (RFPs, ITBs, terms of reference, \
 specifications, annexes, forms, price schedules, clarifications, addenda) and record every provision a bidder \
@@ -101,7 +102,7 @@ def _extract_unit(analyst, package, unit, ctx, ledger, depth=0) -> dict:
     did not fit, and re-asks once for locations the answer did not account for."""
     try:
         data = _call_unit(analyst, package, unit, ctx, ledger)
-    except (ProviderNotAuthorized, ProviderUnavailable):
+    except (ProviderNotAuthorized, ProviderNotConfigured, ProviderUnavailable):
         raise
     except ProviderError as exc:
         if len(unit.locations) > 1 and depth < 4:
@@ -152,7 +153,7 @@ def extract(analyst: Analyst, package: SourcePackage, ledger: UsageLedger, *, ta
             u = futs[fut]
             try:
                 results[u.unit_id] = fut.result()
-            except (ProviderNotAuthorized, ProviderUnavailable):
+            except (ProviderNotAuthorized, ProviderNotConfigured, ProviderUnavailable):
                 for f in futs:
                     f.cancel()
                 raise
@@ -184,7 +185,7 @@ def package_review(analyst: Analyst, package: SourcePackage, inventory: dict, le
     try:
         return analyst.call_json(PACKAGE_REVIEW_SYSTEM, user, schema.PACKAGE_REVIEW_OUTPUT,
                                  purpose="package_review", ledger=ledger, data_class=package.data_class)
-    except (ProviderNotAuthorized, ProviderUnavailable):
+    except (ProviderNotAuthorized, ProviderNotConfigured, ProviderUnavailable):
         raise
     except ProviderError as exc:
         return {"documents": [], "relationships": [], "missed": [], "error": str(exc)[:300]}

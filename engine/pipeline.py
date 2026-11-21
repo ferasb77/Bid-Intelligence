@@ -15,7 +15,8 @@ from dataclasses import dataclass, field
 
 from engine import ENGINE_VERSION, adjudicate as adj, conflicts as cf, extraction, register as rg, reports, review
 from engine.package import SourcePackage
-from engine.providers import Analyst, ProviderError, ProviderNotAuthorized, ProviderUnavailable, UsageLedger
+from engine.providers import (Analyst, ProviderError, ProviderNotAuthorized, ProviderNotConfigured,
+                              ProviderUnavailable, UsageLedger)
 from engine.verify import verify_finding
 
 STATUS_TEXT = {
@@ -120,7 +121,7 @@ def run(package: SourcePackage, roles: EngineRoles, *, ledger: UsageLedger | Non
             tag = futs[fut]
             try:
                 results[tag] = fut.result()
-            except (ProviderNotAuthorized, ProviderUnavailable) as exc:
+            except (ProviderNotAuthorized, ProviderNotConfigured, ProviderUnavailable) as exc:
                 errors[tag] = {"kind": type(exc).__name__, "message": str(exc)}
             except Exception as exc:
                 errors[tag] = {"kind": "FAILED", "message": f"{type(exc).__name__}: {exc}"[:400]}
@@ -208,11 +209,26 @@ def run(package: SourcePackage, roles: EngineRoles, *, ledger: UsageLedger | Non
         lim.append(f"{len(corr['unresolved'])} review issue(s) could not be resolved with verifiable evidence.")
     # a run that could not read part of the package with its primary analyst,
     # or could not write or review its reports, is not a completed analysis
-    failed_locs = [g for g in inv_a.get("gaps") or [] if str(g.get("reason", "")).startswith("extraction failed")]
     blocking = []
-    if failed_locs:
-        blocking.append(f"primary extraction failed for {len(failed_locs)} of {len(package.locations)} "
-                        f"page(s)/section(s): {failed_locs[0]['reason'][:200]}")
+    for tag, inv in (("primary", inv_a), ("independent", inv_b)):
+        failed_locs = [g for g in (inv or {}).get("gaps") or []
+                       if str(g.get("reason", "")).startswith("extraction failed")]
+        if failed_locs:
+            blocking.append(f"{tag} extraction failed for {len(failed_locs)} of {len(package.locations)} "
+                            f"page(s)/section(s): {failed_locs[0]['reason'][:200]}")
+    b_err = errors.get("B") or {}
+    if b_err and b_err.get("kind") not in ("ProviderNotAuthorized", "ProviderNotConfigured"):
+        # an independent analyst that was configured and authorized but failed is a failed run,
+        # not a quietly downgraded single-analyst one
+        blocking.append(f"independent analysis failed: {b_err.get('message', '')[:200]}")
+    if adj_stats["failed_batches"]:
+        blocking.append(f"adjudication failed for {adj_stats['failed_batches']} batch(es)")
+    if out.conflicts["errors"]:
+        blocking.append(f"conflict classification failed: {out.conflicts['errors'][0][:200]}")
+    if any((e.get("verification") or {}).get("status") is None for e in entries if e.get("status") != "REVIEW_ADDED"):
+        blocking.append("some register entries were never verified against the source")
+    if not composed["ledger"]["complete"]:
+        blocking.append("omission ledger violations: " + ", ".join(composed["ledger"]["violations"][:10]))
     if out.analysis.get("error"):
         blocking.append(f"analysis writing failed: {out.analysis['error'][:200]}")
     if mr.get("error"):

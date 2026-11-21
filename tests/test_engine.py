@@ -287,3 +287,120 @@ def test_account_errors_stop_the_run():
     assert _account_problem(E(401, "invalid x-api-key"))
     assert not _account_problem(E(400, "prompt is too long"))
     assert not _account_problem(E(529, "overloaded"))
+
+
+# ── OpenAI analyst interface (fake client; synthetic documents only) ───────
+
+class _FakeResponses:
+    def __init__(self, responder):
+        self.responder, self.calls = responder, []
+
+    def create(self, **kw):
+        import json as _j
+        from types import SimpleNamespace as NS
+        self.calls.append(kw)
+        purpose_hint = "package_review" if "YOUR FINDINGS" in kw["input"] else (
+            "extract:U" if "SECTION_ID" in kw["input"] else "other")
+        data = self.responder(purpose_hint, kw["instructions"], kw["input"], kw["text"]["format"]["schema"])
+        return NS(id="resp_test", status="completed", output_text=_j.dumps(data),
+                  usage=NS(input_tokens=1000, output_tokens=200, input_tokens_details=NS(cached_tokens=400)))
+
+
+def _openai_fake(responder):
+    from types import SimpleNamespace as NS
+    fr = _FakeResponses(responder)
+    return OpenAIAnalyst(model="test-model", client=NS(responses=fr), name="openai-independent", max_attempts=1), fr
+
+
+def test_openai_request_shape_and_usage_accounting():
+    oa, fr = _openai_fake(S.responder("B"))
+    lg = ledger()
+    inv = __import__("engine.extraction", fromlist=["x"]).extract(oa, pkg(), lg, tag="B")
+    kw = fr.calls[0]
+    assert kw["store"] is False                                   # no retention of package text
+    assert kw["text"]["format"]["strict"] is True and kw["text"]["format"]["type"] == "json_schema"
+    assert kw["model"] == "test-model" and isinstance(kw["input"], str)
+    assert inv["findings"] and not inv["gaps"]
+    s = lg.summary()["by_model"]["openai:test-model"]
+    assert s["input_tokens"] == 600 * len(fr.calls) and s["cache_read_tokens"] == 400 * len(fr.calls)
+
+
+def test_dual_provider_synthetic_run_with_openai_interface():
+    oa, _ = _openai_fake(S.responder("B"))
+    rl = pipeline.EngineRoles(primary=ScriptedAnalyst(S.responder("A"), name="A"), independent=oa,
+                              adjudicator=ScriptedAnalyst(S.adjudicator(), name="adj"))
+    r = pipeline.run(pkg(), rl, ledger=ledger())
+    assert r.record["status"] == "COMPLETE" and r.record["verification"] == "SYNTHETIC"
+    assert any(e["status"] == "AGREED" for e in r.register["entries"])
+
+
+def test_openai_client_documents_blocked_before_any_request(monkeypatch):
+    monkeypatch.delenv("ENGINE_OPENAI_CLIENT_DATA_AUTHORIZED", raising=False)
+    oa, fr = _openai_fake(S.responder("B"))
+    with pytest.raises(ProviderNotAuthorized):
+        oa.call_json("s", "u", {}, purpose="x", ledger=ledger(), data_class="CLIENT")
+    assert fr.calls == []
+
+
+def test_openai_strict_schemas_are_closed_and_fully_required():
+    from engine import schema as sc
+
+    def walk(node):
+        if isinstance(node, dict):
+            if node.get("type") == "object":
+                assert node.get("additionalProperties") is False
+                assert sorted(node.get("required") or []) == sorted(node.get("properties") or {})
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+    for name in ("EXTRACTION_OUTPUT", "PACKAGE_REVIEW_OUTPUT", "ADJUDICATION_OUTPUT", "REVIEW_OUTPUT",
+                 "ANALYSIS_OUTPUT"):
+        walk(getattr(sc, name))
+
+
+# ── fail-closed ────────────────────────────────────────────────────────────
+
+def test_configured_independent_failure_fails_the_run():
+    oa, fr = _openai_fake(S.responder("B"))
+
+    def boom(**kw):
+        raise RuntimeError("upstream error")
+    fr.create = boom
+    r = pipeline.run(pkg(), pipeline.EngineRoles(primary=ScriptedAnalyst(S.responder("A"), name="A"),
+                                                 independent=oa,
+                                                 adjudicator=ScriptedAnalyst(S.adjudicator(), name="adj")),
+                     ledger=ledger())
+    assert r.record["status"] == "FAILED" and r.record["verification"] == "FAILED"
+
+
+def test_unconfigured_independent_is_single_analyst_not_failure(monkeypatch):
+    monkeypatch.delenv("ENGINE_OPENAI_MODEL", raising=False)
+    r = pipeline.run(pkg(), pipeline.EngineRoles(primary=_Real(S.responder("A"), "anthropic", "A"),
+                                                 independent=OpenAIAnalyst(model="", api_key=""),
+                                                 adjudicator=_Real(S.adjudicator(), "anthropic", "adj")),
+                     ledger=ledger())
+    assert r.record["status"] == "COMPLETE" and r.record["verification"] == "SINGLE_ANALYST"
+
+
+def test_adjudication_failure_fails_the_run():
+    base = S.adjudicator()
+
+    def adj_fail(purpose, system, user, schema):
+        if purpose.startswith("adjudicat"):
+            raise RuntimeError("model error")
+        return base(purpose, system, user, schema)
+    r = pipeline.run(pkg(), roles(ScriptedAnalyst(adj_fail, name="adj")), ledger=ledger())
+    assert r.record["status"] == "FAILED" and "adjudication failed" in r.record["error"]["message"]
+
+
+def test_review_failure_fails_the_run():
+    base = S.adjudicator()
+
+    def rev_fail(purpose, system, user, schema):
+        if purpose == "final_review":
+            raise RuntimeError("model error")
+        return base(purpose, system, user, schema)
+    r = pipeline.run(pkg(), roles(ScriptedAnalyst(rev_fail, name="adj")), ledger=ledger())
+    assert r.record["status"] == "FAILED" and "final review failed" in r.record["error"]["message"]

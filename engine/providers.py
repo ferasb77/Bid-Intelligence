@@ -33,6 +33,11 @@ class ProviderNotAuthorized(ProviderError):
     """Sending this package to this provider is not authorized."""
 
 
+class ProviderNotConfigured(ProviderError):
+    """The provider is deliberately not set up (no key/model/package): the
+    role is absent, not failed."""
+
+
 class ProviderUnavailable(ProviderError):
     """Credentials, SDK or model access missing."""
 
@@ -264,21 +269,22 @@ class OpenAIAnalyst(Analyst):
             raise ProviderNotAuthorized("client documents may not be sent to OpenAI: the owner's authorization "
                                         "(ENGINE_OPENAI_CLIENT_DATA_AUTHORIZED) is not configured")
         if not self.model:
-            raise ProviderUnavailable("no OpenAI model configured (ENGINE_OPENAI_MODEL)")
+            raise ProviderNotConfigured("no OpenAI model configured (ENGINE_OPENAI_MODEL)")
         if self._client is None and not self._api_key:
-            raise ProviderUnavailable("no OpenAI API key configured (OPENAI_API_KEY)")
+            raise ProviderNotConfigured("no OpenAI API key configured (OPENAI_API_KEY)")
 
     def client(self):
         if self._client is None:
             try:
                 import openai
             except ImportError as exc:
-                raise ProviderUnavailable("the openai package is not installed") from exc
+                raise ProviderNotConfigured("the openai package is not installed") from exc
             self._client = openai.OpenAI(api_key=self._api_key)
         return self._client
 
     def call_json(self, system, user, schema, *, purpose, ledger, data_class, max_tokens=32000):
         self.check_allowed(data_class)
+        self.client()                      # a missing SDK is "not configured", never a per-page failure
         last: Exception | None = None
         for attempt in range(self.max_attempts):
             u = Usage("openai", self.model, purpose)
