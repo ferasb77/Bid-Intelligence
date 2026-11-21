@@ -129,9 +129,12 @@ def _decision_ref(d: dict) -> list:
         out += [Paragraph("Submission logistics", ST["h2"]), _bullets(d["submission"])]
     if d.get("documents"):
         out += [Paragraph("Documents and forms to submit (checklist)", ST["h2"]), _bullets(d["documents"])]
-    if d.get("clarifications"):
-        out += [Paragraph("Open questions for the buyer", ST["h2"]),
-                _bullets([{"text": c["question"], "refs": [], "labels": []} for c in d["clarifications"]])]
+    if d.get("clarifications") or d.get("qa_window_notice"):
+        out.append(Paragraph("Open questions for the buyer", ST["h2"]))
+        if d.get("qa_window_notice"):
+            out.append(Paragraph(_t(d["qa_window_notice"]), ST["note"]))
+        if d.get("clarifications"):
+            out.append(_bullets([{"text": c["question"], "refs": [], "labels": []} for c in d["clarifications"]]))
     cov = d.get("coverage") or {}
     probs = cov.get("problems") or []
     out.append(Paragraph("Source coverage", ST["h2"]))

@@ -9,6 +9,7 @@ and recorded."""
 from __future__ import annotations
 
 import re
+from datetime import date
 
 from engine import schema
 from engine.providers import Analyst, ProviderError, UsageLedger
@@ -219,9 +220,71 @@ def analysis(writer: Analyst | None, entries: list[dict], ledger: UsageLedger, d
     return out
 
 
+# ── deadline status relative to the run date (deterministic, annotation only) ──
+
+_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+# generic wording of a clarification / question window; never document-specific
+_QA_TERMS = re.compile(r"\b(questions?|quer(?:y|ies)|clarifications?|inquir(?:y|ies)|enquir(?:y|ies)|q\s*&\s*a)\b",
+                       re.IGNORECASE)
+
+
+def run_date_of(run_meta: dict | None) -> str:
+    """ISO date (YYYY-MM-DD) the run is judged against; today when not supplied."""
+    rd = str((run_meta or {}).get("run_date") or "")[:10]
+    return rd if _ISO_DATE.fullmatch(rd) else date.today().isoformat()
+
+
+def _lapsed_dates(e: dict, run_date: str) -> list[str]:
+    """Normalized DATE values of a DEADLINE entry strictly earlier than run_date."""
+    if e.get("category") != "DEADLINE":
+        return []
+    out = []
+    for v in e.get("values") or []:
+        d = str(v.get("normalized") or "")[:10]
+        if v.get("kind") == "DATE" and _ISO_DATE.fullmatch(d) and d < run_date:
+            out.append(d)
+    return sorted(set(out))
+
+
+def _lapse_warning(run_date: str) -> str:
+    return (f"[LAPSED PER UPLOADED DOCUMENTS as of {run_date} — verify whether an extension was issued via "
+            f"email or e-bid portal]")
+
+
+def _is_qa_deadline(e: dict) -> bool:
+    return bool(_QA_TERMS.search(f"{e.get('statement') or ''} {e.get('quote') or ''}"))
+
+
+def _qa_window_notice(entries: list[dict], run_date: str) -> str:
+    lapsed = [d for e in entries if reportable(e) and _is_qa_deadline(e) for d in _lapsed_dates(e, run_date)]
+    if not lapsed:
+        return ""
+    return (f"Documented Q&A deadline ({max(lapsed)}) has passed as of {run_date}. Verify whether an extension was "
+            f"issued via email or the e-bid platform; if no extension applies, treat the items below as "
+            f"proposal-level assumptions/risks rather than buyer questions.")
+
+
+def _annotate_lapsed(composed: dict, lapsed_ids: set[str], run_date: str) -> None:
+    """Appends the lapse warning to every composed item that reports a lapsed deadline.
+    Composed items are copies; register entries are never touched."""
+    warning = _lapse_warning(run_date)
+
+    def walk(node):
+        if isinstance(node, dict):
+            if "entry_ids" in node and isinstance(node.get("text"), str) and lapsed_ids & set(node["entry_ids"]) \
+                    and warning not in node["text"]:
+                node["text"] += " " + warning
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+    walk({"fast": composed["fast"], "full": composed["full"]})
+
+
 # ── composition ─────────────────────────────────────────────────────────────
 
-def _kv_identity(an: dict, entries: list[dict]) -> list[tuple[str, str]]:
+def _kv_identity(an: dict, entries: list[dict], run_date: str = "") -> list[tuple[str, str]]:
     rows = []
     for k, label in (("title", "Opportunity"), ("buyer", "Issued by"), ("reference", "Reference")):
         if an.get(k):
@@ -229,7 +292,10 @@ def _kv_identity(an: dict, entries: list[dict]) -> list[tuple[str, str]]:
     deadline = next((e for e in entries if reportable(e) and e.get("category") == "DEADLINE"
                      and e.get("materiality") == "CRITICAL"), None)
     if deadline:
-        rows.append(("Key deadline", f"{deadline['statement']} [{_refs(deadline)[0]}]"))
+        text = f"{deadline['statement']} [{_refs(deadline)[0]}]"
+        if run_date and _lapsed_dates(deadline, run_date):
+            text += " " + _lapse_warning(run_date)
+        rows.append(("Key deadline", text))
     methods = [e for e in entries if reportable(e) and e.get("category") == "SUBMISSION_METHOD"
                and e.get("modality") in ("MUST", "MAY", "IS")]
     # the row names where to submit: prefer provisions that carry an address (e-mail or URL value)
@@ -245,6 +311,7 @@ def compose(entries: list[dict], *, an: dict, conflicts: dict, readability: dict
             research: dict | None = None) -> dict:
     """Returns {"fast", "full", "ledger"} content models."""
     placed: dict[str, list[str]] = {}
+    run_date = run_date_of(run_meta)
 
     def mark(items, where):
         for it in items:
@@ -253,7 +320,7 @@ def compose(entries: list[dict], *, an: dict, conflicts: dict, readability: dict
         return items
 
     # FAST
-    fast = {"kind": "FAST", "title": "Opportunity Snapshot", "identity": _kv_identity(an, entries),
+    fast = {"kind": "FAST", "title": "Opportunity Snapshot", "identity": _kv_identity(an, entries, run_date),
             "summary": [s["text"] for s in an.get("summary") or []], "sections": []}
     for title, cats in FAST_SECTIONS:
         min_rank = 2 if cats[0] in ("SCOPE",) else 2
@@ -292,8 +359,12 @@ def compose(entries: list[dict], *, an: dict, conflicts: dict, readability: dict
         "submission": [i for i in _items_for(entries, ["SUBMISSION_METHOD", "DEADLINE"], min_rank=3)],
         "documents": [i for i in _items_for(entries, ["REQUIRED_DOCUMENT"], min_rank=2)],
         "clarifications": conflicts.get("clarifications") or [],
+        "qa_window_notice": _qa_window_notice(entries, run_date),
         "coverage": readability, "verification": run_meta.get("verification")}})
 
+    lapsed_ids = {e["entry_id"] for e in entries if reportable(e) and _lapsed_dates(e, run_date)}
+    if lapsed_ids:
+        _annotate_lapsed({"fast": fast, "full": full}, lapsed_ids, run_date)
     ledger = _ledger(entries, placed)
     return {"fast": fast, "full": full, "ledger": ledger}
 

@@ -171,7 +171,9 @@ def run(package: SourcePackage, roles: EngineRoles, *, ledger: UsageLedger | Non
 
     def compose():
         return reports.compose(entries, an=out.analysis, conflicts=out.conflicts, readability=package.readability(),
-                               run_meta={"verification": rec.get("verification")}, research=research)
+                               run_meta={"verification": rec.get("verification"),
+                                         "run_date": str(rec.get("started_at") or "")[:10]},
+                               research=research)
 
     composed = compose()
 

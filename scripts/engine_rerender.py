@@ -26,7 +26,9 @@ def main() -> int:
             continue
         comp = reports.compose(r["register"]["entries"], an=r["analysis"], conflicts=r["conflicts"],
                                readability=r["package"]["readability"],
-                               run_meta={"verification": rec.get("verification")}, research=None)
+                               run_meta={"verification": rec.get("verification"),
+                                         "run_date": str(rec.get("started_at") or "")[:10]},
+                               research=None)
         if not comp["ledger"]["complete"]:
             print(label, "ledger violations after recomposition:", comp["ledger"]["violations"])
             continue
