@@ -262,3 +262,28 @@ def test_near_empty_page_is_disclosed():
     p = build_package([{"name": "a.txt", "text": "[[SOURCE: a.txt | PAGE: 1]]\n" + "Bidders must register. " * 5 +
                         "\n[[SOURCE: a.txt | PAGE: 2]]\n", "meta": {}}])
     assert [x["status"] for x in p.readability()["problems"]] == ["NEAR_EMPTY"]
+
+
+def test_failed_primary_extraction_never_reports_complete():
+    def no_credit(purpose, system, user, schema):
+        if purpose.startswith("extract"):
+            raise RuntimeError("Your credit balance is too low")
+        return S.responder("A")(purpose, system, user, schema)
+    r = pipeline.run(pkg(), pipeline.EngineRoles(primary=ScriptedAnalyst(no_credit, name="A"), independent=None,
+                                                 adjudicator=ScriptedAnalyst(S.adjudicator(), name="adj")),
+                     ledger=ledger())
+    assert r.record["status"] == "FAILED" and r.record["verification"] == "FAILED"
+    assert "primary extraction failed" in r.record["error"]["message"]
+
+
+def test_account_errors_stop_the_run():
+    from engine.providers import _account_problem
+
+    class E(Exception):
+        def __init__(self, code, msg):
+            super().__init__(msg)
+            self.status_code = code
+    assert _account_problem(E(400, "Your credit balance is too low to access the Anthropic API"))
+    assert _account_problem(E(401, "invalid x-api-key"))
+    assert not _account_problem(E(400, "prompt is too long"))
+    assert not _account_problem(E(529, "overloaded"))

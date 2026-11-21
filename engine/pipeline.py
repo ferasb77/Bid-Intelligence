@@ -206,6 +206,24 @@ def run(package: SourcePackage, roles: EngineRoles, *, ledger: UsageLedger | Non
         lim.append(f"{len(det_after)} deterministic check(s) still failing after review.")
     if corr["unresolved"]:
         lim.append(f"{len(corr['unresolved'])} review issue(s) could not be resolved with verifiable evidence.")
+    # a run that could not read part of the package with its primary analyst,
+    # or could not write or review its reports, is not a completed analysis
+    failed_locs = [g for g in inv_a.get("gaps") or [] if str(g.get("reason", "")).startswith("extraction failed")]
+    blocking = []
+    if failed_locs:
+        blocking.append(f"primary extraction failed for {len(failed_locs)} of {len(package.locations)} "
+                        f"page(s)/section(s): {failed_locs[0]['reason'][:200]}")
+    if out.analysis.get("error"):
+        blocking.append(f"analysis writing failed: {out.analysis['error'][:200]}")
+    if mr.get("error"):
+        blocking.append(f"final review failed: {str(mr['error'])[:200]}")
+    if blocking:
+        out.register = {"entries": entries, "duplicates": reg["duplicates"], "stats": _stats(entries)}
+        out.composed = composed
+        rec.update(status="FAILED", verification="FAILED", limitations=lim,
+                   error={"kind": "INCOMPLETE_ANALYSIS", "message": "; ".join(blocking)},
+                   usage=ledger.summary(), seconds=round(time.monotonic() - t0, 1))
+        return out
     if synthetic:
         status = "SYNTHETIC"
     elif not dual:

@@ -144,6 +144,19 @@ def _flat(user) -> str:
     return user if isinstance(user, str) else "\n\n".join(user)
 
 
+_ACCOUNT_MARKERS = ("credit balance", "insufficient_quota", "billing", "quota exceeded", "account is not active",
+                    "permission", "api key", "authentication")
+
+
+def _account_problem(exc) -> bool:
+    """Errors no retry or smaller request can fix (credit, quota, key,
+    permission): the whole run must stop instead of recording page gaps."""
+    code = getattr(exc, "status_code", None)
+    if code in (401, 402, 403):
+        return True
+    return code in (400, 429) and any(m in str(exc).lower() for m in _ACCOUNT_MARKERS[:5])
+
+
 def _parse_json(text: str) -> dict:
     text = (text or "").strip()
     if text.startswith("```"):
@@ -212,6 +225,11 @@ class AnthropicAnalyst(Analyst):
             except anthropic.APIStatusError as exc:
                 last = exc
                 retry = exc.status_code >= 500 or exc.status_code == 529
+                if _account_problem(exc):
+                    u.status, u.error = "FAILED", f"{type(exc).__name__}: {str(exc)[:200]}"
+                    ledger.add(u)
+                    raise ProviderUnavailable(f"{self.name} ({self.model}): provider account problem: "
+                                              f"{str(exc)[:300]}") from exc
             except ProviderError as exc:
                 last = exc
                 retry = "unparseable" in str(exc)
@@ -291,6 +309,11 @@ class OpenAIAnalyst(Analyst):
                 last = exc
                 code = getattr(exc, "status_code", None)
                 retry = code is None or code == 429 or code >= 500
+                if _account_problem(exc):
+                    u.status, u.error = "FAILED", f"{type(exc).__name__}: {str(exc)[:200]}"
+                    ledger.add(u)
+                    raise ProviderUnavailable(f"{self.name} ({self.model}): provider account problem: "
+                                              f"{str(exc)[:300]}") from exc
             u.seconds = round(time.monotonic() - t0, 2)
             u.status, u.error = "FAILED", f"{type(last).__name__}: {str(last)[:200]}"
             ledger.add(u)
