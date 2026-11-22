@@ -109,7 +109,16 @@ def group_restatements(entries: list[dict]) -> list[list[dict]]:
     return groups
 
 
-def _item(group: list[dict]) -> dict:
+_QUOTE_OVERLAP = 0.60   # statement tokens also in the quote, at or above which the quote adds nothing
+
+
+def _quote_overlap(statement: str, quote: str) -> float:
+    """Share of the statement's (lowercase alphanumeric) tokens that the quote also contains."""
+    st = set(tokens(statement))
+    return len(st & set(tokens(quote))) / len(st) if st else 0.0
+
+
+def _item(group: list[dict], include_quote: bool = True) -> dict:
     e = group[0]
     refs: list[str] = []
     for x in group:
@@ -132,9 +141,11 @@ def _item(group: list[dict]) -> dict:
                                              for p in e["previous"]) + ")"
     if e.get("applicability") == "AMBIGUOUS" and e.get("uncertainty"):
         text += f" Unclear: {e['uncertainty']}"
-    # verbatim source grounding: the quote the statement was verified against
+    # verbatim source grounding: the quote the statement was verified against, shown only when
+    # it carries wording the statement does not (a near-restatement is not repeated)
     quote = e.get("quote") or ""
-    if quote and normalize(quote) != normalize(e.get("statement") or ""):
+    if include_quote and quote and normalize(quote) != normalize(e.get("statement") or "") \
+            and _quote_overlap(e.get("statement") or "", quote) < _QUOTE_OVERLAP:
         text += f' Source text: "{" ".join(quote.split())}"'
     return {"text": text, "quote": quote, "refs": refs, "labels": labels, "entry_ids": [x["entry_id"] for x in group],
             "materiality": max((x.get("materiality") for x in group), key=lambda m: {"CRITICAL": 3, "MATERIAL": 2}
@@ -157,13 +168,14 @@ def placement(e: dict, by_id: dict) -> tuple[str, str]:
     return cat, mat
 
 
-def _items_for(entries: list[dict], cats: list[str], *, min_rank: int = 1) -> list[dict]:
+def _items_for(entries: list[dict], cats: list[str], *, min_rank: int = 1,
+               include_quote: bool = True) -> list[dict]:
     by_id = {e["entry_id"]: e for e in entries}
     pl = {e["entry_id"]: placement(e, by_id) for e in entries}
     sel = [e for e in entries if pl[e["entry_id"]][0] in cats and reportable(e)
            and _RANK.get(pl[e["entry_id"]][1], 1) >= min_rank]
     sel.sort(key=lambda e: (-_RANK.get(pl[e["entry_id"]][1], 1), cats.index(pl[e["entry_id"]][0])))
-    return [_item(g) for g in group_restatements(sel)]
+    return [_item(g, include_quote) for g in group_restatements(sel)]
 
 
 # ── model-written text: cited and figure-checked ────────────────────────────
@@ -359,9 +371,10 @@ def compose(entries: list[dict], *, an: dict, conflicts: dict, readability: dict
                                               "items": mark(amend, "FULL:Amendments")}] if amend else []) +
                                  ([{"title": "Unresolved Conflicts, Ambiguities and Clarification Questions",
                                     "items": mark(open_items, "FULL:Open")}] if open_items else [])})
+    # a compact checklist: critical items only, without the verbatim quotes the body sections already show
     full["sections"].append({"title": "Management Decision Reference", "decision_reference": {
-        "submission": [i for i in _items_for(entries, ["SUBMISSION_METHOD", "DEADLINE"], min_rank=3)],
-        "documents": [i for i in _items_for(entries, ["REQUIRED_DOCUMENT"], min_rank=2)],
+        "submission": _items_for(entries, ["SUBMISSION_METHOD", "DEADLINE"], min_rank=3, include_quote=False),
+        "documents": _items_for(entries, ["REQUIRED_DOCUMENT"], min_rank=3, include_quote=False),
         "clarifications": conflicts.get("clarifications") or [],
         "qa_window_notice": _qa_window_notice(entries, run_date),
         "coverage": readability, "verification": run_meta.get("verification")}})
@@ -395,8 +408,9 @@ def _open_items(entries: list[dict], conflicts: dict) -> list[dict]:
         es = [by_id[i] for i in c.get("entry_ids") or [] if i in by_id]
         if not es:
             continue
+        # members are named by entry id and source reference; their statements are in the body sections
         text = (c.get("issue") or "Conflicting provisions") + ": " + " / ".join(
-            f"\"{e['statement']}\" [{_refs(e)[0]}]" for e in es)
+            f"{e['entry_id']} [{_refs(e)[0]}]" for e in es)
         if c.get("implication"):
             text += f" Implication: {c['implication']}"
         if c.get("clarification_question"):
