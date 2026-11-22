@@ -111,7 +111,6 @@ def group_restatements(entries: list[dict]) -> list[list[dict]]:
 
 
 _QUOTE_OVERLAP = 0.60   # statement tokens also in the quote, at or above which the quote adds nothing
-_QUOTE_SUPERSET = 0.80  # at or above this, a longer quote is shown verbatim in place of the statement
 
 
 def _quote_overlap(statement: str, quote: str) -> float:
@@ -137,13 +136,7 @@ def _item(group: list[dict], include_quote: bool = True) -> dict:
         labels.append("Updated")
     if e.get("new_in_update"):
         labels.append("New")
-    statement = e.get("statement") or ""
-    quote = e.get("quote") or ""
-    # a verbatim quote that contains (nearly) all of the statement and says more is shown in its place,
-    # so wording the paraphrase dropped is not lost and nothing is printed twice
-    superset = bool(include_quote and quote and _quote_overlap(statement, quote) >= _QUOTE_SUPERSET
-                    and len(tokens(quote)) > len(tokens(statement)))
-    text = " ".join(quote.split()) if superset else statement
+    text = e.get("statement") or ""
     if e.get("previous"):
         text += " (Previously: " + "; ".join(f"{p['statement']} [{p['document']}, {_page(p)}]"
                                              for p in e["previous"]) + ")"
@@ -151,7 +144,8 @@ def _item(group: list[dict], include_quote: bool = True) -> dict:
         text += f" Unclear: {e['uncertainty']}"
     # verbatim source grounding: the quote the statement was verified against, shown only when
     # it carries wording the statement does not (a near-restatement is not repeated)
-    if include_quote and not superset and quote and normalize(quote) != normalize(e.get("statement") or "") \
+    quote = e.get("quote") or ""
+    if include_quote and quote and normalize(quote) != normalize(e.get("statement") or "") \
             and _quote_overlap(e.get("statement") or "", quote) < _QUOTE_OVERLAP:
         text += f' Source text: "{" ".join(quote.split())}"'
     return {"text": text, "quote": quote, "refs": refs, "labels": labels, "entry_ids": [x["entry_id"] for x in group],

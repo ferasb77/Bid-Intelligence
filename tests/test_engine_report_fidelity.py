@@ -1,5 +1,5 @@
-"""Report fidelity and parity (ENAB-36): a longer verbatim quote that covers the statement
-is shown in its place; conflict bullets name source references instead of register entry
+"""Report fidelity and parity (ENAB-36/37): bullets keep the clean statement even when a
+longer verbatim quote covers it; conflict bullets name source references instead of register entry
 ids; FAST carries the Q&A window notice and contractual terms; lapse wording names no
 submission channel; the PDF footer date is the run date (synthetic entries, no model calls)."""
 from __future__ import annotations
@@ -29,49 +29,37 @@ def _conflict_items(rep):
     return [it for s in secs for it in s.get("items", []) if "Unresolved conflict" in it["labels"]]
 
 
-# ── 1. quote-superset swap ─────────────────────────────────────────────────
+# ── 1. statement stays the bullet text (ENAB-37: no quote-superset swap) ──
 
 STMT = "All bidders must ensure that, at the time of submission, they are not sanctioned."
 QUOTE = "All bidders must ensure - that at the time of\nsubmission - they are not bankrupt, suspended, sanctioned"
 
 
-def test_longer_covering_quote_replaces_the_statement():
+def test_high_overlap_longer_quote_does_not_replace_the_statement():
     e = _entry("E1", STMT, QUOTE)
+    # precondition: the quote covers the statement at or above the suppression threshold and is longer
+    assert reports._quote_overlap(STMT, QUOTE) >= reports._QUOTE_OVERLAP
+    assert len(reports.tokens(QUOTE)) > len(reports.tokens(STMT))
     it = reports._item([e])
-    assert it["text"] == " ".join(QUOTE.split())
-    assert "suspended" in it["text"] and "Source text:" not in it["text"]
+    assert it["text"] == STMT
+    assert "Source text:" not in it["text"] and "suspended" not in it["text"]
     assert it["quote"] == QUOTE and it["entry_ids"] == ["E1"] and it["refs"] == ["Doc.pdf, p. 3"]
     assert it["materiality"] == "CRITICAL" and it["labels"] == []
+    assert not hasattr(reports, "_QUOTE_SUPERSET")
 
 
-def test_superset_swap_keeps_suffixes():
+def test_statement_text_keeps_suffixes():
     e = _entry("E1", STMT, QUOTE, applicability="AMBIGUOUS")
     e["uncertainty"] = "scope of sanctions unclear"
     e["previous"] = [{"statement": "Old rule.", "document": "Old.pdf", "page": "1"}]
     it = reports._item([e])
-    assert it["text"].startswith(" ".join(QUOTE.split()) + " (Previously: Old rule. [Old.pdf, p. 1])")
-    assert it["text"].endswith("Unclear: scope of sanctions unclear")
+    assert it["text"] == STMT + " (Previously: Old rule. [Old.pdf, p. 1]) Unclear: scope of sanctions unclear"
     assert "Updated" in it["labels"]
 
 
-def test_superset_swap_not_applied_without_quotes():
+def test_statement_used_without_quotes():
     e = _entry("E1", STMT, QUOTE)
     assert reports._item([e], include_quote=False)["text"] == STMT
-
-
-def test_quote_not_longer_than_statement_is_not_swapped():
-    # full overlap, same length: the statement stays (suppression unchanged)
-    e = _entry("E1", "alpha beta gamma delta epsilon", "alpha beta gamma delta epsilon.")
-    assert reports._item([e])["text"] == e["statement"]
-
-
-def test_overlap_between_sixty_and_eighty_percent_is_suppressed_not_swapped():
-    # four of five statement tokens (80%) -> swap; three of five (60%) -> suppressed only
-    e = _entry("E1", "alpha beta gamma delta epsilon", "alpha beta gamma delta zeta eta theta")
-    assert reports._item([e])["text"] == "alpha beta gamma delta zeta eta theta"
-    e = _entry("E2", "alpha beta gamma delta epsilon", "alpha beta gamma zeta eta theta iota")
-    it = reports._item([e])
-    assert it["text"] == e["statement"] and "Source text:" not in it["text"]
 
 
 def test_low_overlap_quote_still_appended_as_source_text():
@@ -81,13 +69,13 @@ def test_low_overlap_quote_still_appended_as_source_text():
     assert it["text"].startswith("A bid bond is required. Source text: \"Tenderers shall furnish")
 
 
-def test_superset_quote_appears_in_fast_and_full_and_register_untouched():
+def test_high_overlap_statement_in_fast_and_full_and_register_untouched():
     entries = [_entry("E1", STMT, QUOTE)]
     snap = copy.deepcopy(entries)
     comp = _compose(entries)
     for rep in (comp["fast"], comp["full"]):
         texts = [it["text"] for s in rep["sections"] for g in (s.get("groups") or [s]) for it in g.get("items", [])]
-        assert any("suspended" in t for t in texts)
+        assert STMT in texts and not any("suspended" in t for t in texts)
     assert entries == snap
 
 
