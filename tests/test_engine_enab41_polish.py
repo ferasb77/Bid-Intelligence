@@ -111,9 +111,9 @@ def test_pipeline_passes_run_started_date_to_analysis():
 
 def test_heading_and_bullet_styles():
     assert R.ST["h1"].keepWithNext == 1 and R.ST["h2"].keepWithNext == 1 and R.ST["note"].keepWithNext == 1
-    assert R.ST["h2"].spaceBefore == 8
+    assert R.ST["h2"].spaceBefore == 10   # ENAB-43 executive styling (was 8)
     assert R.ST["item"].allowOrphans == 0 and R.ST["item"].allowWidows == 0
-    assert R._bullets([{"text": "a"}]).spaceAfter == 3
+    assert R._bullets([{"text": "a"}]).spaceAfter == 4   # ENAB-43 (was 3)
 
 
 def test_identity_table_widths_padding_and_top_rule():
