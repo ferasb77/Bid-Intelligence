@@ -10,12 +10,18 @@ example from any evaluation document, buyer or RFP."""
 from __future__ import annotations
 
 import concurrent.futures
+import dataclasses
 import os
 
 from engine import schema
-from engine.package import SourcePackage, Unit, units
+from engine.package import Location, SourcePackage, Unit, units
 from engine.providers import (Analyst, ProviderError, ProviderNotAuthorized, ProviderNotConfigured,
-                              ProviderUnavailable, UsageLedger)
+                              ProviderOutputLimit, ProviderUnavailable, UsageLedger)
+
+#: How many times one location's text may be halved after its answer hit the
+#: output-token limit (2 = at most four parts, seven calls for that location).
+MAX_TEXT_SPLITS = 2
+_SEPARATORS = ("\n\n", "\n", ". ", "; ", " ")
 
 SYSTEM = """You are a senior procurement analyst. You read procurement documents (RFPs, ITBs, terms of reference, \
 specifications, annexes, forms, price schedules, clarifications, addenda) and record every provision a bidder \
@@ -102,9 +108,91 @@ def _call_unit(analyst: Analyst, package: SourcePackage, unit: Unit, ctx: dict, 
                              ledger=ledger, data_class=package.data_class)
 
 
-def _extract_unit(analyst, package, unit, ctx, ledger, depth=0) -> dict:
-    """Returns {"findings", "accounts", "gaps"}; halves a unit whose answer
-    did not fit, and re-asks once for locations the answer did not account for."""
+def split_text(text: str) -> tuple[str, str] | None:
+    """Two verbatim halves of `text`, cut at the clean boundary nearest the
+    middle: a blank line, else a line break, else a sentence or clause end,
+    else a space -- never inside a word, and never so far from the middle that
+    one half keeps most of the text. None when the text cannot be split."""
+    n = len(text)
+    lo, hi, mid = n // 4, n - n // 4, n // 2
+    for sep in _SEPARATORS:
+        best = None
+        for i in (text.rfind(sep, 0, mid + len(sep)), text.find(sep, mid)):
+            if i < 0:
+                continue
+            cut = i + len(sep)
+            if lo <= cut <= hi and text[:cut].strip() and text[cut:].strip() and (
+                    best is None or abs(cut - mid) < abs(best - mid)):
+                best = cut
+        if best is not None:
+            return text[:best].rstrip(), text[best:].lstrip()
+    return None
+
+
+def _text_parts(text: str, max_chars: int, limit: int = 64) -> list[str]:
+    """`text` in clean-boundary parts of at most ~max_chars (pre-emptive
+    sizing of one oversized page/section; bounded to `limit` parts)."""
+    parts, todo = [], [text]
+    while todo:
+        t = todo.pop(0)
+        halves = split_text(t) if len(t) > max_chars and len(parts) + len(todo) < limit - 1 else None
+        if halves:
+            todo[:0] = list(halves)
+        else:
+            parts.append(t)
+    return parts
+
+
+def _part(loc: Location, text: str) -> Location:
+    """A slice of one location: same id, document and page/section label, so
+    accounting and quote verification still refer to the whole location."""
+    return dataclasses.replace(loc, text=text)
+
+
+def _merge(results: list[dict]) -> dict:
+    """Combines the answers for parts of the same unit. A location counts as
+    accounted for if any part accounted for it; extraction failures remain."""
+    findings = [f for r in results for f in r["findings"]]
+    accounts, by_id = [], {}
+    for a in (a for r in results for a in r["accounts"]):
+        sid = a.get("section_id")
+        if sid not in by_id:
+            by_id[sid] = len(accounts)
+            accounts.append(a)
+        elif a.get("status") == "HAS_FINDINGS":
+            accounts[by_id[sid]] = a
+    gaps, seen = [], set()
+    for g in (g for r in results for g in r["gaps"]):
+        if g["reason"] == "not accounted for by the analyst" and g["loc_id"] in by_id:
+            continue
+        # one failure per location, however many of its parts failed
+        key = (g["loc_id"], "failed" if str(g["reason"]).startswith("extraction failed") else g["reason"])
+        if key not in seen:
+            seen.add(key)
+            gaps.append(g)
+    return {"findings": findings, "accounts": accounts, "gaps": gaps}
+
+
+def _split_unit(analyst, package, unit, ctx, ledger, depth, split) -> dict | None:
+    """Re-asks for a single-location unit whose answer hit the output limit,
+    one half of its text at a time. None when it cannot be split further."""
+    if len(unit.locations) != 1 or split >= MAX_TEXT_SPLITS:
+        return None
+    halves = split_text(unit.locations[0].text)
+    if not halves:
+        return None
+    return _merge([_extract_unit(analyst, package, Unit(f"{unit.unit_id}s{k}", unit.doc,
+                                                        [_part(unit.locations[0], half)]),
+                                 ctx, ledger, depth, split + 1)
+                   for k, half in enumerate(halves, 1)])
+
+
+def _extract_unit(analyst, package, unit, ctx, ledger, depth=0, split=0) -> dict:
+    """Returns {"findings", "accounts", "gaps"}. A unit whose answer did not
+    fit is halved by location; a single location whose answer hit the output
+    limit is halved by text on a paragraph/line boundary (at most
+    MAX_TEXT_SPLITS times). Locations the answer did not account for are
+    re-asked once."""
     try:
         data = _call_unit(analyst, package, unit, ctx, ledger)
     except (ProviderNotAuthorized, ProviderNotConfigured, ProviderUnavailable):
@@ -112,12 +200,13 @@ def _extract_unit(analyst, package, unit, ctx, ledger, depth=0) -> dict:
     except ProviderError as exc:
         if len(unit.locations) > 1 and depth < 4:
             mid = len(unit.locations) // 2
-            a = _extract_unit(analyst, package, Unit(unit.unit_id + "a", unit.doc, unit.locations[:mid]), ctx,
-                              ledger, depth + 1)
-            b = _extract_unit(analyst, package, Unit(unit.unit_id + "b", unit.doc, unit.locations[mid:]), ctx,
-                              ledger, depth + 1)
-            return {"findings": a["findings"] + b["findings"], "accounts": a["accounts"] + b["accounts"],
-                    "gaps": a["gaps"] + b["gaps"]}
+            return _merge([_extract_unit(analyst, package, Unit(unit.unit_id + sfx, unit.doc, locs), ctx, ledger,
+                                         depth + 1, split)
+                           for sfx, locs in (("a", unit.locations[:mid]), ("b", unit.locations[mid:]))])
+        if isinstance(exc, ProviderOutputLimit):
+            halved = _split_unit(analyst, package, unit, ctx, ledger, depth, split)
+            if halved is not None:
+                return halved
         return {"findings": [], "accounts": [],
                 "gaps": [{"loc_id": loc.loc_id, "ref": loc.ref(), "reason": f"extraction failed: {exc}"[:300]}
                          for loc in unit.locations]}
@@ -131,7 +220,8 @@ def _extract_unit(analyst, package, unit, ctx, ledger, depth=0) -> dict:
     accounts = [a for a in accounts if a.get("section_id") in ids]
     gaps = []
     if missing and depth == 0:
-        retry = _extract_unit(analyst, package, Unit(unit.unit_id + "r", unit.doc, missing), ctx, ledger, depth + 5)
+        retry = _extract_unit(analyst, package, Unit(unit.unit_id + "r", unit.doc, missing), ctx, ledger, depth + 5,
+                              split)
         findings += retry["findings"]
         accounts += retry["accounts"]
         gaps += retry["gaps"]
@@ -144,16 +234,32 @@ def _extract_unit(analyst, package, unit, ctx, ledger, depth=0) -> dict:
     return {"findings": findings, "accounts": accounts, "gaps": gaps}
 
 
+def _extract_sized(analyst, package, unit, ctx, ledger) -> dict:
+    """A single page/section longer than the unit size is read in
+    clean-boundary parts up front, so one dense location does not routinely
+    exhaust the output limit (units() never cuts a location itself)."""
+    max_chars = ctx.get("max_chars") or 10 ** 9
+    if len(unit.locations) == 1 and len(unit.locations[0].text) > max_chars:
+        parts = _text_parts(unit.locations[0].text, max_chars)
+        if len(parts) > 1:
+            return _merge([_extract_unit(analyst, package, Unit(f"{unit.unit_id}p{k}", unit.doc,
+                                                                [_part(unit.locations[0], t)]), ctx, ledger)
+                           for k, t in enumerate(parts, 1)])
+    return _extract_unit(analyst, package, unit, ctx, ledger)
+
+
 def extract(analyst: Analyst, package: SourcePackage, ledger: UsageLedger, *, tag: str,
             concurrency: int | None = None, progress=None) -> dict:
     """One analyst's complete, independent inventory of the package."""
     analyst.check_allowed(package.data_class)
-    us = units(package, max_chars=int(os.getenv("ENGINE_UNIT_CHARS", "10000")))   # smaller units run in parallel
-    ctx = {"documents": _doc_list(package), "definitions": package.definitions(), "outline": package.outline()}
+    max_chars = int(os.getenv("ENGINE_UNIT_CHARS", "10000"))
+    us = units(package, max_chars=max_chars)   # smaller units run in parallel
+    ctx = {"documents": _doc_list(package), "definitions": package.definitions(), "outline": package.outline(),
+           "max_chars": max_chars}
     workers = concurrency or int(os.getenv("ENGINE_CONCURRENCY", "4"))
     results: dict[str, dict] = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
-        futs = {pool.submit(_extract_unit, analyst, package, u, ctx, ledger): u for u in us}
+        futs = {pool.submit(_extract_sized, analyst, package, u, ctx, ledger): u for u in us}
         for n, fut in enumerate(concurrent.futures.as_completed(futs), 1):
             u = futs[fut]
             try:

@@ -29,6 +29,17 @@ class ProviderError(RuntimeError):
     """A model call that did not produce a usable answer."""
 
 
+class ProviderOutputLimit(ProviderError):
+    """The answer hit the output-token limit before it was complete. Not
+    retried as-is (the same request would truncate again); callers may split
+    the input and ask again."""
+
+
+def _final_error(name: str, model: str, purpose: str, last: Exception | None) -> ProviderError:
+    cls = ProviderOutputLimit if isinstance(last, ProviderOutputLimit) else ProviderError
+    return cls(f"{name} ({model}) failed for {purpose}: {last}")
+
+
 class ProviderNotAuthorized(ProviderError):
     """Sending this package to this provider is not authorized."""
 
@@ -219,7 +230,7 @@ class AnthropicAnalyst(Analyst):
                 if msg.stop_reason == "refusal":
                     raise ProviderError("model declined the request (refusal)")
                 if msg.stop_reason == "max_tokens":
-                    raise ProviderError("output limit reached before the answer was complete")
+                    raise ProviderOutputLimit("output limit reached before the answer was complete")
                 text = "".join(b.text for b in msg.content if b.type == "text")
                 data = _parse_json(text)
                 ledger.add(u)
@@ -244,7 +255,7 @@ class AnthropicAnalyst(Analyst):
             if not retry or attempt == self.max_attempts - 1:
                 break
             time.sleep(min(60, 4 * 2 ** attempt))
-        raise ProviderError(f"{self.name} ({self.model}) failed for {purpose}: {last}")
+        raise _final_error(self.name, self.model, purpose, last)
 
 
 def openai_client_data_authorized() -> bool:
@@ -305,6 +316,9 @@ class OpenAIAnalyst(Analyst):
                     u.input_tokens -= u.cache_read_tokens
                 u.request_id = getattr(resp, "id", None)
                 if getattr(resp, "status", "completed") != "completed":
+                    reason = getattr(getattr(resp, "incomplete_details", None), "reason", None)
+                    if reason == "max_output_tokens":
+                        raise ProviderOutputLimit("output limit reached before the answer was complete")
                     raise ProviderError(f"response status {resp.status}")
                 data = _parse_json(resp.output_text)
                 ledger.add(u)
@@ -326,7 +340,7 @@ class OpenAIAnalyst(Analyst):
             if not retry or attempt == self.max_attempts - 1:
                 break
             time.sleep(min(60, 4 * 2 ** attempt))
-        raise ProviderError(f"{self.name} ({self.model}) failed for {purpose}: {last}")
+        raise _final_error(self.name, self.model, purpose, last)
 
 
 class ScriptedAnalyst(Analyst):
@@ -345,6 +359,8 @@ class ScriptedAnalyst(Analyst):
         except Exception as exc:
             u.status, u.error = "FAILED", str(exc)[:200]
             ledger.add(u)
+            if isinstance(exc, ProviderOutputLimit):
+                raise
             raise ProviderError(str(exc)) from exc
         ledger.add(u)
         return data
