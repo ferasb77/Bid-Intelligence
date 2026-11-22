@@ -116,7 +116,10 @@ def _item(group: list[dict]) -> dict:
         for r in _refs(x):
             if r not in refs:
                 refs.append(r)
-    labels = sorted({_LABEL[x["applicability"]] for x in group if x.get("applicability") in _LABEL})
+    # an unresolved conflict is reported once, in the Conflicts / Open Items section,
+    # not stamped onto each clause of the candidate cluster in the body sections
+    labels = sorted({_LABEL[x["applicability"]] for x in group
+                     if x.get("applicability") in _LABEL and x["applicability"] != "CONFLICTED"})
     if any((x.get("verification") or {}).get("ocr_source") for x in group):
         labels.append("From OCR text")
     if e.get("previous"):
@@ -312,6 +315,7 @@ def compose(entries: list[dict], *, an: dict, conflicts: dict, readability: dict
     """Returns {"fast", "full", "ledger"} content models."""
     placed: dict[str, list[str]] = {}
     run_date = run_date_of(run_meta)
+    conflicts = _distinct_conflicts(conflicts)
 
     def mark(items, where):
         for it in items:
@@ -369,8 +373,23 @@ def compose(entries: list[dict], *, an: dict, conflicts: dict, readability: dict
     return {"fast": fast, "full": full, "ledger": ledger}
 
 
+def _distinct_conflicts(conflicts: dict) -> dict:
+    """Drops a conflict, and its clarification, whose entry set is a strict subset
+    of another conflict's entry set: the same clash is reported once."""
+    conflicts = conflicts or {}
+    sets = [set(c.get("entry_ids") or []) for c in conflicts.get("conflicts") or []]
+
+    def covered(ids) -> bool:
+        s = set(ids or [])
+        return bool(s) and any(s < o for o in sets)
+    return dict(conflicts,
+                conflicts=[c for c in conflicts.get("conflicts") or [] if not covered(c.get("entry_ids"))],
+                clarifications=[q for q in conflicts.get("clarifications") or [] if not covered(q.get("entry_ids"))])
+
+
 def _open_items(entries: list[dict], conflicts: dict) -> list[dict]:
     by_id = {e["entry_id"]: e for e in entries}
+    conflicts = _distinct_conflicts(conflicts)
     items = []
     for c in conflicts.get("conflicts") or []:
         es = [by_id[i] for i in c.get("entry_ids") or [] if i in by_id]

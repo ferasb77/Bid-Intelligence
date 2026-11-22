@@ -83,7 +83,21 @@ def collect_candidates(entries: list[dict], reviews: list[dict]) -> list[dict]:
         if len(ids) < 2 and origin != "adjudication" or key in seen:
             return
         seen.add(key)
-        cands.append({"candidate_id": f"C{len(cands) + 1:02d}", "entry_ids": ids, "origin": origin, "note": note})
+        new = {"candidate_id": "", "entry_ids": ids, "origin": origin, "note": note}
+        if origin != "adjudication":
+            # one provision clash is adjudicated once: a set already covered by an
+            # existing candidate is not added, and a superset replaces its subsets
+            s = set(ids)
+            peers = [c for c in cands if c["origin"] != "adjudication"]
+            if any(s <= set(c["entry_ids"]) for c in peers):
+                return
+            subs = [c for c in peers if set(c["entry_ids"]) < s]
+            if subs:
+                cands[cands.index(subs[0])] = new
+                for c in subs[1:]:
+                    cands.remove(c)
+                return
+        cands.append(new)
 
     for rv in reviews:
         for r in rv.get("relationships") or []:
@@ -97,6 +111,8 @@ def collect_candidates(entries: list[dict], reviews: list[dict]) -> list[dict]:
             amend = [x["entry_id"] for x in entries if x.get("category") in ("AMENDMENT", "DOCUMENT_AUTHORITY")
                      and x is not e][:6]
             add([e["entry_id"]] + amend, "adjudication", (e.get("supersession_claim") or {}).get("reason", ""))
+    for n, c in enumerate(cands, 1):
+        c["candidate_id"] = f"C{n:02d}"
     return cands
 
 
