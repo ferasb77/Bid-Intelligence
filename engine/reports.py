@@ -60,7 +60,13 @@ alone -- consequences that follow directly, dependencies between provisions, tim
 risks, open questions. Each point cites the entries it rests on and must be no stronger than they are: keep \
 conditions, alternatives and approximations; never present a 'will' or 'should' as a 'must'.
 Never: recommend bidding or not, estimate win probability, judge attractiveness, invent figures, dates, \
-requirements or buyer preferences. Every figure you write must appear in a cited entry."""
+requirements or buyer preferences. Every figure you write must appear in a cited entry.
+Dates: you receive RUN DATE, the date this analysis is prepared. Check every date against it. Never advise \
+raising, submitting or asking questions or clarifications during a question/clarification period whose deadline \
+has already passed as of RUN DATE; treat such open points as proposal-level assumptions or risks instead.
+Plain language: the register's status/applicability column (CONFLICTED, AMBIGUOUS, DISPUTED, CURRENT) is \
+internal metadata. Describe a substantive conflict or ambiguity plainly in prose by what the provisions say; \
+never echo internal register jargon such as "flagged as conflicted", "marked conflicted" or "in the register"."""
 
 
 def reportable(e: dict) -> bool:
@@ -195,16 +201,18 @@ def _cited_ok(text: str, ids: list[str], by_id: dict) -> tuple[bool, str]:
     return True, ""
 
 
-def analysis(writer: Analyst | None, entries: list[dict], ledger: UsageLedger, data_class: str) -> dict:
+def analysis(writer: Analyst | None, entries: list[dict], ledger: UsageLedger, data_class: str,
+             run_date: str = "") -> dict:
     """Summary, identity and specialist points. Every element is checked; rejected
-    elements are kept in `rejected` with the reason (never published)."""
+    elements are kept in `rejected` with the reason (never published). `run_date`
+    (YYYY-MM-DD) is given to the writer so lapsed windows are not advised on."""
     out = {"title": "", "buyer": "", "reference": "", "summary": [], "points": [], "rejected": [], "error": None}
     if writer is None:
         out["error"] = "no writer configured"
         return out
     live = [e for e in entries if reportable(e)]
     by_id = {e["entry_id"]: e for e in live}
-    user = "EVIDENCE REGISTER:\n" + "\n".join(
+    user = (f"RUN DATE: {run_date}\n\n" if run_date else "") + "EVIDENCE REGISTER:\n" + "\n".join(
         f"{e['entry_id']} | {e.get('category')} | {e.get('modality')} | {e.get('materiality')} | "
         f"{e.get('applicability')} | {e.get('statement')}" for e in live)
     try:

@@ -12,8 +12,10 @@ from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
+from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import (KeepTogether, ListFlowable, ListItem, Paragraph, SimpleDocTemplate, Spacer,
                                 Table, TableStyle)
+from reportlab.platypus.flowables import _listWrapOn
 
 import pdf_styles as ps
 
@@ -23,11 +25,14 @@ NIGHT, GOLD, IVORY, GREY = HexColor("#0A0A0F"), HexColor("#C9A96E"), HexColor("#
 ST = {
     "title": ParagraphStyle("t", fontName=_FM, fontSize=17, leading=21, textColor=NIGHT),
     "kicker": ParagraphStyle("k", fontName=_FM, fontSize=8, leading=10, textColor=GOLD),
-    "h1": ParagraphStyle("h1", fontName=_FM, fontSize=11.5, leading=14, textColor=NIGHT, spaceBefore=9, spaceAfter=4),
-    "h2": ParagraphStyle("h2", fontName=_FM, fontSize=9.2, leading=11.5, textColor=NIGHT, spaceBefore=5, spaceAfter=2),
+    "h1": ParagraphStyle("h1", fontName=_FM, fontSize=11.5, leading=14, textColor=NIGHT, spaceBefore=9, spaceAfter=4,
+                         keepWithNext=1),
+    "h2": ParagraphStyle("h2", fontName=_FM, fontSize=9.2, leading=11.5, textColor=NIGHT, spaceBefore=8, spaceAfter=2,
+                         keepWithNext=1),
     "body": ParagraphStyle("b", fontName=_F, fontSize=8.6, leading=11.2, textColor=HexColor("#282830"), alignment=TA_LEFT),
-    "item": ParagraphStyle("i", fontName=_F, fontSize=8.4, leading=10.8, textColor=HexColor("#282830")),
-    "note": ParagraphStyle("n", fontName=_F, fontSize=7.6, leading=9.6, textColor=GREY),
+    "item": ParagraphStyle("i", fontName=_F, fontSize=8.4, leading=10.8, textColor=HexColor("#282830"),
+                           allowOrphans=0, allowWidows=0),
+    "note": ParagraphStyle("n", fontName=_F, fontSize=7.6, leading=9.6, textColor=GREY, keepWithNext=1),
     "banner": ParagraphStyle("bn", fontName=_F, fontSize=8, leading=10.2, textColor=NIGHT),
     "cell": ParagraphStyle("c", fontName=_F, fontSize=8, leading=10.2),
     "cellb": ParagraphStyle("cb", fontName=_FM, fontSize=8, leading=10.2),
@@ -37,13 +42,17 @@ _LABEL_COLOUR = {"Unresolved conflict": "#C00000", "Interpretation disputed": "#
                  "From OCR text": "#6B675F"}
 
 
-def _t(v) -> str:
+def _t_plain(v) -> str:
+    """Latin-safe plain text (no XML escaping) -- for direct canvas drawing."""
     try:
         import phoenix_reports
-        v = phoenix_reports.latin_only(v)
+        return phoenix_reports.latin_only(v)
     except Exception:
-        v = str(v if v is not None else "")
-    return escape(v)
+        return str(v if v is not None else "")
+
+
+def _t(v) -> str:
+    return escape(_t_plain(v))
 
 
 def _item_para(it: dict) -> Paragraph:
@@ -56,14 +65,16 @@ def _item_para(it: dict) -> Paragraph:
 
 def _bullets(items: list[dict]) -> ListFlowable:
     return ListFlowable([ListItem(_item_para(it), leftIndent=9, value="•") for it in items], bulletType="bullet",
-                        start="•", leftIndent=9, bulletFontSize=7, bulletColor=GOLD)
+                        start="•", leftIndent=9, bulletFontSize=7, bulletColor=GOLD, spaceAfter=3)
 
 
 def _kv(rows) -> Table:
     t = Table([[Paragraph(_t(k), ST["cellb"]), Paragraph(_t(v), ST["cell"])] for k, v in rows],
-              colWidths=[BODY_W * 0.22, BODY_W * 0.78])
+              colWidths=[BODY_W * 0.24, BODY_W * 0.76])
     t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("BACKGROUND", (0, 0), (0, -1), IVORY),
+                           ("LINEABOVE", (0, 0), (-1, 0), 0.3, HexColor("#DDD6C8")),
                            ("LINEBELOW", (0, 0), (-1, -1), 0.3, HexColor("#DDD6C8")),
+                           ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
                            ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
     return t
 
@@ -86,9 +97,64 @@ def _footer(label: str, prepared: str = ""):
         canvas.setFont(_F, 7)
         canvas.setFillColor(GREY)
         canvas.drawString(18 * mm, 10 * mm, f"Bid Intelligence · {label} · prepared {prepared}")
-        canvas.drawRightString(letter[0] - 18 * mm, 10 * mm, f"Page {doc.page}")
         canvas.restoreState()
     return draw
+
+
+def _numbered_canvas(header: str):
+    """Single-pass canvasmaker: pages are buffered so that every page can show
+    "Page N of M", and pages 2+ carry a running header with a thin rule."""
+    header = header[:110]
+
+    class NumberedCanvas(Canvas):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._saved_pages = []
+
+        def showPage(self):
+            self._saved_pages.append(dict(self.__dict__))
+            self._startPage()
+
+        def save(self):
+            total = len(self._saved_pages)
+            for state in self._saved_pages:
+                self.__dict__.update(state)
+                self._decorate(total)
+                super().showPage()
+            super().save()
+
+        def _decorate(self, total: int):
+            n = self._pageNumber
+            self.saveState()
+            self.setFont(_F, 7)
+            self.setFillColor(GREY)
+            self.drawRightString(letter[0] - 18 * mm, 10 * mm, f"Page {n} of {total}")
+            if n > 1 and header:
+                y = letter[1] - 10 * mm
+                self.drawString(18 * mm, y, header)
+                self.setStrokeColor(HexColor("#DDD6C8"))
+                self.setLineWidth(0.4)
+                self.line(18 * mm, y - 2 * mm, letter[0] - 18 * mm, y - 2 * mm)
+            self.restoreState()
+    return NumberedCanvas
+
+
+class _KeepWithFirst(KeepTogether):
+    """keepWithNext group (heading [+ note] + following flowable) that only
+    requires the heading(s) and the FIRST item of a following list to share a
+    page; the rest of the list flows naturally instead of being pushed whole."""
+
+    def split(self, aW, aH):
+        if getattr(self, "_wrapInfo", None) != (aW, aH):
+            self.wrap(aW, aH)
+        S = self._content[:]
+        last = S[-1]
+        lead = S[:-1] + ((last._content[:1] or [last]) if isinstance(last, ListFlowable) else [last])
+        need = _listWrapOn(lead, aW, self.canv)[1]
+        cf = getattr(self, "_frame", None)
+        if need > aH and not (cf and getattr(cf, "_atTop", 0)):
+            S.insert(0, self.FrameBreak())
+        return S
 
 
 def _head(rep: dict) -> list:
@@ -151,7 +217,7 @@ def _decision_ref(d: dict) -> list:
 def render(rep: dict, *, limitations_appendix: bool = True) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=letter, leftMargin=18 * mm, rightMargin=18 * mm, topMargin=16 * mm,
-                            bottomMargin=16 * mm, title=rep["title"])
+                            bottomMargin=16 * mm, title=rep["title"], keepTogetherClass=_KeepWithFirst)
     story = _head(rep)
     for n, sec in enumerate(rep["sections"], 1):
         block = [Paragraph(f"{n}. {_t(sec['title'])}", ST["h1"])]
@@ -171,13 +237,15 @@ def render(rep: dict, *, limitations_appendix: bool = True) -> bytes:
                                     "labels": [p.get("kind", "").replace("_", " ").title()]} for p in sec["analysis"]]))
         if sec.get("decision_reference"):
             block += _decision_ref(sec["decision_reference"])
-        story.append(KeepTogether(block[:2]))
-        story += block[2:]
+        # h1 / h2 / note carry keepWithNext: the heading (+ optional notice) stays with the
+        # first bullet only (_KeepWithFirst); a whole list is never pushed to the next page.
+        story += block
     ver = rep.get("verification") or {}
     if limitations_appendix and ver.get("limitations"):
         story += [Paragraph("Verification limitations", ST["h1"]),
                   _bullets([{"text": x, "refs": [], "labels": []} for x in ver["limitations"]])]
     label = "Opportunity Snapshot" if rep["kind"] == "FAST" else "Bid Opportunity Assessment"
     footer = _footer(label, str(rep.get("run_date") or "")[:10])
-    doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    header = dict(rep.get("identity") or []).get("Opportunity") or "Procurement opportunity"
+    doc.build(story, onFirstPage=footer, onLaterPages=footer, canvasmaker=_numbered_canvas(_t_plain(header)))
     return buf.getvalue()

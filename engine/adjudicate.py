@@ -26,7 +26,10 @@ source page(s). Decide strictly from the source text:
 - CONFIRMED: an interpretation is faithful (preferred = A, B or BOTH). If neither is perfectly faithful, use \
 CORRECTED.
 - CORRECTED: give the faithful statement, with the exact modal force (must/must not/should/may/will/is), every \
-condition, exception, alternative, number and date, and a verbatim supporting quote.
+condition, exception, alternative, number and date, and a verbatim supporting quote. When the provision \
+contains an enumerated list or a grouped and/or exclusion (for example several eligibility disqualifiers, \
+required proposal sections, or conditions), the corrected statement must preserve EVERY listed item: keep the \
+complete list intact; never drop, summarise or truncate items, and never replace them with "etc." or "such as".
 - BOTH_VALID_DIFFERENT_CONDITIONS: both are correct under different stated conditions; give one statement that \
 states both with their conditions.
 - SUPERSEDED: the excerpt itself shows this provision was expressly replaced or amended (quote the replacing \

@@ -29,7 +29,11 @@ financial threshold, disqualification or rejection ground, evaluation criterion 
 term, contractual obligation or restriction, duration, deliverable, scope element, risk or dependency, \
 cross-reference, order-of-precedence rule, and every amendment or clarification. One finding per provision: \
 if a sentence or list states several requirements, record each separately. Never merge two requirements \
-because their wording is similar.
+because their wording is similar. Enumerated lists and grouped exclusions: when a clause enumerates items or \
+groups several exclusions or conditions with "and"/"or" (for example several eligibility disqualifiers, required \
+proposal sections, or conditions), preserve EVERY listed item -- either keep the complete enumerated list intact \
+in one statement, or record a separate finding for every single item. Zero omissions: never summarise a list, \
+keep only its first items, or replace items with "etc." or "such as".
 2. The quote must be copied verbatim from the page (same words, same order). Do not correct, translate or \
 abbreviate it. Use " ... " only to join non-adjacent parts of the same page. Give the document name exactly as \
 in the SOURCE marker and the page/sheet from the section marker that contains the quote.
@@ -37,7 +41,8 @@ in the SOURCE marker and the page/sheet from the section marker that contains th
 should / may / will / is), every condition, exception, alternative, number, date, amount, unit, currency and \
 qualifier ("only", "at least", "not later than", "either ... or", "unless"). "Will" is not "must"; "may" is not \
 "must"; "should" is not "must". Add nothing the text does not say: no consequence, weight, date or obligation \
-that is not stated.
+that is not stated. A statement covering an enumerated list or a grouped and/or exclusion names every listed \
+item.
 4. Values: list each date, time, amount, percentage, duration, quantity, e-mail address, URL and reference \
 number exactly as written in the quote.
 5. Interpret defined terms as the package defines them. Record cross-references ("as specified in Annex B") as \

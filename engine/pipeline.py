@@ -159,7 +159,8 @@ def run(package: SourcePackage, roles: EngineRoles, *, ledger: UsageLedger | Non
                      "re_examined_entries": _mark_updates(entries, prev_entries, new_docs)} if previous else None
 
     # 5. analysis writing + composition
-    out.analysis = reports.analysis(roles.adjudicator, entries, ledger, package.data_class)
+    out.analysis = reports.analysis(roles.adjudicator, entries, ledger, package.data_class,
+                                    run_date=str(rec.get("started_at") or "")[:10])
     stage("analysis", "OK" if not out.analysis.get("error") else "FAILED", rejected=len(out.analysis["rejected"]))
     if research is None and research_fn is not None:   # external buyer research, kept apart from document facts
         try:
