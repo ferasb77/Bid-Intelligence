@@ -247,6 +247,9 @@ def analysis(writer: Analyst | None, entries: list[dict], ledger: UsageLedger, d
 # ── deadline status relative to the run date (deterministic, annotation only) ──
 
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+# an entry-id range such as "E041-E043", "E041–E043" or "E041-43" (prefix letters + zero-padded number)
+_ID_RANGE = re.compile(r"(?<![\w-])([A-Za-z]+)(\d+)\s*[-–—]\s*([A-Za-z]+)?(\d+)(?![\w-])")
+_MAX_RANGE = 200
 # generic wording of a clarification / question window; never document-specific
 _QA_TERMS = re.compile(r"\b(questions?|quer(?:y|ies)|clarifications?|inquir(?:y|ies)|enquir(?:y|ies)|q\s*&\s*a)\b",
                        re.IGNORECASE)
@@ -383,7 +386,8 @@ def compose(entries: list[dict], *, an: dict, conflicts: dict, readability: dict
     # a compact checklist: critical items only, without the verbatim quotes the body sections already show
     full["sections"].append({"title": "Management Decision Reference", "decision_reference": {
         "submission": _items_for(entries, ["SUBMISSION_METHOD", "DEADLINE"], min_rank=3, include_quote=False),
-        "documents": _items_for(entries, ["REQUIRED_DOCUMENT"], min_rank=3, include_quote=False),
+        # same selection as FULL "Required Documents and Forms" / FAST "Mandatory Forms and Documents"
+        "documents": _items_for(entries, ["REQUIRED_DOCUMENT"], min_rank=2, include_quote=False),
         "clarifications": conflicts.get("clarifications") or [],
         "qa_window_notice": _qa_window_notice(entries, run_date),
         "coverage": readability, "verification": run_meta.get("verification")}})
@@ -438,21 +442,45 @@ def _open_items(entries: list[dict], conflicts: dict) -> list[dict]:
 def _readable_issue(issue: str, by_id: dict) -> tuple[str, set[str]]:
     """Replaces register entry ids in conflict wording with their source references: a bare id
     becomes "[doc, p. X]", a parenthesised id list "(E1, E2)" becomes one bracket of its distinct refs.
-    Ids not in the register are left as written. Returns the text and the references it now names."""
+    A hyphenated range "E041-E043" (or with an en/em dash) is expanded to the register ids it spans
+    and becomes one bracket of their distinct refs. Ids not in the register are left as written.
+    Returns the text and the references it now names."""
     issue = " ".join(issue.split())
     named: set[str] = set()
     ids = sorted((i for i in by_id if i and i in issue), key=len, reverse=True)
-    if not ids:
+    if not ids and not _ID_RANGE.search(issue):
         return issue, named
-    one = r"(?<![\w-])(?:" + "|".join(re.escape(i) for i in ids) + r")(?![\w-])"
+    one = r"(?<![\w-])(?:" + "|".join(re.escape(i) for i in ids) + r")(?![\w-])" if ids else r"(?!x)x"
+    token = r"(?:" + _ID_RANGE.pattern + "|" + one + ")"
+
+    def expand(tok: str) -> list[str]:
+        m = _ID_RANGE.fullmatch(tok)
+        if not m:
+            return [tok] if tok in by_id else []
+        pre, lo, hi = m.group(1), int(m.group(2)), int(m.group(4))
+        if m.group(3) not in (None, pre) or not 0 <= hi - lo <= _MAX_RANGE:
+            return []
+        width = len(m.group(2))
+        return [i for i in (f"{pre}{n:0{width}d}" for n in range(lo, hi + 1)) if i in by_id]
 
     def refs(found: list[str]) -> str:
         rs = list(dict.fromkeys(_refs(by_id[i])[0] for i in found))
         named.update(rs)
         return "[" + "; ".join(rs) + "]"
-    group = r"\(\s*" + one + r"(?:\s*(?:,|;|and|&)\s*" + one + r")*\s*\)"
+
+    def single(m) -> str:
+        found = expand(m.group(0))
+        return refs(found) if found else m.group(0)
+
+    def grouped(m) -> str:
+        parts = [expand(t.group(0)) for t in re.finditer(token, m.group(0))]
+        if all(parts):
+            return refs([i for p in parts for i in p])
+        return re.sub(token, single, m.group(0))     # an unresolvable member: resolve the others one by one
+    group = r"\(\s*" + token + r"(?:\s*(?:,|;|and|&)\s*" + token + r")*\s*\)"
     # one pass, so a document name inside an inserted reference is never rewritten
-    return re.sub(group + "|" + one, lambda m: refs(re.findall(one, m.group(0))), issue), named
+    return re.sub(group + "|" + token,
+                  lambda m: grouped(m) if m.group(0).startswith("(") else single(m), issue), named
 
 
 def _amendment_items(entries: list[dict]) -> list[dict]:

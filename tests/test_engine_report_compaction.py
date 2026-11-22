@@ -62,7 +62,7 @@ def test_include_quote_false_never_appends_the_quote():
 
 # ── Section 8: compact Management Decision Reference ────────────────────────
 
-def test_decision_reference_is_critical_only_and_quote_free():
+def test_decision_reference_documents_match_section5_and_quote_free():
     entries = [_entry("E1", "A bid bond is required.", "Tenderers shall furnish a guarantee from a licensed bank."),
                _entry("E2", "A company profile is required.", "Attach the corporate brochure and history.",
                       materiality="MATERIAL"),
@@ -70,7 +70,9 @@ def test_decision_reference_is_critical_only_and_quote_free():
                       category="SUBMISSION_METHOD")]
     comp = _compose(entries)
     dr = _decision_ref(comp)
-    assert [i["entry_ids"] for i in dr["documents"]] == [["E1"]]
+    # ENAB-44: the documents checklist lists every MATERIAL+ required document (as Section 5 does);
+    # submission logistics stay CRITICAL-only
+    assert [i["entry_ids"] for i in dr["documents"]] == [["E1"], ["E2"]]
     assert [i["entry_ids"] for i in dr["submission"]] == [["E3"]]
     assert all("Source text:" not in i["text"] for i in dr["documents"] + dr["submission"])
     # the full Required Documents list (MATERIAL and above, with distinct quotes) stays in Section 5

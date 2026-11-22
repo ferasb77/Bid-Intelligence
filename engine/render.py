@@ -209,6 +209,20 @@ class _KeepWithFirst(KeepTogether):
         return S
 
 
+def _chain_keeps(story: list) -> list:
+    """Groups every run of keepWithNext flowables (H1, its rule, notices, H2) with the flowable that
+    follows into one _KeepWithFirst. ReportLab's own keepWithNext grouping never admits a
+    ListFlowable (a _ContainerSpace), so without this the group would end at the last heading and
+    H1/H2 could be left alone at the foot of a page."""
+    out, run = [], []
+    for f in story:
+        run.append(f)
+        if not f.getKeepWithNext():
+            out.append(_KeepWithFirst(run) if len(run) > 1 else f)
+            run = []
+    return out + run
+
+
 def _head(rep: dict) -> list:
     story = [_masthead(rep), Spacer(1, 7)]
     if rep.get("verification"):
@@ -297,5 +311,5 @@ def render(rep: dict, *, limitations_appendix: bool = True) -> bytes:
     label = "Opportunity Snapshot" if rep["kind"] == "FAST" else "Bid Opportunity Assessment"
     footer = _footer(label, str(rep.get("run_date") or "")[:10])
     header = dict(rep.get("identity") or []).get("Opportunity") or "Procurement opportunity"
-    doc.build(story, onFirstPage=footer, onLaterPages=footer, canvasmaker=_numbered_canvas(_t_plain(header)))
+    doc.build(_chain_keeps(story), onFirstPage=footer, onLaterPages=footer, canvasmaker=_numbered_canvas(_t_plain(header)))
     return buf.getvalue()
