@@ -62,7 +62,7 @@ def test_include_quote_false_never_appends_the_quote():
 
 # ── Section 8: compact Management Decision Reference ────────────────────────
 
-def test_decision_reference_documents_match_section5_and_quote_free():
+def test_decision_reference_is_the_single_quote_free_documents_checklist():
     entries = [_entry("E1", "A bid bond is required.", "Tenderers shall furnish a guarantee from a licensed bank."),
                _entry("E2", "A company profile is required.", "Attach the corporate brochure and history.",
                       materiality="MATERIAL"),
@@ -70,16 +70,14 @@ def test_decision_reference_documents_match_section5_and_quote_free():
                       category="SUBMISSION_METHOD")]
     comp = _compose(entries)
     dr = _decision_ref(comp)
-    # ENAB-44: the documents checklist lists every MATERIAL+ required document (as Section 5 does);
-    # submission logistics stay CRITICAL-only
+    # ENAB-44: the documents checklist lists every MATERIAL+ required document. ENAB-47: it is the only
+    # place they are listed, and the separate submission-logistics block became one deadline + method line
     assert [i["entry_ids"] for i in dr["documents"]] == [["E1"], ["E2"]]
-    assert [i["entry_ids"] for i in dr["submission"]] == [["E3"]]
-    assert all("Source text:" not in i["text"] for i in dr["documents"] + dr["submission"])
-    # the full Required Documents list (MATERIAL and above, with distinct quotes) stays in Section 5
+    assert [(i["lead"], i["entry_ids"]) for i in dr["checklist"]] == [("Method", ["E3"])]
+    assert "submission" not in dr
+    assert all("Source text:" not in i["text"] for i in dr["documents"] + dr["checklist"])
     sub = next(s for s in comp["full"]["sections"] if s["title"] == "Submission and Compliance")
-    docs = next(g for g in sub["groups"] if g["title"] == "Required Documents and Forms")["items"]
-    assert {i for it in docs for i in it["entry_ids"]} == {"E1", "E2"}
-    assert any("Source text:" in it["text"] for it in docs)
+    assert all(g["title"] != "Required Documents and Forms" for g in sub["groups"])
 
 
 # ── Section 7: compact conflict bullets ─────────────────────────────────────
@@ -92,13 +90,14 @@ def test_conflict_bullet_lists_refs_without_ids_or_statements():
     conflicts = {"conflicts": [{"entry_ids": ["E1", "E2"], "issue": "Two closing dates",
                                 "implication": "The binding date is unclear."}], "clarifications": []}
     comp = _compose(entries, conflicts)
-    for rep in (comp["fast"], comp["full"]):
+    for rep, start in ((comp["fast"], "Two closing dates. Sources: [Doc.pdf, p. 2]; [Doc.pdf, p. 5]."),
+                       (comp["full"], "Two closing dates. Sources: [p. 2, p. 5].")):   # ENAB-47 compact FULL
         secs = rep["sections"] + [g for s in rep["sections"] for g in s.get("groups", [])]
         conf = [it for s in secs for it in s.get("items", []) if "Unresolved conflict" in it["labels"]]
         assert len(conf) == 1
         text = conf[0]["text"]
         # ENAB-36: members are named by source reference only, never by raw register entry id
-        assert text.startswith("Two closing dates. Sources: [Doc.pdf, p. 2]; [Doc.pdf, p. 5].")
+        assert text.startswith(start)
         assert "E1" not in text and "E2" not in text
         assert "Implication: The binding date is unclear." in text
         assert all(e["statement"] not in text for e in entries)

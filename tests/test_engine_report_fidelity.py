@@ -99,14 +99,17 @@ def _conflict_fixture():
 def test_conflict_issue_ids_replaced_by_source_refs():
     entries, conflicts = _conflict_fixture()
     comp = _compose(entries, conflicts)
-    for rep in (comp["fast"], comp["full"]):
+    for rep, start in ((comp["fast"], "[Doc.pdf, p. 2] places delivery in May, while [Doc.pdf, p. 2; Doc.pdf, "
+                                      "p. 3] end it in April. Sources: [Doc.pdf, p. 5]. Implication: Window unclear."),
+                       # ENAB-47: FULL uses compact, page-deduplicated citations (file named in the header)
+                       (comp["full"], "[p. 2] places delivery in May, while [p. 2, p. 3] end it in April. "
+                                      "Sources: [p. 5]. Implication: Window unclear.")):
         conf = _conflict_items(rep)
         assert len(conf) == 1
         text = conf[0]["text"]
         assert not re.search(r"\bE\d+\b", text)
         # bare id -> its ref; parenthesised group -> one bracket of distinct refs
-        assert text.startswith("[Doc.pdf, p. 2] places delivery in May, while [Doc.pdf, p. 2; Doc.pdf, p. 3] "
-                               "end it in April. Sources: [Doc.pdf, p. 5]. Implication: Window unclear.")
+        assert text.startswith(start)
         assert conf[0]["entry_ids"] == ["E018", "E023", "E048", "E060"]
     assert [i for i in review.deterministic_checks(comp, entries) if i["type"] == "CONTRADICTORY"] == []
 
@@ -138,8 +141,9 @@ def test_fast_conflicts_section_carries_qa_window_notice():
     comp = _compose([qa, amb], run_meta={"run_date": "2030-03-15"})
     sec = next(s for s in comp["fast"]["sections"] if s["title"] == "Conflicts and Clarifications Affecting Participation")
     assert "Documented Q&A deadline (2030-03-10) has passed as of 2030-03-15" in sec["qa_window_notice"]
-    full_dr = next(s for s in comp["full"]["sections"] if s.get("decision_reference"))["decision_reference"]
-    assert sec["qa_window_notice"] == full_dr["qa_window_notice"]
+    # ENAB-47: FULL carries the same notice above its Section 7 buyer questions
+    full7 = next(s for s in comp["full"]["sections"] if s["title"] == "Material Information, Amendments and Open Issues")
+    assert sec["qa_window_notice"] == full7["qa_window_notice"]
     comp = _compose([qa, amb], run_meta={"run_date": "2030-03-01"})
     sec = next(s for s in comp["fast"]["sections"] if s["title"] == "Conflicts and Clarifications Affecting Participation")
     assert sec["qa_window_notice"] == ""
@@ -178,8 +182,8 @@ def _footer_text(rep):
     seen = []
     orig = render_mod._footer
 
-    def spy(label, prepared=""):
-        draw = orig(label, prepared)
+    def spy(label, prepared="", *margin):
+        draw = orig(label, prepared, *margin)
 
         def wrapped(canvas, doc):
             real = canvas.drawString

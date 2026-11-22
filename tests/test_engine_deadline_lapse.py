@@ -46,6 +46,18 @@ def _decision(comp):
     return next(s for s in comp["full"]["sections"] if s.get("decision_reference"))["decision_reference"]
 
 
+def _open_notice(comp):
+    """ENAB-47: the FULL Q&A-window notice heads the Section 7 buyer questions (no longer Section 8)."""
+    sec = next((s for s in comp["full"]["sections"] if s["title"] == "Material Information, Amendments and Open Issues"),
+               {})
+    return sec.get("qa_window_notice", "")
+
+
+def _open_texts(comp):
+    sec = next(s for s in comp["full"]["sections"] if s["title"] == "Material Information, Amendments and Open Issues")
+    return [it["text"] for g in sec["groups"] for it in g["items"]]
+
+
 def test_lapsed_qa_deadline_flagged_and_notice_attached():
     entries = [copy.deepcopy(QA), copy.deepcopy(FINAL)]
     snap = copy.deepcopy(entries)
@@ -53,10 +65,11 @@ def test_lapsed_qa_deadline_flagged_and_notice_attached():
     texts = _texts(comp, "E1")
     assert texts and all(WARN in t and "as of 2030-03-15" in t for t in texts)
     assert all(QA["statement"] in t for t in texts)          # original date/text preserved
-    notice = _decision(comp)["qa_window_notice"]
+    notice = _open_notice(comp)
     assert "Documented Q&A deadline (2030-03-10) has passed as of 2030-03-15" in notice
     assert "extension" in notice
-    assert _decision(comp)["clarifications"] == CLARS["clarifications"]   # questions not suppressed
+    assert [q["question"] for q in CLARS["clarifications"]] == _open_texts(comp)   # questions not suppressed
+    assert "qa_window_notice" not in _decision(comp) and "clarifications" not in _decision(comp)
     assert entries == snap                                    # canonical register untouched
 
 
@@ -70,14 +83,14 @@ def test_future_deadline_not_flagged_and_no_notice():
     comp = _compose([copy.deepcopy(QA), copy.deepcopy(FINAL)], {"run_date": "2030-03-10"})  # same day: not lapsed
     assert not any(WARN in t for t in _texts(comp, "E1") + _texts(comp, "E2"))
     assert WARN not in dict(comp["fast"]["identity"])["Key deadline"]
-    assert _decision(comp)["qa_window_notice"] == ""
+    assert _open_notice(comp) == ""
 
 
 def test_non_qa_lapsed_deadline_does_not_trigger_notice():
     other = _deadline("E3", "Site visit registration closes on the date stated.", "2030-03-11")
     comp = _compose([copy.deepcopy(FINAL), other], {"run_date": "2030-03-12"})
     assert all(WARN in t for t in _texts(comp, "E3"))
-    assert _decision(comp)["qa_window_notice"] == ""
+    assert _open_notice(comp) == ""
 
 
 def test_run_date_fallback_to_today():
@@ -87,10 +100,10 @@ def test_run_date_fallback_to_today():
     past = _deadline("E1", "All questions must be received before the stated date.", "2000-01-01")
     comp = _compose([past], {"verification": None})
     assert all(f"as of {date.today().isoformat()}" in t for t in _texts(comp, "E1"))
-    assert "(2000-01-01)" in _decision(comp)["qa_window_notice"]
+    assert "(2000-01-01)" in _open_notice(comp)
 
 
 def test_superseded_deadline_not_flagged():
     old = dict(copy.deepcopy(QA), applicability="SUPERSEDED")
     comp = _compose([old, copy.deepcopy(FINAL)], {"run_date": "2030-03-15"})
-    assert _decision(comp)["qa_window_notice"] == ""
+    assert _open_notice(comp) == ""

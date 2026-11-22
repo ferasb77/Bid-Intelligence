@@ -69,13 +69,16 @@ def test_conflict_bullet_with_range_has_no_raw_ids_or_redundant_sources_suffix()
                                          "payment.", "implication": "Payment basis is unclear."}],
                  "clarifications": []}
     comp = _compose(entries, conflicts)
-    for rep in (comp["fast"], comp["full"]):
+    # FAST keeps full references; FULL (ENAB-47) uses compact page citations, the file named in its header
+    for rep, start in ((comp["fast"], "[Doc.pdf, p. 41; Doc.pdf, p. 42; Doc.pdf, p. 43] require per-deliverable "
+                                      "payment, while [Doc.pdf, p. 73] requires per-day payment."),
+                       (comp["full"], "[p. 41, p. 42, p. 43] require per-deliverable payment, while [p. 73] requires "
+                                      "per-day payment.")):
         secs = rep["sections"] + [g for s in rep["sections"] for g in s.get("groups", [])]
         conf = [it for s in secs for it in s.get("items", []) if "Unresolved conflict" in it["labels"]]
         assert len(conf) == 1
         text = conf[0]["text"]
-        assert text.startswith("[Doc.pdf, p. 41; Doc.pdf, p. 42; Doc.pdf, p. 43] require per-deliverable payment, "
-                               "while [Doc.pdf, p. 73] requires per-day payment.")
+        assert text.startswith(start)
         assert "Sources:" not in text
         assert not re.search(r"\bE\d+\b", text)
     assert [i for i in review.deterministic_checks(comp, entries) if i["type"] == "CONTRADICTORY"] == []
@@ -89,23 +92,24 @@ def test_sources_suffix_still_names_members_not_cited_inline():
     full = _compose(entries, conflicts)["full"]
     text = next(it["text"] for s in full["sections"] for g in s.get("groups", []) for it in g["items"]
                 if "Unresolved conflict" in it["labels"])
-    assert text == "[Doc.pdf, p. 41; Doc.pdf, p. 42] differ. Sources: [Doc.pdf, p. 99]."
+    assert text == "[p. 41, p. 42] differ. Sources: [p. 99]."          # ENAB-47 compact FULL citations
 
 
 # ── 2. FULL Section 8 documents checklist parity ───────────────────────────
 
-def test_section8_checklist_lists_every_required_document_of_section5():
+def test_section8_checklist_lists_every_required_document_once():
     entries = [_entry("E1", "A bid bond is required.", materiality="CRITICAL"),
                _entry("E2", "A copy of an identity document is required.", materiality="MATERIAL", page="4"),
                _entry("E3", "Three references are required.", materiality="MATERIAL", page="5"),
                _entry("E4", "A cover page is optional.", materiality="INFORMATIONAL", page="6")]
     comp = _compose(entries)
     dr = next(s for s in comp["full"]["sections"] if s.get("decision_reference"))["decision_reference"]
-    sub = next(s for s in comp["full"]["sections"] if s["title"] == "Submission and Compliance")
-    sec5 = next(g for g in sub["groups"] if g["title"] == "Required Documents and Forms")["items"]
+    sub = next((s for s in comp["full"]["sections"] if s["title"] == "Submission and Compliance"), {"groups": []})
+    # ENAB-47: Section 8 is the single canonical documents checklist; Section 5 no longer repeats it
+    assert all(g["title"] != "Required Documents and Forms" for g in sub["groups"])
     fast3 = next(s for s in comp["fast"]["sections"] if s["title"] == "Mandatory Forms and Documents")["items"]
     ids = lambda items: [i for it in items for i in it["entry_ids"]]   # noqa: E731
-    assert ids(dr["documents"]) == ids(sec5) == ids(fast3) == ["E1", "E2", "E3"]
+    assert ids(dr["documents"]) == ids(fast3) == ["E1", "E2", "E3"]
     assert all("Source text:" not in it["text"] for it in dr["documents"])
 
 

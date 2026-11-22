@@ -408,5 +408,6 @@ def test_review_failure_fails_the_run():
 
 def test_every_category_has_a_full_report_section():
     from engine import schema
-    placed = {c for _, subs in reports.FULL_SECTIONS for _, cats in subs for c in cats}
+    # ENAB-47: required documents are reported in the Section 8 tick-box checklist (FULL_CHECKLIST)
+    placed = {c for _, subs in reports.FULL_SECTIONS for _, cats in subs for c in cats} | set(reports.FULL_CHECKLIST)
     assert set(schema.CATEGORIES) <= placed, set(schema.CATEGORIES) - placed

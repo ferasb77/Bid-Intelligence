@@ -16,7 +16,7 @@ from reportlab.lib.units import mm
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import (HRFlowable, KeepTogether, ListFlowable, ListItem, Paragraph, SimpleDocTemplate,
                                 Spacer, Table, TableStyle)
-from reportlab.platypus.flowables import _listWrapOn
+from reportlab.platypus.flowables import Flowable, _listWrapOn
 
 MARGIN = 18 * mm
 BODY_W = letter[0] - 2 * MARGIN
@@ -31,7 +31,15 @@ GOLD, GOLD_DARK, TINT, BORDER = HexColor(GOLD_HEX), HexColor(GOLD_DARK_HEX), Hex
 ALERT_BG, ALERT_BORDER = HexColor(ALERT_BG_HEX), HexColor(ALERT_BORDER_HEX)
 RISK_RED, DEP_BLUE = HexColor(RISK_RED_HEX), HexColor(DEP_BLUE_HEX)
 WHITE = HexColor("#FFFFFF")
-ST = {
+class _Styles(dict):
+    """Paragraph styles by name; layout values (margin, body width, list gap, ...) are attributes."""
+
+    def with_layout(self, **layout) -> "_Styles":
+        self.__dict__.update(layout)
+        return self
+
+
+ST = _Styles({
     "title": ParagraphStyle("t", fontName=_FM, fontSize=15.5, leading=19.5, textColor=WHITE),
     "kicker": ParagraphStyle("k", fontName=_FM, fontSize=7.8, leading=10, textColor=GOLD),
     "h1": ParagraphStyle("h1", fontName=_FM, fontSize=12, leading=15, textColor=INK, spaceBefore=12, spaceAfter=2,
@@ -46,7 +54,23 @@ ST = {
     "banner": ParagraphStyle("bn", fontName=_F, fontSize=8.2, leading=10.8, textColor=BODY),
     "cell": ParagraphStyle("c", fontName=_F, fontSize=8.6, leading=11.2, textColor=BODY),
     "cellb": ParagraphStyle("cb", fontName=_FM, fontSize=8.6, leading=11.2, textColor=INK),
-}
+}).with_layout(margin=MARGIN, body_w=BODY_W, gap=4, rule_after=6, ref_size=8, box=7,
+                nbsp_refs=False)
+# FULL execution-playbook layout: the FAST brief's density (8.8 / 11.8 pt text, 14.5 mm margins) with the
+# same palette, masthead, hairlines and lead-in colours
+FULL_MARGIN = 14.5 * mm
+FST = _Styles(
+    ST,
+    h1=ParagraphStyle("fh1", parent=ST["h1"], fontSize=11.2, leading=14, spaceBefore=9, spaceAfter=1.5),
+    h2=ParagraphStyle("fh2", parent=ST["h2"], fontSize=9.2, leading=11.6, spaceBefore=6, spaceAfter=2.5),
+    body=ParagraphStyle("fb", parent=ST["body"], fontSize=8.8, leading=11.8),
+    item=ParagraphStyle("fi", parent=ST["item"], fontSize=8.8, leading=11.8),
+    note=ParagraphStyle("fn", parent=ST["note"], fontSize=7.8, leading=10.2),
+    alert=ParagraphStyle("fal", parent=ST["alert"], fontSize=8.2, leading=10.8),
+    cell=ParagraphStyle("fc", parent=ST["cell"], fontSize=8.4, leading=10.8),
+    cellb=ParagraphStyle("fcb", parent=ST["cellb"], fontSize=8.4, leading=10.8),
+).with_layout(margin=FULL_MARGIN, body_w=letter[0] - 2 * FULL_MARGIN, gap=2.5, rule_after=4, ref_size=7.4, box=6.6,
+                nbsp_refs=True)
 _LABEL_COLOUR = {"Unresolved conflict": RISK_RED_HEX, "Interpretation disputed": ALERT_BORDER_HEX,
                  "Ambiguous in the source": ALERT_BORDER_HEX, "Updated": DEP_BLUE_HEX, "New": "#375623",
                  "From OCR text": MUTED_HEX,
@@ -69,25 +93,30 @@ def _t(v) -> str:
     return escape(_t_plain(v))
 
 
-def _item_para(it: dict) -> Paragraph:
+def _item_para(it: dict, st: dict | None = None) -> Paragraph:
     labels = "".join(f'<font name="{_FM}" size="7.6" color="{_LABEL_COLOUR.get(lb, MUTED_HEX)}">'
                      f'{_t(lb.upper())}</font> ' for lb in it.get("labels") or [])
     text = _LAPSED.sub(lambda m: f'<font name="{_FM}" color="{RISK_RED_HEX}">{m.group(0)}</font>', _t(it["text"]))
     refs = "; ".join(it.get("refs") or [])
-    ref = f' <font size="8" color="{MUTED_HEX}">[{_t(refs)}]</font>' if refs else ""
-    return Paragraph(labels + text + ref, ST["item"])
+    refs = _t(refs).replace("p. ", "p.&nbsp;") if (st or ST).nbsp_refs else _t(refs)  # "[p. 5]" never wraps
+    ref = f' <font size="{(st or ST).ref_size}" color="{MUTED_HEX}">[{refs}]</font>' if refs else ""
+    lead = f'<font name="{_FM}" color="{MUTED_HEX}">{_t(it["lead"])}:</font> ' if it.get("lead") else ""
+    return Paragraph(labels + lead + text + ref, (st or ST)["item"])
 
 
-def _bullets(items: list[dict]) -> ListFlowable:
-    return ListFlowable([ListItem(_item_para(it), leftIndent=10, value="•", spaceAfter=4) for it in items],
+def _bullets(items: list[dict], st: dict | None = None) -> ListFlowable:
+    st = st or ST
+    gap = st.gap
+    return ListFlowable([ListItem(_item_para(it, st), leftIndent=10, value="•", spaceAfter=gap) for it in items],
                         bulletType="bullet", start="•", leftIndent=10, bulletFontSize=7.5, bulletColor=GOLD,
-                        spaceAfter=4)
+                        spaceAfter=gap)
 
 
-def _callout(paras: list, fill, stripe, width: float, pad: float, *, keep_with_next: bool = False) -> Table:
+def _callout(paras: list, fill, stripe, width: float, pad: float, *, keep_with_next: bool = False,
+             body_w: float = BODY_W) -> Table:
     """Full-width tinted box with a coloured left stripe (one row per paragraph). splitInRow lets an
     unusually long paragraph continue on the next page instead of raising a LayoutError."""
-    t = Table([[p] for p in paras], colWidths=[BODY_W], splitInRow=1)
+    t = Table([[p] for p in paras], colWidths=[body_w], splitInRow=1)
     t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), fill), ("LINEBEFORE", (0, 0), (0, -1), width, stripe),
                            ("LEFTPADDING", (0, 0), (-1, -1), pad + 2), ("RIGHTPADDING", (0, 0), (-1, -1), pad),
                            ("TOPPADDING", (0, 0), (-1, -1), pad), ("BOTTOMPADDING", (0, 0), (-1, -1), pad)]))
@@ -96,21 +125,26 @@ def _callout(paras: list, fill, stripe, width: float, pad: float, *, keep_with_n
     return t
 
 
-def _qa_notice(text: str) -> Table:
+def _qa_notice(text: str, st: dict | None = None) -> Table:
     """Q&A window notice: compact alert callout that stays with what follows it (never orphaned)."""
-    return _callout([Paragraph(_t(text), ST["alert"])], ALERT_BG, ALERT_BORDER, 2.5, 6, keep_with_next=True)
+    st = st or ST
+    return _callout([Paragraph(_t(text), st["alert"])], ALERT_BG, ALERT_BORDER, 2.5, 6, keep_with_next=True,
+                    body_w=st.body_w)
 
 
-def _h1(text: str) -> list:
+def _h1(text: str, st: dict | None = None) -> list:
     """Section heading with a gold bottom hairline; both carry keepWithNext."""
-    rule = HRFlowable(width="100%", thickness=0.6, color=GOLD, spaceBefore=0, spaceAfter=6)
+    st = st or ST
+    rule = HRFlowable(width="100%", thickness=0.6, color=GOLD, spaceBefore=0, spaceAfter=st.rule_after)
     rule.keepWithNext = 1
-    return [Paragraph(text, ST["h1"]), rule]
+    return [Paragraph(text, st["h1"]), rule]
 
 
-def _kv(rows) -> Table:
-    t = Table([[Paragraph(_t(k), ST["cellb"]), Paragraph(_t(v), ST["cell"])] for k, v in rows],
-              colWidths=[BODY_W * 0.24, BODY_W * 0.76])
+def _kv(rows, st: dict | None = None) -> Table:
+    st = st or ST
+    w = st.body_w
+    t = Table([[Paragraph(_t(k), st["cellb"]), Paragraph(_t(v), st["cell"])] for k, v in rows],
+              colWidths=[w * 0.24, w * 0.76])
     t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("BACKGROUND", (0, 0), (0, -1), TINT),
                            ("LINEABOVE", (0, 0), (-1, 0), 1.2, GOLD),
                            ("LINEBELOW", (0, 0), (-1, -1), 0.4, BORDER),
@@ -119,21 +153,21 @@ def _kv(rows) -> Table:
     return t
 
 
-def _banner(ver: dict) -> Table:
+def _banner(ver: dict, body_w: float = BODY_W) -> Table:
     colour = {"INDEPENDENTLY_VERIFIED": "#375623", "VERIFIED_WITH_LIMITATIONS": ALERT_BORDER_HEX,
               "SINGLE_ANALYST": ALERT_BORDER_HEX, "SYNTHETIC": RISK_RED_HEX}.get(ver.get("status"), RISK_RED_HEX)
     text = f'<font name="{_FM}" color="{colour}">{_t(ver.get("status", "").replace("_", " "))}</font> — {_t(ver.get("text"))}'
-    t = Table([[Paragraph(text, ST["banner"])]], colWidths=[BODY_W])
+    t = Table([[Paragraph(text, ST["banner"])]], colWidths=[body_w])
     t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), TINT), ("LINEBEFORE", (0, 0), (0, -1), 3, HexColor(colour)),
                            ("LEFTPADDING", (0, 0), (-1, -1), 8), ("RIGHTPADDING", (0, 0), (-1, -1), 6),
                            ("TOPPADDING", (0, 0), (-1, -1), 3.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5)]))
     return t
 
 
-def _masthead(rep: dict) -> Table:
+def _masthead(rep: dict, body_w: float = BODY_W) -> Table:
     kicker = ("FAST " if rep["kind"] == "FAST" else "FULL ") + rep["title"].upper()
     title = dict(rep.get("identity") or []).get("Opportunity") or "Procurement opportunity"
-    t = Table([[Paragraph(_t(kicker), ST["kicker"])], [Paragraph(_t(title), ST["title"])]], colWidths=[BODY_W])
+    t = Table([[Paragraph(_t(kicker), ST["kicker"])], [Paragraph(_t(title), ST["title"])]], colWidths=[body_w])
     t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), INK),
                            ("LEFTPADDING", (0, 0), (-1, -1), 12), ("RIGHTPADDING", (0, 0), (-1, -1), 12),
                            ("TOPPADDING", (0, 0), (-1, 0), 11), ("BOTTOMPADDING", (0, 0), (-1, 0), 3),
@@ -223,22 +257,25 @@ def _chain_keeps(story: list) -> list:
     return out + run
 
 
-def _head(rep: dict) -> list:
-    story = [_masthead(rep), Spacer(1, 7)]
+def _head(rep: dict, st: dict | None = None) -> list:
+    st = st or ST
+    w = st.body_w
+    story = [_masthead(rep, w), Spacer(1, 7)]
     if rep.get("verification"):
-        story += [_banner(rep["verification"]), Spacer(1, 8)]
+        story += [_banner(rep["verification"], w), Spacer(1, 8)]
     rows = [r for r in rep.get("identity") or [] if r[0] != "Opportunity"]
     if rows:
-        story += [_kv(rows), Spacer(1, 10)]
+        story += [_kv(rows, st), Spacer(1, 10)]
     if rep.get("summary"):
-        story.append(_callout([Paragraph(_t(" ".join(rep["summary"])), ST["body"])], TINT, GOLD, 3, 9))
+        story.append(_callout([Paragraph(_t(" ".join(rep["summary"])), st["body"])], TINT, GOLD, 3, 9, body_w=w))
     return story
 
 
-def _research(research: dict) -> list:
+def _research(research: dict, st: dict | None = None) -> list:
+    st = st or ST
     if not research or research.get("status") != "COMPLETE":
         return [Paragraph("External buyer research was not available for this analysis. Documented procurement "
-                          "facts above are unaffected.", ST["note"])]
+                          "facts above are unaffected.", st["note"])]
     try:
         import phoenix_reports
         items = phoenix_reports.research_items_for_display(research, None)
@@ -246,74 +283,122 @@ def _research(research: dict) -> list:
         items = research.get("items") or []
     if not items:
         return [Paragraph("External research found no verifiable public fact about this buyer beyond the "
-                          "procurement documents.", ST["note"])]
+                          "procurement documents.", st["note"])]
     out = [Paragraph("Verified external facts, kept separate from the documented procurement requirements. "
                      "Historical facts are dated and do not imply current funding, partnerships or preferences.",
-                     ST["note"])]
+                     st["note"])]
     out.append(_bullets([{"text": it.get("statement", ""), "refs": [it.get("url", "")[:90]], "labels": []}
-                         for it in items]))
+                         for it in items], st))
     return out
 
 
-def _decision_ref(d: dict) -> list:
+class _CheckBox(Flowable):
+    """An empty square tick box drawn with lines (the base-14 fonts carry no ballot-box glyph)."""
+
+    def __init__(self, size: float, colour=GOLD_DARK):
+        super().__init__()
+        self.size, self.colour = size, colour
+        self.width = self.height = size
+
+    def draw(self):
+        self.canv.setStrokeColor(self.colour)
+        self.canv.setLineWidth(0.7)
+        self.canv.rect(0, 0, self.size, self.size, stroke=1, fill=0)
+
+
+def _checklist(items: list[dict], st: dict) -> list:
+    """One row per item: a tick box, then the item with its citation (rows flow across pages)."""
+    size, w = st.box, st.body_w
     out = []
-    if d.get("submission"):
-        out += [Paragraph("Submission logistics", ST["h2"]), _bullets(d["submission"])]
-    if d.get("documents"):
-        out += [Paragraph("Documents and forms to submit (checklist)", ST["h2"]), _bullets(d["documents"])]
-    if d.get("clarifications") or d.get("qa_window_notice"):
-        out.append(Paragraph("Open questions for the buyer", ST["h2"]))
-        if d.get("qa_window_notice"):
-            out.append(_qa_notice(d["qa_window_notice"]))
-        if d.get("clarifications"):
-            out.append(_bullets([{"text": c["question"], "refs": [], "labels": []} for c in d["clarifications"]]))
+    for it in items:
+        t = Table([[_CheckBox(size), _item_para(it, st)]], colWidths=[size + 6, w - size - 6])
+        t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                               ("RIGHTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (0, 0), 2),
+                               ("TOPPADDING", (1, 0), (1, 0), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), st.gap)]))
+        out.append(t)
+    return out
+
+
+def _decision_ref(d: dict, st: dict | None = None, limitations: list | None = None) -> list:
+    st = st or ST
+    out = []
+    if d.get("checklist"):
+        # ENAB-47 model: one submission & documents checklist (deadline + method line, tick-box documents)
+        out.append(Paragraph("Submission &amp; Documents Checklist", st["h2"]))
+        out.append(Paragraph(" &nbsp;·&nbsp; ".join(_item_para(it, st).text for it in d["checklist"]), st["item"]))
+        out.append(Spacer(1, st.gap + 1))
+        out += _checklist(d.get("documents") or [], st)
+    else:
+        # content models composed before ENAB-47 carry separate blocks
+        if d.get("submission"):
+            out += [Paragraph("Submission logistics", st["h2"]), _bullets(d["submission"], st)]
+        if d.get("documents"):
+            out += [Paragraph("Documents and forms to submit (checklist)", st["h2"]), _bullets(d["documents"], st)]
+        if d.get("clarifications") or d.get("qa_window_notice"):
+            out.append(Paragraph("Open questions for the buyer", st["h2"]))
+            if d.get("qa_window_notice"):
+                out.append(_qa_notice(d["qa_window_notice"], st))
+            if d.get("clarifications"):
+                out.append(_bullets([{"text": c["question"], "refs": [], "labels": []}
+                                     for c in d["clarifications"]], st))
     cov = d.get("coverage") or {}
     probs = cov.get("problems") or []
-    out.append(Paragraph("Source coverage", ST["h2"]))
+    out.append(Paragraph("Source coverage", st["h2"]))
     if probs:
         out.append(_bullets([{"text": f"{p['ref']}: {p['note'] or p['status'].lower()}", "refs": [], "labels": []}
-                             for p in probs[:40]]))
+                             for p in probs[:40]], st))
     else:
-        out.append(Paragraph(f"All {cov.get('locations', 0)} pages/sections of the package were read.", ST["note"]))
+        out.append(Paragraph(f"All {cov.get('locations', 0)} pages/sections of the package were read.", st["note"]))
+    if limitations:
+        out += [Paragraph("Verification limitations", st["h2"]),
+                _bullets([{"text": x, "refs": [], "labels": []} for x in limitations], st)]
     return out
 
 
 def render(rep: dict, *, limitations_appendix: bool = True) -> bytes:
     if rep.get("kind") == "FAST" and rep.get("brief"):
         return render_brief(rep)
+    # FULL uses the denser execution-playbook layout; the deterministic FAST keeps the original one
+    st = FST if rep.get("kind") == "FULL" else ST
+    margin = st.margin
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=letter, leftMargin=MARGIN, rightMargin=MARGIN, topMargin=MARGIN,
-                            bottomMargin=MARGIN, title=rep["title"], keepTogetherClass=_KeepWithFirst)
-    story = _head(rep)
+    doc = SimpleDocTemplate(buf, pagesize=letter, leftMargin=margin, rightMargin=margin, topMargin=margin,
+                            bottomMargin=margin, title=rep["title"], keepTogetherClass=_KeepWithFirst)
+    story = _head(rep, st)
+    ver = rep.get("verification") or {}
+    limitations = list(ver.get("limitations") or []) if limitations_appendix else []
+    # FULL lists the verification limitations inside its Decision Reference (Section 8)
+    in_reference = rep.get("kind") == "FULL" and any(sec.get("decision_reference") for sec in rep["sections"])
     for n, sec in enumerate(rep["sections"], 1):
-        block = _h1(f"{n}. {_t(sec['title'])}")
+        block = _h1(f"{n}. {_t(sec['title'])}", st)
         if sec.get("qa_window_notice"):
-            block.append(_qa_notice(sec["qa_window_notice"]))
+            block.append(_qa_notice(sec["qa_window_notice"], st))
         if sec.get("items"):
-            block.append(_bullets(sec["items"]))
+            block.append(_bullets(sec["items"], st))
         for g in sec.get("groups") or []:
             if g.get("items"):
-                block += [Paragraph(_t(g["title"]), ST["h2"]), _bullets(g["items"])]
+                block += [Paragraph(_t(g["title"]), st["h2"]), _bullets(g["items"], st)]
         if "research" in sec:
-            block += _research(sec["research"])
+            block += _research(sec["research"], st)
         if sec.get("analysis"):
             block.append(Paragraph("Analysis by Bid Intelligence, grounded in the cited provisions. It is "
-                                   "interpretation, not a document fact.", ST["note"]))
+                                   "interpretation, not a document fact.", st["note"]))
             block.append(_bullets([{"text": f"{p['heading']}: {p['analysis']}", "refs": p.get("refs") or [],
-                                    "labels": [p.get("kind", "").replace("_", " ").title()]} for p in sec["analysis"]]))
+                                    "labels": [p.get("kind", "").replace("_", " ").title()]} for p in sec["analysis"]],
+                                  st))
         if sec.get("decision_reference"):
-            block += _decision_ref(sec["decision_reference"])
+            block += _decision_ref(sec["decision_reference"], st, limitations if in_reference else None)
         # h1 / h2 / note carry keepWithNext: the heading (+ optional notice) stays with the
         # first bullet only (_KeepWithFirst); a whole list is never pushed to the next page.
         story += block
-    ver = rep.get("verification") or {}
-    if limitations_appendix and ver.get("limitations"):
-        story += _h1("Verification limitations") + [
-                  _bullets([{"text": x, "refs": [], "labels": []} for x in ver["limitations"]])]
+    if limitations and not in_reference:
+        story += _h1("Verification limitations", st) + [
+                  _bullets([{"text": x, "refs": [], "labels": []} for x in limitations], st)]
     label = "Opportunity Snapshot" if rep["kind"] == "FAST" else "Bid Opportunity Assessment"
-    footer = _footer(label, str(rep.get("run_date") or "")[:10])
+    footer = _footer(label, str(rep.get("run_date") or "")[:10], margin)
     header = dict(rep.get("identity") or []).get("Opportunity") or "Procurement opportunity"
-    doc.build(_chain_keeps(story), onFirstPage=footer, onLaterPages=footer, canvasmaker=_numbered_canvas(_t_plain(header)))
+    doc.build(_chain_keeps(story), onFirstPage=footer, onLaterPages=footer,
+              canvasmaker=_numbered_canvas(_t_plain(header), margin))
     return buf.getvalue()
 
 

@@ -90,7 +90,12 @@ def test_open_items_drop_strict_subset_conflict():
 def test_compose_drops_subset_conflict_and_its_clarification():
     saved = copy.deepcopy(SAVED)
     comp = reports.compose(_entries(), an={}, conflicts=saved, readability={}, run_meta={})
-    assert [c["entry_ids"] for c in _decision(comp)["clarifications"]] == [["E1", "E2", "E3"]]
+    # ENAB-47: buyer questions are listed once, in FULL Section 7; the dropped subset's question never appears
+    open_texts = [it["text"] for _, g, its in _sections(comp["full"]) if g.startswith("Unresolved Conflicts")
+                  for it in its]
+    assert any("Which delivery window applies?" in t for t in open_texts)
+    assert not any("(repeat)" in t for t in open_texts)
+    assert "clarifications" not in _decision(comp)
     for rep in (comp["fast"], comp["full"]):
         conflict_items = [it for _, _, its in _sections(rep) for it in its if "Unresolved conflict" in it["labels"]]
         assert [it["entry_ids"] for it in conflict_items] == [["E1", "E2", "E3"]]

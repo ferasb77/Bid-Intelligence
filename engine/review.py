@@ -103,6 +103,10 @@ def _report_text(composed: dict) -> str:
                     out.append(f"- ({', '.join(it['entry_ids'])}) {it['text']}")
             for p in sec.get("analysis", []) or []:
                 out.append(f"- [analysis {', '.join(p['entry_ids'])}] {p['heading']}: {p['analysis']}")
+            # the FULL checklist (Section 8) is the only place the required documents are listed
+            dr = sec.get("decision_reference") or {}
+            for it in (dr.get("checklist") or []) + (dr.get("documents") or []):
+                out.append(f"- ({', '.join(it['entry_ids'])}) {it['text']}")
     return "\n".join(out)
 
 

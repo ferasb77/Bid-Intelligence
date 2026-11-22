@@ -42,12 +42,14 @@ FULL_SECTIONS = [
         ("Contractual Obligations and Restrictions", ["CONTRACT_TERM"])]),
     ("Submission and Compliance", [
         ("Deadlines and Schedule", ["DEADLINE"]), ("Submission Method", ["SUBMISSION_METHOD"]),
-        ("Proposal Requirements", ["SUBMISSION_REQUIREMENT"]), ("Required Documents and Forms", ["REQUIRED_DOCUMENT"]),
+        ("Proposal Requirements", ["SUBMISSION_REQUIREMENT"]),
+        # required documents are listed once: the tick-box checklist of the Decision Reference (FULL_CHECKLIST)
         ("Disqualification and Rejection", ["DISQUALIFICATION"]),
         ("Document Precedence", ["DOCUMENT_AUTHORITY"]),
         ("Changes to the Tender and Reserved Rights", ["AMENDMENT"]),
         ("Other Provisions", ["OTHER", "IDENTITY"])]),
 ]
+FULL_CHECKLIST = ["REQUIRED_DOCUMENT"]
 
 ANALYSIS_SYSTEM = """You are a senior bid analyst writing for a consulting firm's management. You receive a \
 verified evidence register of one procurement package (entry id, category, modal force, statement, status). \
@@ -181,13 +183,23 @@ def _quote_overlap(statement: str, quote: str) -> float:
     return len(st & set(tokens(quote))) / len(st) if st else 0.0
 
 
-def _item(group: list[dict], include_quote: bool = True) -> dict:
+def _flat(text: str) -> str:
+    return " ".join(normalize(text).split())
+
+
+def _item(group: list[dict], include_quote: bool = True, keys: dict[str, str] | None = None) -> dict:
+    """`keys` (from source_keys) selects compact citations: one deduplicated '[p. 3, p. 6]' /
+    '[D1, p. 4; D2, p. 2]' bracket, and no 'Source text' echo of a quote the item text already contains."""
     e = group[0]
     refs: list[str] = []
-    for x in group:
-        for r in _refs(x):
-            if r not in refs:
-                refs.append(r)
+    if keys is not None:
+        cite = compact_cite([x["entry_id"] for x in group], {x["entry_id"]: x for x in group}, keys)
+        refs = [cite[1:-1]] if cite else []
+    else:
+        for x in group:
+            for r in _refs(x):
+                if r not in refs:
+                    refs.append(r)
     # an unresolved conflict is reported once, in the Conflicts / Open Items section,
     # not stamped onto each clause of the candidate cluster in the body sections
     labels = sorted({_LABEL[x["applicability"]] for x in group
@@ -200,15 +212,16 @@ def _item(group: list[dict], include_quote: bool = True) -> dict:
         labels.append("New")
     text = e.get("statement") or ""
     if e.get("previous"):
-        text += " (Previously: " + "; ".join(f"{p['statement']} [{p['document']}, {_page(p)}]"
-                                             for p in e["previous"]) + ")"
+        prev_ref = (lambda p: compact_ref(p, keys)) if keys is not None else (lambda p: f"{p['document']}, {_page(p)}")
+        text += " (Previously: " + "; ".join(f"{p['statement']} [{prev_ref(p)}]" for p in e["previous"]) + ")"
     if e.get("applicability") == "AMBIGUOUS" and e.get("uncertainty"):
         text += f" Unclear: {e['uncertainty']}"
     # verbatim source grounding: the quote the statement was verified against, shown only when
     # it carries wording the statement does not (a near-restatement is not repeated)
     quote = e.get("quote") or ""
     if include_quote and quote and normalize(quote) != normalize(e.get("statement") or "") \
-            and _quote_overlap(e.get("statement") or "", quote) < _QUOTE_OVERLAP:
+            and _quote_overlap(e.get("statement") or "", quote) < _QUOTE_OVERLAP \
+            and not (keys is not None and _flat(quote) in _flat(text)):
         text += f' Source text: "{" ".join(quote.split())}"'
     return {"text": text, "quote": quote, "refs": refs, "labels": labels, "entry_ids": [x["entry_id"] for x in group],
             "materiality": max((x.get("materiality") for x in group), key=lambda m: {"CRITICAL": 3, "MATERIAL": 2}
@@ -232,13 +245,13 @@ def placement(e: dict, by_id: dict) -> tuple[str, str]:
 
 
 def _items_for(entries: list[dict], cats: list[str], *, min_rank: int = 1,
-               include_quote: bool = True) -> list[dict]:
+               include_quote: bool = True, keys: dict[str, str] | None = None) -> list[dict]:
     by_id = {e["entry_id"]: e for e in entries}
     pl = {e["entry_id"]: placement(e, by_id) for e in entries}
     sel = [e for e in entries if pl[e["entry_id"]][0] in cats and reportable(e)
            and _RANK.get(pl[e["entry_id"]][1], 1) >= min_rank]
     sel.sort(key=lambda e: (-_RANK.get(pl[e["entry_id"]][1], 1), cats.index(pl[e["entry_id"]][0])))
-    return [_item(g, include_quote) for g in group_restatements(sel)]
+    return [_item(g, include_quote, keys) for g in group_restatements(sel)]
 
 
 # ── model-written text: cited and figure-checked ────────────────────────────
@@ -558,26 +571,39 @@ def fast_brief(an: dict, entries: list[dict], run_date: str) -> dict | None:
 
 # ── composition ─────────────────────────────────────────────────────────────
 
-def _kv_identity(an: dict, entries: list[dict], run_date: str = "") -> list[tuple[str, str]]:
-    rows = []
-    for k, label in (("title", "Opportunity"), ("buyer", "Issued by"), ("reference", "Reference")):
-        if an.get(k):
-            rows.append((label, an[k]))
+def _key_provisions(entries: list[dict]) -> tuple[dict | None, dict | None]:
+    """(key deadline, submission method) entries shown in the identity header."""
     deadline = next((e for e in entries if reportable(e) and e.get("category") == "DEADLINE"
                      and e.get("materiality") == "CRITICAL"), None)
-    if deadline:
-        text = f"{deadline['statement']} [{_refs(deadline)[0]}]"
-        if run_date and _lapsed_dates(deadline, run_date):
-            text += " " + _lapse_warning(run_date)
-        rows.append(("Key deadline", text))
     methods = [e for e in entries if reportable(e) and e.get("category") == "SUBMISSION_METHOD"
                and e.get("modality") in ("MUST", "MAY", "IS")]
     # the row names where to submit: prefer provisions that carry an address (e-mail or URL value)
     methods.sort(key=lambda e: (not any(v.get("kind") in ("EMAIL", "URL") for v in e.get("values") or []),
                                 -_RANK.get(e.get("materiality"), 1)))
-    method = methods[0] if methods else None
+    return deadline, (methods[0] if methods else None)
+
+
+def _kv_identity(an: dict, entries: list[dict], run_date: str = "",
+                 keys: dict[str, str] | None = None) -> list[tuple[str, str]]:
+    """Identity rows. With `keys`, references are compact and the source file(s) are named once
+    (a 'D1 = ...; D2 = ...' legend for a multi-document package)."""
+    ref = (lambda e: compact_ref(e, keys)) if keys is not None else (lambda e: _refs(e)[0])
+    rows = []
+    for k, label in (("title", "Opportunity"), ("buyer", "Issued by"), ("reference", "Reference")):
+        if an.get(k):
+            rows.append((label, an[k]))
+    deadline, method = _key_provisions(entries)
+    if deadline:
+        text = f"{deadline['statement']} [{ref(deadline)}]"
+        if run_date and _lapsed_dates(deadline, run_date):
+            text += " " + _lapse_warning(run_date)
+        rows.append(("Key deadline", text))
     if method:
-        rows.append(("Submission", f"{method['statement']} [{_refs(method)[0]}]"))
+        rows.append(("Submission", f"{method['statement']} [{ref(method)}]"))
+    if keys:
+        docs = list(keys)
+        rows.append(("Source file", docs[0]) if len(docs) == 1 else
+                    ("Source files", "; ".join(f"{keys[d]} = {d}" for d in docs)))
     return rows
 
 
@@ -608,14 +634,19 @@ def compose(entries: list[dict], *, an: dict, conflicts: dict, readability: dict
                                  "qa_window_notice": _qa_window_notice(entries, run_date),
                                  "items": mark(open_items, "FAST:Conflicts")})
 
-    # FULL
-    full = {"kind": "FULL", "title": "Bid Opportunity Assessment", "identity": fast["identity"],
+    # FULL: an execution playbook. Compact, page-deduplicated citations with the source file(s) named once
+    # in the identity header; each fact stated once (required documents only in the Section 8 checklist,
+    # buyer questions only in the open-issues section); INFORMATIONAL provisions stay in the register only
+    # (the ledger records them as "informational (register only)").
+    keys = source_keys(entries)
+    live_by_id = {e["entry_id"]: e for e in entries if reportable(e)}
+    full = {"kind": "FULL", "title": "Bid Opportunity Assessment",
+            "identity": _kv_identity(an, entries, run_date, keys),
             "summary": fast["summary"], "run_date": run_date, "sections": []}
     for title, subs in FULL_SECTIONS:
         groups = []
         for sub, cats in subs:
-            items = mark(_items_for(entries, cats, min_rank=2 if cats[0] not in ("SCOPE", "DELIVERABLE") else 1),
-                         f"FULL:{title}")
+            items = mark(_items_for(entries, cats, min_rank=2, keys=keys), f"FULL:{title}")
             if items:
                 groups.append({"title": sub, "items": items})
         if groups:
@@ -623,21 +654,36 @@ def compose(entries: list[dict], *, an: dict, conflicts: dict, readability: dict
             if title == "Opportunity and Delivery Requirements":
                 full["sections"].append({"title": "Buyer Intelligence", "research": research or {}})
     if an.get("points"):
-        full["sections"].append({"title": "Specialist Analysis", "analysis": an["points"]})
-    amend = _amendment_items(entries)
-    if amend or open_items:
+        full["sections"].append({"title": "Specialist Analysis", "analysis": [
+            dict(p, refs=[c[1:-1]] if (c := compact_cite(p.get("entry_ids") or [], live_by_id, keys)) else [])
+            for p in an["points"]]})
+    amend = [_item([e], keys=keys) for e in _amendment_entries(entries)]
+    full_open = _open_items(entries, conflicts, keys)
+    # a buyer question not already carried by an open item is listed there too, never dropped
+    stated = " ".join(_flat(it["text"]) for it in full_open)
+    for q in conflicts.get("clarifications") or []:
+        if q.get("question") and _flat(q["question"]) not in stated:
+            full_open.append({"text": q["question"], "labels": [], "materiality": "MATERIAL",
+                              "entry_ids": [i for i in q.get("entry_ids") or [] if i in live_by_id],
+                              "refs": [c[1:-1]] if (c := compact_cite(q.get("entry_ids") or [], live_by_id, keys))
+                              else []})
+    if amend or full_open:
         full["sections"].append({"title": "Material Information, Amendments and Open Issues",
+                                 "qa_window_notice": _qa_window_notice(entries, run_date) if full_open else "",
                                  "groups": ([{"title": "Amendments and Updated Information",
                                               "items": mark(amend, "FULL:Amendments")}] if amend else []) +
                                  ([{"title": "Unresolved Conflicts, Ambiguities and Clarification Questions",
-                                    "items": mark(open_items, "FULL:Open")}] if open_items else [])})
-    # a compact checklist: critical items only, without the verbatim quotes the body sections already show
+                                    "items": mark(full_open, "FULL:Open")}] if full_open else [])})
+    # Section 8: the single submission & documents checklist (deadline + method line, tick-box documents),
+    # source coverage and verification limitations
+    deadline, method = _key_provisions(entries)
+    checklist = [_item([e], include_quote=False, keys=keys) | {"lead": lead}
+                 for lead, e in (("Deadline", deadline), ("Method", method)) if e]
     full["sections"].append({"title": "Management Decision Reference", "decision_reference": {
-        "submission": _items_for(entries, ["SUBMISSION_METHOD", "DEADLINE"], min_rank=3, include_quote=False),
-        # same selection as FULL "Required Documents and Forms" / FAST "Mandatory Forms and Documents"
-        "documents": _items_for(entries, ["REQUIRED_DOCUMENT"], min_rank=2, include_quote=False),
-        "clarifications": conflicts.get("clarifications") or [],
-        "qa_window_notice": _qa_window_notice(entries, run_date),
+        "checklist": checklist,
+        # same selection as FAST "Mandatory Forms and Documents" (MATERIAL and above)
+        "documents": mark(_items_for(entries, FULL_CHECKLIST, min_rank=2, include_quote=False, keys=keys),
+                          "FULL:Checklist"),
         "coverage": readability, "verification": run_meta.get("verification")}})
 
     lapsed_ids = {e["entry_id"] for e in entries if reportable(e) and _lapsed_dates(e, run_date)}
@@ -669,19 +715,24 @@ def _distinct_conflicts(conflicts: dict) -> dict:
                 clarifications=[q for q in conflicts.get("clarifications") or [] if not covered(q.get("entry_ids"))])
 
 
-def _open_items(entries: list[dict], conflicts: dict) -> list[dict]:
+def _open_items(entries: list[dict], conflicts: dict, keys: dict[str, str] | None = None) -> list[dict]:
     by_id = {e["entry_id"]: e for e in entries}
     conflicts = _distinct_conflicts(conflicts)
+    ref = (lambda e: compact_ref(e, keys)) if keys is not None else (lambda e: _refs(e)[0])
     items = []
     for c in conflicts.get("conflicts") or []:
         es = [by_id[i] for i in c.get("entry_ids") or [] if i in by_id]
         if not es:
             continue
         # members are named by source reference, not register entry id; their statements are in the body sections
-        text, named = _readable_issue(c.get("issue") or "Conflicting provisions", by_id)
-        missing = list(dict.fromkeys(f"[{_refs(e)[0]}]" for e in es if _refs(e)[0] not in named))
-        if missing:
-            text += (" " if text[-1:] in ".;:!?" else ". ") + "Sources: " + "; ".join(missing) + "."
+        text, named = _readable_issue(c.get("issue") or "Conflicting provisions", by_id, keys=keys)
+        rest = [e for e in es if ref(e) not in named]
+        if rest and keys is not None:
+            text += (" " if text[-1:] in ".;:!?" else ". ") + "Sources: " + \
+                compact_cite([e["entry_id"] for e in rest], by_id, keys) + "."
+        elif rest:
+            text += (" " if text[-1:] in ".;:!?" else ". ") + "Sources: " + \
+                "; ".join(dict.fromkeys(f"[{ref(e)}]" for e in rest)) + "."
         if c.get("implication"):
             text += f" Implication: {c['implication']}"
         if c.get("clarification_question"):
@@ -691,17 +742,20 @@ def _open_items(entries: list[dict], conflicts: dict) -> list[dict]:
     for e in entries:
         if e.get("applicability") in ("AMBIGUOUS", "DISPUTED") and e.get("materiality") in ("CRITICAL", "MATERIAL") \
                 and not any(e["entry_id"] in it["entry_ids"] for it in items):
-            items.append(_item([e]))
+            items.append(_item([e], keys=keys))
     return items
 
 
-def _readable_issue(issue: str, by_id: dict, ref_of=None) -> tuple[str, set[str]]:
+def _readable_issue(issue: str, by_id: dict, ref_of=None, keys: dict[str, str] | None = None) -> tuple[str, set[str]]:
     """Replaces register entry ids in conflict wording with their source references: a bare id
     becomes "[doc, p. X]", a parenthesised id list "(E1, E2)" becomes one bracket of its distinct refs.
     A hyphenated range "E041-E043" (or with an en/em dash) is expanded to the register ids it spans
     and becomes one bracket of their distinct refs. Ids not in the register are left as written.
     Returns the text and the references it now names. `ref_of(entry) -> str` overrides the reference
-    wording (default "doc, p. X")."""
+    wording (default "doc, p. X"). `keys` (from source_keys) makes every bracket one compact, page-deduplicated
+    citation ("[p. 2, p. 3]" / "[D1, p. 2; D2, p. 3]") and names compact references."""
+    if keys is not None:
+        ref_of = lambda e: compact_ref(e, keys)  # noqa: E731
     ref_of = ref_of or (lambda e: _refs(e)[0])
     issue = " ".join(issue.split())
     named: set[str] = set()
@@ -724,6 +778,8 @@ def _readable_issue(issue: str, by_id: dict, ref_of=None) -> tuple[str, set[str]
     def refs(found: list[str]) -> str:
         rs = list(dict.fromkeys(ref_of(by_id[i]) for i in found))
         named.update(rs)
+        if keys is not None:
+            return compact_cite(found, by_id, keys)
         return "[" + "; ".join(rs) + "]"
 
     def single(m) -> str:
@@ -736,13 +792,18 @@ def _readable_issue(issue: str, by_id: dict, ref_of=None) -> tuple[str, set[str]
             return refs([i for p in parts for i in p])
         return re.sub(token, single, m.group(0))     # an unresolvable member: resolve the others one by one
     group = r"\(\s*" + token + r"(?:\s*(?:,|;|and|&)\s*" + token + r")*\s*\)"
+    alts = [group, token]
+    if keys is not None:
+        # compact mode: a bare list "E1, E2 and E3" also becomes one page-deduplicated bracket
+        alts.insert(1, token + r"(?:\s*(?:,|;|\band\b|&)\s*" + token + r")+")
     # one pass, so a document name inside an inserted reference is never rewritten
-    return re.sub(group + "|" + token,
-                  lambda m: grouped(m) if m.group(0).startswith("(") else single(m), issue), named
+    return re.sub("|".join(alts),
+                  lambda m: grouped(m) if m.group(0).startswith("(") or keys is not None else single(m),
+                  issue), named
 
 
-def _amendment_items(entries: list[dict]) -> list[dict]:
-    return [_item([e]) for e in entries if reportable(e) and (e.get("previous") or e.get("new_in_update"))
+def _amendment_entries(entries: list[dict]) -> list[dict]:
+    return [e for e in entries if reportable(e) and (e.get("previous") or e.get("new_in_update"))
             and e.get("materiality") in ("CRITICAL", "MATERIAL")]
 
 
