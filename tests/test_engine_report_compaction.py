@@ -82,7 +82,7 @@ def test_decision_reference_is_critical_only_and_quote_free():
 
 # ── Section 7: compact conflict bullets ─────────────────────────────────────
 
-def test_conflict_bullet_lists_ids_and_refs_without_statements():
+def test_conflict_bullet_lists_refs_without_ids_or_statements():
     entries = [_entry("E1", "Proposals must be received by 30 April.", "Closing: 30 April.", category="DEADLINE",
                       applicability="CONFLICTED", page="2"),
                _entry("E2", "Proposals must be received by 31 May.", "Closing: 31 May.", category="DEADLINE",
@@ -95,8 +95,9 @@ def test_conflict_bullet_lists_ids_and_refs_without_statements():
         conf = [it for s in secs for it in s.get("items", []) if "Unresolved conflict" in it["labels"]]
         assert len(conf) == 1
         text = conf[0]["text"]
-        assert text.startswith("Two closing dates: ")
-        assert "E1 [Doc.pdf, p. 2]" in text and "E2 [Doc.pdf, p. 5]" in text
+        # ENAB-36: members are named by source reference only, never by raw register entry id
+        assert text.startswith("Two closing dates. Sources: [Doc.pdf, p. 2]; [Doc.pdf, p. 5].")
+        assert "E1" not in text and "E2" not in text
         assert "Implication: The binding date is unclear." in text
         assert all(e["statement"] not in text for e in entries)
         assert conf[0]["entry_ids"] == ["E1", "E2"]

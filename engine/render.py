@@ -78,12 +78,14 @@ def _banner(ver: dict) -> Table:
     return t
 
 
-def _footer(label: str):
+def _footer(label: str, prepared: str = ""):
+    prepared = prepared or date.today().isoformat()
+
     def draw(canvas, doc):
         canvas.saveState()
         canvas.setFont(_F, 7)
         canvas.setFillColor(GREY)
-        canvas.drawString(18 * mm, 10 * mm, f"Bid Intelligence · {label} · prepared {date.today().isoformat()}")
+        canvas.drawString(18 * mm, 10 * mm, f"Bid Intelligence · {label} · prepared {prepared}")
         canvas.drawRightString(letter[0] - 18 * mm, 10 * mm, f"Page {doc.page}")
         canvas.restoreState()
     return draw
@@ -153,6 +155,8 @@ def render(rep: dict, *, limitations_appendix: bool = True) -> bytes:
     story = _head(rep)
     for n, sec in enumerate(rep["sections"], 1):
         block = [Paragraph(f"{n}. {_t(sec['title'])}", ST["h1"])]
+        if sec.get("qa_window_notice"):
+            block.append(Paragraph(_t(sec["qa_window_notice"]), ST["note"]))
         if sec.get("items"):
             block.append(_bullets(sec["items"]))
         for g in sec.get("groups") or []:
@@ -174,5 +178,6 @@ def render(rep: dict, *, limitations_appendix: bool = True) -> bytes:
         story += [Paragraph("Verification limitations", ST["h1"]),
                   _bullets([{"text": x, "refs": [], "labels": []} for x in ver["limitations"]])]
     label = "Opportunity Snapshot" if rep["kind"] == "FAST" else "Bid Opportunity Assessment"
-    doc.build(story, onFirstPage=_footer(label), onLaterPages=_footer(label))
+    footer = _footer(label, str(rep.get("run_date") or "")[:10])
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
     return buf.getvalue()

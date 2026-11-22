@@ -23,7 +23,8 @@ FAST_SECTIONS = [
     ("Eligibility and Qualification", ["ELIGIBILITY", "QUALIFICATION"]),
     ("Submission Instructions and Deadlines", ["DEADLINE", "SUBMISSION_METHOD", "SUBMISSION_REQUIREMENT"]),
     ("Mandatory Forms and Documents", ["REQUIRED_DOCUMENT"]),
-    ("Commercial, Payment and Financial Terms", ["PRICING", "PAYMENT", "GUARANTEE", "FINANCIAL_THRESHOLD"]),
+    ("Commercial, Payment and Contractual Terms", ["PRICING", "PAYMENT", "GUARANTEE", "FINANCIAL_THRESHOLD",
+                                                   "CONTRACT_TERM"]),
     ("Evaluation and Award", ["EVALUATION"]),
     ("Disqualification and Rejection Risks", ["DISQUALIFICATION"]),
     ("Scope and Principal Deliverables", ["SCOPE", "DELIVERABLE", "DURATION"]),
@@ -110,6 +111,7 @@ def group_restatements(entries: list[dict]) -> list[list[dict]]:
 
 
 _QUOTE_OVERLAP = 0.60   # statement tokens also in the quote, at or above which the quote adds nothing
+_QUOTE_SUPERSET = 0.80  # at or above this, a longer quote is shown verbatim in place of the statement
 
 
 def _quote_overlap(statement: str, quote: str) -> float:
@@ -135,7 +137,13 @@ def _item(group: list[dict], include_quote: bool = True) -> dict:
         labels.append("Updated")
     if e.get("new_in_update"):
         labels.append("New")
-    text = e.get("statement") or ""
+    statement = e.get("statement") or ""
+    quote = e.get("quote") or ""
+    # a verbatim quote that contains (nearly) all of the statement and says more is shown in its place,
+    # so wording the paraphrase dropped is not lost and nothing is printed twice
+    superset = bool(include_quote and quote and _quote_overlap(statement, quote) >= _QUOTE_SUPERSET
+                    and len(tokens(quote)) > len(tokens(statement)))
+    text = " ".join(quote.split()) if superset else statement
     if e.get("previous"):
         text += " (Previously: " + "; ".join(f"{p['statement']} [{p['document']}, {_page(p)}]"
                                              for p in e["previous"]) + ")"
@@ -143,8 +151,7 @@ def _item(group: list[dict], include_quote: bool = True) -> dict:
         text += f" Unclear: {e['uncertainty']}"
     # verbatim source grounding: the quote the statement was verified against, shown only when
     # it carries wording the statement does not (a near-restatement is not repeated)
-    quote = e.get("quote") or ""
-    if include_quote and quote and normalize(quote) != normalize(e.get("statement") or "") \
+    if include_quote and not superset and quote and normalize(quote) != normalize(e.get("statement") or "") \
             and _quote_overlap(e.get("statement") or "", quote) < _QUOTE_OVERLAP:
         text += f' Source text: "{" ".join(quote.split())}"'
     return {"text": text, "quote": quote, "refs": refs, "labels": labels, "entry_ids": [x["entry_id"] for x in group],
@@ -262,8 +269,7 @@ def _lapsed_dates(e: dict, run_date: str) -> list[str]:
 
 
 def _lapse_warning(run_date: str) -> str:
-    return (f"[LAPSED PER UPLOADED DOCUMENTS as of {run_date} — verify whether an extension was issued via "
-            f"email or e-bid portal]")
+    return f"[LAPSED PER UPLOADED DOCUMENTS as of {run_date} — verify whether an extension was issued]"
 
 
 def _is_qa_deadline(e: dict) -> bool:
@@ -275,8 +281,8 @@ def _qa_window_notice(entries: list[dict], run_date: str) -> str:
     if not lapsed:
         return ""
     return (f"Documented Q&A deadline ({max(lapsed)}) has passed as of {run_date}. Verify whether an extension was "
-            f"issued via email or the e-bid platform; if no extension applies, treat the items below as "
-            f"proposal-level assumptions/risks rather than buyer questions.")
+            f"issued; if no extension applies, treat the items below as proposal-level assumptions/risks rather "
+            f"than buyer questions.")
 
 
 def _annotate_lapsed(composed: dict, lapsed_ids: set[str], run_date: str) -> None:
@@ -337,7 +343,7 @@ def compose(entries: list[dict], *, an: dict, conflicts: dict, readability: dict
 
     # FAST
     fast = {"kind": "FAST", "title": "Opportunity Snapshot", "identity": _kv_identity(an, entries, run_date),
-            "summary": [s["text"] for s in an.get("summary") or []], "sections": []}
+            "summary": [s["text"] for s in an.get("summary") or []], "run_date": run_date, "sections": []}
     for title, cats in FAST_SECTIONS:
         min_rank = 2 if cats[0] in ("SCOPE",) else 2
         items = mark(_items_for(entries, cats, min_rank=min_rank), f"FAST:{title}")
@@ -346,11 +352,12 @@ def compose(entries: list[dict], *, an: dict, conflicts: dict, readability: dict
     open_items = _open_items(entries, conflicts)
     if open_items:
         fast["sections"].append({"title": "Conflicts and Clarifications Affecting Participation",
+                                 "qa_window_notice": _qa_window_notice(entries, run_date),
                                  "items": mark(open_items, "FAST:Conflicts")})
 
     # FULL
     full = {"kind": "FULL", "title": "Bid Opportunity Assessment", "identity": fast["identity"],
-            "summary": fast["summary"], "sections": []}
+            "summary": fast["summary"], "run_date": run_date, "sections": []}
     for title, subs in FULL_SECTIONS:
         groups = []
         for sub, cats in subs:
@@ -408,9 +415,11 @@ def _open_items(entries: list[dict], conflicts: dict) -> list[dict]:
         es = [by_id[i] for i in c.get("entry_ids") or [] if i in by_id]
         if not es:
             continue
-        # members are named by entry id and source reference; their statements are in the body sections
-        text = (c.get("issue") or "Conflicting provisions") + ": " + " / ".join(
-            f"{e['entry_id']} [{_refs(e)[0]}]" for e in es)
+        # members are named by source reference, not register entry id; their statements are in the body sections
+        text, named = _readable_issue(c.get("issue") or "Conflicting provisions", by_id)
+        missing = list(dict.fromkeys(f"[{_refs(e)[0]}]" for e in es if _refs(e)[0] not in named))
+        if missing:
+            text += (" " if text[-1:] in ".;:!?" else ". ") + "Sources: " + "; ".join(missing) + "."
         if c.get("implication"):
             text += f" Implication: {c['implication']}"
         if c.get("clarification_question"):
@@ -422,6 +431,26 @@ def _open_items(entries: list[dict], conflicts: dict) -> list[dict]:
                 and not any(e["entry_id"] in it["entry_ids"] for it in items):
             items.append(_item([e]))
     return items
+
+
+def _readable_issue(issue: str, by_id: dict) -> tuple[str, set[str]]:
+    """Replaces register entry ids in conflict wording with their source references: a bare id
+    becomes "[doc, p. X]", a parenthesised id list "(E1, E2)" becomes one bracket of its distinct refs.
+    Ids not in the register are left as written. Returns the text and the references it now names."""
+    issue = " ".join(issue.split())
+    named: set[str] = set()
+    ids = sorted((i for i in by_id if i and i in issue), key=len, reverse=True)
+    if not ids:
+        return issue, named
+    one = r"(?<![\w-])(?:" + "|".join(re.escape(i) for i in ids) + r")(?![\w-])"
+
+    def refs(found: list[str]) -> str:
+        rs = list(dict.fromkeys(_refs(by_id[i])[0] for i in found))
+        named.update(rs)
+        return "[" + "; ".join(rs) + "]"
+    group = r"\(\s*" + one + r"(?:\s*(?:,|;|and|&)\s*" + one + r")*\s*\)"
+    # one pass, so a document name inside an inserted reference is never rewritten
+    return re.sub(group + "|" + one, lambda m: refs(re.findall(one, m.group(0))), issue), named
 
 
 def _amendment_items(entries: list[dict]) -> list[dict]:
