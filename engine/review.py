@@ -32,7 +32,6 @@ Quotes must be verbatim from the source. Do not restyle correct text. Do not rec
 
 def deterministic_checks(composed: dict, entries: list[dict]) -> list[dict]:
     issues = []
-    by_id = {e["entry_id"]: e for e in entries}
     for v in composed["ledger"]["violations"]:
         issues.append({"type": "MISSING_MANDATORY", "entry_ids": [v], "source": "ledger",
                        "description": "material register entry not placed in the required report"})
@@ -43,12 +42,19 @@ def deterministic_checks(composed: dict, entries: list[dict]) -> list[dict]:
         if vi:
             issues.append({"type": "WRONG_FIGURE", "entry_ids": [e["entry_id"]], "source": "deterministic",
                            "description": "; ".join(vi)})
-    for sec in composed["fast"]["sections"] + [g for s in composed["full"]["sections"] for g in s.get("groups", [])]:
-        for it in sec.get("items", []):
-            if any(by_id.get(i, {}).get("applicability") == "CONFLICTED" for i in it["entry_ids"]) and \
-                    "Unresolved conflict" not in it["labels"]:
-                issues.append({"type": "CONTRADICTORY", "entry_ids": it["entry_ids"], "source": "deterministic",
-                               "description": "conflicted provision published without its conflict label"})
+    # an unresolved conflict is reported once, in the Conflicts / Open Items section (the items
+    # labelled "Unresolved conflict"), not inline on body bullets: every conflicted entry must appear there
+    conflicted = [e["entry_id"] for e in entries if e.get("applicability") == "CONFLICTED"]
+    if conflicted:
+        for rep in (composed["fast"], composed["full"]):
+            secs = rep["sections"] + [g for s in rep["sections"] for g in s.get("groups", [])]
+            listed = {i for sec in secs for it in sec.get("items", [])
+                      if "Unresolved conflict" in (it.get("labels") or []) for i in it["entry_ids"]}
+            for i in conflicted:
+                if i not in listed:
+                    issues.append({"type": "CONTRADICTORY", "entry_ids": [i], "source": "deterministic",
+                                   "description": f"conflicted provision missing from the {rep['kind']} "
+                                                  "Conflicts / Open Items section"})
     return issues
 
 
