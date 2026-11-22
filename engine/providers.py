@@ -53,6 +53,24 @@ class ProviderUnavailable(ProviderError):
     """Credentials, SDK or model access missing."""
 
 
+class CostLimitExceeded(ProviderUnavailable):
+    """The run's cost cap (ENGINE_MAX_COST_USD) is reached or cannot be
+    enforced. Raised BEFORE the provider call, so nothing more is spent; like
+    any ProviderUnavailable it stops the run instead of recording page gaps."""
+
+
+DEFAULT_MAX_COST_USD = 2.00
+
+
+def max_cost_usd() -> float:
+    """Hard per-run spend cap in USD (ENGINE_MAX_COST_USD, default 2.00)."""
+    try:
+        cap = float(os.getenv("ENGINE_MAX_COST_USD", DEFAULT_MAX_COST_USD))
+    except ValueError:
+        cap = DEFAULT_MAX_COST_USD
+    return cap if cap > 0 else DEFAULT_MAX_COST_USD
+
+
 @dataclass
 class Usage:
     provider: str
@@ -81,8 +99,12 @@ def _openai_prices() -> dict | None:
         return None
 
 
+def _prices(provider: str, model: str) -> dict | None:
+    return PRICES.get(model) if provider == "anthropic" else _openai_prices() if provider == "openai" else None
+
+
 def cost_of(u: Usage) -> float | None:
-    p = PRICES.get(u.model) if u.provider == "anthropic" else _openai_prices()
+    p = _prices(u.provider, u.model)
     if not p:
         return None
     return round((u.input_tokens * p["in"] + u.output_tokens * p["out"] + u.cache_read_tokens * p["cache_read"]
@@ -94,16 +116,49 @@ class UsageLedger:
     call to a local JSONL cost ledger (ENGINE_COST_LEDGER), kept separate from
     the application's own telemetry so rebuild costs are reported on their own."""
 
-    def __init__(self, run_label: str = "", path: str | None = None):
+    def __init__(self, run_label: str = "", path: str | None = None, *, max_cost_usd: float | None = None):
         self.run_label = run_label
         self.path = path if path is not None else os.getenv("ENGINE_COST_LEDGER")
         self.calls: list[Usage] = []
         self._lock = threading.Lock()
+        self.max_cost_usd = max_cost_usd if max_cost_usd is not None else globals()["max_cost_usd"]()
+        self.cost_limit_hit: str | None = None   # why the breaker tripped, once it has
+
+    def spent_usd(self) -> float:
+        with self._lock:
+            return round(sum(u.cost_usd or 0.0 for u in self.calls), 6)
+
+    def before_call(self, provider: str, model: str, purpose: str, input_chars: int) -> None:
+        """Circuit breaker, checked before every real provider request
+        (including retries). Refuses the call -- raising CostLimitExceeded,
+        nothing sent -- when the cap is already reached, when what is spent
+        plus this request's estimated input cost would reach it, or when the
+        model has no price so the cap cannot be enforced. Output cost is only
+        known afterwards, so the run can end above the cap by at most the
+        output of the requests already in flight; no request starts after."""
+        p = _prices(provider, model)
+        if p is None:
+            reason = f"no price is configured for {provider}:{model}, so the run cost cap cannot be enforced"
+        else:
+            spent = self.spent_usd()
+            est = input_chars / 4 * p["in"] / 1e6
+            reason = None
+            if self.cost_limit_hit or spent + est >= self.max_cost_usd:
+                reason = (f"run cost cap reached: ${spent:.4f} spent of ${self.max_cost_usd:.2f} "
+                          f"(ENGINE_MAX_COST_USD); refused {purpose}")
+        if reason:
+            with self._lock:
+                self.cost_limit_hit = self.cost_limit_hit or reason
+            raise CostLimitExceeded(reason)
 
     def add(self, u: Usage) -> None:
         u.cost_usd = cost_of(u)
         with self._lock:
             self.calls.append(u)
+            spent = sum(c.cost_usd or 0.0 for c in self.calls)
+            if spent > self.max_cost_usd and not self.cost_limit_hit:
+                self.cost_limit_hit = (f"run cost cap exceeded: ${spent:.4f} spent of ${self.max_cost_usd:.2f} "
+                                       f"(ENGINE_MAX_COST_USD) after {u.purpose}")
             if self.path:
                 os.makedirs(os.path.dirname(os.path.abspath(self.path)), exist_ok=True)
                 with open(self.path, "a", encoding="utf-8") as fh:
@@ -130,7 +185,8 @@ class UsageLedger:
                 b["cost_usd"] = round(b["cost_usd"] + u.cost_usd, 4)
         total = round(sum(b["cost_usd"] for b in by.values()), 4)
         return {"by_model": by, "total_cost_usd": total,
-                "cost_complete": all(b["cost_complete"] for b in by.values()), "calls": len(calls)}
+                "cost_complete": all(b["cost_complete"] for b in by.values()), "calls": len(calls),
+                "max_cost_usd": self.max_cost_usd, "cost_limit_hit": self.cost_limit_hit}
 
 
 @dataclass
@@ -209,6 +265,7 @@ class AnthropicAnalyst(Analyst):
         import anthropic
         last: Exception | None = None
         for attempt in range(self.max_attempts):
+            ledger.before_call("anthropic", self.model, purpose, len(system) + len(_flat(user)))
             u = Usage("anthropic", self.model, purpose)
             t0 = time.monotonic()
             try:
@@ -258,6 +315,32 @@ class AnthropicAnalyst(Analyst):
         raise _final_error(self.name, self.model, purpose, last)
 
 
+class RoutedAnalyst(Analyst):
+    """One analyst role served by two models: raw page extraction
+    (purpose "extract:*") goes to `extractor`; everything else the role does
+    (its package-level review) goes to `default`. Both must be the same
+    provider, so the role's provider for independence checks is unchanged."""
+
+    def __init__(self, extractor: Analyst, default: Analyst, *, name: str):
+        if extractor.provider != default.provider:
+            raise ValueError("a routed analyst's models must come from one provider")
+        super().__init__(name=name, provider=default.provider, model=default.model,
+                         synthetic=extractor.synthetic or default.synthetic,
+                         config={"extract": extractor.describe(), "default": default.describe()})
+        self.extractor, self.default = extractor, default
+
+    def route(self, purpose: str) -> Analyst:
+        return self.extractor if purpose.startswith("extract:") else self.default
+
+    def check_allowed(self, data_class: str) -> None:
+        self.extractor.check_allowed(data_class)
+        self.default.check_allowed(data_class)
+
+    def call_json(self, system, user, schema, *, purpose, ledger, data_class, max_tokens=32000):
+        return self.route(purpose).call_json(system, user, schema, purpose=purpose, ledger=ledger,
+                                             data_class=data_class, max_tokens=max_tokens)
+
+
 def openai_client_data_authorized() -> bool:
     """The owner's separate authorization to send client documents to OpenAI
     (constraint C3). Off unless explicitly configured."""
@@ -298,6 +381,7 @@ class OpenAIAnalyst(Analyst):
         self.client()                      # a missing SDK is "not configured", never a per-page failure
         last: Exception | None = None
         for attempt in range(self.max_attempts):
+            ledger.before_call("openai", self.model, purpose, len(system) + len(_flat(user)))
             u = Usage("openai", self.model, purpose)
             t0 = time.monotonic()
             retry = False

@@ -312,7 +312,14 @@ def _openai_fake(responder):
     return OpenAIAnalyst(model="test-model", client=NS(responses=fr), name="openai-independent", max_attempts=1), fr
 
 
-def test_openai_request_shape_and_usage_accounting():
+def _openai_prices(monkeypatch):
+    # the run cost cap refuses real-provider calls whose model has no price
+    monkeypatch.setenv("ENGINE_OPENAI_PRICE_IN", "1.0")
+    monkeypatch.setenv("ENGINE_OPENAI_PRICE_OUT", "4.0")
+
+
+def test_openai_request_shape_and_usage_accounting(monkeypatch):
+    _openai_prices(monkeypatch)
     oa, fr = _openai_fake(S.responder("B"))
     lg = ledger()
     inv = __import__("engine.extraction", fromlist=["x"]).extract(oa, pkg(), lg, tag="B")
@@ -325,7 +332,8 @@ def test_openai_request_shape_and_usage_accounting():
     assert s["input_tokens"] == 600 * len(fr.calls) and s["cache_read_tokens"] == 400 * len(fr.calls)
 
 
-def test_dual_provider_synthetic_run_with_openai_interface():
+def test_dual_provider_synthetic_run_with_openai_interface(monkeypatch):
+    _openai_prices(monkeypatch)
     oa, _ = _openai_fake(S.responder("B"))
     rl = pipeline.EngineRoles(primary=ScriptedAnalyst(S.responder("A"), name="A"), independent=oa,
                               adjudicator=ScriptedAnalyst(S.adjudicator(), name="adj"))

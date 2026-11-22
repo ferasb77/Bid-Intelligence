@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import concurrent.futures
 import copy
+import os
 import time
 from dataclasses import dataclass, field
 
 from engine import ENGINE_VERSION, adjudicate as adj, conflicts as cf, extraction, register as rg, reports, review
 from engine.package import SourcePackage
-from engine.providers import (Analyst, ProviderError, ProviderNotAuthorized, ProviderNotConfigured,
+from engine.providers import (Analyst, CostLimitExceeded, ProviderError, ProviderNotAuthorized, ProviderNotConfigured,
                               ProviderUnavailable, UsageLedger)
 from engine.verify import verify_finding
 
@@ -84,9 +85,27 @@ def _mark_updates(entries: list[dict], previous_entries: list[dict] | None, new_
 
 def run(package: SourcePackage, roles: EngineRoles, *, ledger: UsageLedger | None = None, progress=None,
         research: dict | None = None, research_fn=None, previous: dict | None = None) -> EngineRun:
-    """previous: an earlier run of the SAME bid ({"register": ..., "documents": [...]}) for update labelling."""
-    t0 = time.monotonic()
+    """previous: an earlier run of the SAME bid ({"register": ..., "documents": [...]}) for update labelling.
+
+    Every model call is checked against the run's cost cap (ENGINE_MAX_COST_USD)
+    before it is sent. Once the cap is reached no further call is made and the
+    run ends FAILED with error kind COST_LIMIT_EXCEEDED -- never COMPLETE."""
     ledger = ledger or UsageLedger(package.package_hash[:12])
+    try:
+        out = _run(package, roles, ledger=ledger, progress=progress, research=research, research_fn=research_fn,
+                   previous=previous)
+    except CostLimitExceeded:
+        out = EngineRun(package)
+    if ledger.cost_limit_hit:
+        out.record.update(status="FAILED", verification="FAILED",
+                          error={"kind": "COST_LIMIT_EXCEEDED", "message": ledger.cost_limit_hit},
+                          usage=ledger.summary())
+    return out
+
+
+def _run(package: SourcePackage, roles: EngineRoles, *, ledger: UsageLedger, progress=None,
+         research: dict | None = None, research_fn=None, previous: dict | None = None) -> EngineRun:
+    t0 = time.monotonic()
     out = EngineRun(package)
     rec = out.record
     rec.update(engine_version=ENGINE_VERSION, started_at=time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -274,12 +293,25 @@ def _stats(entries: list[dict]) -> dict:
     return s
 
 
+DEFAULT_EXTRACT_MODEL = "claude-sonnet-5-5"
+DEFAULT_EXTRACT_EFFORT = "low"
+SYNTHESIS_MODEL = "claude-opus-5-5"
+
+
 def default_roles(*, anthropic_key: str | None = None, independent: str | None = "openai") -> EngineRoles:
-    """Opus 5.5 primary/adjudicator; OpenAI independent analyst (refuses client
-    data until authorized -- the run then records SINGLE_ANALYST)."""
-    from engine.providers import AnthropicAnalyst, OpenAIAnalyst
-    primary = AnthropicAnalyst("claude-opus-5-5", effort="high", api_key=anthropic_key, name="claude-primary")
-    adjudicator = AnthropicAnalyst("claude-opus-5-5", effort="high", api_key=anthropic_key, name="claude-adjudicator")
+    """Primary analyst: raw page extraction ("extract:*") on ENGINE_EXTRACT_MODEL
+    (default Sonnet 5.5) at ENGINE_EXTRACT_EFFORT (default "low": minimal
+    thinking -- Sonnet 5.5 rejects disabled thinking), its package-level review
+    on Opus 5.5. Adjudication, conflicts, analysis writing and final review:
+    Opus 5.5 at high effort. OpenAI independent analyst (refuses client data
+    until authorized -- the run then records SINGLE_ANALYST)."""
+    from engine.providers import AnthropicAnalyst, OpenAIAnalyst, RoutedAnalyst
+    extractor = AnthropicAnalyst(os.getenv("ENGINE_EXTRACT_MODEL", "").strip() or DEFAULT_EXTRACT_MODEL,
+                                 effort=os.getenv("ENGINE_EXTRACT_EFFORT", "").strip() or DEFAULT_EXTRACT_EFFORT,
+                                 api_key=anthropic_key, name="claude-extractor")
+    primary = RoutedAnalyst(extractor, AnthropicAnalyst(SYNTHESIS_MODEL, effort="high", api_key=anthropic_key,
+                                                        name="claude-primary-review"), name="claude-primary")
+    adjudicator = AnthropicAnalyst(SYNTHESIS_MODEL, effort="high", api_key=anthropic_key, name="claude-adjudicator")
     ind = OpenAIAnalyst(name="openai-independent") if independent == "openai" else None
     return EngineRoles(primary=primary, independent=ind, adjudicator=adjudicator)
 
