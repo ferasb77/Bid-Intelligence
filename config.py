@@ -33,6 +33,15 @@ def get_api_key() -> str | None:
     except Exception:
         return None
 
+def use_new_engine() -> bool:
+    """USE_NEW_ENGINE deployment flag. When on, the UNDERSTAND (Fast) and
+    Full Bid Intelligence pages run the engine/ pipeline and serve its
+    fast.pdf / full.pdf instead of the legacy Phoenix reports. Defaults to on
+    for this branch (the Phoenix Beta build); set USE_NEW_ENGINE=0 to restore
+    the legacy flows."""
+    return os.getenv("USE_NEW_ENGINE", "1").strip() == "1"
+
+
 def get_workspace_id() -> str | None:
     try:
         ws = st.secrets.get("ANTHROPIC_WORKSPACE_ID")

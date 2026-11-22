@@ -263,6 +263,9 @@ with st.sidebar:
                 st.session_state.active_bid = None
                 go("all_bids")
 
+    import os as _os
+    st.caption(f"Build {_os.getenv('BUILD_SHA', 'local')}")
+
 # ═════════════════════════════════════════════════════════════════════════════
 # PAGE: DASHBOARD
 # ═════════════════════════════════════════════════════════════════════════════

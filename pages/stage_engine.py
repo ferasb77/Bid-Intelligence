@@ -64,6 +64,91 @@ def _render_report(rep: dict) -> None:
                 st.markdown(f"- {it.get('statement')} _({it.get('url', '')[:80]})_")
 
 
+_PANEL_LABEL = {"FAST": "Opportunity Snapshot", "FULL": "Bid Opportunity Assessment"}
+_PDF_CACHE = "engine_pdf_{bid}_{run}_{kind}"
+
+
+def render_engine_report_panel(bid_id: int, kind: str, organization_id: str | None = None,
+                               user_id: str | None = None) -> bool:
+    """Compact engine panel used by the UNDERSTAND (kind="FAST") and Full Bid
+    Intelligence (kind="FULL") pages when USE_NEW_ENGINE is on: start/re-run
+    the engine, follow its progress, and serve the run's persisted fast.pdf
+    or full.pdf. Makes no model call itself (starting a run hands off to the
+    engine through tenancy).
+
+    Returns False only when the engine is not available in this environment
+    (e.g. engine persistence not applied), so the caller can fall back to the
+    legacy flow; True when the panel handled the page."""
+    org, user = (organization_id, user_id) if organization_id else _org()
+    try:
+        status = tenancy.get_engine_status_for_organization(bid_id, org)
+    except tenancy.AccessDeniedError:
+        st.error("You do not have access to this bid.")
+        return True
+    except Exception as exc:
+        st.caption(f"Evidence-based engine unavailable here ({type(exc).__name__}); showing the legacy analysis.")
+        return False
+
+    active = bool(status and status.get("status") in ("QUEUED", "RUNNING"))
+    label = _PANEL_LABEL[kind]
+    if st.button("⚡ Run analysis" if not status else "🔁 Re-run on current package", disabled=active,
+                 type="primary" if not status else "secondary", key=f"engine_start_{kind}_{bid_id}"):
+        try:
+            tenancy.start_engine_analysis_for_organization(bid_id, org, created_by=user)
+            st.rerun()
+        except Exception as exc:
+            st.error(f"Could not start the analysis: {exc}")
+    if not status:
+        st.markdown('<div class="info-box">No analysis has run for this bid yet. One run produces both the '
+                    'Opportunity Snapshot (FAST) and the Bid Opportunity Assessment (FULL).</div>',
+                    unsafe_allow_html=True)
+        return True
+
+    run_id = int(status["id"])
+    st.caption(f"Run {run_id} · {status['status']} · started {str(status.get('started_at') or '')[:19]}")
+    if active:
+        if status.get("possibly_interrupted"):
+            st.warning("This run has made no progress for 15 minutes and may have been interrupted.")
+            if st.button("Close interrupted run", key=f"engine_close_{kind}_{bid_id}"):
+                tenancy.close_interrupted_engine_run_for_organization(bid_id, org, run_id)
+                st.rerun()
+        else:
+            st.info("Analysis in progress. This page refreshes automatically.")
+
+            @st.fragment(run_every=POLL_SECONDS)
+            def _poll():
+                s = tenancy.get_engine_status_for_organization(bid_id, org, run_id)
+                if s and s.get("status") not in ("QUEUED", "RUNNING"):
+                    st.rerun()
+            _poll()
+        return True
+    if status["status"] != "COMPLETE":
+        st.error(f"The analysis failed: {status.get('failure_reason') or 'unknown error'}. No report was produced.")
+        return True
+
+    ver = status.get("verification")
+    icon, text = _VERIFY_TEXT.get(ver, ("", ver or ""))
+    if text:
+        st.caption(f"{icon} {text}")
+    key = _PDF_CACHE.format(bid=bid_id, run=run_id, kind=kind)
+    data = st.session_state.get(key)
+    if data is None:
+        try:
+            data = tenancy.export_engine_pdf_for_organization(bid_id, org, run_id, kind)
+        except Exception as exc:  # never break the page over an export
+            st.caption(f"{label} is unavailable: {exc}")
+            return True
+        if data:
+            st.session_state[key] = data
+    if data:
+        st.download_button(f"⬇ Download {label} (PDF)", data=data,
+                           file_name=f"bid{bid_id}_{kind.lower()}_run{run_id}.pdf", mime="application/pdf",
+                           key=f"engine_dl_{kind}_{bid_id}_{run_id}", type="primary", use_container_width=True)
+    else:
+        st.caption(f"{label} PDF is not available for this run.")
+    return True
+
+
 def page_engine(bid_id: int) -> None:
     st.title("🔬 Evidence-Based Analysis")
     st.caption("Two independent analysts read the complete package; findings are reconciled into an evidence "

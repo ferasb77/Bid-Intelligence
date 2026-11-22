@@ -19,7 +19,7 @@ from components.ui import (stage_badge, days_until, days_label, metric_card,
 import analysis_service
 import auth_session
 import tenancy
-from config import get_api_key, api_key_configured
+from config import get_api_key, api_key_configured, use_new_engine
 
 
 def _current_access_token_and_org() -> tuple[str, str]:
@@ -283,12 +283,22 @@ def _render_fast_analysis_panel(bid_id: int, rfp_docs: list, procurement_state: 
     the auto-polling _poll_active_analysis fragment (Phase 2); every other
     branch below is unchanged from Phase 1."""
     st.markdown("### ⚡ Fast Analysis")
-    _token, _ = _current_access_token_and_org()
-    run = tenancy.get_latest_analysis_run_authenticated(_token, bid_id, "FAST")
-
     if not rfp_docs:
         st.markdown('<div class="info-box">Upload at least one RFP / Source document above to run Fast Analysis.</div>', unsafe_allow_html=True)
         return
+
+    if use_new_engine():
+        # USE_NEW_ENGINE: the engine/ pipeline serves fast.pdf. Falls through
+        # to the legacy flow only if the engine is unavailable here.
+        from pages.stage_engine import render_engine_report_panel
+        if render_engine_report_panel(bid_id, "FAST", _current_access_token_and_org()[1], _current_user_id()):
+            if st.button("🧬 Open Full Bid Intelligence", key=f"open_full_analysis_{bid_id}"):
+                st.session_state.page = "stage_full_analysis"
+                st.rerun()
+            return
+
+    _token, _ = _current_access_token_and_org()
+    run = tenancy.get_latest_analysis_run_authenticated(_token, bid_id, "FAST")
 
     if _should_poll(run):
         _poll_active_analysis(bid_id)

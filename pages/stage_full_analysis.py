@@ -35,7 +35,7 @@ import auth_session
 import phoenix_reports as pr
 import tenancy
 from components import full_analysis_view as fav
-from config import api_key_configured, get_api_key
+from config import api_key_configured, get_api_key, use_new_engine
 
 _START_INFLIGHT = "fa_start_inflight_{bid}"
 _OUTCOME_NOTE = "fa_outcome_{bid}"
@@ -682,6 +682,17 @@ def page_full_analysis(bid_id: int) -> None:
     _, org, _ = _ctx()
     st.markdown("# Full Bid Intelligence")
     st.markdown('<div class="gold-rule"></div>', unsafe_allow_html=True)
+    if use_new_engine():
+        # USE_NEW_ENGINE: the engine/ pipeline serves full.pdf. Falls through
+        # to the legacy flow only if the engine is unavailable here.
+        from pages.stage_engine import render_engine_report_panel
+        st.markdown(
+            '<div style="font-size:.84rem;color:#A9A69D;max-width:760px;line-height:1.55">'
+            'Two independent analysts read the complete package; findings are reconciled into an evidence '
+            'register, checked against the source, and reviewed before the Bid Opportunity Assessment is '
+            'produced.</div>', unsafe_allow_html=True)
+        if render_engine_report_panel(bid_id, "FULL", org):
+            return
     st.markdown(
         '<div style="font-size:.84rem;color:#A9A69D;max-width:760px;line-height:1.55">'
         '<strong style="color:#EDEAE3">Fast Analysis</strong> gives a quick, lower-cost orientation. '
