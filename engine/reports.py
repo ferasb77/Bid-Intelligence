@@ -66,7 +66,63 @@ raising, submitting or asking questions or clarifications during a question/clar
 has already passed as of RUN DATE; treat such open points as proposal-level assumptions or risks instead.
 Plain language: the register's status/applicability column (CONFLICTED, AMBIGUOUS, DISPUTED, CURRENT) is \
 internal metadata. Describe a substantive conflict or ambiguity plainly in prose by what the provisions say; \
-never echo internal register jargon such as "flagged as conflicted", "marked conflicted" or "in the register"."""
+never echo internal register jargon such as "flagged as conflicted", "marked conflicted" or "in the register".
+4. fast_brief: a one-to-two page decision-triage brief for management, synthesized from the same register. \
+Each bullet is one scannable line that merges related provisions; state each fact once across the whole brief; \
+every bullet cites the register entry ids it rests on (entry_ids) and never writes an entry id in its text. \
+Target roughly 450-650 words in total.
+- stated_budget: the stated budget, ceiling or estimated value exactly as an entry gives it (cite it), or \
+'Not disclosed' with no entry ids when no entry states one.
+- what_is_it: 3-4 bullets: scope and methodology; scale and staffing; delivery window and location; \
+contracting / sponsor or donor context.
+- can_we_qualify_hard_gates: 2-4 bullets: mandatory gates that exclude a bidder (experience, credentials, \
+staffing, language, mandatory work samples or references). Omit generic boilerplate (e.g. not bankrupt, not \
+debarred) unless it is unusual.
+- can_we_qualify_admin_penalties: 0-3 bullets: administrative or registration items that trigger a financial \
+penalty or an extra step rather than exclusion.
+- can_we_bid_in_time: 2-3 bullets: proposal assembly burden (what must be prepared, signed, split or \
+protected); the clarification/question window; the instant-disqualification traps, consolidated in one line.
+- is_it_worth_it: 2-4 bullets: budget or volume signal; pricing and cash-flow mechanics (payment triggers, \
+payment lag, unpaid revisions, uncosted items treated as free); award and lock-in terms (validity, partial or \
+multiple award, evaluation basis, or 'Weighting not disclosed' when no weights are stated). Report the terms \
+only; never judge whether the opportunity is worth pursuing.
+- material_conflicts: one line per substantive conflict, formatted 'Topic: conflict -> decision impact'; no \
+clarification paragraphs.
+The brief is neutral triage: no go/no-go or bid/no-bid recommendation, no score, rating or probability."""
+
+
+# the analysis call's output schema: schema.ANALYSIS_OUTPUT plus the FAST decision-triage brief, requested in
+# the same call (no additional provider call). Strict structured output needs every property required; a
+# result.json written before the brief existed simply has no "fast_brief" (read as None).
+def _cited_list(desc: str) -> dict:
+    return {"type": "array", "items": schema._CITED, "description": desc}
+
+
+FAST_BRIEF_OUTPUT = schema._obj({
+    "stated_budget": schema._CITED,
+    "what_is_it": _cited_list("3-4 synthesized bullets"),
+    "can_we_qualify_hard_gates": _cited_list("2-4 mandatory exclusion gates"),
+    "can_we_qualify_admin_penalties": _cited_list("0-3 administrative / penalty items"),
+    "can_we_bid_in_time": _cited_list("2-3 bullets on timing and assembly burden"),
+    "is_it_worth_it": _cited_list("2-4 bullets on commercial terms"),
+    "material_conflicts": _cited_list("'Topic: conflict -> decision impact' lines"),
+})
+ANALYSIS_OUTPUT = dict(schema.ANALYSIS_OUTPUT,
+                       properties=dict(schema.ANALYSIS_OUTPUT["properties"], fast_brief=FAST_BRIEF_OUTPUT),
+                       required=list(schema.ANALYSIS_OUTPUT["required"]) + ["fast_brief"])
+
+# (key, maximum bullets kept) for every bullet list of the brief, in reading order
+FAST_BRIEF_LISTS = [("what_is_it", 4), ("can_we_qualify_hard_gates", 4), ("can_we_qualify_admin_penalties", 3),
+                    ("can_we_bid_in_time", 3), ("is_it_worth_it", 4), ("material_conflicts", 5)]
+NOT_DISCLOSED = "Not disclosed"
+# wording that would turn neutral triage into a bid recommendation or a rating; such a bullet is dropped
+# (the buyer's own scoring method is a document fact and stays reportable)
+_ADVICE = re.compile(r"\b(?:go\s*/\s*no[\s-]*go|no[\s-]go\b|bid\s*/\s*no[\s-]*bid|(?:we|i)\s+recommend|"
+                     r"recommend(?:ed|ation|s)?\s+(?:to\s+)?(?:not\s+)?(?:bid|pursu|decline)|"
+                     r"(?:we|you|the\s+firm)\s+should\s+(?:not\s+)?(?:bid|pursue)|win\s+probability|"
+                     r"probability\s+of\s+(?:winning|award|success)|chance\s+of\s+winning|"
+                     r"likelihood\s+of\s+(?:winning|success)|worth\s+(?:pursuing|bidding))",
+                     re.IGNORECASE)
 
 
 def reportable(e: dict) -> bool:
@@ -206,7 +262,8 @@ def analysis(writer: Analyst | None, entries: list[dict], ledger: UsageLedger, d
     """Summary, identity and specialist points. Every element is checked; rejected
     elements are kept in `rejected` with the reason (never published). `run_date`
     (YYYY-MM-DD) is given to the writer so lapsed windows are not advised on."""
-    out = {"title": "", "buyer": "", "reference": "", "summary": [], "points": [], "rejected": [], "error": None}
+    out = {"title": "", "buyer": "", "reference": "", "summary": [], "points": [], "rejected": [], "error": None,
+           "fast_brief": None}
     if writer is None:
         out["error"] = "no writer configured"
         return out
@@ -216,7 +273,7 @@ def analysis(writer: Analyst | None, entries: list[dict], ledger: UsageLedger, d
         f"{e['entry_id']} | {e.get('category')} | {e.get('modality')} | {e.get('materiality')} | "
         f"{e.get('applicability')} | {e.get('statement')}" for e in live)
     try:
-        data = writer.call_json(ANALYSIS_SYSTEM, user, schema.ANALYSIS_OUTPUT, purpose="analysis", ledger=ledger,
+        data = writer.call_json(ANALYSIS_SYSTEM, user, ANALYSIS_OUTPUT, purpose="analysis", ledger=ledger,
                                 data_class=data_class, max_tokens=16000)
     except ProviderError as exc:
         out["error"] = str(exc)[:300]
@@ -241,6 +298,47 @@ def analysis(writer: Analyst | None, entries: list[dict], ledger: UsageLedger, d
             out["points"].append(p)
         else:
             out["rejected"].append({"element": "point", "text": p.get("analysis"), "reason": why})
+    out["fast_brief"] = _checked_brief(data.get("fast_brief"), by_id, out["rejected"])
+    return out
+
+
+def _checked_brief(fb, by_id: dict, rejected: list) -> dict | None:
+    """The FAST brief as written, keeping only bullets that cite reportable entries, add no figure or e-mail
+    the cited entries lack and carry no recommendation or rating wording. None when nothing survives."""
+    if not isinstance(fb, dict):
+        return None
+    out: dict = {}
+    for key, cap in FAST_BRIEF_LISTS:
+        kept = []
+        for b in fb.get(key) or []:
+            text = " ".join(str((b or {}).get("text") or "").split())
+            if not text:
+                continue
+            ids = list(dict.fromkeys(i for i in (b.get("entry_ids") or []) if i in by_id))
+            # an entry id written in the text is a citation (made compact at composition), not a figure
+            bare = _readable_issue(text, by_id, ref_of=lambda e: "")[0]
+            ok, why = _cited_ok(bare, ids, by_id)
+            if ok and _ADVICE.search(bare):
+                ok, why = False, "recommendation or rating wording"
+            if ok and len(kept) < cap:
+                kept.append({"text": text, "entry_ids": ids})
+            elif ok:
+                rejected.append({"element": f"fast_brief.{key}", "text": text, "reason": f"over the {cap}-bullet cap"})
+            else:
+                rejected.append({"element": f"fast_brief.{key}", "text": text, "reason": why})
+        out[key] = kept
+    sb = fb.get("stated_budget") or {}
+    text = " ".join(str(sb.get("text") or "").split())
+    ids = list(dict.fromkeys(i for i in (sb.get("entry_ids") or []) if i in by_id))
+    if text and ids and _cited_ok(text, ids, by_id)[0]:
+        out["stated_budget"] = {"text": text, "entry_ids": ids}
+    else:
+        if text and not text.lower().startswith("not disclosed"):
+            rejected.append({"element": "fast_brief.stated_budget", "text": text,
+                             "reason": _cited_ok(text, ids, by_id)[1]})
+        out["stated_budget"] = {"text": NOT_DISCLOSED, "entry_ids": []}
+    if not any(out[k] for k, _ in FAST_BRIEF_LISTS):
+        return None
     return out
 
 
@@ -306,6 +404,156 @@ def _annotate_lapsed(composed: dict, lapsed_ids: set[str], run_date: str) -> Non
             for v in node:
                 walk(v)
     walk({"fast": composed["fast"], "full": composed["full"]})
+
+
+# ── FAST decision-triage brief: deterministic dates and compact citations ────
+
+_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+FAST_BRIEF_SECTIONS = [
+    ("What Is It?", [("", "what_is_it")]),
+    ("Can We Qualify?", [("Hard Gates", "can_we_qualify_hard_gates"),
+                         ("Admin & Penalty Gates", "can_we_qualify_admin_penalties")]),
+    ("Can We Bid in Time?", [("", "can_we_bid_in_time")]),
+    ("Is It Worth It Commercially?", [("", "is_it_worth_it")]),
+    ("Material Conflicts & Caveats", [("", "material_conflicts")]),
+]
+
+
+def fmt_date(iso: str) -> str:
+    """'2026-11-30' -> 'Nov 30, 2026' (locale-independent)."""
+    d = date.fromisoformat(iso[:10])
+    return f"{_MONTHS[d.month - 1]} {d.day}, {d.year}"
+
+
+def days_between(iso: str, run_date: str) -> int:
+    """Calendar days from run_date to iso (negative when iso is earlier)."""
+    return (date.fromisoformat(iso[:10]) - date.fromisoformat(run_date[:10])).days
+
+
+def countdown(iso: str, run_date: str) -> str:
+    """Relative status of a deadline as of run_date, computed, never written by a model:
+    'Nov 30, 2026 (8 days left)', 'Nov 22, 2026 (due today)', 'Closed Nov 20, 2026 (2 days ago)'."""
+    n = days_between(iso, run_date)
+    if n > 0:
+        return f"{fmt_date(iso)} ({n} day{'s' if n != 1 else ''} left)"
+    if n == 0:
+        return f"{fmt_date(iso)} (due today)"
+    return f"Closed {fmt_date(iso)} ({-n} day{'s' if n != -1 else ''} ago)"
+
+
+def _iso_dates(e: dict) -> list[str]:
+    return [str(v.get("normalized"))[:10] for v in e.get("values") or []
+            if v.get("kind") == "DATE" and _ISO_DATE.fullmatch(str(v.get("normalized") or "")[:10])]
+
+
+def source_keys(entries: list[dict]) -> dict[str, str]:
+    """Document -> short citation key, in order of first appearance in the register. A single-document
+    package needs no key (''); a multi-document package gets 'D1', 'D2', ..."""
+    docs = list(dict.fromkeys(str(e.get("document") or "") for e in entries if e.get("document")))
+    return {d: ("" if len(docs) == 1 else f"D{n}") for n, d in enumerate(docs, 1)}
+
+
+def _page_key(p: str):
+    return (0, int(p), "") if p.isdigit() else (1, 0, p)
+
+
+def compact_ref(e: dict, keys: dict[str, str]) -> str:
+    """'p. 4' (single document) or 'D2, p. 4' (multi-document)."""
+    k = keys.get(str(e.get("document") or ""), "")
+    return f"{k}, {_page(e)}" if k else _page(e)
+
+
+def compact_cite(ids: list[str], by_id: dict, keys: dict[str, str]) -> str:
+    """'[p. 3, p. 6]' or '[D1, p. 4; D2, p. 2]': distinct pages grouped per document, in page order."""
+    per_doc: dict[str, list[str]] = {}
+    for i in ids:
+        e = by_id.get(i)
+        if e is None:
+            continue
+        pages = per_doc.setdefault(str(e.get("document") or ""), [])
+        p = str(e.get("page") or "")
+        if p not in pages:
+            pages.append(p)
+    parts = []
+    for doc, pages in per_doc.items():
+        pp = ", ".join(_page({"page": p}) for p in sorted(pages, key=_page_key))
+        parts.append(f"{keys[doc]}, {pp}" if keys.get(doc) else pp)
+    return "[" + "; ".join(parts) + "]" if parts else ""
+
+
+def _decision_header(an: dict, entries: list[dict], run_date: str, keys: dict[str, str], by_id: dict,
+                     budget: dict) -> list[tuple[str, str]]:
+    live = [e for e in entries if reportable(e)]
+    client = an.get("buyer") or "Not stated"
+    if an.get("reference"):
+        client += f" · Ref. {an['reference']}"
+    deadlines = [e for e in live if e.get("category") == "DEADLINE" and e.get("materiality") == "CRITICAL"
+                 and not _is_qa_deadline(e)]
+    dated = [e for e in deadlines if _iso_dates(e)]
+    sub = (dated or deadlines or [None])[0]
+    if sub is None:
+        deadline = "Not stated"
+    elif _iso_dates(sub):
+        times = [str(v.get("text") or "") for v in sub.get("values") or [] if v.get("kind") == "TIME"]
+        when = countdown(_iso_dates(sub)[0], run_date)
+        if times and not when.startswith("Closed"):
+            when = when.replace(" (", f", {times[0]} (", 1)
+        deadline = f"{when} {compact_cite([sub['entry_id']], by_id, keys)}"
+    else:
+        deadline = f"{sub['statement']} {compact_cite([sub['entry_id']], by_id, keys)}"
+    qa = [(d, e) for e in live if e.get("category") == "DEADLINE" and _is_qa_deadline(e) for d in _iso_dates(e)]
+    if qa:
+        last = max(d for d, _ in qa)
+        ids = [e["entry_id"] for d, e in qa if d == last]
+        status = countdown(last, run_date)
+        status = status if status.startswith("Closed") else "Open until " + status
+        qa_text = f"{status} {compact_cite(ids, by_id, keys)}"
+    else:
+        qa_text = "Not stated"
+    btext = budget.get("text") or NOT_DISCLOSED
+    if budget.get("entry_ids"):
+        btext += " " + compact_cite(budget["entry_ids"], by_id, keys)
+    docs = list(keys)
+    legend = docs[0] if len(docs) == 1 else "; ".join(f"{keys[d]} = {d}" for d in docs)
+    return [("Client / Program", client), ("Submission Deadline", deadline), ("Q&A Window", qa_text),
+            ("Stated Budget", btext), ("Source File" + ("s" if len(docs) > 1 else ""), legend or "Not stated")]
+
+
+def fast_brief(an: dict, entries: list[dict], run_date: str) -> dict | None:
+    """Composes the synthesized FAST brief from an["fast_brief"] (checked in `analysis`). None when the
+    analysis carries no brief (e.g. a result.json written before it existed): FAST then keeps its
+    deterministic composition. Entry ids written into a bullet are replaced by compact citations."""
+    fb = (an or {}).get("fast_brief")
+    if not isinstance(fb, dict):
+        return None
+    by_id = {e["entry_id"]: e for e in entries if reportable(e)}
+    keys = source_keys(entries)
+
+    def item(b: dict) -> dict | None:
+        ids = [i for i in b.get("entry_ids") or [] if i in by_id]
+        if not ids or not (b.get("text") or "").strip():
+            return None
+        text, _ = _readable_issue(b["text"], by_id, ref_of=lambda e: compact_ref(e, keys))
+        return {"text": text, "entry_ids": ids, "cite": compact_cite(ids, by_id, keys), "refs": [], "labels": []}
+
+    sections = []
+    for title, parts in FAST_BRIEF_SECTIONS:
+        groups = []
+        for lead, key in parts:
+            cap = dict(FAST_BRIEF_LISTS)[key]
+            items = [it for it in (item(b) for b in (fb.get(key) or [])[:cap]) if it]
+            if items:
+                groups.append({"lead": lead, "items": items})
+        sections.append({"title": title, "groups": groups})
+    if not any(s["groups"] for s in sections):
+        return None
+    budget = fb.get("stated_budget") or {}
+    budget = {"text": budget.get("text") or NOT_DISCLOSED,
+              "entry_ids": [i for i in budget.get("entry_ids") or [] if i in by_id]}
+    header = _decision_header(an, entries, run_date, keys, by_id, budget)
+    words = sum(len(it["text"].split()) for s in sections for g in s["groups"] for it in g["items"])
+    return {"header": header, "sources": [{"key": k, "document": d} for d, k in keys.items()],
+            "stated_budget": budget, "sections": sections, "word_count": words, "run_date": run_date}
 
 
 # ── composition ─────────────────────────────────────────────────────────────
@@ -395,6 +643,14 @@ def compose(entries: list[dict], *, an: dict, conflicts: dict, readability: dict
     lapsed_ids = {e["entry_id"] for e in entries if reportable(e) and _lapsed_dates(e, run_date)}
     if lapsed_ids:
         _annotate_lapsed({"fast": fast, "full": full}, lapsed_ids, run_date)
+    # the synthesized decision-triage brief (when the analysis call returned one) is added after the lapse
+    # annotation: its Decision Header states window status once, so bullets are not stamped again
+    brief = fast_brief(an, entries, run_date)
+    if brief:
+        fast["brief"] = brief
+        for sec in brief["sections"]:
+            for g in sec["groups"]:
+                mark(g["items"], "FAST:Brief")
     ledger = _ledger(entries, placed)
     return {"fast": fast, "full": full, "ledger": ledger}
 
@@ -439,12 +695,14 @@ def _open_items(entries: list[dict], conflicts: dict) -> list[dict]:
     return items
 
 
-def _readable_issue(issue: str, by_id: dict) -> tuple[str, set[str]]:
+def _readable_issue(issue: str, by_id: dict, ref_of=None) -> tuple[str, set[str]]:
     """Replaces register entry ids in conflict wording with their source references: a bare id
     becomes "[doc, p. X]", a parenthesised id list "(E1, E2)" becomes one bracket of its distinct refs.
     A hyphenated range "E041-E043" (or with an en/em dash) is expanded to the register ids it spans
     and becomes one bracket of their distinct refs. Ids not in the register are left as written.
-    Returns the text and the references it now names."""
+    Returns the text and the references it now names. `ref_of(entry) -> str` overrides the reference
+    wording (default "doc, p. X")."""
+    ref_of = ref_of or (lambda e: _refs(e)[0])
     issue = " ".join(issue.split())
     named: set[str] = set()
     ids = sorted((i for i in by_id if i and i in issue), key=len, reverse=True)
@@ -464,7 +722,7 @@ def _readable_issue(issue: str, by_id: dict) -> tuple[str, set[str]]:
         return [i for i in (f"{pre}{n:0{width}d}" for n in range(lo, hi + 1)) if i in by_id]
 
     def refs(found: list[str]) -> str:
-        rs = list(dict.fromkeys(_refs(by_id[i])[0] for i in found))
+        rs = list(dict.fromkeys(ref_of(by_id[i]) for i in found))
         named.update(rs)
         return "[" + "; ".join(rs) + "]"
 

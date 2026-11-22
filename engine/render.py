@@ -141,19 +141,19 @@ def _masthead(rep: dict) -> Table:
     return t
 
 
-def _footer(label: str, prepared: str = ""):
+def _footer(label: str, prepared: str = "", margin: float = MARGIN):
     prepared = prepared or date.today().isoformat()
 
     def draw(canvas, doc):
         canvas.saveState()
         canvas.setFont(_F, 7)
         canvas.setFillColor(MUTED)
-        canvas.drawString(MARGIN, 10 * mm, f"Bid Intelligence · {label} · prepared {prepared}")
+        canvas.drawString(margin, 10 * mm, f"Bid Intelligence · {label} · prepared {prepared}")
         canvas.restoreState()
     return draw
 
 
-def _numbered_canvas(header: str):
+def _numbered_canvas(header: str, margin: float = MARGIN):
     """Single-pass canvasmaker: pages are buffered so that every page can show
     "Page N of M", and pages 2+ carry a running header with a thin rule."""
     header = header[:110]
@@ -180,13 +180,13 @@ def _numbered_canvas(header: str):
             self.saveState()
             self.setFont(_F, 7)
             self.setFillColor(MUTED)
-            self.drawRightString(letter[0] - MARGIN, 10 * mm, f"Page {n} of {total}")
+            self.drawRightString(letter[0] - margin, 10 * mm, f"Page {n} of {total}")
             if n > 1 and header:
                 y = letter[1] - 10 * mm
-                self.drawString(MARGIN, y, header)
+                self.drawString(margin, y, header)
                 self.setStrokeColor(GOLD)
                 self.setLineWidth(0.5)
-                self.line(MARGIN, y - 2 * mm, letter[0] - MARGIN, y - 2 * mm)
+                self.line(margin, y - 2 * mm, letter[0] - margin, y - 2 * mm)
             self.restoreState()
     return NumberedCanvas
 
@@ -279,6 +279,8 @@ def _decision_ref(d: dict) -> list:
 
 
 def render(rep: dict, *, limitations_appendix: bool = True) -> bytes:
+    if rep.get("kind") == "FAST" and rep.get("brief"):
+        return render_brief(rep)
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=letter, leftMargin=MARGIN, rightMargin=MARGIN, topMargin=MARGIN,
                             bottomMargin=MARGIN, title=rep["title"], keepTogetherClass=_KeepWithFirst)
@@ -312,4 +314,120 @@ def render(rep: dict, *, limitations_appendix: bool = True) -> bytes:
     footer = _footer(label, str(rep.get("run_date") or "")[:10])
     header = dict(rep.get("identity") or []).get("Opportunity") or "Procurement opportunity"
     doc.build(_chain_keeps(story), onFirstPage=footer, onLaterPages=footer, canvasmaker=_numbered_canvas(_t_plain(header)))
+    return buf.getvalue()
+
+
+# ── FAST decision-triage brief (1-2 pages) ──────────────────────────────────
+# Compact executive layout used only when the FAST content model carries a synthesized "brief";
+# FULL and the deterministic FAST composition keep the layout above.
+
+BRIEF_MARGIN = 14.5 * mm
+BRIEF_W = letter[0] - 2 * BRIEF_MARGIN
+BST = {
+    "kicker": ParagraphStyle("bk", fontName=_FM, fontSize=7.4, leading=9.2, textColor=GOLD),
+    "title": ParagraphStyle("bt", fontName=_FM, fontSize=13.2, leading=16, textColor=WHITE),
+    "strip": ParagraphStyle("bs", fontName=_F, fontSize=7.6, leading=9.8, textColor=BODY),
+    "hlabel": ParagraphStyle("bhl", fontName=_FM, fontSize=6.6, leading=8.2, textColor=GOLD_DARK),
+    "hvalue": ParagraphStyle("bhv", fontName=_F, fontSize=7.9, leading=10.1, textColor=INK),
+    "h1": ParagraphStyle("bh1", fontName=_FM, fontSize=10.2, leading=12.6, textColor=INK, spaceBefore=7,
+                         spaceAfter=1, keepWithNext=1),
+    "lead": ParagraphStyle("blead", fontName=_FM, fontSize=8.8, leading=11.8, textColor=GOLD_DARK, spaceBefore=1,
+                           spaceAfter=1, keepWithNext=1),
+    "item": ParagraphStyle("bi", fontName=_F, fontSize=8.8, leading=11.8, textColor=BODY,
+                           allowOrphans=0, allowWidows=0),
+    "note": ParagraphStyle("bn", fontName=_F, fontSize=7.8, leading=10.2, textColor=MUTED),
+}
+
+
+def _brief_masthead(title: str) -> Table:
+    t = Table([[Paragraph("FAST OPPORTUNITY BRIEF", BST["kicker"])], [Paragraph(_t(title), BST["title"])]],
+              colWidths=[BRIEF_W])
+    t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), INK),
+                           ("LEFTPADDING", (0, 0), (-1, -1), 10), ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                           ("TOPPADDING", (0, 0), (-1, 0), 8), ("BOTTOMPADDING", (0, 0), (-1, 0), 2),
+                           ("TOPPADDING", (0, 1), (-1, 1), 0), ("BOTTOMPADDING", (0, 1), (-1, 1), 8)]))
+    return t
+
+
+def _brief_strip(ver: dict) -> Table:
+    """One-line verification status strip (the status word coloured, its explanation muted)."""
+    colour = {"INDEPENDENTLY_VERIFIED": "#375623", "VERIFIED_WITH_LIMITATIONS": ALERT_BORDER_HEX,
+              "SINGLE_ANALYST": ALERT_BORDER_HEX, "SYNTHETIC": RISK_RED_HEX}.get(ver.get("status"), RISK_RED_HEX)
+    status = _t((ver.get("status") or "NOT VERIFIED").replace("_", " "))
+    text = f'<font name="{_FM}" color="{colour}">{status}</font>'
+    if ver.get("text"):
+        text += f' <font color="{MUTED_HEX}">— {_t(ver["text"])}</font>'
+    t = Table([[Paragraph(text, BST["strip"])]], colWidths=[BRIEF_W])
+    t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), TINT), ("LINEBEFORE", (0, 0), (0, -1), 2.5, HexColor(colour)),
+                           ("LEFTPADDING", (0, 0), (-1, -1), 7), ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                           ("TOPPADDING", (0, 0), (-1, -1), 2.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5)]))
+    return t
+
+
+def _decision_header(rows: list) -> Table:
+    """Compact key-value grid: one cell per header field, label above value."""
+    rows = list(rows)[:5]
+    n = max(len(rows), 1)
+    widths = [BRIEF_W * w for w in ((0.2, 0.22, 0.2, 0.16, 0.22) if n == 5 else [1 / n] * n)]
+    t = Table([[Paragraph(_t(k.upper()), BST["hlabel"]) for k, _ in rows],
+               [Paragraph(_t(v), BST["hvalue"]) for _, v in rows]], colWidths=widths)
+    t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("BACKGROUND", (0, 0), (-1, -1), TINT),
+                           ("LINEABOVE", (0, 0), (-1, 0), 1.2, GOLD), ("LINEBELOW", (0, -1), (-1, -1), 0.4, BORDER),
+                           ("LINEAFTER", (0, 0), (-2, -1), 0.4, BORDER),
+                           ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                           ("TOPPADDING", (0, 0), (-1, 0), 4), ("BOTTOMPADDING", (0, 0), (-1, 0), 0),
+                           ("TOPPADDING", (0, 1), (-1, 1), 1), ("BOTTOMPADDING", (0, 1), (-1, 1), 5)]))
+    return t
+
+
+def _brief_h1(text: str) -> list:
+    rule = HRFlowable(width="100%", thickness=0.5, color=GOLD, spaceBefore=0, spaceAfter=3)
+    rule.keepWithNext = 1
+    return [Paragraph(_t(text), BST["h1"]), rule]
+
+
+def _brief_bullets(items: list[dict]) -> ListFlowable:
+    paras = []
+    for it in items:
+        cite = f' <font size="7.4" color="{MUTED_HEX}">{_t(it["cite"])}</font>' if it.get("cite") else ""
+        lead = f'<font name="{_FM}" color="{MUTED_HEX}">{_t(it["lead"])}:</font> ' if it.get("lead") else ""
+        paras.append(ListItem(Paragraph(lead + _t(it["text"]) + cite, BST["item"]), leftIndent=9, value="•",
+                              spaceAfter=1.5))
+    return ListFlowable(paras, bulletType="bullet", start="•", leftIndent=9, bulletFontSize=7, bulletColor=GOLD,
+                        spaceAfter=2)
+
+
+def render_brief(rep: dict) -> bytes:
+    """FAST decision-triage brief: masthead, verification strip, Decision Header grid and the five
+    numbered sections. Section 5 carries the run's verification limitations as caveats."""
+    brief = rep["brief"]
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=letter, leftMargin=BRIEF_MARGIN, rightMargin=BRIEF_MARGIN,
+                            topMargin=BRIEF_MARGIN, bottomMargin=BRIEF_MARGIN, title="FAST Opportunity Brief",
+                            keepTogetherClass=_KeepWithFirst)
+    title = dict(rep.get("identity") or []).get("Opportunity") or "Procurement opportunity"
+    story = [_brief_masthead(title), Spacer(1, 4)]
+    if rep.get("verification"):
+        story += [_brief_strip(rep["verification"]), Spacer(1, 4)]
+    if brief.get("header"):
+        story += [_decision_header(brief["header"]), Spacer(1, 2)]
+    sections = brief.get("sections") or []
+    for n, sec in enumerate(sections, 1):
+        block = _brief_h1(f"{n}. {sec['title']}")
+        groups = [g for g in sec.get("groups") or [] if g.get("items")]
+        caveats = list((rep.get("verification") or {}).get("limitations") or []) if n == len(sections) else []
+        for g in groups:
+            if g.get("lead"):
+                block.append(Paragraph(_t(g["lead"]), BST["lead"]))
+            block.append(_brief_bullets(g["items"]))
+        if caveats:
+            block.append(_brief_bullets([{"lead": "Verification limitation", "text": c} for c in caveats]))
+        if not groups and not caveats:
+            block.append(Paragraph("Nothing synthesized for this section; see the FULL report for the provisions.",
+                                   BST["note"]))
+        story += block
+    footer = _footer("FAST Opportunity Brief", str(rep.get("run_date") or brief.get("run_date") or "")[:10],
+                     BRIEF_MARGIN)
+    doc.build(_chain_keeps(story), onFirstPage=footer, onLaterPages=footer,
+              canvasmaker=_numbered_canvas(_t_plain(title), BRIEF_MARGIN))
     return buf.getvalue()

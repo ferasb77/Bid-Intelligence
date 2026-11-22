@@ -55,6 +55,39 @@ def deterministic_checks(composed: dict, entries: list[dict]) -> list[dict]:
                     issues.append({"type": "CONTRADICTORY", "entry_ids": [i], "source": "deterministic",
                                    "description": f"conflicted provision missing from the {rep['kind']} "
                                                   "Conflicts / Open Items section"})
+    issues += _brief_checks(composed["fast"].get("brief"), entries)
+    return issues
+
+
+# a raw register entry id (E001, E012R, ...) left in published text
+_RAW_ID = re.compile(r"(?<![\w-])E\d{2,}R?(?![\w-])")
+
+
+def _brief_checks(brief: dict | None, entries: list[dict]) -> list[dict]:
+    """Every bullet of the synthesized FAST brief cites at least one reportable register entry, carries a
+    compact citation, and shows no raw entry id; the same holds for the Decision Header values."""
+    if not brief:
+        return []
+    live = {e["entry_id"] for e in entries
+            if e.get("applicability") in ("CURRENT", "AMBIGUOUS", "DISPUTED", "CONFLICTED")}
+    issues = []
+    for sec in brief.get("sections") or []:
+        for g in sec.get("groups") or []:
+            for it in g.get("items") or []:
+                ids = it.get("entry_ids") or []
+                bad = [i for i in ids if i not in live]
+                if not ids or bad or not it.get("cite"):
+                    issues.append({"type": "OTHER", "entry_ids": ids, "source": "fast_brief",
+                                   "description": f"FAST brief bullet in '{sec.get('title')}' is not grounded in "
+                                                  "reportable register entries" + (f" ({', '.join(bad)})" if bad else "")})
+                if _RAW_ID.search(it.get("text") or ""):
+                    issues.append({"type": "OTHER", "entry_ids": ids, "source": "fast_brief",
+                                   "description": f"FAST brief bullet in '{sec.get('title')}' shows a raw register "
+                                                  "entry id"})
+    for label, value in brief.get("header") or []:
+        if _RAW_ID.search(str(value)):
+            issues.append({"type": "OTHER", "entry_ids": [], "source": "fast_brief",
+                           "description": f"FAST Decision Header '{label}' shows a raw register entry id"})
     return issues
 
 
