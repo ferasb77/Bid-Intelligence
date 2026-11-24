@@ -186,13 +186,15 @@ def verify_items(items: list[dict], fetch=page_text) -> list[dict]:
 
 
 #: Bounds of a research call made inside an engine run (FULL only), where the
-#: run's UsageLedger reserves each round's worst case before it is sent.
+#: run's UsageLedger reserves the call's worst case before it is sent: ONE
+#: request (a paused turn is not resumed), at most two searches, and for each
+#: search a generous allowance of result tokens entering the input. The
+#: request is pinned to MODEL (no server-side fallback), so it is priced by
+#: the model that served it.
 LEDGER_MAX_TOKENS = 3000
-LEDGER_MAX_SEARCHES = 3
-LEDGER_ROUNDS = 2
-#: Input tokens assumed per round for web search results when reserving a
-#: round's worst case (the result pages enter the model's input).
-SEARCH_RESULT_TOKENS = 15000
+LEDGER_MAX_SEARCHES = 2
+LEDGER_ROUNDS = 1
+SEARCH_RESULT_TOKENS_PER_SEARCH = 25000
 
 
 def run_research(client_name: str, title: str, reference: str | None, api_key: str | None,
@@ -224,21 +226,30 @@ def run_research(client_name: str, title: str, reference: str | None, api_key: s
             in_chars = len(SYSTEM) + len(json.dumps(messages, default=str))
             try:
                 rid = ledger.before_call("anthropic", MODEL, "buyer_research", in_chars, max_tokens,
-                                         extra_input_tokens=SEARCH_RESULT_TOKENS, web_searches=searches)
+                                         extra_input_tokens=SEARCH_RESULT_TOKENS_PER_SEARCH * searches,
+                                         web_searches=searches)
             except StageBudgetExceeded as exc:
                 budget_note = str(exc)[:300]
                 break
         t0 = time.monotonic()
         try:
-            resp = client.with_options(timeout=remaining, max_retries=1 if ledger is None else 0).beta.messages.create(
-                model=MODEL, max_tokens=max_tokens, system=SYSTEM, messages=messages,
-                tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": searches}],
-                output_config={"effort": "low"},
-                betas=["server-side-fallback-2026-07-01"], fallbacks="default",
-            )
-        except BaseException:
+            kw = dict(model=MODEL, max_tokens=max_tokens, system=SYSTEM, messages=messages,
+                      tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": searches}],
+                      output_config={"effort": "low"})
+            if ledger is None:          # stand-alone path keeps its availability fallback
+                kw.update(betas=["server-side-fallback-2026-07-01"], fallbacks="default")
+            resp = client.with_options(timeout=remaining,
+                                       max_retries=1 if ledger is None else 0).beta.messages.create(**kw)
+        except BaseException as exc:
             if ledger is not None:
-                ledger.release(rid)
+                import anthropic
+                from engine.providers import Usage
+                if isinstance(exc, (anthropic.APIConnectionError, anthropic.InternalServerError)):
+                    # may have been billed before it failed: charge the reserved worst case
+                    ledger.add(Usage("anthropic", MODEL, "buyer_research", status="FAILED", error=str(exc)[:200],
+                                     reservation=rid, charge_reserved=True))
+                else:
+                    ledger.release(rid)
             raise
         data = resp.model_dump() if hasattr(resp, "model_dump") else dict(resp)
         u = data.get("usage") or {}

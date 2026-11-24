@@ -280,14 +280,14 @@ def test_buyer_research_is_skipped_when_its_budget_is_gone():
 
 def test_buyer_research_stops_paused_turns_at_the_budget():
     import buyer_research
-    lg = UsageLedger("t", path="", max_cost_usd=2.0, stage_budgets={"buyer_research": 0.20, "reserve": 0.0})
+    lg = UsageLedger("t", path="", max_cost_usd=2.0, stage_budgets={"buyer_research": 0.40, "reserve": 0.0})
     client = _Client(_Resp([{"type": "text", "text": "<items>[]</items>"}], stop="pause_turn",
                            usage={"input_tokens": 30000, "output_tokens": 3000,
                                   "server_tool_use": {"web_search_requests": 3}}))
     out = buyer_research.run_research("Buyer", "Title", None, None, anthropic_client=client,
                                       fetch=lambda u: None, ledger=lg)
-    assert len(client.calls) == 1 and out["status"] == "COMPLETE" and out.get("budget_note")
-    assert lg.spent_usd() <= 0.20 + 0.11      # one round's actual cost; the second round was never sent
+    assert len(client.calls) == 1 and out["status"] == "COMPLETE"   # a paused turn is not resumed in a run
+    assert "fallbacks" not in client.calls[0] and "betas" not in client.calls[0]
 
 
 def test_research_runs_after_final_review_and_only_in_full():
@@ -357,3 +357,114 @@ def test_service_records_the_mode(monkeypatch):
     cfg = db.created[0]["model_config"]
     assert cfg["mode"] == "FULL" and cfg["cap_usd"] == 2.0 and cfg["preflight_worst_usd"] <= 2.0
     assert service.run_mode({"model_config": cfg}) == "FULL" and service.run_mode({}) is None
+
+
+
+# ── red-team fixes ─────────────────────────────────────────────────────────
+
+def test_no_setting_raises_a_run_cap_above_the_hard_ceiling(clean_env):
+    from engine.providers import max_cost_usd
+    clean_env.setenv("ENGINE_MAX_COST_USD", "5")
+    clean_env.setenv("ENGINE_FULL_MAX_COST_USD", "5")
+    assert max_cost_usd() == 2.00 and budget.cap("FULL") == 2.00
+
+
+def test_research_is_refused_when_the_run_has_spent_most_of_its_cap():
+    """The red-team scenario: earlier stages spent $1.70; research must not be
+    sent, because its bounded worst case no longer fits under $2.00."""
+    import buyer_research
+    lg = pipeline.new_ledger("FULL", path="")
+    for st, usd in (("package_review", 0.30), ("adjudicate", 0.40), ("conflicts", 0.20), ("analysis", 0.25),
+                    ("final_review", 0.30), ("extract", 0.25)):
+        lg.calls.append(Usage("anthropic", "claude-opus-5-5", st, cost_usd=usd))
+    client = _Client()
+    out = buyer_research.run_research("Buyer", "Title", None, None, anthropic_client=client,
+                                      fetch=lambda u: None, ledger=lg)
+    assert out["status"] == "SKIPPED" and client.calls == [] and lg.cost_limit_hit is None
+
+
+def test_research_worst_case_fits_its_allotment_plus_reserve():
+    import buyer_research
+    w = worst_case_usd("anthropic", buyer_research.MODEL, 6000, buyer_research.LEDGER_MAX_TOKENS,
+                       extra_input_tokens=buyer_research.SEARCH_RESULT_TOKENS_PER_SEARCH
+                       * buyer_research.LEDGER_MAX_SEARCHES, web_searches=buyer_research.LEDGER_MAX_SEARCHES)
+    b = budget.STAGE_BUDGETS["FULL"]
+    assert w <= b["buyer_research"] + b["reserve"]
+
+
+def test_dropped_stream_is_charged_its_reserved_worst_case():
+    import anthropic
+    import httpx
+
+    class Drop:
+        def __init__(self):
+            self.n = 0
+            self.messages = self
+
+        def stream(self, **kw):
+            self.n += 1
+            raise anthropic.APIConnectionError(request=httpx.Request("POST", "https://x"))
+    from engine.providers import AnthropicAnalyst, ProviderError
+    a = AnthropicAnalyst("claude-opus-5-5", client=Drop(), name="adj")
+    a.max_attempts = 2
+    lg = UsageLedger("t", path="", max_cost_usd=2.0)
+    import engine.providers as P
+    orig, P.time.sleep = P.time.sleep, (lambda s: None)
+    try:
+        with pytest.raises(ProviderError):
+            a.call_json("s", "u", {}, purpose="adjudicate", ledger=lg, data_class="SYNTHETIC", max_tokens=1000)
+    finally:
+        P.time.sleep = orig
+    worst = worst_case_usd("anthropic", "claude-opus-5-5", 2, 1000)
+    assert lg.spent_usd() == pytest.approx(2 * worst)
+    assert lg.summary()["by_stage"]["adjudicate"]["estimated_calls"] == 2
+
+
+def test_rate_limited_request_is_not_charged():
+    import anthropic
+    import httpx
+
+    class Limited:
+        messages = None
+
+        def __init__(self):
+            self.messages = self
+
+        def stream(self, **kw):
+            raise anthropic.RateLimitError("slow down", response=httpx.Response(429, request=httpx.Request("POST", "https://x")),
+                                           body=None)
+    from engine.providers import AnthropicAnalyst, ProviderError
+    a = AnthropicAnalyst("claude-opus-5-5", client=Limited(), name="adj")
+    a.max_attempts = 1
+    lg = UsageLedger("t", path="", max_cost_usd=2.0)
+    with pytest.raises(ProviderError):
+        a.call_json("s", "u", {}, purpose="adjudicate", ledger=lg, data_class="SYNTHETIC", max_tokens=1000)
+    assert lg.spent_usd() == 0 and lg.committed_usd() == 0
+
+
+def test_preflight_counts_the_independent_analyst(clean_env):
+    base = budget.preflight(pkg(), "FULL", extract_model="claude-haiku-5-5", synthesis_model="claude-opus-5-5")
+    both = budget.preflight(pkg(), "FULL", extract_model="claude-haiku-5-5", synthesis_model="claude-opus-5-5",
+                            independent=("anthropic", "claude-sonnet-5-5"))
+    assert both["stages"]["extract"]["worst_usd"] > base["stages"]["extract"]["worst_usd"]
+    clean_env.delenv("ENGINE_OPENAI_PRICE_IN", raising=False)
+    unpriced = budget.preflight(pkg(), "FULL", extract_model="claude-haiku-5-5", synthesis_model="claude-opus-5-5",
+                                independent=("openai", "gpt-x"))
+    assert not unpriced["ok"] and any("no price" in p for p in unpriced["problems"])
+
+
+def test_pdf_is_served_only_for_a_complete_run(monkeypatch):
+    from engine import service
+
+    class DB:
+        def __init__(self, status):
+            self.status = status
+
+        def get_engine_run(self, run_id, bid_id):
+            return {"status": self.status, "fast_pdf_path": "p"}
+
+        def download_file(self, path):
+            return b"%PDF"
+    for st, want in (("COMPLETE", b"%PDF"), ("FAILED", None), ("RUNNING", None)):
+        monkeypatch.setitem(sys.modules, "database", DB(st))
+        assert service.pdf(1, 2, "FAST") == want

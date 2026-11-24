@@ -65,13 +65,19 @@ class CostLimitExceeded(ProviderUnavailable):
 DEFAULT_MAX_COST_USD = 2.00
 
 
+#: The project's hard per-run ceiling (CONSTRAINTS.md section 2). Settings can
+#: lower a run cap, never raise it above this.
+HARD_CEILING_USD = 2.00
+
+
 def max_cost_usd() -> float:
-    """Hard per-run spend cap in USD (ENGINE_MAX_COST_USD, default 2.00)."""
+    """Per-run spend cap in USD: ENGINE_MAX_COST_USD (default 2.00), never above HARD_CEILING_USD."""
     try:
         cap = float(os.getenv("ENGINE_MAX_COST_USD", DEFAULT_MAX_COST_USD))
     except ValueError:
         cap = DEFAULT_MAX_COST_USD
-    return cap if cap > 0 else DEFAULT_MAX_COST_USD
+    cap = cap if cap > 0 else DEFAULT_MAX_COST_USD
+    return min(cap, HARD_CEILING_USD)
 
 
 class StageBudgetExceeded(ProviderError):
@@ -104,9 +110,13 @@ class Usage:
     status: str = "OK"
     error: str | None = None
     reservation: int | None = None
+    #: the request may have been billed but no usage came back (a dropped
+    #: stream, a server error): the ledger charges its reserved worst case
+    charge_reserved: bool = False
+    cost_estimated: bool = False
 
     def to_dict(self) -> dict:
-        return {k: v for k, v in self.__dict__.items() if k != "reservation"}
+        return {k: v for k, v in self.__dict__.items() if k not in ("reservation", "charge_reserved")}
 
 
 def _openai_prices() -> dict | None:
@@ -276,7 +286,10 @@ class UsageLedger:
     def add(self, u: Usage) -> None:
         u.cost_usd = cost_of(u)
         with self._lock:
-            self._reserved.pop(u.reservation, None)
+            held = self._reserved.pop(u.reservation, None)
+            if u.charge_reserved and held is not None and not (u.input_tokens or u.output_tokens):
+                u.cost_usd = round(held[1], 6)     # unknown usage: assume the worst case was billed
+                u.cost_estimated = True
             self.calls.append(u)
             spent = sum(c.cost_usd or 0.0 for c in self.calls)
             if spent > self.max_cost_usd + 1e-9 and not self.cost_limit_hit:
@@ -305,6 +318,8 @@ class UsageLedger:
                 b["cache_read_tokens"] += u.cache_read_tokens
                 b["cache_write_tokens"] += u.cache_write_tokens
                 b["seconds"] = round(b["seconds"] + u.seconds, 1)
+                if u.cost_estimated:
+                    b["estimated_calls"] = b.get("estimated_calls", 0) + 1
                 if u.web_search_requests:
                     b["web_search_requests"] = b.get("web_search_requests", 0) + u.web_search_requests
                 if u.cost_usd is None:
@@ -426,12 +441,17 @@ class AnthropicAnalyst(Analyst):
                 data = _parse_json(text)
                 ledger.add(u)
                 return data
-            except (anthropic.RateLimitError, anthropic.APIConnectionError, anthropic.InternalServerError) as exc:
+            except anthropic.RateLimitError as exc:       # refused before any work: not billed
                 last = exc
                 retry = True
+            except (anthropic.APIConnectionError, anthropic.InternalServerError) as exc:
+                last = exc
+                retry = True
+                u.charge_reserved = True    # the stream may have been billed before it dropped
             except anthropic.APIStatusError as exc:
                 last = exc
                 retry = exc.status_code >= 500 or exc.status_code == 529
+                u.charge_reserved = exc.status_code >= 500
                 if _account_problem(exc):
                     u.status, u.error = "FAILED", f"{type(exc).__name__}: {str(exc)[:200]}"
                     ledger.add(u)

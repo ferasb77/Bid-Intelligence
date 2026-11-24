@@ -127,8 +127,14 @@ def start(bid_id: int, organization_id: str, *, mode: str = "FULL", created_by: 
         raise ValueError("this bid has no source documents to analyse")
     roles = roles or pipeline.default_roles(anthropic_key=key, mode=mode)
     m = _models(roles)
+    ind = roles.independent if mode == "FULL" else None
+    try:
+        if ind is not None:
+            ind.check_allowed(package.data_class)      # a refusing analyst never runs: not counted
+    except Exception:
+        ind = None
     pf = budget.preflight(package, mode, extract_model=m["extract"], synthesis_model=m["synthesis"],
-                          writer_model=m["writer"])
+                          writer_model=m["writer"], independent=(ind.provider, ind.model) if ind else None)
     if not pf["ok"]:
         raise EngineBudgetRefused("; ".join(pf["problems"]))
     previous = next((r for r in runs if r.get("status") == "COMPLETE" and run_mode(r) in (mode, None)), None)
@@ -242,7 +248,9 @@ def result(bid_id: int, run_id: int) -> dict | None:
 def pdf(bid_id: int, run_id: int, kind: str) -> bytes | None:
     import database as db
     row = db.get_engine_run(run_id, bid_id)
-    path = (row or {}).get("fast_pdf_path" if kind == "FAST" else "full_pdf_path")
+    if not row or row.get("status") != "COMPLETE":
+        return None                    # only a completed run is ever exported
+    path = row.get("fast_pdf_path" if kind == "FAST" else "full_pdf_path")
     return db.download_file(path) if path else None
 
 

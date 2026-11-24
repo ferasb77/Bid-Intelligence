@@ -31,8 +31,8 @@ DEFAULT_CAPS = {"FAST": 0.50, "FULL": 2.00}
 #: its own allotment (output-limit splits, a parse retry) may draw on it.
 STAGE_BUDGETS = {
     "FAST": {"extract": 0.20, "analysis": 0.15, "reserve": 0.15},
-    "FULL": {"extract": 0.20, "package_review": 0.30, "adjudicate": 0.45, "conflicts": 0.20, "analysis": 0.25,
-             "final_review": 0.35, "buyer_research": 0.15, "reserve": 0.10},
+    "FULL": {"extract": 0.20, "package_review": 0.30, "adjudicate": 0.40, "conflicts": 0.20, "analysis": 0.25,
+             "final_review": 0.30, "buyer_research": 0.25, "reserve": 0.10},
 }
 
 #: Output limit (max_tokens, thinking included) of one call of each stage. The
@@ -75,7 +75,8 @@ def max_tokens(stage: str) -> int:
     return MAX_TOKENS[stage]
 
 
-def _extraction_worst(package: SourcePackage, model: str, unit_chars: int) -> tuple[float, int]:
+def _extraction_worst(package: SourcePackage, model: str, unit_chars: int,
+                      provider: str = "anthropic") -> tuple[float | None, int]:
     """Worst case of reading the whole package once: one call per unit (and per
     pre-split part of an oversized page), full output limit each."""
     from engine import extraction
@@ -85,17 +86,24 @@ def _extraction_worst(package: SourcePackage, model: str, unit_chars: int) -> tu
         parts = ([p for p in extraction._text_parts(u.locations[0].text, unit_chars)]
                  if len(u.locations) == 1 and len(u.locations[0].text) > unit_chars else [u.text()])
         for text in parts:
-            total += worst_case_usd("anthropic", model, ctx_chars + len(text), MAX_TOKENS["extract"]) or 0.0
+            w = worst_case_usd(provider, model, ctx_chars + len(text), MAX_TOKENS["extract"])
+            if w is None:
+                return None, 0
+            total += w
             calls += 1
     return round(total, 4), calls
 
 
 def preflight(package: SourcePackage, mode: str, *, extract_model: str, synthesis_model: str,
-              writer_model: str | None = None) -> dict:
+              writer_model: str | None = None, independent: tuple[str, str] | None = None) -> dict:
     """Worst-case cost of the stages a run of this mode must complete, before
     any call. `ok` is False when that worst case exceeds the mode cap or a
     required stage's worst case exceeds its allotment plus the reserve -- the
     run must then not start.
+
+    independent: (provider, model) of FULL's independent analyst, when one is
+    configured: its complete extraction draws on the same "extract" allotment,
+    so it is counted there (an unpriced one fails the pre-flight).
 
     The tail stages are estimated from the package size: their prompts carry
     the extracted findings, which are a fraction of the package text."""
@@ -104,6 +112,14 @@ def preflight(package: SourcePackage, mode: str, *, extract_model: str, synthesi
     pkg_chars = sum(len(loc.text) for loc in package.locations)
     ext, ext_calls = _extraction_worst(package, extract_model, unit_chars)
     stages = {"extract": {"worst_usd": ext, "calls": ext_calls, "model": extract_model}}
+    problems = []
+    if mode == "FULL" and independent:
+        ind, ind_calls = _extraction_worst(package, independent[1], unit_chars, provider=independent[0])
+        if ind is None:
+            problems.append(f"no price is configured for the independent analyst {independent[0]}:{independent[1]}")
+            ind = 0.0
+        stages["extract"].update(worst_usd=round(ext + ind, 4), calls=ext_calls + ind_calls,
+                                 independent={"model": independent[1], "worst_usd": ind})
     # the register (one line per finding) is at most about half the package text
     reg_chars = pkg_chars // 2 + PROMPT_OVERHEAD_CHARS
     if mode == "FAST":
@@ -123,7 +139,6 @@ def preflight(package: SourcePackage, mode: str, *, extract_model: str, synthesi
     required = REQUIRED_STAGES[mode]
     total = round(sum(stages[s]["worst_usd"] for s in required), 4)
     reserve = budgets.get("reserve", 0.0)
-    problems = []
     for s in required:
         if stages[s]["worst_usd"] > budgets.get(s, 0.0) + reserve + 1e-9:
             problems.append(f"{s} worst case ${stages[s]['worst_usd']:.2f} exceeds its allotment "
