@@ -3152,17 +3152,20 @@ def load_submission_evidence_package_for_organization(bid_id: int, organization_
 # bid is verified before any document is read, any row written or any model
 # called. The engine itself only ever reads this bid's documents.
 
-def start_engine_analysis_for_organization(bid_id: int, organization_id: str, *, created_by: str | None = None,
-                                           execution: str = "background") -> dict:
+def start_engine_analysis_for_organization(bid_id: int, organization_id: str, *, mode: str = "FULL",
+                                           created_by: str | None = None, execution: str = "background") -> dict:
     require_bid_access(bid_id, organization_id)
+    if mode not in ("FAST", "FULL"):
+        raise ValueError("mode must be FAST or FULL")
     from engine import service
-    return service.start(bid_id, organization_id, created_by=created_by, execution=execution)
+    return service.start(bid_id, organization_id, mode=mode, created_by=created_by, execution=execution)
 
 
-def get_engine_status_for_organization(bid_id: int, organization_id: str, run_id: int | None = None) -> dict | None:
+def get_engine_status_for_organization(bid_id: int, organization_id: str, run_id: int | None = None,
+                                       mode: str | None = None) -> dict | None:
     require_bid_access(bid_id, organization_id)
     from engine import service
-    return service.status(bid_id, run_id)
+    return service.status(bid_id, run_id, mode=mode)
 
 
 def get_engine_result_for_organization(bid_id: int, organization_id: str, run_id: int) -> dict | None:

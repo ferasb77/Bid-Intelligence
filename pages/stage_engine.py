@@ -72,8 +72,9 @@ def render_engine_report_panel(bid_id: int, kind: str, organization_id: str | No
                                user_id: str | None = None) -> bool:
     """Compact engine panel used by the UNDERSTAND (kind="FAST") and Full Bid
     Intelligence (kind="FULL") pages when USE_NEW_ENGINE is on: start/re-run
-    the engine, follow its progress, and serve the run's persisted fast.pdf
-    or full.pdf. Makes no model call itself (starting a run hands off to the
+    an engine run of that mode (FAST: Opportunity Snapshot only, low cost
+    cap; FULL: both reports), follow its progress, and serve its persisted
+    PDF. Only one run of a bid can be active at a time. Makes no model call itself (starting a run hands off to the
     engine through tenancy).
 
     Returns False only when the engine is not available in this environment
@@ -81,7 +82,8 @@ def render_engine_report_panel(bid_id: int, kind: str, organization_id: str | No
     legacy flow; True when the panel handled the page."""
     org, user = (organization_id, user_id) if organization_id else _org()
     try:
-        status = tenancy.get_engine_status_for_organization(bid_id, org)
+        status = tenancy.get_engine_status_for_organization(bid_id, org, mode=kind)
+        latest = tenancy.get_engine_status_for_organization(bid_id, org)
     except tenancy.AccessDeniedError:
         st.error("You do not have access to this bid.")
         return True
@@ -90,18 +92,26 @@ def render_engine_report_panel(bid_id: int, kind: str, organization_id: str | No
         return False
 
     active = bool(status and status.get("status") in ("QUEUED", "RUNNING"))
+    other_active = bool(latest and latest.get("status") in ("QUEUED", "RUNNING") and not active
+                        and not latest.get("possibly_interrupted"))
     label = _PANEL_LABEL[kind]
-    if st.button("⚡ Run analysis" if not status else "🔁 Re-run on current package", disabled=active,
+    if st.button(f"⚡ Run {label}" if not status else "🔁 Re-run on current package", disabled=active or other_active,
                  type="primary" if not status else "secondary", key=f"engine_start_{kind}_{bid_id}"):
         try:
-            tenancy.start_engine_analysis_for_organization(bid_id, org, created_by=user)
+            tenancy.start_engine_analysis_for_organization(bid_id, org, mode=kind, created_by=user)
             st.rerun()
         except Exception as exc:
             st.error(f"Could not start the analysis: {exc}")
+    if other_active:
+        st.caption("Another analysis of this bid is running; this one can start when it finishes.")
     if not status:
-        st.markdown('<div class="info-box">No analysis has run for this bid yet. One run produces both the '
-                    'Opportunity Snapshot (FAST) and the Bid Opportunity Assessment (FULL).</div>',
-                    unsafe_allow_html=True)
+        st.markdown('<div class="info-box">' + (
+            "No Opportunity Snapshot has run for this bid yet. It reads the complete package once and "
+            "lists its requirements, deadlines and open questions."
+            if kind == "FAST" else
+            "No Bid Opportunity Assessment has run for this bid yet. It adds adjudication, conflict "
+            "classification and a final review, and reuses a Snapshot's reading of the same package.")
+                    + '</div>', unsafe_allow_html=True)
         return True
 
     run_id = int(status["id"])
@@ -122,6 +132,12 @@ def render_engine_report_panel(bid_id: int, kind: str, organization_id: str | No
                     st.rerun()
             _poll()
         return True
+    if status["status"] != "COMPLETE":
+        reason = str(status.get("failure_reason") or "")
+        if "COST_LIMIT_EXCEEDED" in reason:
+            st.error("The analysis stopped at its cost limit before finishing. No report was produced; a re-run "
+                     "reuses what was already read.")
+            return True
     if status["status"] != "COMPLETE":
         st.error(f"The analysis failed: {status.get('failure_reason') or 'unknown error'}. No report was produced.")
         return True
@@ -151,9 +167,9 @@ def render_engine_report_panel(bid_id: int, kind: str, organization_id: str | No
 
 def page_engine(bid_id: int) -> None:
     st.title("🔬 Evidence-Based Analysis")
-    st.caption("Two independent analysts read the complete package; findings are reconciled into an evidence "
-               "register, adjudicated against the source, checked for conflicts and amendments, and reviewed "
-               "before the FAST and FULL reports are produced.")
+    st.caption("The Opportunity Snapshot (FAST) reads the complete package once. The Bid Opportunity Assessment "
+               "(FULL) adds adjudication against the source, conflict and amendment classification and a final "
+               "review. Each run has its own cost limit.")
     org, user = _org()
     try:
         status = tenancy.get_engine_status_for_organization(bid_id, org)
@@ -169,7 +185,7 @@ def page_engine(bid_id: int) -> None:
         if st.button("Run analysis" if not status else "Re-run on current package", disabled=bool(active),
                      type="primary"):
             try:
-                tenancy.start_engine_analysis_for_organization(bid_id, org, created_by=user)
+                tenancy.start_engine_analysis_for_organization(bid_id, org, mode="FULL", created_by=user)
                 st.rerun()
             except Exception as exc:
                 st.error(f"Could not start: {exc}")

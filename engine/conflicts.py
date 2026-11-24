@@ -11,6 +11,7 @@ import re
 
 from engine import schema
 from engine.package import SourcePackage
+from engine.budget import max_tokens as _max_tokens
 from engine.providers import Analyst, ProviderError, UsageLedger
 from engine.register import _vals
 from engine.verify import locate_quote, tokens
@@ -137,7 +138,7 @@ def resolve(adjudicator: Analyst, package: SourcePackage, entries: list[dict], r
                                                                        if i in by_id) for c in cands))
     try:
         data = adjudicator.call_json(SYSTEM, user, CONFLICT_OUTPUT, purpose="conflicts", ledger=ledger,
-                                     data_class=package.data_class, max_tokens=16000)
+                                     data_class=package.data_class, max_tokens=_max_tokens("conflicts"))
     except ProviderError as exc:
         result["errors"].append(str(exc)[:300])
         for c in cands:   # unclassified candidates stay visible as open items
@@ -186,6 +187,21 @@ def resolve(adjudicator: Analyst, package: SourcePackage, entries: list[dict], r
         elif t in ("CLARIFICATION", "CONDITIONAL_EXCEPTION"):
             for i in ids:
                 by_id[i]["relationships"].append({"type": t, "entry_ids": [x for x in ids if x != i]})
+    _release_unconfirmed(entries)
+    return result
+
+
+def unclassified(entries: list[dict], reviews: list[dict] | None = None) -> dict:
+    """FAST: the deterministically found candidate conflicts, listed as open
+    clarification items without a model classification (no call is made).
+    Nothing is resolved or marked superseded: a candidate stays a question."""
+    cands = collect_candidates(entries, reviews or [])
+    result = {"candidates": cands, "conflicts": [], "amendments": [], "clarifications": [], "errors": [],
+              "classified": False}
+    for c in cands:
+        if c["origin"] != "adjudication":
+            result["conflicts"].append({"entry_ids": c["entry_ids"], "type": "UNCLASSIFIED", "issue": c["note"],
+                                        "clarification_question": "", "implication": ""})
     _release_unconfirmed(entries)
     return result
 

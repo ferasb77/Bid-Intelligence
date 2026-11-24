@@ -12,6 +12,7 @@ import re
 
 from engine import schema
 from engine.package import SourcePackage
+from engine.budget import max_tokens as _max_tokens
 from engine.providers import Analyst, ProviderError, UsageLedger
 from engine.verify import locate_quote, normalize, value_issues
 
@@ -110,13 +111,26 @@ def _report_text(composed: dict) -> str:
     return "\n".join(out)
 
 
+def _cited_ids(composed: dict) -> set[str]:
+    return set(re.findall(r"\bE\d{3,}\b", _report_text(composed)))
+
+
 def model_review(reviewer: Analyst, package: SourcePackage, composed: dict, entries: list[dict],
-                 ledger: UsageLedger, excerpt_chars: int = 120000) -> dict:
+                 ledger: UsageLedger, excerpt_chars: int = 40000) -> dict:
+    """Bounded final review: the reports, the register entries the reports cite
+    (all live entries when none can be matched), and the source text of the
+    pages those entries come from first, up to `excerpt_chars`."""
+    live = [e for e in entries if not str(e.get("applicability")).startswith("EXCLUDED")]
+    cited = _cited_ids(composed)
+    shown = [e for e in live if e["entry_id"] in cited] or live
     reg = "\n".join(f"{e['entry_id']} | {e.get('document')} {e.get('page')} | {e.get('category')} | "
-                    f"{e.get('modality')} | {e.get('applicability')} | {e.get('statement')} || \"{(e.get('quote') or '')[:400]}\""
-                    for e in entries if not str(e.get("applicability")).startswith("EXCLUDED"))
+                    f"{e.get('modality')} | {e.get('applicability')} | {e.get('statement')} || "
+                    f"\"{(e.get('quote') or '')[:200]}\"" for e in shown)
+    cited_locs = {(e.get("verification") or {}).get("loc_id") for e in shown}
+    ordered = [loc for loc in package.locations if loc.loc_id in cited_locs] + \
+              [loc for loc in package.locations if loc.loc_id not in cited_locs]
     src, n = [], 0
-    for loc in package.locations:   # source text, in order, as far as the budget allows
+    for loc in ordered:   # source text, cited pages first, as far as the budget allows
         piece = f"=== {loc.ref()} ===\n{loc.text}"
         if n + len(piece) > excerpt_chars:
             src.append("(source text truncated for the review pass; the register covers the remainder)")
@@ -126,7 +140,7 @@ def model_review(reviewer: Analyst, package: SourcePackage, composed: dict, entr
     user = (f"REPORTS:\n{_report_text(composed)}\n\nREGISTER:\n{reg}\n\nSOURCE:\n" + "\n\n".join(src))
     try:
         return reviewer.call_json(SYSTEM, user, schema.REVIEW_OUTPUT, purpose="final_review", ledger=ledger,
-                                  data_class=package.data_class, max_tokens=24000)
+                                  data_class=package.data_class, max_tokens=_max_tokens("final_review"))
     except ProviderError as exc:
         return {"issues": [], "error": str(exc)[:300]}
 

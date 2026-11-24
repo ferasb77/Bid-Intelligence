@@ -8,7 +8,15 @@ organisational memory or a content library (constraint C1).
 Credentials: ENGINE_ANTHROPIC_API_KEY (a dedicated key, so rebuild costs are
 tracked separately) or the application's Anthropic key. The independent
 OpenAI analyst runs only when ENGINE_OPENAI_CLIENT_DATA_AUTHORIZED=yes and its
-key/model are configured; otherwise runs are recorded as SINGLE_ANALYST."""
+key/model are configured; otherwise runs are recorded as SINGLE_ANALYST.
+
+Modes: a FAST run produces the Opportunity Snapshot (fast.pdf) only; a FULL
+run produces both reports. Each run is checked by the pre-flight before it is
+created (a run that could exceed its cap never starts), spends within its
+mode's ledger, and checkpoints every model answer under its own storage
+prefix; a new run of the same bid reads the earlier runs' checkpoints, so a
+stopped run resumes and FULL reuses FAST's extraction. The mode is kept in
+the run's model_config (no schema change)."""
 from __future__ import annotations
 
 import json
@@ -17,9 +25,9 @@ import threading
 import traceback
 from datetime import datetime, timezone
 
-from engine import ENGINE_VERSION, pipeline
+from engine import ENGINE_VERSION, budget, pipeline
+from engine.checkpoints import StorageStore
 from engine.package import build_package
-from engine.providers import UsageLedger
 from engine.render import render
 
 SOURCE_TYPE = "RFP / Source"
@@ -28,6 +36,19 @@ _ACTIVE: dict[int, threading.Thread] = {}
 
 class EngineUnavailable(RuntimeError):
     """Persistence (migration 027) or credentials are not available."""
+
+
+class EngineBudgetRefused(RuntimeError):
+    """The pre-flight found that this run could exceed its mode's cost cap; nothing was sent."""
+
+
+class EngineBusy(RuntimeError):
+    """Another engine run of this bid is still queued or running."""
+
+
+def run_mode(row: dict | None) -> str | None:
+    """FAST / FULL; None for runs made before modes existed (they produced both reports)."""
+    return ((row or {}).get("model_config") or {}).get("mode")
 
 
 def _now() -> str:
@@ -62,7 +83,7 @@ def load_bid_package(bid_id: int) -> tuple:
 
 
 def _research_fn(bid_id: int, api_key: str | None):
-    def fn(analysis: dict) -> dict:
+    def fn(analysis: dict, ledger=None) -> dict:
         import buyer_research
         subj = buyer_research.research_subject(bid_id)
         client = subj.get("client") or analysis.get("buyer") or ""
@@ -71,24 +92,49 @@ def _research_fn(bid_id: int, api_key: str | None):
             return {"status": "SKIPPED"}
         ctx = " ".join(s.get("text", "") for s in analysis.get("summary") or [])[:600]
         return buyer_research.run_research(client, title, subj.get("reference") or analysis.get("reference") or None,
-                                           api_key, context=ctx)
+                                           api_key, context=ctx, ledger=ledger)
     return fn
 
 
-def start(bid_id: int, organization_id: str, *, created_by: str | None = None, execution: str = "background",
-          roles: pipeline.EngineRoles | None = None) -> dict:
-    """Creates an engine run for the bid's current package and executes it."""
+def _models(roles: pipeline.EngineRoles) -> dict:
+    def model_of(a, purpose):
+        if a is None:
+            return None
+        route = getattr(a, "route", None)
+        return (route(purpose) if route else a).model
+    return {"extract": model_of(roles.primary, "extract:x"),
+            "synthesis": model_of(roles.adjudicator, "analysis"),
+            "writer": model_of(roles.writer or roles.adjudicator, "analysis")}
+
+
+def start(bid_id: int, organization_id: str, *, mode: str = "FULL", created_by: str | None = None,
+          execution: str = "background", roles: pipeline.EngineRoles | None = None) -> dict:
+    """Creates an engine run of `mode` for the bid's current package and executes it.
+    Refused (nothing created, nothing sent) while another run of the bid is
+    active, or when the pre-flight worst case exceeds the mode's cap."""
     import database as db
+    if mode not in budget.MODES:
+        raise ValueError(f"unknown engine mode {mode!r}")
     key = engine_api_key()
     if roles is None and not key:
         raise EngineUnavailable("no Anthropic API key is configured for the engine")
+    runs = db.get_engine_runs(bid_id)
+    if any(r.get("status") in ("QUEUED", "RUNNING") and not (status(bid_id, r["id"]) or {}).get("possibly_interrupted")
+           for r in runs):
+        raise EngineBusy("an analysis of this bid is already running")
     package = load_bid_package(bid_id)
     if not package.documents:
         raise ValueError("this bid has no source documents to analyse")
-    roles = roles or pipeline.default_roles(anthropic_key=key)
-    previous = next((r for r in db.get_engine_runs(bid_id) if r.get("status") == "COMPLETE"), None)
+    roles = roles or pipeline.default_roles(anthropic_key=key, mode=mode)
+    m = _models(roles)
+    pf = budget.preflight(package, mode, extract_model=m["extract"], synthesis_model=m["synthesis"],
+                          writer_model=m["writer"])
+    if not pf["ok"]:
+        raise EngineBudgetRefused("; ".join(pf["problems"]))
+    previous = next((r for r in runs if r.get("status") == "COMPLETE" and run_mode(r) in (mode, None)), None)
     config_ = {k: v.describe() for k, v in (("primary", roles.primary), ("independent", roles.independent),
-                                            ("adjudicator", roles.adjudicator)) if v}
+                                            ("adjudicator", roles.adjudicator), ("writer", roles.writer)) if v}
+    config_.update(mode=mode, cap_usd=pf["cap_usd"], preflight_worst_usd=pf["worst_case_required_usd"])
     try:
         row = db.create_engine_run(bid_id, organization_id, engine_version=ENGINE_VERSION,
                                    package_hash=package.package_hash, documents=package.manifest(),
@@ -99,7 +145,8 @@ def start(bid_id: int, organization_id: str, *, created_by: str | None = None, e
             raise EngineUnavailable("engine persistence (migration 027) is not applied to this database") from exc
         raise
     run_id = int(row["id"])
-    args = (bid_id, run_id, package, roles, key, previous)
+    earlier = [int(r["id"]) for r in runs if int(r["id"]) != run_id]     # newest first
+    args = (bid_id, run_id, package, roles, key, previous, mode, earlier, pf)
     if execution == "inline":
         _execute(*args)
     else:
@@ -121,10 +168,11 @@ def _load_previous(bid_id: int, previous: dict | None) -> dict | None:
         return None
 
 
-def _execute(bid_id, run_id, package, roles, key, previous) -> None:
+def _execute(bid_id, run_id, package, roles, key, previous, mode="FULL", earlier=(), preflight=None) -> None:
     import database as db
     db.update_engine_run(run_id, bid_id, {"status": "RUNNING", "started_at": _now(), "last_progress_at": _now()})
-    ledger = UsageLedger(f"bid{bid_id}-run{run_id}", path=os.getenv("ENGINE_COST_LEDGER"))
+    ledger = pipeline.new_ledger(mode, f"bid{bid_id}-run{run_id}", path=os.getenv("ENGINE_COST_LEDGER"))
+    store = StorageStore(bid_id, run_id, list(earlier))
 
     def progress(*a):
         try:
@@ -132,8 +180,9 @@ def _execute(bid_id, run_id, package, roles, key, previous) -> None:
         except Exception:
             pass
     try:
-        result = pipeline.run(package, roles, ledger=ledger, progress=progress,
-                              research_fn=_research_fn(bid_id, key), previous=_load_previous(bid_id, previous))
+        result = pipeline.run(package, roles, mode=mode, ledger=ledger, progress=progress,
+                              research_fn=_research_fn(bid_id, key) if mode == "FULL" else None,
+                              previous=_load_previous(bid_id, previous), store=store, preflight=preflight)
         base = f"{int(bid_id)}/engine/{int(run_id)}"
         fields = {"record": result.record, "verification": result.record.get("verification"),
                   "completed_at": _now(), "status": result.record.get("status", "FAILED")}
@@ -143,10 +192,18 @@ def _execute(bid_id, run_id, package, roles, key, previous) -> None:
                                                            "application/json")
             fields["fast_pdf_path"] = db.upload_bytes_object(f"{base}/fast.pdf", render(result.composed["fast"]),
                                                              "application/pdf")
-            fields["full_pdf_path"] = db.upload_bytes_object(f"{base}/full.pdf", render(result.composed["full"]),
-                                                             "application/pdf")
+            if result.composed.get("full"):
+                fields["full_pdf_path"] = db.upload_bytes_object(f"{base}/full.pdf", render(result.composed["full"]),
+                                                                 "application/pdf")
         else:
             fields["failure_reason"] = json.dumps(result.record.get("error"))[:500]
+            # what a failed run did (stages, usage, refusals) is kept for diagnosis -- never exported
+            try:
+                db.upload_bytes_object(f"{base}/partial.json",
+                                       json.dumps({"record": result.record, "exportable": False},
+                                                  default=str).encode("utf-8"), "application/json")
+            except Exception:
+                pass
         db.update_engine_run(run_id, bid_id, fields)
     except Exception as exc:
         db.update_engine_run(run_id, bid_id, {"status": "FAILED", "verification": "FAILED", "completed_at": _now(),
@@ -157,10 +214,13 @@ def _execute(bid_id, run_id, package, roles, key, previous) -> None:
         _ACTIVE.pop(run_id, None)
 
 
-def status(bid_id: int, run_id: int | None = None) -> dict | None:
+def status(bid_id: int, run_id: int | None = None, mode: str | None = None) -> dict | None:
+    """The run `run_id`, or the newest run of `mode` (runs made before modes
+    existed count for both), or the newest run."""
     import database as db
     runs = db.get_engine_runs(bid_id)
-    row = next((r for r in runs if run_id is None or int(r["id"]) == int(run_id)), None)
+    row = next((r for r in runs if (run_id is None or int(r["id"]) == int(run_id))
+                and (mode is None or run_mode(r) in (mode, None))), None)
     if row and row.get("status") in ("QUEUED", "RUNNING") and int(row["id"]) not in _ACTIVE:
         last = row.get("last_progress_at") or row.get("created_at")
         try:

@@ -185,9 +185,25 @@ def verify_items(items: list[dict], fetch=page_text) -> list[dict]:
     return items
 
 
+#: Bounds of a research call made inside an engine run (FULL only), where the
+#: run's UsageLedger reserves each round's worst case before it is sent.
+LEDGER_MAX_TOKENS = 3000
+LEDGER_MAX_SEARCHES = 3
+LEDGER_ROUNDS = 2
+#: Input tokens assumed per round for web search results when reserving a
+#: round's worst case (the result pages enter the model's input).
+SEARCH_RESULT_TOKENS = 15000
+
+
 def run_research(client_name: str, title: str, reference: str | None, api_key: str | None,
-                 *, anthropic_client=None, context: str = "", fetch=page_text) -> dict:
-    """One bounded research call. Returns the persisted payload shape."""
+                 *, anthropic_client=None, context: str = "", fetch=page_text, ledger=None) -> dict:
+    """One bounded research call. Returns the persisted payload shape.
+
+    ledger: an engine UsageLedger. Each round is then reserved against the
+    run's "buyer_research" allotment before it is sent (fewer rounds, searches
+    and output tokens than the stand-alone path) and its actual cost is
+    recorded on the ledger; a round the budget cannot cover is not sent and the
+    research keeps what earlier rounds found."""
     import config
     today = datetime.now(timezone.utc).date().isoformat()
     started = time.monotonic()
@@ -195,35 +211,68 @@ def run_research(client_name: str, title: str, reference: str | None, api_key: s
     messages = [{"role": "user", "content": _prompt(client_name, title, reference, today, context)}]
     blocks: list[dict] = []
     resp = None
-    for _ in range(3):  # resume a paused server-tool turn at most twice
+    max_tokens, searches, rounds = (6000, MAX_SEARCHES, 3) if ledger is None else         (LEDGER_MAX_TOKENS, LEDGER_MAX_SEARCHES, LEDGER_ROUNDS)
+    totals = {"input_tokens": 0, "output_tokens": 0, "web_search_requests": 0}
+    budget_note = None
+    for _ in range(rounds):  # resume a paused server-tool turn
         remaining = TIMEOUT_SECONDS - (time.monotonic() - started)
         if remaining <= 5:
             break
-        resp = client.with_options(timeout=remaining, max_retries=1).beta.messages.create(
-            model=MODEL, max_tokens=6000, system=SYSTEM, messages=messages,
-            tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": MAX_SEARCHES}],
-            output_config={"effort": "low"},
-            betas=["server-side-fallback-2026-07-01"], fallbacks="default",
-        )
+        rid = None
+        if ledger is not None:
+            from engine.providers import StageBudgetExceeded
+            in_chars = len(SYSTEM) + len(json.dumps(messages, default=str))
+            try:
+                rid = ledger.before_call("anthropic", MODEL, "buyer_research", in_chars, max_tokens,
+                                         extra_input_tokens=SEARCH_RESULT_TOKENS, web_searches=searches)
+            except StageBudgetExceeded as exc:
+                budget_note = str(exc)[:300]
+                break
+        t0 = time.monotonic()
+        try:
+            resp = client.with_options(timeout=remaining, max_retries=1 if ledger is None else 0).beta.messages.create(
+                model=MODEL, max_tokens=max_tokens, system=SYSTEM, messages=messages,
+                tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": searches}],
+                output_config={"effort": "low"},
+                betas=["server-side-fallback-2026-07-01"], fallbacks="default",
+            )
+        except BaseException:
+            if ledger is not None:
+                ledger.release(rid)
+            raise
         data = resp.model_dump() if hasattr(resp, "model_dump") else dict(resp)
+        u = data.get("usage") or {}
+        n_in = int(u.get("input_tokens") or 0)
+        n_out = int(u.get("output_tokens") or 0)
+        n_search = int(((u.get("server_tool_use") or {}).get("web_search_requests")) or 0)
+        totals["input_tokens"] += n_in
+        totals["output_tokens"] += n_out
+        totals["web_search_requests"] += n_search
+        if ledger is not None:
+            from engine.providers import Usage
+            ledger.add(Usage("anthropic", MODEL, "buyer_research", input_tokens=n_in, output_tokens=n_out,
+                             cache_read_tokens=int(u.get("cache_read_input_tokens") or 0),
+                             cache_write_tokens=int(u.get("cache_creation_input_tokens") or 0),
+                             web_search_requests=n_search, seconds=round(time.monotonic() - t0, 2),
+                             request_id=data.get("id"), reservation=rid))
         blocks.extend(data.get("content") or [])
         if data.get("stop_reason") != "pause_turn":
             break
         messages = messages + [{"role": "assistant", "content": data.get("content") or []}]
+    if ledger is not None and resp is None:
+        return {"status": "SKIPPED", "error": budget_note or "not run", "items": [], "model": MODEL,
+                "usage": totals, "query": {"client": client_name, "title": title, "reference": reference,
+                                           "context": context}}
     urls, text = _collect(blocks)
     items = verify_items(parse_items(text, urls), fetch)
-    usage = {}
-    try:
-        u = resp.usage.model_dump() if resp is not None else {}
-        usage = {k: u.get(k) for k in ("input_tokens", "output_tokens")}
-        usage["web_search_requests"] = ((u.get("server_tool_use") or {}).get("web_search_requests"))
-    except Exception:
-        pass
-    return {"status": "COMPLETE", "items": items, "searched_urls": len(urls), "model": MODEL,
-            "evidence_checked": True,
-            "verified_count": sum(1 for i in items if i.get("evidence_verified")),
-            "researched_at": datetime.now(timezone.utc).isoformat(), "usage": usage,
-            "query": {"client": client_name, "title": title, "reference": reference, "context": context}}
+    out = {"status": "COMPLETE", "items": items, "searched_urls": len(urls), "model": MODEL,
+           "evidence_checked": True,
+           "verified_count": sum(1 for i in items if i.get("evidence_verified")),
+           "researched_at": datetime.now(timezone.utc).isoformat(), "usage": totals,
+           "query": {"client": client_name, "title": title, "reference": reference, "context": context}}
+    if budget_note:
+        out["budget_note"] = budget_note
+    return out
 
 
 # ── persistence + background launch ────────────────────────────────────────

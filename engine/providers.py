@@ -22,6 +22,9 @@ from typing import Callable
 PRICES = {
     "claude-opus-5-5": {"in": 4.00, "out": 20.00, "cache_read": 0.20, "cache_write": 5.00},
     "claude-sonnet-5-5": {"in": 2.00, "out": 10.00, "cache_read": 0.10, "cache_write": 2.50},
+    # Haiku 5.5 rate for prompts up to 100K tokens (above: $0.50 / $2.50). Extraction
+    # units are ~10,000 characters, far below that threshold.
+    "claude-haiku-5-5": {"in": 0.10, "out": 0.50, "cache_read": 0.01, "cache_write": 0.125},
 }
 
 
@@ -71,6 +74,20 @@ def max_cost_usd() -> float:
     return cap if cap > 0 else DEFAULT_MAX_COST_USD
 
 
+class StageBudgetExceeded(ProviderError):
+    """One stage's allotment cannot cover this request's worst-case cost.
+    Raised BEFORE the provider call. Unlike CostLimitExceeded it does not stop
+    the run: the stage records what it could not do (disclosed as a
+    limitation, never silently dropped)."""
+
+
+#: USD per web search request (server-side web search tool).
+WEB_SEARCH_USD = 0.01
+#: Characters per token assumed when estimating a request's input before it is
+#: sent (English text is ~4; 3.5 leaves headroom).
+CHARS_PER_TOKEN = 3.5
+
+
 @dataclass
 class Usage:
     provider: str
@@ -80,14 +97,16 @@ class Usage:
     output_tokens: int = 0
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
+    web_search_requests: int = 0
     seconds: float = 0.0
     cost_usd: float | None = None
     request_id: str | None = None
     status: str = "OK"
     error: str | None = None
+    reservation: int | None = None
 
     def to_dict(self) -> dict:
-        return dict(self.__dict__)
+        return {k: v for k, v in self.__dict__.items() if k != "reservation"}
 
 
 def _openai_prices() -> dict | None:
@@ -108,57 +127,161 @@ def cost_of(u: Usage) -> float | None:
     if not p:
         return None
     return round((u.input_tokens * p["in"] + u.output_tokens * p["out"] + u.cache_read_tokens * p["cache_read"]
-                  + u.cache_write_tokens * p["cache_write"]) / 1e6, 6)
+                  + u.cache_write_tokens * p["cache_write"]) / 1e6 + u.web_search_requests * WEB_SEARCH_USD, 6)
+
+
+def worst_case_usd(provider: str, model: str, input_chars: int, max_tokens: int, *,
+                   extra_input_tokens: int = 0, web_searches: int = 0) -> float | None:
+    """Upper bound of one request's cost: every input token at the dearer of
+    the input and cache-write price, and the full max_tokens of output
+    (thinking counts inside max_tokens). None for an unpriced model."""
+    p = _prices(provider, model)
+    if p is None:
+        return None
+    tokens_in = input_chars / CHARS_PER_TOKEN + extra_input_tokens
+    return round((tokens_in * max(p["in"], p["cache_write"]) + max_tokens * p["out"]) / 1e6
+                 + web_searches * WEB_SEARCH_USD, 6)
+
+
+def stage_of(purpose: str) -> str:
+    """The budget stage a call belongs to: "extract:U3s1" -> "extract"."""
+    return purpose.split(":", 1)[0]
+
+
+def _new_bucket() -> dict:
+    return {"calls": 0, "failed": 0, "input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0,
+            "cache_write_tokens": 0, "seconds": 0.0, "cost_usd": 0.0, "cost_complete": True}
 
 
 class UsageLedger:
-    """Thread-safe usage collector for one engine run; optionally appends each
-    call to a local JSONL cost ledger (ENGINE_COST_LEDGER), kept separate from
-    the application's own telemetry so rebuild costs are reported on their own."""
+    """Thread-safe usage collector and budget enforcer for one engine run.
 
-    def __init__(self, run_label: str = "", path: str | None = None, *, max_cost_usd: float | None = None):
+    Before every real provider request the request's WORST-CASE cost (input
+    estimate + its full max_tokens of output) is reserved; when the call ends
+    the reservation is replaced by the actual cost. A request is refused --
+    nothing sent -- when spent + reserved + its worst case would exceed the
+    run cap or its stage's allotment. A run therefore never ends above its cap.
+
+    * CostLimitExceeded (the run stops): the model is unpriced, the cap was
+      already hit, or nothing is left of the run cap.
+    * StageBudgetExceeded (the stage records what it could not do): the
+      request does not fit what is left of its stage (plus the shared
+      "reserve") or of the run.
+
+    stage_budgets: {"extract": 0.20, ..., "reserve": 0.10}; None = only the
+    run cap. Optionally appends each call to a local JSONL cost ledger
+    (ENGINE_COST_LEDGER), kept separate from the application's telemetry."""
+
+    def __init__(self, run_label: str = "", path: str | None = None, *, max_cost_usd: float | None = None,
+                 stage_budgets: dict | None = None):
         self.run_label = run_label
         self.path = path if path is not None else os.getenv("ENGINE_COST_LEDGER")
         self.calls: list[Usage] = []
         self._lock = threading.Lock()
         self.max_cost_usd = max_cost_usd if max_cost_usd is not None else globals()["max_cost_usd"]()
-        self.cost_limit_hit: str | None = None   # why the breaker tripped, once it has
+        self.stage_budgets = dict(stage_budgets) if stage_budgets else None
+        self.cost_limit_hit: str | None = None   # why the run breaker tripped, once it has
+        self.refusals: list[dict] = []           # every refused request, with its stage and reason
+        self.cached: dict[str, int] = {}         # stage -> answers served from checkpoints ($0)
+        self._reserved: dict[int, tuple[str, float]] = {}
+        self._next = 0
 
+    # -- accounting helpers (call with the lock held) --
+    def _committed(self) -> float:
+        return sum(u.cost_usd or 0.0 for u in self.calls) + sum(v for _, v in self._reserved.values())
+
+    def _stage_spent(self, stage: str) -> float:
+        return sum(u.cost_usd or 0.0 for u in self.calls if stage_of(u.purpose) == stage) + \
+            sum(v for s, v in self._reserved.values() if s == stage)
+
+    def _reserve_used(self) -> float:
+        """What stages have drawn beyond their own allotment (counted against "reserve")."""
+        if not self.stage_budgets:
+            return 0.0
+        stages = {stage_of(u.purpose) for u in self.calls} | {s for s, _ in self._reserved.values()}
+        return sum(max(0.0, self._stage_spent(s) - self.stage_budgets.get(s, 0.0)) for s in stages)
+
+    def _stage_left(self, stage: str) -> float:
+        run_left = self.max_cost_usd - self._committed()
+        if not self.stage_budgets:
+            return max(0.0, run_left)
+        own = self.stage_budgets.get(stage, 0.0) - self._stage_spent(stage)
+        reserve = self.stage_budgets.get("reserve", 0.0) - self._reserve_used()
+        return max(0.0, min(run_left, max(own, 0.0) + max(reserve, 0.0)))
+
+    # -- public --
     def spent_usd(self) -> float:
         with self._lock:
             return round(sum(u.cost_usd or 0.0 for u in self.calls), 6)
 
-    def before_call(self, provider: str, model: str, purpose: str, input_chars: int) -> None:
-        """Circuit breaker, checked before every real provider request
-        (including retries). Refuses the call -- raising CostLimitExceeded,
-        nothing sent -- when the cap is already reached, when what is spent
-        plus this request's estimated input cost would reach it, or when the
-        model has no price so the cap cannot be enforced. Output cost is only
-        known afterwards, so the run can end above the cap by at most the
-        output of the requests already in flight; no request starts after."""
-        p = _prices(provider, model)
-        if p is None:
-            reason = f"no price is configured for {provider}:{model}, so the run cost cap cannot be enforced"
-        else:
-            spent = self.spent_usd()
-            est = input_chars / 4 * p["in"] / 1e6
-            reason = None
-            if self.cost_limit_hit or spent + est >= self.max_cost_usd:
-                reason = (f"run cost cap reached: ${spent:.4f} spent of ${self.max_cost_usd:.2f} "
-                          f"(ENGINE_MAX_COST_USD); refused {purpose}")
-        if reason:
-            with self._lock:
+    def committed_usd(self) -> float:
+        """Spent plus what in-flight requests have reserved."""
+        with self._lock:
+            return round(self._committed(), 6)
+
+    def remaining_usd(self, stage: str | None = None) -> float:
+        """What the run (or one stage, with the shared reserve) can still commit."""
+        with self._lock:
+            if stage is None:
+                return max(0.0, self.max_cost_usd - self._committed())
+            return self._stage_left(stage)
+
+    def before_call(self, provider: str, model: str, purpose: str, input_chars: int, max_tokens: int = 32000, *,
+                    extra_input_tokens: int = 0, web_searches: int = 0) -> int:
+        """Reserves the request's worst-case cost or refuses it (see the class
+        docstring). Returns the reservation id to put on the call's Usage."""
+        stage = stage_of(purpose)
+        worst = worst_case_usd(provider, model, input_chars, max_tokens, extra_input_tokens=extra_input_tokens,
+                               web_searches=web_searches)
+        with self._lock:
+            if worst is None:
+                reason = f"no price is configured for {provider}:{model}, so the run cost cap cannot be enforced"
                 self.cost_limit_hit = self.cost_limit_hit or reason
-            raise CostLimitExceeded(reason)
+                self.refusals.append({"purpose": purpose, "stage": stage, "kind": "COST_LIMIT", "reason": reason})
+                raise CostLimitExceeded(reason)
+            committed = self._committed()
+            if self.cost_limit_hit or committed >= self.max_cost_usd - 1e-9:
+                reason = self.cost_limit_hit or (f"run cost cap reached: ${committed:.4f} committed of "
+                                                 f"${self.max_cost_usd:.2f}; refused {purpose}")
+                self.cost_limit_hit = reason
+                self.refusals.append({"purpose": purpose, "stage": stage, "kind": "COST_LIMIT", "reason": reason})
+                raise CostLimitExceeded(reason)
+            left = self._stage_left(stage)
+            if worst > left + 1e-9:
+                if self.stage_budgets is None:
+                    reason = (f"run cost cap: ${committed:.4f} spent or reserved of ${self.max_cost_usd:.2f}; "
+                              f"{purpose} could cost up to ${worst:.4f}; refused before sending")
+                    self.cost_limit_hit = reason
+                    self.refusals.append({"purpose": purpose, "stage": stage, "kind": "COST_LIMIT",
+                                          "reason": reason})
+                    raise CostLimitExceeded(reason)
+                reason = (f"budget: {stage} can still commit ${left:.4f} (stage allotment "
+                          f"${self.stage_budgets.get(stage, 0.0):.2f} + reserve, within the ${self.max_cost_usd:.2f} "
+                          f"run cap); {purpose} could cost up to ${worst:.4f}; refused before sending")
+                self.refusals.append({"purpose": purpose, "stage": stage, "kind": "STAGE_BUDGET", "reason": reason})
+                raise StageBudgetExceeded(reason)
+            self._next += 1
+            self._reserved[self._next] = (stage, worst)
+            return self._next
+
+    def release(self, reservation: int | None) -> None:
+        with self._lock:
+            self._reserved.pop(reservation, None)
+
+    def add_cached(self, purpose: str) -> None:
+        with self._lock:
+            st = stage_of(purpose)
+            self.cached[st] = self.cached.get(st, 0) + 1
 
     def add(self, u: Usage) -> None:
         u.cost_usd = cost_of(u)
         with self._lock:
+            self._reserved.pop(u.reservation, None)
             self.calls.append(u)
             spent = sum(c.cost_usd or 0.0 for c in self.calls)
-            if spent > self.max_cost_usd and not self.cost_limit_hit:
+            if spent > self.max_cost_usd + 1e-9 and not self.cost_limit_hit:
                 self.cost_limit_hit = (f"run cost cap exceeded: ${spent:.4f} spent of ${self.max_cost_usd:.2f} "
-                                       f"(ENGINE_MAX_COST_USD) after {u.purpose}")
+                                       f"after {u.purpose}")
             if self.path:
                 os.makedirs(os.path.dirname(os.path.abspath(self.path)), exist_ok=True)
                 with open(self.path, "a", encoding="utf-8") as fh:
@@ -168,25 +291,36 @@ class UsageLedger:
     def summary(self) -> dict:
         with self._lock:
             calls = list(self.calls)
+            refusals = list(self.refusals)
+            cached = dict(self.cached)
         by: dict[str, dict] = {}
+        by_stage: dict[str, dict] = {}
         for u in calls:
-            k = f"{u.provider}:{u.model}"
-            b = by.setdefault(k, {"calls": 0, "failed": 0, "input_tokens": 0, "output_tokens": 0,
-                                  "cache_read_tokens": 0, "seconds": 0.0, "cost_usd": 0.0, "cost_complete": True})
-            b["calls"] += 1
-            b["failed"] += u.status != "OK"
-            b["input_tokens"] += u.input_tokens
-            b["output_tokens"] += u.output_tokens
-            b["cache_read_tokens"] += u.cache_read_tokens
-            b["seconds"] = round(b["seconds"] + u.seconds, 1)
-            if u.cost_usd is None:
-                b["cost_complete"] = False
-            else:
-                b["cost_usd"] = round(b["cost_usd"] + u.cost_usd, 4)
+            for table, k in ((by, f"{u.provider}:{u.model}"), (by_stage, stage_of(u.purpose))):
+                b = table.setdefault(k, _new_bucket())
+                b["calls"] += 1
+                b["failed"] += u.status != "OK"
+                b["input_tokens"] += u.input_tokens
+                b["output_tokens"] += u.output_tokens
+                b["cache_read_tokens"] += u.cache_read_tokens
+                b["cache_write_tokens"] += u.cache_write_tokens
+                b["seconds"] = round(b["seconds"] + u.seconds, 1)
+                if u.web_search_requests:
+                    b["web_search_requests"] = b.get("web_search_requests", 0) + u.web_search_requests
+                if u.cost_usd is None:
+                    b["cost_complete"] = False
+                else:
+                    b["cost_usd"] = round(b["cost_usd"] + u.cost_usd, 4)
+        for st, n in cached.items():
+            by_stage.setdefault(st, _new_bucket())["from_checkpoint"] = n
+        if self.stage_budgets is not None:
+            for st, b in by_stage.items():
+                b["budget_usd"] = self.stage_budgets.get(st, 0.0)
         total = round(sum(b["cost_usd"] for b in by.values()), 4)
-        return {"by_model": by, "total_cost_usd": total,
+        return {"by_model": by, "by_stage": by_stage, "total_cost_usd": total,
                 "cost_complete": all(b["cost_complete"] for b in by.values()), "calls": len(calls),
-                "max_cost_usd": self.max_cost_usd, "cost_limit_hit": self.cost_limit_hit}
+                "max_cost_usd": self.max_cost_usd, "stage_budgets": self.stage_budgets,
+                "cost_limit_hit": self.cost_limit_hit, "refusals": refusals}
 
 
 @dataclass
@@ -265,8 +399,8 @@ class AnthropicAnalyst(Analyst):
         import anthropic
         last: Exception | None = None
         for attempt in range(self.max_attempts):
-            ledger.before_call("anthropic", self.model, purpose, len(system) + len(_flat(user)))
-            u = Usage("anthropic", self.model, purpose)
+            rid = ledger.before_call("anthropic", self.model, purpose, len(system) + len(_flat(user)), max_tokens)
+            u = Usage("anthropic", self.model, purpose, reservation=rid)
             t0 = time.monotonic()
             try:
                 with self.client().messages.stream(
@@ -306,6 +440,9 @@ class AnthropicAnalyst(Analyst):
             except ProviderError as exc:
                 last = exc
                 retry = "unparseable" in str(exc)
+            except BaseException:
+                ledger.release(rid)          # an unexpected error never leaves a reservation behind
+                raise
             u.seconds = round(time.monotonic() - t0, 2)
             u.status, u.error = "FAILED", f"{type(last).__name__}: {str(last)[:200]}"
             ledger.add(u)
@@ -381,8 +518,8 @@ class OpenAIAnalyst(Analyst):
         self.client()                      # a missing SDK is "not configured", never a per-page failure
         last: Exception | None = None
         for attempt in range(self.max_attempts):
-            ledger.before_call("openai", self.model, purpose, len(system) + len(_flat(user)))
-            u = Usage("openai", self.model, purpose)
+            rid = ledger.before_call("openai", self.model, purpose, len(system) + len(_flat(user)), max_tokens)
+            u = Usage("openai", self.model, purpose, reservation=rid)
             t0 = time.monotonic()
             retry = False
             try:

@@ -15,8 +15,9 @@ import os
 
 from engine import schema
 from engine.package import Location, SourcePackage, Unit, units
+from engine.budget import max_tokens as _max_tokens
 from engine.providers import (Analyst, ProviderError, ProviderNotAuthorized, ProviderNotConfigured,
-                              ProviderOutputLimit, ProviderUnavailable, UsageLedger)
+                              ProviderOutputLimit, ProviderUnavailable, StageBudgetExceeded, UsageLedger)
 
 #: How many times one location's text may be halved after its answer hit the
 #: output-token limit (2 = at most four parts, seven calls for that location).
@@ -105,7 +106,7 @@ def _call_unit(analyst: Analyst, package: SourcePackage, unit: Unit, ctx: dict, 
     cut = full.index("Extract every material provision")
     user = (full[:cut].rstrip(), full[cut:])     # package context is shared by every unit: cached
     return analyst.call_json(SYSTEM, user, schema.EXTRACTION_OUTPUT, purpose=f"extract:{unit.unit_id}",
-                             ledger=ledger, data_class=package.data_class)
+                             ledger=ledger, data_class=package.data_class, max_tokens=_max_tokens("extract"))
 
 
 def split_text(text: str) -> tuple[str, str] | None:
@@ -195,8 +196,8 @@ def _extract_unit(analyst, package, unit, ctx, ledger, depth=0, split=0) -> dict
     re-asked once."""
     try:
         data = _call_unit(analyst, package, unit, ctx, ledger)
-    except (ProviderNotAuthorized, ProviderNotConfigured, ProviderUnavailable):
-        raise
+    except (ProviderNotAuthorized, ProviderNotConfigured, ProviderUnavailable, StageBudgetExceeded):
+        raise   # a budget refusal is never answered by splitting (that would only ask for more)
     except ProviderError as exc:
         if len(unit.locations) > 1 and depth < 4:
             mid = len(unit.locations) // 2
@@ -285,17 +286,34 @@ def extract(analyst: Analyst, package: SourcePackage, ledger: UsageLedger, *, ta
             "accounts": accounts, "gaps": gaps}
 
 
+#: Upper bound of the findings list sent to the package review, in characters.
+#: Every finding is always listed; only quote and statement excerpts shrink.
+REVIEW_FINDINGS_CHARS = int(os.getenv("ENGINE_REVIEW_FINDINGS_CHARS", "110000"))
+
+
+def _review_lines(findings: list[dict]) -> list[str]:
+    def lines(quote: int, statement: int) -> list[str]:
+        return [f"{f['id']} | {f.get('document')} p.{f.get('page')} | {f.get('category')} | {f.get('modality')} | "
+                f"{(f.get('statement') or '')[:statement]}" + (f" || quote: {(f.get('quote') or '')[:quote]}"
+                                                               if quote else "") for f in findings]
+    for quote, statement in ((300, 600), (120, 400), (0, 300), (0, 160)):
+        out = lines(quote, statement)
+        if sum(len(x) + 1 for x in out) <= REVIEW_FINDINGS_CHARS:
+            return out
+    return out
+
+
 def package_review(analyst: Analyst, package: SourcePackage, inventory: dict, ledger: UsageLedger) -> dict:
     """The analyst's own package-level pass over its own findings."""
-    lines = [f"{f['id']} | {f.get('document')} p.{f.get('page')} | {f.get('category')} | {f.get('modality')} | "
-             f"{f.get('statement')} || quote: {(f.get('quote') or '')[:300]}" for f in inventory["findings"]]
+    lines = _review_lines(inventory["findings"])
     user = (f"PACKAGE DOCUMENTS:\n{_doc_list(package)}\n\nFIRST PAGE OF EACH DOCUMENT:\n" +
             "\n\n".join(f"--- {d.name} ---\n{(d.locations[0].text if d.locations else '')[:2500]}"
                         for d in package.documents) +
             "\n\nYOUR FINDINGS:\n" + "\n".join(lines))
     try:
         return analyst.call_json(PACKAGE_REVIEW_SYSTEM, user, schema.PACKAGE_REVIEW_OUTPUT,
-                                 purpose="package_review", ledger=ledger, data_class=package.data_class)
+                                 purpose="package_review", ledger=ledger, data_class=package.data_class,
+                                 max_tokens=_max_tokens("package_review"))
     except (ProviderNotAuthorized, ProviderNotConfigured, ProviderUnavailable):
         raise
     except ProviderError as exc:

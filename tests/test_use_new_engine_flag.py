@@ -43,9 +43,12 @@ def test_panel_handles_access_denied_without_fallback(monkeypatch, org):
 
 @pytest.mark.parametrize("kind", ["FAST", "FULL"])
 def test_complete_run_serves_matching_pdf(monkeypatch, org, kind):
-    calls = []
-    monkeypatch.setattr(tenancy, "get_engine_status_for_organization",
-                        lambda b, o, r=None: {"id": 11, "status": "COMPLETE", "verification": "SINGLE_ANALYST"})
+    calls, modes = [], []
+
+    def status(b, o, r=None, mode=None):
+        modes.append(mode)
+        return {"id": 11, "status": "COMPLETE", "verification": "SINGLE_ANALYST"}
+    monkeypatch.setattr(tenancy, "get_engine_status_for_organization", status)
 
     def export(b, o, run_id, k):
         calls.append((b, o, run_id, k))
@@ -53,6 +56,7 @@ def test_complete_run_serves_matching_pdf(monkeypatch, org, kind):
     monkeypatch.setattr(tenancy, "export_engine_pdf_for_organization", export)
     assert stage_engine.render_engine_report_panel(7, kind) is True
     assert calls == [(7, "org-a", 11, kind)]
+    assert kind in modes                       # each panel shows the run of its own mode
 
 
 def test_pages_are_wired_to_the_engine_panel():

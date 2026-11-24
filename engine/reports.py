@@ -12,6 +12,7 @@ import re
 from datetime import date
 
 from engine import schema
+from engine.budget import max_tokens as _max_tokens
 from engine.providers import Analyst, ProviderError, UsageLedger
 from engine.verify import _EMAIL, STOPWORDS, _numbers, normalize, tokens
 
@@ -287,7 +288,7 @@ def analysis(writer: Analyst | None, entries: list[dict], ledger: UsageLedger, d
         f"{e.get('applicability')} | {e.get('statement')}" for e in live)
     try:
         data = writer.call_json(ANALYSIS_SYSTEM, user, ANALYSIS_OUTPUT, purpose="analysis", ledger=ledger,
-                                data_class=data_class, max_tokens=16000)
+                                data_class=data_class, max_tokens=_max_tokens("analysis"))
     except ProviderError as exc:
         out["error"] = str(exc)[:300]
         return out

@@ -17,7 +17,8 @@ import os
 
 from engine import schema
 from engine.package import SourcePackage
-from engine.providers import Analyst, ProviderError, UsageLedger
+from engine.budget import max_tokens as _max_tokens
+from engine.providers import Analyst, ProviderError, StageBudgetExceeded, UsageLedger
 from engine.verify import locate_quote, value_issues
 
 SYSTEM = """You are the adjudicator for a procurement evidence register. For each entry you receive one or two \
@@ -187,15 +188,27 @@ def adjudicate(adjudicator: Analyst, package: SourcePackage, entries: list[dict]
                 "decisions only):\n" + ("\n".join(neighbours) or "(none)") + "\n\nENTRIES TO ADJUDICATE:\n" +
                 "\n\n".join(_entry_block(e, labels) for e in batch))
         return adjudicator.call_json(SYSTEM, user, schema.ADJUDICATION_OUTPUT, purpose="adjudicate",
-                                     ledger=ledger, data_class=package.data_class, max_tokens=16000)
+                                     ledger=ledger, data_class=package.data_class,
+                                     max_tokens=_max_tokens("adjudicate"))
 
-    workers = concurrency or int(os.getenv("ENGINE_CONCURRENCY", "4"))
+    # at most two batches in flight, so the stage's worst-case reservations do not
+    # crowd each other out of its allotment while answers are still coming in
+    workers = concurrency or int(os.getenv("ENGINE_ADJUDICATE_CONCURRENCY", "2"))
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
         futs = {pool.submit(run, b): b for b in batches}
         for fut in concurrent.futures.as_completed(futs):
             batch = futs[fut]
             try:
                 decisions = {d.get("entry_id"): d for d in (fut.result().get("decisions") or [])}
+            except StageBudgetExceeded as exc:
+                # not run: the stage's budget could not cover the batch. Its entries stay
+                # disputed / excluded (below) and the run discloses how many were deferred.
+                stats["deferred_batches"] = stats.get("deferred_batches", 0) + 1
+                stats["deferred_entries"] = stats.get("deferred_entries", 0) + len(batch)
+                for e in batch:
+                    e["adjudication"] = {"decision": None, "accepted": False, "deferred": True,
+                                         "error": str(exc)[:200]}
+                continue
             except ProviderError as exc:
                 stats["failed_batches"] += 1
                 for e in batch:

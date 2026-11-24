@@ -61,7 +61,7 @@ def _match(texts: list[str], pats: list[str]) -> str | None:
 
 def score(checklist: dict, res: dict | None, existing: list[str]) -> dict:
     fast = _items(res["composed"]["fast"]) if res else []
-    full = _items(res["composed"]["full"]) if res else []
+    full = _items(res["composed"]["full"]) if res and res["composed"].get("full") else []
     issues = _open_issue_texts(res) if res else []
     # existing reports are plain text: scored on windows of three consecutive lines
     ex_lines = [ln.strip() for t in existing for ln in t.splitlines() if ln.strip()]
