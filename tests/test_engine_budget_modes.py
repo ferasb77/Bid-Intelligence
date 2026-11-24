@@ -468,3 +468,29 @@ def test_pdf_is_served_only_for_a_complete_run(monkeypatch):
     for st, want in (("COMPLETE", b"%PDF"), ("FAILED", None), ("RUNNING", None)):
         monkeypatch.setitem(sys.modules, "database", DB(st))
         assert service.pdf(1, 2, "FAST") == want
+
+
+def test_mid_stream_error_event_is_charged_its_reserved_worst_case():
+    import anthropic
+    import httpx
+
+    class MidStream:
+        def __init__(self):
+            self.messages = self
+
+        def stream(self, **kw):
+            raise anthropic.APIStatusError("overloaded mid-stream",
+                                           response=httpx.Response(200, request=httpx.Request("POST", "https://x")),
+                                           body=None)
+    from engine.providers import AnthropicAnalyst, ProviderError
+    a = AnthropicAnalyst("claude-opus-5-5", client=MidStream(), name="adj")
+    a.max_attempts = 1
+    lg = UsageLedger("t", path="", max_cost_usd=2.0)
+    with pytest.raises(ProviderError):
+        a.call_json("s", "u", {}, purpose="adjudicate", ledger=lg, data_class="SYNTHETIC", max_tokens=1000)
+    assert lg.spent_usd() == pytest.approx(worst_case_usd("anthropic", "claude-opus-5-5", 2, 1000))
+
+
+def test_research_makes_at_most_one_search_in_a_run():
+    import buyer_research
+    assert buyer_research.LEDGER_MAX_SEARCHES == 1 and buyer_research.LEDGER_ROUNDS == 1

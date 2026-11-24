@@ -451,7 +451,9 @@ class AnthropicAnalyst(Analyst):
             except anthropic.APIStatusError as exc:
                 last = exc
                 retry = exc.status_code >= 500 or exc.status_code == 529
-                u.charge_reserved = exc.status_code >= 500
+                # a 4xx was refused before any work; anything else (5xx, or an error event
+                # mid-stream, which arrives with the stream's 200 status) may have been billed
+                u.charge_reserved = not 400 <= (exc.status_code or 0) < 500
                 if _account_problem(exc):
                     u.status, u.error = "FAILED", f"{type(exc).__name__}: {str(exc)[:200]}"
                     ledger.add(u)

@@ -187,14 +187,14 @@ def verify_items(items: list[dict], fetch=page_text) -> list[dict]:
 
 #: Bounds of a research call made inside an engine run (FULL only), where the
 #: run's UsageLedger reserves the call's worst case before it is sent: ONE
-#: request (a paused turn is not resumed), at most two searches, and for each
-#: search a generous allowance of result tokens entering the input. The
+#: request (a paused turn is not resumed), at most one search, and for that
+#: search a generous allowance (50,000) of result tokens entering the input. The
 #: request is pinned to MODEL (no server-side fallback), so it is priced by
 #: the model that served it.
 LEDGER_MAX_TOKENS = 3000
-LEDGER_MAX_SEARCHES = 2
+LEDGER_MAX_SEARCHES = 1
 LEDGER_ROUNDS = 1
-SEARCH_RESULT_TOKENS_PER_SEARCH = 25000
+SEARCH_RESULT_TOKENS_PER_SEARCH = 50000
 
 
 def run_research(client_name: str, title: str, reference: str | None, api_key: str | None,
@@ -213,7 +213,8 @@ def run_research(client_name: str, title: str, reference: str | None, api_key: s
     messages = [{"role": "user", "content": _prompt(client_name, title, reference, today, context)}]
     blocks: list[dict] = []
     resp = None
-    max_tokens, searches, rounds = (6000, MAX_SEARCHES, 3) if ledger is None else         (LEDGER_MAX_TOKENS, LEDGER_MAX_SEARCHES, LEDGER_ROUNDS)
+    max_tokens, searches, rounds = (6000, MAX_SEARCHES, 3) if ledger is None else \
+        (LEDGER_MAX_TOKENS, LEDGER_MAX_SEARCHES, LEDGER_ROUNDS)
     totals = {"input_tokens": 0, "output_tokens": 0, "web_search_requests": 0}
     budget_note = None
     for _ in range(rounds):  # resume a paused server-tool turn
